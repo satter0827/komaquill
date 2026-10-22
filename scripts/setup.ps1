@@ -4,7 +4,7 @@ $uvVersion = '0.13.5'
 $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
 if ($architecture -notin @('arm64', 'x64')) { throw 'Windows ARM64またはx64が必要です。' }
 $uvArchitecture = if ($architecture -eq 'arm64') { 'aarch64' } else { 'x86_64' }
-$toolRoot = Join-Path $KomaquillRoot 'artifacts/runtime'
+$toolRoot = Join-Path $KomaquillRoot '.artifacts/runtime'
 New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
 
 function Install-VerifiedZip([string]$Url, [string]$Digest, [string]$Destination, [string]$ArchiveName) {

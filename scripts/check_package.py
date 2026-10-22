@@ -22,7 +22,7 @@ def main() -> None:
         and os.environ.get("GITHUB_REF_NAME") != f"v{expected}"
     ):
         raise SystemExit("タグとバージョンが一致しません。")
-    wheel_path = root / f"artifacts/dist/komaquill-{expected}-py3-none-any.whl"
+    wheel_path = root / f".artifacts/dist/komaquill-{expected}-py3-none-any.whl"
     with zipfile.ZipFile(wheel_path) as wheel:
         names = wheel.namelist()
         metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
@@ -32,12 +32,12 @@ def main() -> None:
         required = {"workflow.json", "workflow-api.json", "model.toml", "runtime.toml"}
         if not all(f"komaquill/resources/{name}" in names for name in required):
             raise SystemExit("配布するワークフローまたは設定が不足しています。")
-    with tarfile.open(root / f"artifacts/dist/komaquill-{expected}.tar.gz") as archive:
+    with tarfile.open(root / f".artifacts/dist/komaquill-{expected}.tar.gz") as archive:
         names += archive.getnames()
         member = archive.extractfile(f"komaquill-{expected}/PKG-INFO")
         if member is None or Parser().parsestr(member.read().decode())["Version"] != expected:
             raise SystemExit("sdistのバージョンが一致しません。")
-    if any("artifacts" in Path(name).parts or ".env" in Path(name).parts for name in names):
+    if any({".artifacts", "artifacts", ".env"}.intersection(Path(name).parts) for name in names):
         raise SystemExit("配布物に生成物または資格情報が含まれています。")
     print("バージョンと配布対象を確認しました。")
 

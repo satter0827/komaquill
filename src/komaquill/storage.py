@@ -46,3 +46,14 @@ def load_runs(project: Project) -> list[Run]:
 def load_session(project: Project) -> Session:
     """保存済み接続先を読み込む。"""
     return Session.model_validate_json(project.session_file.read_bytes())
+
+
+def stop_request(project: Project, session: Session) -> bool | None:
+    """同じ接続に対する終了要求だけを読む。"""
+    path = project.runtime / "stop.json"
+    if not path.is_file():
+        return None
+    request = json.loads(path.read_text(encoding="utf-8"))
+    if request.get("runtime_id") != str(session.runtime_id):
+        return None
+    return bool(request.get("force"))

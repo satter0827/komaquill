@@ -60,8 +60,8 @@ include = ["src", "tests", "scripts", "docs", "README.md", "CONTRIBUTING.md", "A
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["artifacts"]
-cache-dir = "artifacts/cache/ruff"
+extend-exclude = [".artifacts"]
+cache-dir = ".artifacts/cache/ruff"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -71,7 +71,7 @@ python_version = "3.12"
 strict = true
 packages = ["komaquill"]
 mypy_path = "src"
-cache_dir = "artifacts/cache/mypy"
+cache_dir = ".artifacts/cache/mypy"
 
 [[tool.mypy.overrides]]
 # 外部ライブラリが型マーカーを配布していない箇所だけを指定する。
@@ -80,16 +80,16 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "--basetemp=artifacts/tests/tmp"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "--basetemp=.artifacts/tests/tmp"]
 xfail_strict = true
 
 [tool.coverage.run]
 source = ["komaquill"]
 branch = true
-data_file = "artifacts/tests/.coverage"
+data_file = ".artifacts/tests/.coverage"
 
 [tool.coverage.html]
-directory = "artifacts/tests/coverage"
+directory = ".artifacts/tests/coverage"
 
 [tool.importlinter]
 root_package = "komaquill"
@@ -120,7 +120,7 @@ forbidden_modules = ["tests", "scripts", "pytest", "debugpy"]
 
 [tool.uv]
 required-version = ">=0.13.5,<0.14"
-cache-dir = "artifacts/cache/uv"
+cache-dir = ".artifacts/cache/uv"
 
 [[tool.uv.index]]
 name = "pytorch-cu126"

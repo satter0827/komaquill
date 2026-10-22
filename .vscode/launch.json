@@ -11,8 +11,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "画像を生成する",
@@ -24,8 +25,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "入力画面を開く",
@@ -39,8 +41,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "ノード画面を開く",
@@ -54,8 +57,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "結果を回収する",
@@ -67,8 +71,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "接続を確認する",
@@ -80,8 +85,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "利用状態を確認する",
@@ -93,8 +99,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "ComfyUIを終了する",
@@ -106,8 +113,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     },
     {
       "name": "生成を待たずに終了する",
@@ -120,8 +128,9 @@
       ],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
-      "justMyCode": true
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
     }
   ]
 }

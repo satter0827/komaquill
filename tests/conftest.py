@@ -24,6 +24,8 @@ class ComfyStub:
     drop_response: bool = False
     image_fails: bool = False
     corrupt_image: bool = False
+    invalid_images: set[str] = field(default_factory=set)
+    queue: JsonObject = field(default_factory=lambda: {"queue_running": [], "queue_pending": []})
 
     def respond(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -32,7 +34,7 @@ class ComfyStub:
         if path == "/history":
             return httpx.Response(200, json=self.history)
         if path == "/queue":
-            return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
+            return httpx.Response(200, json=self.queue)
         if path == "/prompt":
             self.submissions += 1
             data = json.loads(request.content)
@@ -58,7 +60,10 @@ class ComfyStub:
             output = io.BytesIO()
             Image.new("RGB", (8, 8), "green").save(output, "PNG")
             return httpx.Response(
-                200, content=b"not an image" if self.corrupt_image else output.getvalue()
+                200,
+                content=b"not an image"
+                if self.corrupt_image or request.url.params.get("filename") in self.invalid_images
+                else output.getvalue(),
             )
         if path == "/system_stats":
             return httpx.Response(200, json={"devices": [{"type": "cuda"}]})
@@ -89,7 +94,7 @@ def stub(session):
 
 
 def pytest_configure(config):
-    (config.rootpath / "artifacts/tests").mkdir(parents=True, exist_ok=True)
+    (config.rootpath / ".artifacts/tests").mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture

@@ -65,7 +65,9 @@ class Colab:
             *arguments,
         ]
 
-    def call(self, *arguments: str, interactive: bool = False) -> None:
+    def call(
+        self, *arguments: str, interactive: bool = False, timeout: float | None = None
+    ) -> None:
         """公式CLIの応答本文をログや例外へ転載しない。"""
         try:
             process = subprocess.Popen(
@@ -74,7 +76,7 @@ class Colab:
                 stdout=None if interactive else subprocess.PIPE,
                 stderr=None if interactive else subprocess.PIPE,
             )
-            timeout = (
+            timeout = timeout or (
                 self.project.settings().preparation_timeout
                 if arguments[0] == "new"
                 else self.project.settings().control_timeout
@@ -187,8 +189,14 @@ class Colab:
                     raise KomaquillError(
                         "終了を確認できません。管理記録を残しました。stop で再確認してください。"
                     )
-            self.cleanup_processes(receipt)
-            self.receipt_file.unlink()
+
+    def release(self, receipt: Receipt) -> None:
+        """終了後の保存と後始末が終わってから所有記録を消す。"""
+        with self.lock:
+            current = self.receipt()
+            if current is not None and current.runtime_id != receipt.runtime_id:
+                raise KomaquillError("終了対象が変わったため管理記録を保持しました。")
+            self.receipt_file.unlink(missing_ok=True)
 
     def cleanup_processes(self, receipt: Receipt) -> None:
         """監視の強制終了後も、所有する公式CLIの待機処理を終了する。"""
@@ -244,8 +252,8 @@ class Colab:
             f"os.environ['KOMAQUILL_SOURCE_REVISION'] = {receipt.source_revision!r}\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
             f"os.environ['KOMAQUILL_REMOTE_PORT'] = {str(self.project.settings().remote_port)!r}\n"
-            "os.makedirs(root + '/artifacts/logs', exist_ok=True)\n"
-            "with open(root + '/artifacts/logs/bootstrap.log', 'ab') as log:\n"
+            "os.makedirs(root + '/.artifacts/logs', exist_ok=True)\n"
+            "with open(root + '/.artifacts/logs/bootstrap.log', 'ab') as log:\n"
             "    subprocess.run([sys.executable, root + '/scripts/worker.py'],\n"
             "                   stdout=log, stderr=subprocess.STDOUT, check=True)\n",
             encoding="utf-8",
@@ -269,25 +277,41 @@ class Colab:
                 stderr=subprocess.DEVNULL,
             )
 
-    def recover_diagnostics(self, receipt: Receipt) -> None:
-        """終了前にGPU側の環境と準備ログをローカルへ回収する。"""
+    def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
+        """ログを個別に回収し、失敗しても既存ファイルを保持する。"""
         folder = self.project.artifacts / "logs" / str(receipt.runtime_id)
         folder.mkdir(parents=True, exist_ok=True)
-        remote = f"content/komaquill-{receipt.runtime_id}/artifacts"
+        remote = f"content/komaquill-{receipt.runtime_id}/.artifacts"
+        failed: list[str] = []
+        deadline = time.monotonic() + self.project.settings().control_timeout
         for source, name in [
             ("logs/bootstrap.log", "bootstrap.log"),
             ("logs/comfy.log", "comfy.log"),
             ("runtime/environment.txt", "environment.txt"),
         ]:
+            temporary = folder / f".{name}.{uuid4().hex}.tmp"
             try:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise KomaquillError("ログ取得の待機時間を超えました。")
                 with self.lock:
                     if self.entry(receipt) is None:
-                        return
+                        raise KomaquillError("ランタイムがありません。")
                     self.call(
-                        "download", "-s", receipt.name, f"{remote}/{source}", str(folder / name)
+                        "download",
+                        "-s",
+                        receipt.name,
+                        f"{remote}/{source}",
+                        str(temporary),
+                        timeout=remaining,
                     )
-            except KomaquillError:
-                return
+                temporary.replace(folder / name)
+            except (KomaquillError, OSError):
+                failed.append(name)
+            finally:
+                temporary.unlink(missing_ok=True)
+        atomic_json(folder / "recovery.json", {"failed": failed})
+        return tuple(failed)
 
     def tunnel(self, receipt: Receipt) -> subprocess.Popen[bytes]:
         """一つのSSH接続を共有し、ローカルの待ち受けをループバックに限定する。"""

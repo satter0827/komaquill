@@ -1,5 +1,5 @@
 # 実行結果・モデル・環境・キャッシュ
-/artifacts/
+/.artifacts/
 
 # 資格情報
 .env
@@ -9,7 +9,8 @@
 *.key
 credentials*.json
 
-# 誤った場所に作られた実行環境
+# 誤った場所に作られた生成物と実行環境
+/artifacts/
 .venv/
 __pycache__/
 *.py[cod]

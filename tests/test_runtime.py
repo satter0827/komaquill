@@ -27,14 +27,13 @@ def test_external_uses_only_standard_api_and_saves_new_browser_job(project, clie
     old_id = client.submit(resource_json("workflow-api.json"), {}, "old-browser")
     monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
 
-    def watch(project, client, session, colab, echo):
-        assert colab is None
+    def watch(project, client, session, echo):
         assert old_id in session.excluded_prompt_ids
         client.submit(resource_json("workflow-api.json"), {}, "new-browser")
         atomic_json(
             project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
         )
-        original_watch(project, client, session, None, echo)
+        return original_watch(project, client, session, echo)
 
     monkeypatch.setattr(runtime, "watch", watch)
     runtime.start_external(project, "http://127.0.0.1:8188", None, None, lambda message: None)
@@ -75,32 +74,48 @@ def test_stale_stop_request_does_not_stop_new_runtime(project, session):
     assert runtime.stop_request(project, session) is None
 
 
-def test_stop_after_monitor_crash_collects_before_stopping_colab(
+def owned_colab(project, session, client, monkeypatch):
+    from komaquill.colab import Colab, Receipt
+
+    colab = Colab(project)
+    receipt = Receipt(
+        name="owned",
+        runtime_id=session.runtime_id,
+        source_revision="a" * 40,
+        endpoint_id="expected",
+    )
+    atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
+    monkeypatch.setattr(runtime, "Colab", lambda project: colab)
+    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(colab, "refresh", lambda receipt: True)
+    monkeypatch.setattr(colab, "recover_diagnostics", lambda receipt: ())
+    monkeypatch.setattr(colab, "cleanup_processes", lambda receipt: None)
+    monkeypatch.setattr(colab, "stop", lambda: None)
+    return colab, receipt
+
+
+def test_stop_after_monitor_crash_collects_and_recovers_logs_before_stopping(
     project, client, session, monkeypatch
 ):
-    import types
-    from contextlib import contextmanager
-
     client.submit(resource_json("workflow-api.json"), {}, "browser")
     atomic_json(project.session_file, session.model_dump(mode="json"))
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    steps = []
 
-    @contextmanager
-    def connection(project):
-        yield client, session
+    def logs(receipt):
+        assert load_runs(project)[0].state == "saved"
+        steps.append("logs")
+        return ()
 
-    class OwnedColab:
-        def __init__(self, project):
-            pass
+    def stop():
+        assert steps == ["logs"]
+        steps.append("stop")
 
-        def receipt(self):
-            return types.SimpleNamespace(runtime_id=session.runtime_id)
-
-        def stop(self):
-            assert load_runs(project)[0].state == "saved"
-
-    monkeypatch.setattr(runtime, "connected", connection)
-    monkeypatch.setattr(runtime, "Colab", OwnedColab)
+    monkeypatch.setattr(colab, "recover_diagnostics", logs)
+    monkeypatch.setattr(colab, "stop", stop)
     runtime.stop(project, True, lambda message: None)
+    assert steps == ["logs", "stop"]
+    assert colab.receipt() is None
 
 
 def test_force_stop_request_is_never_downgraded(project, session):
@@ -141,3 +156,99 @@ def test_stop_does_not_end_replacement_runtime(project, session, monkeypatch):
     monkeypatch.setattr(runtime, "Colab", ReplacedColab)
     with pytest.raises(KomaquillError, match="接続が変わった"):
         runtime.stop(project, True, lambda message: None)
+
+
+def test_external_restart_excludes_offline_jobs_but_recovers_recorded_jobs(
+    project, client, session, stub, monkeypatch
+):
+    from komaquill.service import collect
+
+    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    monkeypatch.setattr(client, "close", lambda: None)
+    monkeypatch.setattr(runtime, "watch", lambda *args: True)
+    runtime.start_external(project, session.endpoint, None, None, lambda message: None)
+    client.submit(resource_json("workflow-api.json"), {}, "offline-browser")
+    runtime.start_external(project, session.endpoint, None, None, lambda message: None)
+    assert load_runs(project) == []
+    current = load_session(project)
+    client.submit(resource_json("workflow-api.json"), {}, "online-browser")
+    assert collect(project, client, current).saved == 1
+
+
+@pytest.mark.parametrize("failure", ["logs", "stop", "cleanup"])
+def test_shutdown_failures_do_not_skip_gpu_stop_or_drop_ownership(
+    project, client, session, monkeypatch, failure
+):
+    run = new_run(project, session, uuid4(), {})
+    run.state = "queued"
+    save_run(project, run)
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    steps = []
+
+    def logs(receipt):
+        steps.append("logs")
+        if failure == "logs":
+            raise KomaquillError("ログの失敗")
+        return ()
+
+    def stop():
+        steps.append("stop")
+        if failure == "stop":
+            raise KomaquillError("終了の失敗")
+
+    def cleanup(receipt):
+        steps.append("cleanup")
+        if failure == "cleanup":
+            raise KomaquillError("接続の失敗")
+
+    monkeypatch.setattr(colab, "recover_diagnostics", logs)
+    monkeypatch.setattr(colab, "stop", stop)
+    monkeypatch.setattr(colab, "cleanup_processes", cleanup)
+    if failure == "logs":
+        runtime.finish_colab(
+            project, colab, receipt, client, session, True, lambda message: None, []
+        )
+        assert colab.receipt() is None
+        assert load_runs(project)[0].state == "lost"
+    else:
+        with pytest.raises(KomaquillError, match="管理記録"):
+            runtime.finish_colab(
+                project, colab, receipt, client, session, True, lambda message: None, []
+            )
+        assert colab.receipt() is not None
+        assert load_runs(project)[0].state == ("queued" if failure == "stop" else "lost")
+    assert steps == ["logs", "stop", "cleanup"]
+
+
+def test_stop_restores_missing_ssh_without_acquiring_gpu(project, client, session, monkeypatch):
+    import types
+
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    steps = []
+
+    def disconnected(*args):
+        raise KomaquillError("切断中")
+
+    monkeypatch.setattr(runtime, "verify_runtime", disconnected)
+    monkeypatch.setattr(runtime, "check_port", lambda port: None)
+    monkeypatch.setattr(
+        colab, "tunnel", lambda receipt: steps.append("ssh") or types.SimpleNamespace()
+    )
+    monkeypatch.setattr(runtime, "terminate", lambda process, timeout: steps.append("close"))
+    runtime.stop(project, True, lambda message: None)
+    assert steps == ["ssh", "close"]
+    assert colab.receipt() is None
+
+
+def test_interrupt_during_log_recovery_still_stops_gpu(project, client, session, monkeypatch):
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    stopped = []
+
+    def interrupted(receipt):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(colab, "recover_diagnostics", interrupted)
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    runtime.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
+    assert stopped == [True]
+    assert colab.receipt() is None

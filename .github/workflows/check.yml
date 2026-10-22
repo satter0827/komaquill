@@ -7,10 +7,10 @@ on:
 permissions:
   contents: read
 env:
-  UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/artifacts/runtime/venv
-  UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/artifacts/runtime/python
-  UV_CACHE_DIR: ${{ github.workspace }}/artifacts/cache/uv
-  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/artifacts/cache/pycache
+  UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.artifacts/runtime/venv
+  UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/.artifacts/runtime/python
+  UV_CACHE_DIR: ${{ github.workspace }}/.artifacts/cache/uv
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/.artifacts/cache/pycache
   PYTHONUTF8: '1'
 jobs:
   checks:
@@ -31,7 +31,7 @@ jobs:
       - name: 品質を確認する
         run: uv run --locked --extra colab-client python scripts/check.py
       - name: 配布物を確認する
-        run: uv build --out-dir artifacts/dist
+        run: uv build --out-dir .artifacts/dist
       - name: バージョンと配布対象を確認する
         run: uv run --locked python scripts/check_package.py
   quality:

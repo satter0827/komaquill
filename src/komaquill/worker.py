@@ -113,7 +113,7 @@ def main(root: Path) -> None:
         while time.monotonic() < deadline:
             if server.poll() is not None:
                 raise KomaquillError(
-                    "ComfyUIが終了しました。artifacts/logs/comfy.logを確認してください。"
+                    "ComfyUIが終了しました。.artifacts/logs/comfy.logを確認してください。"
                 )
             try:
                 if httpx.get(f"http://127.0.0.1:{port}/system_stats", timeout=2).is_success:

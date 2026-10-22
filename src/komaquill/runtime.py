@@ -10,13 +10,13 @@ import keyring
 from filelock import FileLock, Timeout
 
 from komaquill.client import ComfyClient
-from komaquill.colab import Colab, check_port, terminate
+from komaquill.colab import Colab, Receipt, check_port, terminate
 from komaquill.downloads import fetch_model
 from komaquill.errors import KomaquillError
 from komaquill.models import Session
-from komaquill.service import collect, request_id, source_revision, verify_runtime
+from komaquill.service import collect, collection_lock, mark_lost, source_revision, verify_runtime
 from komaquill.settings import Project
-from komaquill.storage import atomic_json, load_runs, load_session
+from komaquill.storage import atomic_json, load_runs, load_session, stop_request
 from komaquill.workflow import preset
 
 
@@ -65,46 +65,9 @@ def excluded_history(client: ComfyClient) -> set[str]:
     return excluded
 
 
-def pending_ids(project: Project, client: ComfyClient, session: Session) -> set[str]:
-    """未完了・未回収のIDをCLIと画面の両方から集める。"""
-    runs = {run.run_id: run for run in load_runs(project)}
-    pending = {
-        str(run.run_id)
-        for run in runs.values()
-        if run.runtime_id == session.runtime_id and run.state not in {"saved", "failed"}
-    }
-    queue = client.json("/queue")
-    for rows in queue.values():
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if len(row) < 2:
-                continue
-            identity = request_id(row)
-            own = identity in runs and runs[identity].state not in {"saved", "failed"}
-            if own:
-                pending.add(str(identity))
-            elif str(row[1]) not in session.excluded_prompt_ids:
-                pending.add(str(row[1]))
-    return pending
-
-
-def stop_request(project: Project, session: Session) -> bool | None:
-    """同じ接続に対する終了要求だけを読む。"""
-    path = project.runtime / "stop.json"
-    if not path.is_file():
-        return None
-    import json
-
-    request = json.loads(path.read_text(encoding="utf-8"))
-    if request.get("runtime_id") != str(session.runtime_id):
-        return None
-    return bool(request.get("force"))
-
-
 def request_stop(project: Project, session: Session, force: bool) -> None:
     """並行する終了要求で強制終了を通常終了へ戻さない。"""
-    with FileLock(str(project.runtime / ".stop.lock")):
+    with collection_lock(project), FileLock(str(project.runtime / ".stop.lock")):
         force = force or stop_request(project, session) is True
         atomic_json(
             project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": force}
@@ -120,21 +83,25 @@ def drain(
 ) -> None:
     """上限まで生成を待ち、取得可能な結果を保存する。"""
     deadline = time.monotonic() + project.settings().shutdown_timeout
-    remaining: set[str] = set()
+    remaining: tuple[UUID, ...] = ()
+    previous_errors: tuple[UUID, ...] = ()
     while True:
         try:
             try:
                 result = collect(project, client, session)
                 if result.saved:
                     echo(f"保存しました: {result.saved}件")
-                remaining = pending_ids(project, client, session)
+                if result.errors and result.errors != previous_errors:
+                    echo("再回収が必要です: " + ", ".join(map(str, result.errors)))
+                previous_errors = result.errors
+                remaining = result.pending_ids
             except KomaquillError:
-                remaining.update(
-                    str(run.run_id)
+                remaining = tuple(
+                    run.run_id
                     for run in load_runs(project)
-                    if run.runtime_id == session.runtime_id and run.state not in {"saved", "failed"}
+                    if run.runtime_id == session.runtime_id and run.pending
                 )
-                echo("接続できないため回収を完了できませんでした。未回収の管理記録を残します。")
+                echo("接続できないため回収を完了できませんでした。管理記録を保持します。")
                 break
             if (
                 force
@@ -146,51 +113,101 @@ def drain(
             time.sleep(project.settings().poll_interval)
         except KeyboardInterrupt:
             force = True
+            request_stop(project, session, True)
     if remaining:
-        echo("未完了・未回収: " + ", ".join(sorted(remaining)))
+        echo("未完了・未回収: " + ", ".join(map(str, remaining)))
 
 
 def watch(
     project: Project,
     client: ComfyClient,
     session: Session,
-    colab: Colab | None,
     echo: Callable[[str], None],
-    tunnel: subprocess.Popen[bytes] | None = None,
-) -> None:
-    """startの端末で接続と回収を維持する。"""
+    reconnect: Callable[[], None] | None = None,
+) -> bool:
+    """接続と回収を維持し、終了時に待機方法を返す。"""
     disconnected = False
-    force = False
+    previous_errors: tuple[UUID, ...] = ()
     try:
         while stop_request(project, session) is None:
             try:
-                if colab is not None and tunnel is not None and tunnel.poll() is not None:
-                    tunnel = None
-                if colab is not None and tunnel is None:
-                    receipt = colab.receipt()
-                    if receipt is None:
-                        raise KomaquillError("Colabの所有記録がありません。")
-                    tunnel = colab.tunnel(receipt)
+                if reconnect is not None:
+                    reconnect()
                 result = collect(project, client, session)
                 if disconnected:
                     echo("再接続しました。")
                 if result.saved:
                     echo(f"保存しました: {result.saved}件")
+                if result.errors and result.errors != previous_errors:
+                    echo("再回収が必要です: " + ", ".join(map(str, result.errors)))
+                previous_errors = result.errors
                 disconnected = False
             except KomaquillError:
                 if not disconnected:
                     echo("接続を確認しています。未回収の結果は次の接続時に回収します。")
                 disconnected = True
             time.sleep(project.settings().poll_interval)
-        force = stop_request(project, session) is True
+        return stop_request(project, session) is True
     except KeyboardInterrupt:
         echo("生成と回収を待っています。すぐ終了するには、もう一度Ctrl+Cを押してください。")
-    finally:
+        request_stop(project, session, False)
+        return False
+
+
+def finish_colab(
+    project: Project,
+    colab: Colab,
+    receipt: Receipt,
+    client: ComfyClient | None,
+    session: Session | None,
+    force: bool,
+    echo: Callable[[str], None],
+    processes: list[subprocess.Popen[bytes]],
+) -> None:
+    """回収から所有記録の削除まで、終了処理の順序を統一する。"""
+    confirmed = False
+    failures: list[str] = []
+    try:
+        if client is not None and session is not None:
+            try:
+                drain(project, client, session, force, echo)
+            except (KomaquillError, OSError):
+                echo("回収を完了できませんでした。保存先と接続を確認してください。")
         try:
-            drain(project, client, session, force, echo)
-        finally:
-            if tunnel is not None:
-                terminate(tunnel, project.settings().control_timeout)
+            failed_logs = colab.recover_diagnostics(receipt)
+            if failed_logs:
+                echo("ログを一部回収できません: " + ", ".join(failed_logs))
+        except (KomaquillError, OSError, KeyboardInterrupt):
+            echo("ログを回収できませんでした。")
+        try:
+            try:
+                colab.stop()
+            except KeyboardInterrupt:
+                echo("Colabの終了を再確認しています。")
+                colab.stop()
+            confirmed = True
+        except KomaquillError:
+            failures.append("Colabの終了を確認できません。")
+    finally:
+        for process in processes:
+            try:
+                terminate(process, project.settings().control_timeout)
+            except (OSError, subprocess.SubprocessError, KomaquillError, KeyboardInterrupt):
+                failures.append("ローカルの接続処理を終了できません。")
+        try:
+            colab.cleanup_processes(receipt)
+        except (OSError, KomaquillError):
+            failures.append("ローカルの実行待ち処理を終了できません。")
+    if confirmed:
+        lost = mark_lost(project, receipt.runtime_id)
+        if lost:
+            echo("回収不能: " + ", ".join(map(str, lost)))
+        if not failures:
+            colab.release(receipt)
+    if failures:
+        raise KomaquillError(
+            " ".join(failures) + " 管理記録を残しました。stop で再確認してください。"
+        )
 
 
 def start_external(
@@ -204,33 +221,43 @@ def start_external(
     session = Session(endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username)
     if project.session_file.is_file():
         prior = load_session(project)
-        if prior.backend == "external" and prior.endpoint == session.endpoint:
+        if (
+            prior.backend == "external"
+            and prior.endpoint == session.endpoint
+            and prior.username == username
+        ):
             session = prior.model_copy(update={"username": username})
     client = ComfyClient(
         session.endpoint, password, project.settings().request_timeout, username=username
     )
+    force = True
+    ready = False
     try:
         client.json("/system_stats")
-        if (
-            not project.session_file.is_file()
-            or load_session(project).runtime_id != session.runtime_id
-        ):
-            session.excluded_prompt_ids = excluded_history(client)
+        session.excluded_prompt_ids = excluded_history(client)
         if username is not None and password is not None:
             keyring.set_password("komaquill", credential_key(project, session), password)
         atomic_json(project.session_file, session.model_dump(mode="json"))
         echo("接続しました。この端末を開いたまま generate または open を実行してください。")
-        watch(project, client, session, None, echo)
+        ready = True
+        force = watch(project, client, session, echo)
     finally:
-        client.close()
+        try:
+            if ready:
+                drain(project, client, session, force, echo)
+        finally:
+            client.close()
 
 
 def start_colab(project: Project, echo: Callable[[str], None]) -> None:
     """確保から終了確認まで一つのColabを所有する。"""
     colab = Colab(project)
-    process = None
-    tunnel = None
+    processes: list[subprocess.Popen[bytes]] = []
+    tunnel: subprocess.Popen[bytes] | None = None
+    client: ComfyClient | None = None
+    session: Session | None = None
     cleanup_owned = False
+    force = True
     try:
         check_port(project.settings().local_port)
         echo("モデルを取得・検証しています。")
@@ -238,52 +265,54 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
         cleanup_owned = colab.receipt() is None
         receipt, created = colab.acquire(source_revision(project))
         cleanup_owned = True
+        worker = None
         if created:
             echo("Colabで実行環境とモデルを準備しています。")
-            process = colab.prepare(receipt)
-        tunnel = colab.tunnel(receipt)
+            worker = colab.prepare(receipt)
+            processes.append(worker)
+
+        def reconnect() -> None:
+            nonlocal tunnel
+            if tunnel is None or tunnel.poll() is not None:
+                tunnel = colab.tunnel(receipt)
+                processes.append(tunnel)
+
+        reconnect()
         session = Session(
             endpoint=f"http://127.0.0.1:{project.settings().local_port}",
             runtime_id=receipt.runtime_id,
         )
         client = ComfyClient(session.endpoint, timeout=project.settings().request_timeout)
-        try:
-            deadline = time.monotonic() + project.settings().preparation_timeout
-            while True:
-                try:
-                    metadata = client.runtime()
-                    session = Session.model_validate({**metadata, "endpoint": session.endpoint})
-                    if session.runtime_id != receipt.runtime_id:
-                        raise KomaquillError("ColabのランタイムIDが所有記録と異なります。")
-                    verify_runtime(client, session)
-                    break
-                except KomaquillError:
-                    if (
-                        time.monotonic() >= deadline
-                        or (process is not None and process.poll() is not None)
-                        or tunnel.poll() is not None
-                    ):
-                        raise KomaquillError(
-                            "ComfyUIを起動できませんでした。準備状況を確認してください。"
-                        ) from None
-                    time.sleep(project.settings().poll_interval)
-            atomic_json(project.session_file, session.model_dump(mode="json"))
-            echo("接続しました。この端末を開いたまま generate または open を実行してください。")
-            watch(project, client, session, colab, echo, tunnel)
-        finally:
-            client.close()
-    finally:
-        if tunnel is not None and tunnel.poll() is None:
-            terminate(tunnel, project.settings().control_timeout)
-        if process is not None and process.poll() is None:
-            terminate(process, project.settings().control_timeout)
-        if cleanup_owned:
-            final_receipt = colab.receipt()
+        deadline = time.monotonic() + project.settings().preparation_timeout
+        while True:
             try:
-                if final_receipt is not None:
-                    colab.recover_diagnostics(final_receipt)
-            finally:
-                colab.stop()
+                metadata = client.runtime()
+                session = Session.model_validate({**metadata, "endpoint": session.endpoint})
+                if session.runtime_id != receipt.runtime_id:
+                    raise KomaquillError("ColabのランタイムIDが所有記録と異なります。")
+                verify_runtime(client, session)
+                break
+            except KomaquillError:
+                if (
+                    time.monotonic() >= deadline
+                    or (worker is not None and worker.poll() is not None)
+                    or (tunnel is not None and tunnel.poll() is not None)
+                ):
+                    raise KomaquillError(
+                        "ComfyUIを起動できませんでした。準備状況を確認してください。"
+                    ) from None
+                time.sleep(project.settings().poll_interval)
+        atomic_json(project.session_file, session.model_dump(mode="json"))
+        echo("接続しました。この端末を開いたまま generate または open を実行してください。")
+        force = watch(project, client, session, echo, reconnect)
+    finally:
+        try:
+            final_receipt = colab.receipt() if cleanup_owned else None
+            if final_receipt is not None:
+                finish_colab(project, colab, final_receipt, client, session, force, echo, processes)
+        finally:
+            if client is not None:
+                client.close()
 
 
 def start(
@@ -348,17 +377,53 @@ def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
             raise KomaquillError(
                 "接続が変わったため終了対象を確認できません。status で確認してください。"
             )
-        if not had_monitor and project.session_file.is_file():
+        if receipt is not None:
+            processes: list[subprocess.Popen[bytes]] = []
+            session = Session(
+                endpoint=f"http://127.0.0.1:{project.settings().local_port}",
+                runtime_id=receipt.runtime_id,
+            )
+            if project.session_file.is_file():
+                saved_session = load_session(project)
+                if (
+                    saved_session.backend == "colab"
+                    and saved_session.runtime_id == receipt.runtime_id
+                ):
+                    session = saved_session
+            try:
+                with colab.lock:
+                    active = colab.refresh(receipt)
+            except KomaquillError:
+                active = True
+                echo("Colabの状態を確認できませんでした。終了を再試行します。")
+            client = ComfyClient(session.endpoint, timeout=project.settings().request_timeout)
+            try:
+                if active:
+                    try:
+                        verify_runtime(client, session)
+                    except KomaquillError:
+                        try:
+                            check_port(project.settings().local_port)
+                            processes.append(colab.tunnel(receipt))
+                        except KomaquillError:
+                            echo("接続を復旧できませんでした。取得可能なログを回収して終了します。")
+                finish_colab(
+                    project,
+                    colab,
+                    receipt,
+                    client if active else None,
+                    session if active else None,
+                    force,
+                    echo,
+                    processes,
+                )
+            finally:
+                client.close()
+        elif not had_monitor and project.session_file.is_file():
             session = load_session(project)
-            if session.backend == "external" or (
-                receipt is not None and receipt.runtime_id == session.runtime_id
-            ):
-                try:
-                    with connected(project) as (client, session):
-                        drain(project, client, session, force, echo)
-                except KomaquillError:
-                    echo("未回収の結果があります。管理記録を確認してください。")
-        colab.stop()
+            if session.backend == "external":
+                with connected(project) as (client, session):
+                    drain(project, client, session, force, echo)
         echo("終了しました。")
     finally:
         lock.release()

@@ -12,7 +12,7 @@ from pathlib import Path
 def main() -> None:
     """システムPythonを変更せず専用環境を起動する。"""
     root = Path(__file__).resolve().parents[1]
-    artifacts = root / "artifacts"
+    artifacts = root / ".artifacts"
     tools = artifacts / "runtime/tools"
     tools.mkdir(parents=True, exist_ok=True)
     config = tomllib.loads((root / "src/komaquill/resources/runtime.toml").read_text())

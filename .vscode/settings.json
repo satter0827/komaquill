@@ -1,10 +1,10 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}/artifacts/runtime/venv/Scripts/python.exe",
-  "python.envFile": "${workspaceFolder}/artifacts/runtime/vscode.env",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+  "python.envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
   "python.testing.pytestArgs": ["tests"],
   "[python]": {"editor.defaultFormatter": "charliermarsh.ruff", "editor.formatOnSave": true},
-  "files.watcherExclude": {"**/artifacts/**": true},
-  "search.exclude": {"**/artifacts/**": true}
+  "files.watcherExclude": {"**/.artifacts/**": true},
+  "search.exclude": {"**/.artifacts/**": true}
 }

@@ -1,0 +1,60 @@
+name: 検証
+on:
+  pull_request:
+  push:
+    branches: [main, 'feat/**', 'fix/**', 'chore/**']
+    tags: ['v*']
+permissions:
+  contents: read
+env:
+  UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/artifacts/runtime/venv
+  UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/artifacts/runtime/python
+  UV_CACHE_DIR: ${{ github.workspace }}/artifacts/cache/uv
+  PYTHONPYCACHEPREFIX: ${{ github.workspace }}/artifacts/cache/pycache
+  PYTHONUTF8: '1'
+jobs:
+  checks:
+    name: 検査 (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.13.5'
+          enable-cache: false
+      - name: 品質を確認する
+        run: uv run --locked --extra colab-client python scripts/check.py
+      - name: 配布物を確認する
+        run: uv build --out-dir artifacts/dist
+      - name: バージョンと配布対象を確認する
+        run: uv run --locked python scripts/check_package.py
+  quality:
+    name: quality
+    needs: checks
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 全環境の成功を確認する
+        env:
+          CHECK_RESULT: ${{ needs.checks.result }}
+        run: test "$CHECK_RESULT" = success
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.13.5'
+          enable-cache: false
+      - name: 公開対象を確認する
+        run: uv run --locked python scripts/security.py

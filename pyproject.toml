@@ -1,0 +1,132 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "komaquill"
+version = "0.1.0.dev0"
+description = "ComfyUIとGoogle Colabで画像を生成し、作品をローカルへ保存するCLI"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "typer>=0.19,<1", "pydantic-settings>=2.11,<3", "httpx>=0.28,<1",
+  "huggingface-hub>=0.35,<2", "keyring>=25.6,<27", "filelock>=3.20,<4", "pillow>=11,<13",
+  "hf-xet>=1.7,<2", "psutil>=7,<8",
+]
+
+[project.scripts]
+komaquill = "komaquill.cli:app"
+
+[project.optional-dependencies]
+colab-client = ["google-colab-cli==0.7.5"]
+worker = [
+  "torch==2.14.1; sys_platform == 'linux'", "torchvision==0.29.1; sys_platform == 'linux'",
+  "comfyui-frontend-package==1.55.18; sys_platform == 'linux'",
+  "comfyui-workflow-templates==0.11.89; sys_platform == 'linux'",
+  "comfyui-embedded-docs==0.5.14; sys_platform == 'linux'",
+  "comfy-kitchen==0.2.39; sys_platform == 'linux'", "comfy-aimdo==0.5.6; sys_platform == 'linux'",
+  "torchsde; sys_platform == 'linux'", "numpy>=1.25; sys_platform == 'linux'",
+  "einops; sys_platform == 'linux'", "transformers>=4.50.3; sys_platform == 'linux'",
+  "tokenizers>=0.13.3; sys_platform == 'linux'", "sentencepiece; sys_platform == 'linux'",
+  "safetensors>=0.4.2; sys_platform == 'linux'", "aiohttp>=3.11.8; sys_platform == 'linux'",
+  "yarl>=1.18; sys_platform == 'linux'", "pyyaml; sys_platform == 'linux'",
+  "scipy; sys_platform == 'linux'", "tqdm; sys_platform == 'linux'",
+  "alembic; sys_platform == 'linux'", "sqlalchemy>=2; sys_platform == 'linux'",
+  "av>=17; sys_platform == 'linux'", "requests; sys_platform == 'linux'",
+  "simpleeval>=1; sys_platform == 'linux'", "blake3; sys_platform == 'linux'",
+  "kornia>=0.7.1; sys_platform == 'linux'", "spandrel; sys_platform == 'linux'",
+  "pyopengl>=3.1.8; sys_platform == 'linux'", "comfy-angle; sys_platform == 'linux'",
+  "websockets>=15,<17; sys_platform == 'linux'",
+]
+
+[project.urls]
+Repository = "https://github.com/satter0827/komaquill"
+Issues = "https://github.com/satter0827/komaquill/issues"
+
+[dependency-groups]
+dev = [
+  "ruff>=0.14,<1", "mypy>=1.18,<2", "pytest>=8.4,<10", "pytest-cov>=7,<8",
+  "import-linter>=2.5,<3", "debugpy>=1.8,<2", "types-setuptools>=80",
+  "websockets>=15,<17", "types-psutil>=7,<8",
+  "detect-secrets>=1.5,<2", "unidiff>=0.7.5,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/komaquill"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "scripts", "docs", "README.md", "CONTRIBUTING.md", "AGENTS.md", "komaquill.toml", "pyproject.toml", "uv.lock", ".python-version", ".vscode", ".github", ".githooks", ".gitattributes", ".gitignore"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["artifacts"]
+cache-dir = "artifacts/cache/ruff"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["komaquill"]
+mypy_path = "src"
+cache_dir = "artifacts/cache/mypy"
+
+[[tool.mypy.overrides]]
+# 外部ライブラリが型マーカーを配布していない箇所だけを指定する。
+module = ["detect_secrets.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "--basetemp=artifacts/tests/tmp"]
+xfail_strict = true
+
+[tool.coverage.run]
+source = ["komaquill"]
+branch = true
+data_file = "artifacts/tests/.coverage"
+
+[tool.coverage.html]
+directory = "artifacts/tests/coverage"
+
+[tool.importlinter]
+root_package = "komaquill"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "循環参照を禁止する"
+type = "acyclic_siblings"
+ancestors = ["komaquill"]
+
+[[tool.importlinter.contracts]]
+name = "CLIへの逆依存を禁止する"
+type = "forbidden"
+source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads"]
+forbidden_modules = ["komaquill.cli", "komaquill.__main__"]
+
+[[tool.importlinter.contracts]]
+name = "生成と保存からColab制御への依存を禁止する"
+type = "forbidden"
+source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads"]
+forbidden_modules = ["komaquill.colab", "komaquill.colab_entry", "komaquill.runtime", "colab_cli"]
+
+[[tool.importlinter.contracts]]
+name = "本体から開発用モジュールへの依存を禁止する"
+type = "forbidden"
+source_modules = ["komaquill"]
+forbidden_modules = ["tests", "scripts", "pytest", "debugpy"]
+
+[tool.uv]
+required-version = ">=0.13.5,<0.14"
+cache-dir = "artifacts/cache/uv"
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]

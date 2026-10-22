@@ -115,8 +115,13 @@ def collect(
         if only is not None and only not in runs:
             raise KomaquillError("指定した生成履歴が見つかりません。")
         # POST応答が失われた場合も、実行IDでキューと完了履歴を照合する。
+        related: set[UUID] = set()
         unknown = [
-            r for r in runs.values() if r.runtime_id == session.runtime_id and not r.prompt_id
+            r
+            for r in runs.values()
+            if (r.runtime_id == session.runtime_id or session.backend == "external")
+            and not r.prompt_id
+            and r.state not in {"saved", "failed"}
         ]
         if unknown:
             queue = client.json("/queue")
@@ -125,6 +130,7 @@ def collect(
             for prompt in prompts:
                 identity = request_id(prompt)
                 if identity in runs and len(prompt) > 1:
+                    related.add(identity)
                     runs[identity].prompt_id = str(prompt[1])
                     if runs[identity].state not in {"saved", "failed"}:
                         runs[identity].state = "queued"
@@ -147,7 +153,11 @@ def collect(
                 run.state = "queued"
                 runs[identity] = run
                 save_run(project, run)
-            if run.runtime_id != session.runtime_id or run.state == "saved":
+            owns_request = session.backend == "external" and request_id(prompt) == run.run_id
+            if run.runtime_id != session.runtime_id and not owns_request:
+                continue
+            related.add(run.run_id)
+            if run.state == "saved":
                 continue
             status = record.get("status", {})
             if status.get("status_str") == "error":
@@ -171,7 +181,8 @@ def collect(
         selected = [
             r
             for r in runs.values()
-            if r.runtime_id == session.runtime_id and (only is None or r.run_id == only)
+            if (r.runtime_id == session.runtime_id or r.run_id in related)
+            and (only is None or r.run_id == only)
         ]
         return Collection(
             saved=saved,

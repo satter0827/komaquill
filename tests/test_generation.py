@@ -112,3 +112,29 @@ def test_external_own_pending_request_is_recovered_even_if_in_baseline(
     session.excluded_prompt_ids = set(stub.history)
     assert collect(project, client, session).saved == 1
     assert load_runs(project)[0].state == "saved"
+
+
+def test_external_recovers_own_pending_request_after_connection_identity_changes(
+    project, client, session, stub
+):
+    from uuid import uuid4
+
+    stub.drop_response = True
+    with pytest.raises(SubmissionUnknown):
+        generate(project, client, session, "a cabin", "", 1)
+    original = load_runs(project)[0]
+    session = session.model_copy(
+        update={
+            "backend": "external",
+            "runtime_id": uuid4(),
+            "excluded_prompt_ids": set(stub.history),
+        }
+    )
+    result = collect(project, client, session)
+    recovered = load_runs(project)[0]
+    assert result.saved == 1
+    assert result.pending == 0
+    assert recovered.run_id == original.run_id
+    assert recovered.runtime_id == original.runtime_id
+    assert recovered.state == "saved"
+    assert stub.submissions == 1

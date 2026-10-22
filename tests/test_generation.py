@@ -237,3 +237,74 @@ def test_local_save_failure_does_not_block_other_runs_or_store_exception_text(
     result = collect(project, client, session)
     assert result.saved == 1 and len(result.errors) == 1
     assert all("private-exception-message" not in (run.error or "") for run in load_runs(project))
+
+
+@pytest.mark.parametrize("record", [None, {"prompt": None}, {"prompt": {"unexpected": True}}])
+def test_malformed_history_entry_does_not_block_other_jobs(project, client, session, stub, record):
+    from uuid import uuid4
+
+    stub.history[str(uuid4())] = record
+    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    result = collect(project, client, session)
+    assert result.saved == 1
+    assert len(result.errors) == 1
+    assert result.pending == 1
+    assert sorted(run.state for run in load_runs(project)) == ["queued", "saved"]
+
+
+def test_unreadable_local_run_does_not_block_other_jobs(project, client, session, stub):
+    from uuid import uuid4
+
+    broken_id = uuid4()
+    folder = run_dir(project, broken_id)
+    folder.mkdir(parents=True)
+    damaged = b"invalid-json-private-sentinel"
+    (folder / "run.json").write_bytes(damaged)
+    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    result = collect(project, client, session)
+    assert result.saved == 1
+    assert result.errors == (broken_id,)
+    assert (folder / "run.json").read_bytes() == damaged
+
+
+def test_malformed_known_job_reports_its_original_run_id(project, client, session, stub):
+    from uuid import uuid4
+
+    from komaquill.service import new_run
+    from komaquill.storage import save_run
+
+    prompt_id = client.submit(resource_json("workflow-api.json"), {}, "browser")
+    run = new_run(project, session, uuid4(), resource_json("workflow-api.json"))
+    run.prompt_id = prompt_id
+    run.state = "queued"
+    save_run(project, run)
+    stub.history[prompt_id] = None
+    result = collect(project, client, session, only=run.run_id)
+    assert result.errors == (run.run_id,)
+
+
+def test_retry_after_malformed_history_preserves_workflow_digest(project, client, session, stub):
+    from komaquill.workflow import digest
+
+    prompt_id = client.submit(resource_json("workflow-api.json"), {}, "browser")
+    complete = stub.history[prompt_id]
+    stub.history[prompt_id] = None
+    assert len(collect(project, client, session).errors) == 1
+    stub.history[prompt_id] = complete
+    assert collect(project, client, session).saved == 1
+    assert load_runs(project)[0].workflow_sha256 == digest(complete["prompt"][2])
+
+
+def test_corrupt_record_is_not_overwritten_by_remote_history(project, client, session, stub):
+    from uuid import uuid4
+
+    identity = uuid4()
+    client.submit(resource_json("workflow-api.json"), {}, str(identity))
+    folder = run_dir(project, identity)
+    folder.mkdir(parents=True)
+    original = b"original-damaged-record"
+    (folder / "run.json").write_bytes(original)
+    result = collect(project, client, session)
+    assert result.errors == (identity,)
+    assert (folder / "run.json").read_bytes() == original
+    assert not list(folder.glob("images/*"))

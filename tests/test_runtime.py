@@ -269,3 +269,89 @@ def test_shutdown_freezes_new_submissions_before_collection(project, client, ses
     monkeypatch.setattr(runtime, "drain", drain)
     runtime.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
     assert colab.receipt() is None
+
+
+@pytest.mark.parametrize("phase", ["drain", "logs", "cleanup"])
+def test_unexpected_shutdown_error_still_stops_gpu_and_retains_receipt(
+    project, client, session, monkeypatch, phase
+):
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    stopped = []
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+
+    def broken(*args):
+        raise ValueError("private-response-sentinel")
+
+    if phase == "drain":
+        monkeypatch.setattr(runtime, "drain", broken)
+    elif phase == "logs":
+        monkeypatch.setattr(colab, "recover_diagnostics", broken)
+    else:
+        monkeypatch.setattr(colab, "cleanup_processes", broken)
+    with pytest.raises(KomaquillError, match="管理記録") as error:
+        runtime.finish_colab(project, colab, receipt, client, session, True, lambda _: None, [])
+    assert stopped == [True]
+    assert colab.receipt() is not None
+    diagnostic = project.artifacts / "logs" / str(receipt.runtime_id) / "shutdown.json"
+    assert "private-response-sentinel" not in str(error.value) + diagnostic.read_text()
+    assert "ValueError" in diagnostic.read_text()
+
+
+def test_external_stop_without_monitor_blocks_new_submissions(
+    project, client, session, monkeypatch
+):
+    from komaquill.service import generate
+
+    session.backend = "external"
+    atomic_json(project.session_file, session.model_dump(mode="json"))
+    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+
+    def drain(*args):
+        with pytest.raises(KomaquillError, match="終了処理中"):
+            generate(project, client, session, "a cabin", "", 1)
+
+    monkeypatch.setattr(runtime, "drain", drain)
+    runtime.stop(project, True, lambda _: None)
+
+
+def test_failed_shutdown_output_does_not_skip_gpu_stop(project, client, session, monkeypatch):
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    stopped = []
+
+    def unavailable(*args):
+        raise KomaquillError("接続を利用できません")
+
+    def closed_terminal(message):
+        raise BrokenPipeError("closed")
+
+    monkeypatch.setattr(runtime, "drain", unavailable)
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    with pytest.raises(BrokenPipeError):
+        runtime.finish_colab(project, colab, receipt, client, session, True, closed_terminal, [])
+    assert stopped == [True]
+    assert colab.receipt() is not None
+
+
+@pytest.mark.parametrize("failure", ["ssh", "session"])
+def test_stop_after_monitor_crash_attempts_gpu_stop_when_reconnect_fails(
+    project, client, session, monkeypatch, failure
+):
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+    stopped = []
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    if failure == "session":
+        project.session_file.write_bytes(b"invalid-json")
+    else:
+
+        def disconnected(*args):
+            raise KomaquillError("SSH接続がありません")
+
+        def unavailable(*args):
+            raise FileNotFoundError("ssh")
+
+        monkeypatch.setattr(runtime, "verify_runtime", disconnected)
+        monkeypatch.setattr(runtime, "check_port", lambda port: None)
+        monkeypatch.setattr(colab, "tunnel", unavailable)
+    runtime.stop(project, True, lambda _: None)
+    assert stopped == [True]
+    assert colab.receipt() is None

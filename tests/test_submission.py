@@ -35,3 +35,23 @@ def test_non_json_status_is_a_readable_error():
     with pytest.raises(KomaquillError, match="応答形式"):
         client.json("/system_stats")
     client.close()
+
+
+def test_non_unicode_submission_response_remains_unknown_and_is_recovered(
+    project, client, session, stub, monkeypatch
+):
+    import httpx
+
+    from komaquill.service import collect, generate
+
+    original_request = client.request
+
+    def request(method, path, **kwargs):
+        response = original_request(method, path, **kwargs)
+        return httpx.Response(200, content=b"\xff") if path == "/prompt" else response
+
+    monkeypatch.setattr(client, "request", request)
+    with pytest.raises(SubmissionUnknown):
+        generate(project, client, session, "a cabin", "", 1)
+    assert collect(project, client, session).saved == 1
+    assert stub.submissions == 1

@@ -104,6 +104,7 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
 
 def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypatch):
     from uuid import uuid4
+
     from komaquill.colab import Colab, Receipt
     from komaquill.storage import atomic_json
 

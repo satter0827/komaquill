@@ -170,6 +170,10 @@ def finish_colab(
     try:
         if client is not None and session is not None:
             try:
+                request_stop(project, session, force)
+            except OSError:
+                failures.append("終了要求を保存できません。")
+            try:
                 drain(project, client, session, force, echo)
             except (KomaquillError, OSError):
                 echo("回収を完了できませんでした。保存先と接続を確認してください。")

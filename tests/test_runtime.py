@@ -255,3 +255,17 @@ def test_interrupt_during_log_recovery_still_stops_gpu(project, client, session,
     runtime.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
     assert stopped == [True]
     assert colab.receipt() is None
+
+
+def test_shutdown_freezes_new_submissions_before_collection(project, client, session, monkeypatch):
+    from komaquill.service import generate
+
+    colab, receipt = owned_colab(project, session, client, monkeypatch)
+
+    def drain(*args):
+        with pytest.raises(KomaquillError, match="終了処理中"):
+            generate(project, client, session, "a cabin", "", 1)
+
+    monkeypatch.setattr(runtime, "drain", drain)
+    runtime.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
+    assert colab.receipt() is None

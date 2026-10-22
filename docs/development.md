@@ -22,6 +22,7 @@ activate.ps1のkomaquill関数も `python -m komaquill` を呼び出します。
 
 Windows ARM64でも、公式Colab CLIの依存がWindows x64向けバイナリを配布しているため、Windows x64 Pythonを使用します。
 PyArrowとcryptographyのARM64ソースビルドや依存の省略は行いません。uv本体はOSのアーキテクチャに合わせます。
+Pythonの版は.python-versionに固定し、GPU側でも同じ版の専用環境を作ります。
 
 ## バージョン
 

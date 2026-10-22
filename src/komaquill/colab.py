@@ -9,11 +9,13 @@ import socket
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import psutil
 from filelock import FileLock, ReadWriteLock
 from pydantic import BaseModel
 
@@ -22,6 +24,7 @@ from komaquill.settings import Project
 from komaquill.storage import atomic_json
 
 COLAB_CLI_VERSION = "0.7.5"
+PROCESS_EXIT_GRACE = 3.0
 
 
 class Receipt(BaseModel):
@@ -65,22 +68,28 @@ class Colab:
     def call(self, *arguments: str, interactive: bool = False) -> None:
         """公式CLIの応答本文をログや例外へ転載しない。"""
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 self.command(*arguments),
                 stdin=None if interactive else subprocess.DEVNULL,
                 stdout=None if interactive else subprocess.PIPE,
                 stderr=None if interactive else subprocess.PIPE,
-                timeout=self.project.settings().preparation_timeout
-                if arguments[0] == "new"
-                else self.project.settings().control_timeout,
-                check=False,
             )
+            timeout = (
+                self.project.settings().preparation_timeout
+                if arguments[0] == "new"
+                else self.project.settings().control_timeout
+            )
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            except BaseException:
+                terminate(process, self.project.settings().control_timeout)
+                raise
         except subprocess.TimeoutExpired:
             raise KomaquillError(
                 "Colabの操作が時間内に完了しませんでした。status と stop で確認してください。"
             ) from None
-        if result.returncode:
-            output = (result.stdout or b"") + (result.stderr or b"")
+        if process.returncode:
+            output = (stdout or b"") + (stderr or b"")
             if b"Allocation refused" in output:
                 raise AllocationRefused(
                     "Colabが確保を拒否しました。利用枠、空き状況、他の利用中ランタイムを確認してください。"
@@ -334,8 +343,7 @@ class Colab:
                         time.sleep(settings.poll_interval)
                 raise KomaquillError("SSH接続の待機時間を超えました。status で確認してください。")
             except BaseException:
-                process.terminate()
-                process.wait(timeout=settings.control_timeout)
+                terminate(process, settings.control_timeout)
                 raise
 
 
@@ -348,3 +356,25 @@ def check_port(port: int) -> None:
         raise KomaquillError(
             "接続ポートが使用中です。起動済みの start または設定を確認してください。"
         ) from None
+
+
+def terminate(process: subprocess.Popen[bytes], timeout: float) -> None:
+    """WindowsのPythonランチャーを含め、所有する子プロセスを終了する。"""
+    if process.poll() is not None:
+        return
+    try:
+        parent = psutil.Process(process.pid)
+        if process.poll() is not None:
+            return
+        children = parent.children(recursive=True)
+        for child in reversed(children):
+            with suppress(psutil.NoSuchProcess):
+                child.terminate()
+        parent.terminate()
+        _, alive = psutil.wait_procs([parent, *children], timeout=min(timeout, PROCESS_EXIT_GRACE))
+        for child in alive:
+            with suppress(psutil.NoSuchProcess):
+                child.kill()
+    except psutil.NoSuchProcess:
+        pass
+    process.wait(timeout=timeout)

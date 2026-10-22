@@ -4,17 +4,17 @@ import subprocess
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import keyring
 from filelock import FileLock, Timeout
 
 from komaquill.client import ComfyClient
-from komaquill.colab import Colab, check_port
+from komaquill.colab import Colab, check_port, terminate
 from komaquill.downloads import fetch_model
 from komaquill.errors import KomaquillError
 from komaquill.models import Session
-from komaquill.service import collect, source_revision, verify_runtime
+from komaquill.service import collect, request_id, source_revision, verify_runtime
 from komaquill.settings import Project
 from komaquill.storage import atomic_json, load_runs, load_session
 from komaquill.workflow import preset
@@ -67,19 +67,25 @@ def excluded_history(client: ComfyClient) -> set[str]:
 
 def pending_ids(project: Project, client: ComfyClient, session: Session) -> set[str]:
     """未完了・未回収のIDをCLIと画面の両方から集める。"""
+    runs = {run.run_id: run for run in load_runs(project)}
     pending = {
         str(run.run_id)
-        for run in load_runs(project)
+        for run in runs.values()
         if run.runtime_id == session.runtime_id and run.state not in {"saved", "failed"}
     }
     queue = client.json("/queue")
-    pending.update(
-        str(row[1])
-        for rows in queue.values()
-        if isinstance(rows, list)
-        for row in rows
-        if len(row) > 1 and str(row[1]) not in session.excluded_prompt_ids
-    )
+    for rows in queue.values():
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if len(row) < 2:
+                continue
+            identity = request_id(row)
+            own = identity in runs and runs[identity].state not in {"saved", "failed"}
+            if own:
+                pending.add(str(identity))
+            elif str(row[1]) not in session.excluded_prompt_ids:
+                pending.add(str(row[1]))
     return pending
 
 
@@ -175,8 +181,7 @@ def watch(
             drain(project, client, session, force, echo)
         finally:
             if tunnel is not None:
-                tunnel.terminate()
-                tunnel.wait(timeout=project.settings().control_timeout)
+                terminate(tunnel, project.settings().control_timeout)
 
 
 def start_external(
@@ -260,11 +265,9 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
             client.close()
     finally:
         if tunnel is not None and tunnel.poll() is None:
-            tunnel.terminate()
-            tunnel.wait(timeout=project.settings().control_timeout)
+            terminate(tunnel, project.settings().control_timeout)
         if process is not None and process.poll() is None:
-            process.terminate()
-            process.wait(timeout=project.settings().control_timeout)
+            terminate(process, project.settings().control_timeout)
         if cleanup_owned:
             final_receipt = colab.receipt()
             try:
@@ -307,9 +310,12 @@ def start(
 def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
     """監視中は終了を依頼し、監視がなければ残存Colabだけを終了する。"""
     lock = monitor_lock(project)
+    had_monitor = False
+    expected_runtime: UUID | None = None
     try:
         lock.acquire(timeout=0)
     except Timeout:
+        had_monitor = True
         if not project.session_file.is_file():
             raise KomaquillError("起動処理中です。start の端末でCtrl+Cを押してください。") from None
         session = load_session(project)
@@ -324,7 +330,27 @@ def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
         except Timeout:
             raise KomaquillError("終了処理を待機中です。status で確認してください。") from None
     try:
-        Colab(project).stop()
+        colab = Colab(project)
+        receipt = colab.receipt()
+        if (
+            expected_runtime is not None
+            and receipt is not None
+            and receipt.runtime_id != expected_runtime
+        ):
+            raise KomaquillError(
+                "接続が変わったため終了対象を確認できません。status で確認してください。"
+            )
+        if not had_monitor and project.session_file.is_file():
+            session = load_session(project)
+            if session.backend == "external" or (
+                receipt is not None and receipt.runtime_id == session.runtime_id
+            ):
+                try:
+                    with connected(project) as (client, session):
+                        drain(project, client, session, force, echo)
+                except KomaquillError:
+                    echo("未回収の結果があります。管理記録を確認してください。")
+        colab.stop()
         echo("終了しました。")
     finally:
         lock.release()

@@ -73,3 +73,31 @@ def test_shutdown_timeout_reports_unresolved_run(project, client, session, monke
 def test_stale_stop_request_does_not_stop_new_runtime(project, session):
     atomic_json(project.runtime / "stop.json", {"runtime_id": str(uuid4()), "force": True})
     assert runtime.stop_request(project, session) is None
+
+
+def test_stop_after_monitor_crash_collects_before_stopping_colab(
+    project, client, session, monkeypatch
+):
+    import types
+    from contextlib import contextmanager
+
+    client.submit(resource_json("workflow-api.json"), {}, "browser")
+    atomic_json(project.session_file, session.model_dump(mode="json"))
+
+    @contextmanager
+    def connection(project):
+        yield client, session
+
+    class OwnedColab:
+        def __init__(self, project):
+            pass
+
+        def receipt(self):
+            return types.SimpleNamespace(runtime_id=session.runtime_id)
+
+        def stop(self):
+            assert load_runs(project)[0].state == "saved"
+
+    monkeypatch.setattr(runtime, "connected", connection)
+    monkeypatch.setattr(runtime, "Colab", OwnedColab)
+    runtime.stop(project, True, lambda message: None)

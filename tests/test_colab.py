@@ -141,3 +141,38 @@ def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypa
     diagnostic = (project.artifacts / "logs/colab-cli-error.json").read_text(encoding="utf-8")
     assert "should-stay-private" not in output.out + output.err + diagnostic
     assert json.loads(diagnostic)["type"] == "RuntimeError"
+
+
+def test_owned_child_processes_are_terminated_together(tmp_path):
+    import subprocess
+    import sys
+    import time
+    from contextlib import suppress
+
+    import psutil
+
+    from komaquill.colab import terminate
+
+    marker = tmp_path / "child.pid"
+    child_code = "import time; time.sleep(60)"
+    parent_code = (
+        "import subprocess,sys,time; from pathlib import Path; "
+        f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}]); "
+        f"Path({str(marker)!r}).write_text(str(child.pid)); time.sleep(60)"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", parent_code], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not marker.is_file():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        child_id = int(marker.read_text())
+        terminate(process, 10)
+        assert process.poll() is not None
+        with suppress(psutil.NoSuchProcess):
+            assert psutil.Process(child_id).status() == psutil.STATUS_ZOMBIE
+    finally:
+        if process.poll() is None:
+            terminate(process, 10)

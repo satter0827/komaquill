@@ -10,6 +10,8 @@ ComfyUIもGPU側のループバックで待ち受けます。SSHの通信は公�
 公式の `--config` でプロジェクトごとのセッション状態を分離し、所有するランタイムIDを照合します。
 SSHには未登録セッションの自動作成経路があるため、状態確認からSSH認証完了まで起動・接続・停止のロックを保持します。
 ホスト鍵はランタイム単位で記録し、次の接続から一致を検証します。
+監視の強制終了後は、公式設定パスとセッション名でローカルの実行待ちプロセスを照合し、GPUの終了確認後に親子プロセスを終了します。
+終了確認が完了するまで所有記録を残します。
 
 ## 役割
 
@@ -21,7 +23,7 @@ SSHには未登録セッションの自動作成経路があるため、状態�
 - `client.py`、`storage.py`：HTTP通信と原子的保存。
 - `workflow.py`、`downloads.py`：配布ワークフローとモデルの取得。
 
-生成・保存からColab制御へ依存しません。HTTPX、Pydantic、filelock、Pillow、huggingface_hub、keyringを使用します。
+生成・保存からColab制御へ依存しません。HTTPX、Pydantic、filelock、Pillow、huggingface_hub、keyring、psutilを使用します。
 ローカルの公式CLI依存は `colab-client`、GPU依存は `worker` に分離しています。
 
 ## ソースとモデル

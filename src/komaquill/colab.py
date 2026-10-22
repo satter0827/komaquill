@@ -187,7 +187,27 @@ class Colab:
                     raise KomaquillError(
                         "終了を確認できません。管理記録を残しました。stop で再確認してください。"
                     )
+            self.cleanup_processes(receipt)
             self.receipt_file.unlink()
+
+    def cleanup_processes(self, receipt: Receipt) -> None:
+        """監視の強制終了後も、所有する公式CLIの待機処理を終了する。"""
+        for process in psutil.process_iter(["cmdline"]):
+            try:
+                arguments = process.info["cmdline"] or []
+                if "-m" not in arguments:
+                    continue
+                if arguments[arguments.index("-m") + 1 :][:1] != ["komaquill.colab_entry"]:
+                    continue
+                if "--config" not in arguments or "-s" not in arguments:
+                    continue
+                config = arguments[arguments.index("--config") + 1 :][:1]
+                name = arguments[arguments.index("-s") + 1 :][:1]
+                if config != [str(self.config)] or name != [receipt.name]:
+                    continue
+                terminate_tree(process, self.project.settings().control_timeout)
+            except psutil.NoSuchProcess:
+                continue
 
     def prepare(self, receipt: Receipt) -> subprocess.Popen[bytes]:
         """コミットのソースを一時転送し、GPU側の処理を実行し続ける。"""
@@ -366,15 +386,23 @@ def terminate(process: subprocess.Popen[bytes], timeout: float) -> None:
         parent = psutil.Process(process.pid)
         if process.poll() is not None:
             return
-        children = parent.children(recursive=True)
-        for child in reversed(children):
-            with suppress(psutil.NoSuchProcess):
-                child.terminate()
-        parent.terminate()
-        _, alive = psutil.wait_procs([parent, *children], timeout=min(timeout, PROCESS_EXIT_GRACE))
-        for child in alive:
-            with suppress(psutil.NoSuchProcess):
-                child.kill()
+        terminate_tree(parent, timeout)
     except psutil.NoSuchProcess:
         pass
     process.wait(timeout=timeout)
+
+
+def terminate_tree(parent: psutil.Process, timeout: float) -> None:
+    """親子関係を確認したプロセスを、上限内にまとめて終了する。"""
+    children = parent.children(recursive=True)
+    for child in reversed(children):
+        with suppress(psutil.NoSuchProcess):
+            child.terminate()
+    parent.terminate()
+    _, alive = psutil.wait_procs([parent, *children], timeout=min(timeout, PROCESS_EXIT_GRACE))
+    for child in alive:
+        with suppress(psutil.NoSuchProcess):
+            child.kill()
+    _, alive = psutil.wait_procs(alive, timeout=timeout)
+    if alive:
+        raise KomaquillError("ローカルの接続処理を終了できません。stop で再確認してください。")

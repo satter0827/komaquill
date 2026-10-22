@@ -101,3 +101,43 @@ def test_stop_after_monitor_crash_collects_before_stopping_colab(
     monkeypatch.setattr(runtime, "connected", connection)
     monkeypatch.setattr(runtime, "Colab", OwnedColab)
     runtime.stop(project, True, lambda message: None)
+
+
+def test_force_stop_request_is_never_downgraded(project, session):
+    runtime.request_stop(project, session, True)
+    runtime.request_stop(project, session, False)
+    assert runtime.stop_request(project, session) is True
+
+
+def test_stop_does_not_end_replacement_runtime(project, session, monkeypatch):
+    from types import SimpleNamespace
+
+    from filelock import Timeout
+
+    atomic_json(project.session_file, session.model_dump(mode="json"))
+
+    class ReplacedLock:
+        calls = 0
+
+        def acquire(self, timeout):
+            self.calls += 1
+            if self.calls == 1:
+                raise Timeout("monitor")
+
+        def release(self):
+            pass
+
+    class ReplacedColab:
+        def __init__(self, project):
+            pass
+
+        def receipt(self):
+            return SimpleNamespace(runtime_id=uuid4())
+
+        def stop(self):
+            pytest.fail("停止要求後に置き換わった環境を終了してはいけない")
+
+    monkeypatch.setattr(runtime, "monitor_lock", lambda project: ReplacedLock())
+    monkeypatch.setattr(runtime, "Colab", ReplacedColab)
+    with pytest.raises(KomaquillError, match="接続が変わった"):
+        runtime.stop(project, True, lambda message: None)

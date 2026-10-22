@@ -176,3 +176,57 @@ def test_owned_child_processes_are_terminated_together(tmp_path):
     finally:
         if process.poll() is None:
             terminate(process, 10)
+
+
+def test_cleanup_after_monitor_crash_only_stops_owned_official_processes(project, monkeypatch):
+    from types import SimpleNamespace
+
+    from komaquill import colab as module
+
+    colab, _ = controller(project, monkeypatch)
+    receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="a" * 40)
+
+    def process(config, name, module_name="komaquill.colab_entry"):
+        return SimpleNamespace(
+            info={
+                "cmdline": [
+                    "python",
+                    "-m",
+                    module_name,
+                    "--config",
+                    str(config),
+                    "exec",
+                    "-s",
+                    name,
+                ]
+            }
+        )
+
+    owned = process(colab.config, receipt.name)
+    others = [
+        process(project.runtime / "other.json", receipt.name),
+        process(colab.config, "another-session"),
+        process(colab.config, receipt.name, "another_module"),
+    ]
+    monkeypatch.setattr(module.psutil, "process_iter", lambda attrs: [owned, *others])
+    stopped = []
+    monkeypatch.setattr(module, "terminate_tree", lambda process, timeout: stopped.append(process))
+    colab.cleanup_processes(receipt)
+    assert stopped == [owned]
+
+
+def test_stop_keeps_receipt_if_local_process_cleanup_fails(project, monkeypatch):
+    colab, _ = controller(project, monkeypatch)
+    receipt = Receipt(
+        name="owned", runtime_id=uuid4(), source_revision="a" * 40, endpoint_id="expected"
+    )
+    atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
+    monkeypatch.setattr(colab, "refresh", lambda receipt: False)
+
+    def fail(receipt):
+        raise KomaquillError("ローカルの接続処理を終了できません")
+
+    monkeypatch.setattr(colab, "cleanup_processes", fail)
+    with pytest.raises(KomaquillError, match="終了できません"):
+        colab.stop()
+    assert colab.receipt_file.is_file()

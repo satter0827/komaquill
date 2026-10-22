@@ -102,6 +102,15 @@ def stop_request(project: Project, session: Session) -> bool | None:
     return bool(request.get("force"))
 
 
+def request_stop(project: Project, session: Session, force: bool) -> None:
+    """並行する終了要求で強制終了を通常終了へ戻さない。"""
+    with FileLock(str(project.runtime / ".stop.lock")):
+        force = force or stop_request(project, session) is True
+        atomic_json(
+            project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": force}
+        )
+
+
 def drain(
     project: Project,
     client: ComfyClient,
@@ -319,9 +328,8 @@ def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
         if not project.session_file.is_file():
             raise KomaquillError("起動処理中です。start の端末でCtrl+Cを押してください。") from None
         session = load_session(project)
-        atomic_json(
-            project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": force}
-        )
+        expected_runtime = session.runtime_id
+        request_stop(project, session, force)
         echo("終了を依頼しました。生成と回収の終了を待っています。")
         try:
             lock.acquire(

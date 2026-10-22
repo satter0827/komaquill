@@ -42,6 +42,9 @@ def main() -> None:
         "PYTHONPYCACHEPREFIX": "cache/pycache",
         "HF_HOME": "cache/huggingface",
         "HF_XET_CACHE": "cache/xet",
+        "XDG_CACHE_HOME": "cache/xdg",
+        "XDG_DATA_HOME": "cache/xdg-data",
+        "XDG_CONFIG_HOME": "runtime/xdg-config",
         "TMPDIR": "tmp",
     }.items():
         env[key] = str(artifacts / relative)

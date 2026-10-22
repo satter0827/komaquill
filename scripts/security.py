@@ -21,7 +21,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     os.chdir(root)
     tracked = git_text(root, "ls-files", "-z").split("\0")
-    forbidden = ("artifacts/", ".venv/", ".env", "__pycache__/")
+    forbidden = (".artifacts/", "artifacts/", ".venv/", ".env", "__pycache__/")
     if any(path.startswith(forbidden) and path != ".env.example" for path in tracked if path):
         raise SystemExit("生成物または資格情報が追跡されています。")
     candidates = git_text(
@@ -47,7 +47,7 @@ def main() -> None:
                     {"file": secret.filename, "line": secret.line_number, "type": secret.type}
                     for secret in scan_diff(diff)
                 )
-    report = root / "artifacts/security/results.json"
+    report = root / ".artifacts/security/results.json"
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding="utf-8")
     if findings:

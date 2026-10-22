@@ -51,7 +51,7 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
     env = {
         **os.environ,
         "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONPYCACHEPREFIX": str(ROOT / "artifacts/cache/pycache"),
+        "PYTHONPYCACHEPREFIX": str(ROOT / ".artifacts/cache/pycache"),
     }
     subprocess.run(
         [sys.executable, "-c", "import komaquill.cli, komaquill.worker, komaquill.colab"],
@@ -76,4 +76,43 @@ def test_module_entrypoint_and_metadata_agree():
 def test_subdirectory_uses_the_project_artifacts(monkeypatch):
     monkeypatch.delenv("KOMAQUILL_PROJECT_DIR", raising=False)
     monkeypatch.chdir(ROOT / "src/komaquill")
-    assert find_project().artifacts == ROOT / "artifacts"
+    assert find_project().artifacts == ROOT / ".artifacts"
+
+
+def test_generation_paths_agree_across_entrypoints_and_tools():
+    import json
+    import re
+    import tomllib
+
+    assert find_project(ROOT).artifacts == ROOT / ".artifacts"
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert config["tool"]["uv"]["cache-dir"] == ".artifacts/cache/uv"
+    assert config["tool"]["mypy"]["cache_dir"] == ".artifacts/cache/mypy"
+    settings = json.loads((ROOT / ".vscode/settings.json").read_text(encoding="utf-8"))
+    assert settings["python.defaultInterpreterPath"].startswith("${workspaceFolder}/.artifacts/")
+    launch = json.loads((ROOT / ".vscode/launch.json").read_text(encoding="utf-8"))
+    for entry in launch["configurations"]:
+        assert entry["module"] == "komaquill"
+        assert entry["envFile"] == "${workspaceFolder}/.artifacts/runtime/vscode.env"
+    files = [
+        "scripts/env.ps1",
+        "scripts/setup.ps1",
+        "scripts/worker.py",
+        "scripts/check.py",
+        ".github/workflows/check.yml",
+        ".vscode/tasks.json",
+    ]
+    for name in files:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert ".artifacts" in text
+        assert not re.search(r"(?<![.\w])artifacts[/\\]", text), name
+
+
+def test_artifacts_are_ignored_without_creating_a_directory():
+    result = subprocess.run(
+        ["git", "check-ignore", "--no-index", ".artifacts/probe.png"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0

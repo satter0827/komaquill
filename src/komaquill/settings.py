@@ -35,7 +35,7 @@ class Project:
 
     @property
     def artifacts(self) -> Path:
-        return self.root / "artifacts"
+        return self.root / ".artifacts"
 
     @property
     def runtime(self) -> Path:

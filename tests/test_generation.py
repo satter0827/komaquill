@@ -138,3 +138,102 @@ def test_external_recovers_own_pending_request_after_connection_identity_changes
     assert recovered.runtime_id == original.runtime_id
     assert recovered.state == "saved"
     assert stub.submissions == 1
+
+
+def test_one_corrupt_result_does_not_block_healthy_results(project, client, session, stub):
+    client.submit(resource_json("workflow-api.json"), {}, "broken-browser")
+    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    first = next(iter(stub.history.values()))
+    first["outputs"]["9"]["images"][0]["filename"] = "broken.png"
+    stub.invalid_images.add("broken.png")
+    result = collect(project, client, session)
+    assert result.saved == 1 and len(result.errors) == 1 and result.pending == 1
+    assert sorted(run.state for run in load_runs(project)) == ["queued", "saved"]
+    stub.invalid_images.clear()
+    assert collect(project, client, session).saved == 1
+    assert collect(project, client, session).saved == 0
+
+
+def test_browser_queue_is_recorded_before_completion(project, client, session, stub):
+    from uuid import uuid4
+
+    prompt_id = str(uuid4())
+    prompt = [
+        0,
+        prompt_id,
+        resource_json("workflow-api.json"),
+        {"extra_pnginfo": {"workflow": resource_json("workflow.json")}},
+        ["9"],
+    ]
+    stub.queue["queue_running"] = [prompt]
+    result = collect(project, client, session)
+    run = load_runs(project)[0]
+    assert result.pending_ids == (run.run_id,)
+    assert run.prompt_id == prompt_id and run.state == "queued"
+    assert (run_dir(project, run.run_id) / "workflow-api.json").is_file()
+    assert (run_dir(project, run.run_id) / "workflow.json").is_file()
+
+
+def test_lost_runs_never_return_to_pending(project, client, session, stub):
+    from uuid import uuid4
+
+    from komaquill.service import mark_lost, new_run
+    from komaquill.storage import save_run
+
+    run = new_run(project, session, uuid4(), {})
+    save_run(project, run)
+    assert mark_lost(project, session.runtime_id) == (run.run_id,)
+    assert not load_runs(project)[0].pending
+    assert collect(project, client, session).pending == 0
+
+
+def test_shutdown_request_prevents_new_submission(project, client, session, stub):
+    from komaquill.storage import atomic_json
+
+    atomic_json(
+        project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
+    )
+    with pytest.raises(KomaquillError, match="終了処理中"):
+        generate(project, client, session, "a cabin", "", 1)
+    assert stub.submissions == 0
+    assert load_runs(project) == []
+
+
+def test_lost_state_is_preserved_when_submission_response_arrives_late(
+    project, client, session, monkeypatch
+):
+    from komaquill.service import mark_lost
+
+    original = client.submit
+
+    def submit(graph, ui, run_id):
+        result = original(graph, ui, run_id)
+        mark_lost(project, session.runtime_id)
+        return result
+
+    monkeypatch.setattr(client, "submit", submit)
+    with pytest.raises(KomaquillError, match="Colabの終了"):
+        generate(project, client, session, "a cabin", "", 1)
+    assert load_runs(project)[0].state == "lost"
+
+
+def test_local_save_failure_does_not_block_other_runs_or_store_exception_text(
+    project, client, session, monkeypatch
+):
+    from komaquill import service
+
+    client.submit(resource_json("workflow-api.json"), {}, "first-browser")
+    client.submit(resource_json("workflow-api.json"), {}, "second-browser")
+    original = service.atomic_bytes
+    calls = []
+
+    def save(path, content):
+        calls.append(path)
+        if len(calls) == 1:
+            raise OSError("private-exception-message")
+        original(path, content)
+
+    monkeypatch.setattr(service, "atomic_bytes", save)
+    result = collect(project, client, session)
+    assert result.saved == 1 and len(result.errors) == 1
+    assert all("private-exception-message" not in (run.error or "") for run in load_runs(project))

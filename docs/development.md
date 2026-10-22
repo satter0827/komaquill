@@ -1,44 +1,44 @@
 # 開発とリリース
 
-## 品質確認
+## 品質検査
 
-環境を準備して有効にしてから `python scripts/check.py` を実行します。
-Ruffの整形確認・lint、strict mypy、Import Linter、pytestを実行します。
-循環参照、CLIへの逆依存、生成・保存からColab制御への依存、本体からtests・scripts・開発専用ライブラリへの依存を禁止します。
+[環境構築](../CONTRIBUTING.md#環境を構築する)の後、次を実行します。
 
-テストはHTTP境界の模擬応答と一時フォルダーを使用し、有料API、GPU、モデルのダウンロードに依存しません。
-結果と一時ファイルはartifacts/testsへ保存します。WindowsとLinuxのCIで同じ手順を実行します。
+```powershell
+python scripts/check.py
+python scripts/security.py
+```
 
-`python scripts/security.py` は追跡対象、作業ツリー、全Git履歴を検査します。
-setup.ps1がpre-pushを登録するため、検査ツールがない状態では送信できません。
-検査結果は伏せ字にしてartifacts/securityへ保存します。
-秘密情報検査はdetect-secretsを使用し、検出した値を外部へ送って確認する機能を無効にします。
-公開対象、ステージ済みの差分、全Git履歴を検査し、レポートには場所と種類だけを保存します。
-公開リビジョン・SHA256と明示した試験値だけに、行単位の除外理由を付けています。
+check.pyはRuffの整形確認・lint、strict mypy、Import Linter、pytestを実行します。
+循環参照、CLIへの逆依存、生成・保存からColab制御への依存、本体から開発用モジュールへの依存を禁止します。
+テストは模擬応答と一時フォルダーを使用し、GPU、Google認証、モデルのダウンロードに依存しません。
 
-Windowsの実行制御に対応するため、CLIはPythonのモジュール実行に統一しています。
-activate.ps1のkomaquill関数も `python -m komaquill` を呼び出します。
-独自に生成された実行ファイルの許可設定を変更する必要はありません。
+security.pyは公開対象、ステージ済み差分、全Git履歴をdetect-secretsで検査します。検出値を外部送信する確認機能は無効にしています。
+レポートは場所と種類だけを`.artifacts/security/`へ保存します。公開リビジョン、SHA256、明示した試験値の除外には行単位の理由を記載します。
+setup.ps1は送信前の検査をGitフックへ登録します。WindowsとLinuxのCIも同じ検査を実行します。
 
-Windows ARM64でも、公式Colab CLIの依存がWindows x64向けバイナリを配布しているため、Windows x64 Pythonを使用します。
-PyArrowとcryptographyのARM64ソースビルドや依存の省略は行いません。uv本体はOSのアーキテクチャに合わせます。
-Pythonの版は.python-versionに固定し、GPU側でも同じ版の専用環境を作ります。
+## 実行環境と依存関係
 
-## バージョン
+CLIと開発ツールは同じPython環境のモジュールとして実行します。PowerShellのkomaquill関数は`python -m komaquill`を呼び出します。
+Windows ARM64では公式CLIのバイナリ依存に合わせてx64 Pythonを使用します。uv本体はOSのアーキテクチャに合わせます。
+Pythonの版は.python-versionで固定し、GPU側も同じ版の専用環境を使用します。
 
-バージョンの正本はpyproject.tomlです。`uv version --bump patch` 等の標準機能でロックファイルと一緒に更新します。
-番号はSemVerを基本とし、Pythonの事前版には `0.1.0rc1` 等のPEP 440表記を使用します。
-0.xでは破壊的変更時にminorを上げ、変更点をPRとリリースノートへ記録します。
+依存の変更はpyproject.tomlとuv.lockを同時に更新します。ローカルの公式CLI依存とGPU依存を分離し、ローカルへGPU用ライブラリを導入しないでください。
+公式CLIやComfyUIの更新時は、[実機検証](validation.md)も実施します。
 
-リリース時はmain上の版と一致する `v0.1.0` 等のタグを作成します。公開済みタグは変更・削除できません。
-配布物は `uv build --out-dir artifacts/dist` で生成します。PyPIへの自動公開は行いません。
-作成後に `python scripts/check_package.py` で版の一致、必要なワークフローの同梱、生成物の混入がないことを確認します。
+## 配布物
 
-## Colab検証
+```powershell
+uv build --out-dir .artifacts/dist
+python scripts/check_package.py
+```
 
-公式CLIの更新時は、まずWindows上でCPUの作成、実行、転送、SSH経由のHTTPとWebSocket、終了確認を実施します。
-この確認が成功してからT4で生成、両画面、自動回収、重複防止、再接続、通常・強制終了を検証します。
-ソースはローカルでコミットすれば転送でき、事前のpushは不要です。実行ログとパッケージ一覧はartifacts/logsへ回収します。
+sdistとwheelの版、同梱ワークフロー、生成物と資格情報の除外を確認します。ビルド結果は`.artifacts/dist/`へ保存します。
 
-外部ComfyUIは専用の識別ファイルなしで確認します。接続前の画像を取り込まず、終了時に外部サーバーへ停止要求を送らないことを確認します。
-実機結果は [検証結果](validation.md) へ記録します。認証情報・接続トークン・私有の実行ログは公開しません。
+## バージョンとリリース
+
+バージョンの正本はpyproject.tomlです。SemVerを基本とし、Pythonの事前版にはPEP 440形式を使います。
+`uv version --bump patch`などでロックファイルと一緒に更新します。0.xの破壊的変更ではminorを上げます。
+
+必須CIが成功したmain上で、宣言した版と一致する`v0.1.0`などのタグを作成します。公開済みタグは変更・削除できません。
+リリースノートには利用者への変更点と必要な操作を記載します。PyPIへの自動公開は行いません。

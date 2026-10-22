@@ -77,7 +77,7 @@ class Run(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     runtime_id: UUID
     prompt_id: str | None = None
-    state: Literal["prepared", "unknown", "queued", "saved", "failed"] = "prepared"
+    state: Literal["prepared", "unknown", "queued", "saved", "failed", "lost"] = "prepared"
     app_version: str
     source_revision: str
     remote_source_revision: str | None
@@ -87,3 +87,8 @@ class Run(BaseModel):
     workflow_sha256: str
     images: list[str] = Field(default_factory=list)
     error: str | None = None
+
+    @property
+    def pending(self) -> bool:
+        """保存または終了が確定していない要求かを返す。"""
+        return self.state not in {"saved", "failed", "lost"}

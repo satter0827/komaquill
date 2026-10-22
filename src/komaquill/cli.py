@@ -24,7 +24,7 @@ from komaquill.models import Session
 from komaquill.runtime import connected
 from komaquill.service import Collection, collect, generate, verify_runtime
 from komaquill.settings import Project, find_project
-from komaquill.storage import atomic_json, load_runs, run_dir
+from komaquill.storage import atomic_json, load_runs, load_session, run_dir
 from komaquill.workflow import preset, resource_json
 
 app = typer.Typer(
@@ -82,6 +82,8 @@ def operation(ctx: typer.Context) -> Iterator[Project]:
 def report(result: Collection) -> None:
     """回収状況を表示する。"""
     typer.echo(f"保存 {result.saved}件 / 未回収 {result.pending}件 / 失敗 {result.failed}件")
+    if result.errors:
+        raise KomaquillError("再回収が必要です: " + ", ".join(map(str, result.errors)))
 
 
 @models_app.command("fetch")
@@ -205,12 +207,23 @@ def status(ctx: typer.Context) -> None:
     with operation(ctx) as project:
         colab = Colab(project)
         receipt = colab.receipt()
+        active: bool | None = None
         if receipt is not None:
-            with colab.lock:
-                active = colab.refresh(receipt)
-            typer.echo(
-                "Colab: 利用中" if active else "Colab: 終了済み。stop で管理記録を整理できます。"
-            )
+            try:
+                with colab.lock.acquire(timeout=0):
+                    active = colab.refresh(receipt)
+                if not active and receipt.endpoint_id is None:
+                    typer.echo(
+                        "Colab: 確保結果が未確認です。Colabの利用中ランタイムを確認してください。"
+                    )
+                else:
+                    typer.echo(
+                        "Colab: 利用中"
+                        if active
+                        else "Colab: 終了済み。stop で管理記録を整理できます。"
+                    )
+            except Timeout:
+                typer.echo("Colab: 起動または終了の処理中")
         else:
             typer.echo("Colab: 所有するランタイムはありません。")
         lock = runtime.monitor_lock(project)
@@ -221,7 +234,20 @@ def status(ctx: typer.Context) -> None:
         else:
             lock.release()
             typer.echo("自動回収: 停止中")
-        if project.session_file.is_file():
+        if (
+            project.session_file.is_file()
+            and receipt is None
+            and load_session(project).backend == "colab"
+        ):
+            typer.echo("ComfyUI: 終了済み")
+        elif receipt is not None and active is False:
+            typer.echo("ComfyUI: 未起動" if receipt.endpoint_id is None else "ComfyUI: 終了済み")
+        elif receipt is not None and (
+            not project.session_file.is_file()
+            or load_session(project).runtime_id != receipt.runtime_id
+        ):
+            typer.echo("ComfyUI: 準備中")
+        elif project.session_file.is_file():
             try:
                 with connected(project) as (client, session):
                     client.json("/system_stats")
@@ -229,10 +255,10 @@ def status(ctx: typer.Context) -> None:
                 typer.echo("ComfyUI: 接続できます。")
             except KomaquillError:
                 typer.echo("ComfyUI: 接続できません。start の実行状態を確認してください。")
-        pending = [
-            str(run.run_id) for run in load_runs(project) if run.state not in {"saved", "failed"}
-        ]
+        pending = [str(run.run_id) for run in load_runs(project) if run.pending]
         typer.echo(f"未回収: {len(pending)}件")
+        lost = [str(run.run_id) for run in load_runs(project) if run.state == "lost"]
+        typer.echo(f"回収不能: {len(lost)}件")
         if pending:
             typer.echo("\n".join(pending))
 

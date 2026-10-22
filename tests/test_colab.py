@@ -54,7 +54,7 @@ def test_failed_stop_keeps_receipt(project, monkeypatch):
     assert not any(args[0] == "new" for args in calls)
 
 
-def test_stop_removes_receipt_only_after_confirming_absence(project, monkeypatch):
+def test_stop_keeps_receipt_until_finalization_acknowledges_absence(project, monkeypatch):
     colab, calls = controller(project, monkeypatch)
     receipt = Receipt(
         name="owned", runtime_id=uuid4(), source_revision="a" * 40, endpoint_id="expected"
@@ -69,6 +69,8 @@ def test_stop_removes_receipt_only_after_confirming_absence(project, monkeypatch
 
     monkeypatch.setattr(colab, "call", call)
     colab.stop()
+    assert colab.receipt_file.exists()
+    colab.release(receipt)
     assert not colab.receipt_file.exists()
     assert not any(args[0] == "new" for args in calls)
 
@@ -215,18 +217,35 @@ def test_cleanup_after_monitor_crash_only_stops_owned_official_processes(project
     assert stopped == [owned]
 
 
-def test_stop_keeps_receipt_if_local_process_cleanup_fails(project, monkeypatch):
+def test_release_never_removes_a_replacement_receipt(project, monkeypatch):
     colab, _ = controller(project, monkeypatch)
-    receipt = Receipt(
-        name="owned", runtime_id=uuid4(), source_revision="a" * 40, endpoint_id="expected"
-    )
-    atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
-    monkeypatch.setattr(colab, "refresh", lambda receipt: False)
+    receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="a" * 40)
+    replacement = receipt.model_copy(update={"runtime_id": uuid4()})
+    atomic_json(colab.receipt_file, replacement.model_dump(mode="json"))
+    with pytest.raises(KomaquillError, match="終了対象が変わった"):
+        colab.release(receipt)
+    assert colab.receipt().runtime_id == replacement.runtime_id
 
-    def fail(receipt):
-        raise KomaquillError("ローカルの接続処理を終了できません")
 
-    monkeypatch.setattr(colab, "cleanup_processes", fail)
-    with pytest.raises(KomaquillError, match="終了できません"):
-        colab.stop()
-    assert colab.receipt_file.is_file()
+def test_log_failure_preserves_existing_file_and_downloads_remaining_logs(project, monkeypatch):
+    colab, _ = controller(project, monkeypatch)
+    receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="a" * 40)
+    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    folder.mkdir(parents=True)
+    (folder / "bootstrap.log").write_text("previous-complete-log")
+    monkeypatch.setattr(colab, "entry", lambda receipt: {"endpoint": "expected"})
+
+    def download(*args, **kwargs):
+        from pathlib import Path
+
+        target = Path(args[-1])
+        target.write_text("downloaded")
+        if "bootstrap.log" in args[-2]:
+            raise KomaquillError("取得に失敗しました")
+
+    monkeypatch.setattr(colab, "call", download)
+    assert colab.recover_diagnostics(receipt) == ("bootstrap.log",)
+    assert (folder / "bootstrap.log").read_text() == "previous-complete-log"
+    assert (folder / "comfy.log").read_text() == "downloaded"
+    assert (folder / "environment.txt").read_text() == "downloaded"
+    assert not list(folder.glob("*.tmp"))

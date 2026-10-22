@@ -207,15 +207,21 @@ def status(ctx: typer.Context) -> None:
     with operation(ctx) as project:
         colab = Colab(project)
         receipt = colab.receipt()
+        active: bool | None = None
         if receipt is not None:
             try:
                 with colab.lock.acquire(timeout=0):
                     active = colab.refresh(receipt)
-                typer.echo(
-                    "Colab: 利用中"
-                    if active
-                    else "Colab: 終了済み。stop で管理記録を整理できます。"
-                )
+                if not active and receipt.endpoint_id is None:
+                    typer.echo(
+                        "Colab: 確保結果が未確認です。Colabの利用中ランタイムを確認してください。"
+                    )
+                else:
+                    typer.echo(
+                        "Colab: 利用中"
+                        if active
+                        else "Colab: 終了済み。stop で管理記録を整理できます。"
+                    )
             except Timeout:
                 typer.echo("Colab: 起動または終了の処理中")
         else:
@@ -234,6 +240,8 @@ def status(ctx: typer.Context) -> None:
             and load_session(project).backend == "colab"
         ):
             typer.echo("ComfyUI: 終了済み")
+        elif receipt is not None and active is False:
+            typer.echo("ComfyUI: 未起動" if receipt.endpoint_id is None else "ComfyUI: 終了済み")
         elif receipt is not None and (
             not project.session_file.is_file()
             or load_session(project).runtime_id != receipt.runtime_id

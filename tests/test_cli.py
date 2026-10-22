@@ -100,3 +100,21 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
     assert result.exit_code == 0
     assert "Colab: 起動または終了の処理中" in result.output
     assert "ComfyUI: 準備中" in result.output
+
+
+def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypatch):
+    from uuid import uuid4
+    from komaquill.colab import Colab, Receipt
+    from komaquill.storage import atomic_json
+
+    colab = Colab(project)
+    receipt = Receipt(name="uncertain", runtime_id=uuid4(), source_revision="a" * 40)
+    atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
+    monkeypatch.setattr(colab, "refresh", lambda receipt: False)
+    monkeypatch.setattr(cli, "Colab", lambda project: colab)
+    result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
+    assert result.exit_code == 0
+    assert "確保結果が未確認" in result.output
+    assert "ComfyUI: 未起動" in result.output
+    assert "終了済み" not in result.output
+    assert colab.receipt_file.is_file()

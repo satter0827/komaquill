@@ -143,11 +143,14 @@ def test_stop_does_not_end_replacement_runtime(project, session, monkeypatch):
             pass
 
     class ReplacedColab:
+        reads = 0
+
         def __init__(self, project):
             pass
 
         def receipt(self):
-            return SimpleNamespace(runtime_id=uuid4())
+            type(self).reads += 1
+            return SimpleNamespace(runtime_id=session.runtime_id if self.reads == 1 else uuid4())
 
         def stop(self):
             pytest.fail("停止要求後に置き換わった環境を終了してはいけない")

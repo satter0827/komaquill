@@ -357,6 +357,9 @@ def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
         if not project.session_file.is_file():
             raise KomaquillError("起動処理中です。start の端末でCtrl+Cを押してください。") from None
         session = load_session(project)
+        current_receipt = Colab(project).receipt()
+        if current_receipt is not None and current_receipt.runtime_id != session.runtime_id:
+            raise KomaquillError("起動処理中です。start の端末でCtrl+Cを押してください。") from None
         expected_runtime = session.runtime_id
         request_stop(project, session, force)
         echo("終了を依頼しました。生成と回収の終了を待っています。")

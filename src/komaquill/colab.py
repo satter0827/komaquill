@@ -171,7 +171,7 @@ class Colab:
             return receipt, True
 
     def stop(self) -> None:
-        """所有するIDの終了を公式CLIで確認してから記録を消す。"""
+        """所有するIDの終了を公式CLIで確認する。"""
         self.project.runtime.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()

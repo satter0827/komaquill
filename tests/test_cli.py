@@ -80,3 +80,23 @@ def test_status_separates_lost_requests_from_pending(project, session):
     assert result.exit_code == 0
     assert "未回収: 0件" in result.output and "回収不能: 1件" in result.output
     assert "ComfyUI: 終了済み" in result.output
+
+
+def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
+    from uuid import uuid4
+
+    from komaquill.colab import Colab, Receipt
+    from komaquill.storage import atomic_json
+
+    colab = Colab(project)
+    receipt = Receipt(name="starting", runtime_id=uuid4(), source_revision="a" * 40)
+    atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
+    monkeypatch.setattr(cli, "Colab", lambda project: colab)
+    # 別インスタンスでロックし、同じスレッドの再入を避ける。
+    from filelock import FileLock
+
+    with FileLock(str(project.runtime / ".colab.lock")):
+        result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
+    assert result.exit_code == 0
+    assert "Colab: 起動または終了の処理中" in result.output
+    assert "ComfyUI: 準備中" in result.output

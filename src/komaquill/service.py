@@ -121,6 +121,10 @@ def save_conditions(project: Project, run: Run, prompt: list[Any]) -> None:
         raise KomaquillError("生成条件の形式を確認できません。")
     if not (folder / "workflow-api.json").is_file():
         atomic_json(folder / "workflow-api.json", graph)
+    graph_digest = digest(graph)
+    if run.workflow_sha256 != graph_digest:
+        run.workflow_sha256 = graph_digest
+        save_run(project, run)
     extra = prompt[3] if len(prompt) > 3 else {}
     if isinstance(extra, dict):
         metadata = extra.get("extra_pnginfo", {})
@@ -135,25 +139,30 @@ def collect(
     """キューと履歴を記録し、要求ごとに画像を回収する。"""
     with collection_lock(project):
         verify_runtime(client, session)
-        queue = client.json("/queue")
-        records: dict[str, JsonObject] = {}
-        for key in ("queue_running", "queue_pending"):
-            for row in queue.get(key, []):
-                if isinstance(row, list) and len(row) > 2:
-                    records[str(row[1])] = {"prompt": row}
+        records: dict[str, JsonObject] = {row[1]: {"prompt": row} for row in client.queue()}
         records.update(client.history())
-        runs = {run.run_id: run for run in load_runs(project)}
-        if only is not None and only not in runs:
+        unreadable: list[UUID] = []
+        runs = {run.run_id: run for run in load_runs(project, unreadable=unreadable)}
+        known_prompts = {
+            run.prompt_id: run.run_id
+            for run in runs.values()
+            if run.runtime_id == session.runtime_id and run.prompt_id is not None
+        }
+        if only is not None and only not in runs and only not in unreadable:
             raise KomaquillError("指定した生成履歴が見つかりません。")
         related: set[UUID] = set()
-        errors: list[UUID] = []
+        errors = [identity for identity in unreadable if only is None or identity == only]
         saved = 0
-        for prompt_id, record in records.items():
-            prompt = record.get("prompt", [])
-            identity = request_id(prompt) or uuid5(
-                NAMESPACE_URL, f"komaquill:{session.runtime_id}:{prompt_id}"
+        for prompt_id, raw_record in records.items():
+            record = raw_record if isinstance(raw_record, dict) else {}
+            raw_prompt = record.get("prompt")
+            prompt = raw_prompt if isinstance(raw_prompt, list) else []
+            identity = (
+                request_id(prompt)
+                or known_prompts.get(prompt_id)
+                or uuid5(NAMESPACE_URL, f"komaquill:{session.runtime_id}:{prompt_id}")
             )
-            if only is not None and identity != only:
+            if identity in unreadable or (only is not None and identity != only):
                 continue
             run = runs.get(identity)
             if run is None:
@@ -216,12 +225,15 @@ def mark_lost(project: Project, runtime_id: UUID) -> tuple[UUID, ...]:
     """終了を確認したColabの未回収要求を確定する。"""
     lost: list[UUID] = []
     with collection_lock(project):
-        for run in load_runs(project):
+        unreadable: list[UUID] = []
+        for run in load_runs(project, unreadable=unreadable):
             if run.runtime_id == runtime_id and run.pending:
                 run.state = "lost"
                 run.error = "Colabの終了により画像を回収できません。"
                 save_run(project, run)
                 lost.append(run.run_id)
+        if unreadable:
+            raise KomaquillError("生成履歴を読めません: " + ", ".join(map(str, unreadable)))
     return tuple(lost)
 
 

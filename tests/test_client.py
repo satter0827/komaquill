@@ -63,3 +63,30 @@ def test_redirect_does_not_forward_credentials():
         client.json("/system_stats")
     assert len(requests) == 1
     client.close()
+
+
+@pytest.mark.parametrize("queue", [{"queue_running": None}, {"queue_pending": [None]}])
+def test_invalid_queue_raises_safe_operation_error(client, stub, queue):
+    stub.queue = queue
+    with pytest.raises(KomaquillError, match="キュー形式"):
+        client.queue()
+
+
+@pytest.mark.parametrize("endpoint", ["https://example.com:wrong", "https://example.com:70000"])
+def test_invalid_endpoint_port_is_rejected(endpoint):
+    from uuid import uuid4
+
+    with pytest.raises(ValidationError):
+        Session(endpoint=endpoint, runtime_id=uuid4())
+
+
+def test_non_unicode_json_response_raises_safe_error():
+    client = ComfyClient(
+        "https://example.com",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"\xff")),
+    )
+    try:
+        with pytest.raises(KomaquillError, match="応答形式"):
+            client.json("/history")
+    finally:
+        client.close()

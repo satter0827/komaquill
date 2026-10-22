@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from komaquill.errors import KomaquillError
 from komaquill.models import JsonObject, Run, Session
 from komaquill.settings import Project
 
@@ -38,9 +39,27 @@ def save_run(project: Project, run: Run) -> None:
     atomic_json(run_dir(project, run.run_id) / "run.json", run.model_dump(mode="json"))
 
 
-def load_runs(project: Project) -> list[Run]:
-    """既存の生成履歴を読み込む。"""
-    return [Run.model_validate_json(path.read_bytes()) for path in project.runs.glob("*/run.json")]
+def load_runs(project: Project, *, unreadable: list[UUID] | None = None) -> list[Run]:
+    """履歴を読む。unreadableの指定時は読めないIDを報告して継続する。"""
+    runs: list[Run] = []
+    for path in project.runs.glob("*/run.json"):
+        try:
+            identity = UUID(path.parent.name)
+        except ValueError:
+            raise KomaquillError("生成履歴のフォルダー名を確認してください。") from None
+        try:
+            run = Run.model_validate_json(path.read_bytes())
+            if run.run_id != identity:
+                raise ValueError("履歴とフォルダーのIDが一致しません。")
+        except (OSError, ValueError):
+            if unreadable is None:
+                raise KomaquillError(
+                    f"生成履歴を読めません。ファイルとアクセス権を確認してください: {identity}"
+                ) from None
+            unreadable.append(identity)
+            continue
+        runs.append(run)
+    return runs
 
 
 def load_session(project: Project) -> Session:

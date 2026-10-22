@@ -60,11 +60,25 @@ class ComfyClient:
         """オブジェクト形式の応答を読み込む。"""
         try:
             data = self.request("GET", path).json()
-        except JSONDecodeError as exc:
+        except (JSONDecodeError, UnicodeDecodeError) as exc:
             raise KomaquillError("ComfyUIの応答形式が想定と異なります。") from exc
         if not isinstance(data, dict):
             raise KomaquillError("ComfyUIの応答形式が想定と異なります。")
         return cast(JsonObject, data)
+
+    def queue(self) -> list[list[Any]]:
+        """標準キューの行を検証し、応答本文を例外へ含めない。"""
+        data = self.json("/queue")
+        result: list[list[Any]] = []
+        for key in ("queue_running", "queue_pending"):
+            rows = data.get(key, [])
+            if not isinstance(rows, list):
+                raise KomaquillError("ComfyUIのキュー形式を確認できません。")
+            for row in rows:
+                if not isinstance(row, list) or len(row) < 3 or not isinstance(row[1], str):
+                    raise KomaquillError("ComfyUIのキュー形式を確認できません。")
+                result.append(row)
+        return result
 
     def history(self) -> JsonObject:
         """現在のランタイムの履歴を取得する。"""
@@ -87,7 +101,7 @@ class ComfyClient:
         )
         try:
             data = response.json()
-        except JSONDecodeError as exc:
+        except (JSONDecodeError, UnicodeDecodeError) as exc:
             raise SubmissionUnknown(
                 "生成IDを確認できません。collect で履歴を照合してください。"
             ) from exc

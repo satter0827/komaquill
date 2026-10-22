@@ -48,6 +48,9 @@ class Session(BaseModel):
     def validate_endpoint(cls, value: str) -> str:
         """TLSまたはローカル接続だけを許可する。"""
         url = urlsplit(value)
+        # urlsplitはportを参照するまで、数値と範囲を検証しない。
+        if url.port == 0:
+            raise ValueError("接続先のポート番号を確認してください。")
         if (
             url.scheme not in {"https", "http"}
             or not url.hostname

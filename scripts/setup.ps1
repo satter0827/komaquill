@@ -21,7 +21,7 @@ if (-not (Test-Path -LiteralPath $KomaquillUv)) {
     $uvChecksum = Invoke-RestMethod -Uri ($uvUrl + '.sha256')
     Install-VerifiedZip $uvUrl (($uvChecksum.Trim() -split '\s+')[0]) (Split-Path -Parent $KomaquillUv) 'uv.zip'
 }
-& $KomaquillUv sync --locked --group dev --project $KomaquillRoot
+& $KomaquillUv sync --locked --group dev --extra colab-client --python cpython-3.12.15-windows-x86_64-none --project $KomaquillRoot
 if ($LASTEXITCODE -ne 0) { throw 'Python環境の導入に失敗しました。' }
 
 git -C $KomaquillRoot config core.hooksPath .githooks

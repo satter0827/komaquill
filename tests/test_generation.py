@@ -70,3 +70,45 @@ def test_runtime_replacement_does_not_mix_histories(project, client, session):
     session.runtime_id = __import__("uuid").uuid4()
     with pytest.raises(KomaquillError, match="ランタイムが変わりました"):
         collect(project, client, session)
+
+
+def test_collector_finishing_before_post_response_preserves_saved_state(
+    project, client, session, monkeypatch
+):
+    original = client.submit
+
+    def submit(graph, ui, run_id):
+        prompt_id = original(graph, ui, run_id)
+        assert collect(project, client, session).saved == 1
+        return prompt_id
+
+    monkeypatch.setattr(client, "submit", submit)
+    run = generate(project, client, session, "a cabin", "", 1)
+    assert run.state == "saved"
+    assert stub_images(project) == 1
+
+
+def stub_images(project):
+    return len(list(project.runs.glob("*/images/*.png")))
+
+
+def test_external_does_not_require_metadata_and_excludes_old_history(project, client, session):
+    session.backend = "external"
+    old_id = client.submit(resource_json("workflow-api.json"), {}, "old-browser")
+    session.excluded_prompt_ids = {old_id}
+    assert collect(project, client, session).saved == 0
+    client.submit(resource_json("workflow-api.json"), {}, "new-browser")
+    assert collect(project, client, session).saved == 1
+    assert len(load_runs(project)) == 1
+
+
+def test_external_own_pending_request_is_recovered_even_if_in_baseline(
+    project, client, session, stub
+):
+    session.backend = "external"
+    stub.drop_response = True
+    with pytest.raises(SubmissionUnknown):
+        generate(project, client, session, "a cabin", "", 1)
+    session.excluded_prompt_ids = set(stub.history)
+    assert collect(project, client, session).saved == 1
+    assert load_runs(project)[0].state == "saved"

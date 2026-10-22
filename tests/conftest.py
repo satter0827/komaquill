@@ -74,7 +74,7 @@ def project(tmp_path):
 @pytest.fixture
 def session():
     return Session(
-        endpoint="https://test.trycloudflare.com",
+        endpoint="http://127.0.0.1:18188",
         runtime_id=uuid4(),
         source_revision="a" * 40,
         comfy_revision="b" * 40,
@@ -94,8 +94,6 @@ def pytest_configure(config):
 
 @pytest.fixture
 def client(stub):
-    connection = ComfyClient(
-        stub.session.endpoint, "test-only-password", transport=httpx.MockTransport(stub.respond)
-    )
+    connection = ComfyClient(stub.session.endpoint, transport=httpx.MockTransport(stub.respond))
     yield connection
     connection.close()

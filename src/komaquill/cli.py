@@ -1,33 +1,37 @@
-"""人が端末またはVS Codeから使う操作の入口。"""
+"""端末から起動・生成・保存を行う。"""
 
 import secrets
-import time
+import subprocess
 import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import keyring
 import typer
+from filelock import Timeout
 from pydantic import ValidationError
 
-from komaquill.client import ComfyClient
+from komaquill import runtime
+from komaquill.colab import Colab
 from komaquill.downloads import fetch_model
 from komaquill.errors import KomaquillError
 from komaquill.models import Session
-from komaquill.service import Collection, collect, generate, source_revision
+from komaquill.runtime import connected
+from komaquill.service import Collection, collect, generate, verify_runtime
 from komaquill.settings import Project, find_project
-from komaquill.storage import atomic_json, load_session, run_dir
+from komaquill.storage import atomic_json, load_runs, run_dir
 from komaquill.workflow import preset, resource_json
 
 app = typer.Typer(
-    help="ColabのComfyUIで画像を生成し、ローカルへ保存します。",
+    help="ComfyUIで画像を生成し、ローカルへ保存します。",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
+    pretty_exceptions_enable=False,
     add_completion=False,
 )
 models_app = typer.Typer(help="モデルを取得します。", no_args_is_help=True, add_completion=False)
@@ -56,10 +60,16 @@ def main(
 
 @contextmanager
 def operation(ctx: typer.Context) -> Iterator[Project]:
-    """操作エラーを日本語で表示し、秘密情報を含むトレースを出さない。"""
+    """秘密を含むトレースを表示せず、操作エラーを伝える。"""
     try:
         yield find_project(ctx.obj)
-    except (KomaquillError, ValidationError, OSError, keyring.errors.KeyringError) as exc:
+    except (
+        KomaquillError,
+        ValidationError,
+        OSError,
+        keyring.errors.KeyringError,
+        subprocess.SubprocessError,
+    ) as exc:
         message = (
             str(exc)
             if isinstance(exc, KomaquillError)
@@ -67,27 +77,6 @@ def operation(ctx: typer.Context) -> Iterator[Project]:
         )
         typer.echo(message, err=True)
         raise typer.Exit(1) from None
-
-
-def credential_key(project: Project) -> str:
-    """別プロジェクトのパスワードを混用しない。"""
-    return str(project.root)
-
-
-@contextmanager
-def connected(project: Project) -> Iterator[tuple[ComfyClient, Session]]:
-    """保存済み接続先を開く。"""
-    if not project.session_file.is_file():
-        raise KomaquillError("接続先が未設定です。start を実行してください。")
-    session = load_session(project)
-    password = keyring.get_password("komaquill", credential_key(project))
-    if not password:
-        password = typer.prompt("ComfyUIのパスワード", hide_input=True)
-    client = ComfyClient(session.endpoint, password, project.settings().request_timeout)
-    try:
-        yield client, session
-    finally:
-        client.close()
 
 
 def report(result: Collection) -> None:
@@ -106,43 +95,23 @@ def models_fetch(ctx: typer.Context) -> None:
 @app.command()
 def start(
     ctx: typer.Context,
-    endpoint: Annotated[str | None, typer.Option(help="Colabに表示された接続先URL。")] = None,
+    backend: Annotated[
+        Literal["colab", "external"],
+        typer.Option(help="colab: Colabを起動、external: 起動済みComfyUIに接続。"),
+    ] = "colab",
+    endpoint: Annotated[str | None, typer.Option(help="起動済みComfyUIのURL。")] = None,
+    username: Annotated[
+        str | None, typer.Option(help="外部接続でBasic認証を使う場合の利用者名。")
+    ] = None,
 ) -> None:
-    """Colabを開き、起動後のComfyUIへ接続します。"""
+    """ComfyUIへ接続し、自動回収を維持します。終了はCtrl+Cです。"""
     with operation(ctx) as project:
-        if endpoint is None:
-            typer.echo("モデルを取得・検証しています。")
-            fetch_model(project.artifacts, preset())
-            revision = source_revision(project)
-            notebook = (
-                "https://colab.research.google.com/github/satter0827/komaquill/"
-                f"blob/{revision}/notebooks/comfyui.ipynb"
-            )
-            typer.echo("ColabでGPUを選び、ノートブックを実行してください。")
-            typer.echo(notebook)
-            typer.echo(f"コミットID: {revision}")
-            webbrowser.open(notebook)
-            endpoint = typer.prompt("Colabに表示された接続先URL")
-        # URLを先に検証し、認証情報を意図しない接続先へ送らない。
-        probe = Session(
-            endpoint=endpoint,
-            runtime_id=uuid4(),
-            source_revision="",
-            comfy_revision="",
-            frontend_version="",
-            model_sha256="",
-        )
-        password = typer.prompt("ComfyUIのパスワード", hide_input=True)
-        client = ComfyClient(probe.endpoint, password, project.settings().request_timeout)
-        try:
-            metadata = client.runtime()
-            session = Session.model_validate({**metadata, "endpoint": probe.endpoint})
-            client.json("/system_stats")
-        finally:
-            client.close()
-        keyring.set_password("komaquill", credential_key(project), password)
-        atomic_json(project.session_file, session.model_dump(mode="json"))
-        typer.echo("接続しました。generate または open を実行できます。")
+        password = None
+        if backend == "external" and endpoint is not None:
+            Session(endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username)
+            if username is not None:
+                password = typer.prompt("ComfyUIのパスワード", hide_input=True)
+        runtime.start(project, backend, endpoint, username, password, typer.echo)
 
 
 @app.command("generate")
@@ -181,62 +150,100 @@ def collect_command(
 @app.command("open")
 def open_command(
     ctx: typer.Context,
-    view: Annotated[str, typer.Option(help="app: 入力画面、graph: ノード画面。")] = "app",
+    view: Annotated[
+        Literal["app", "graph"], typer.Option(help="app: 入力画面、graph: ノード画面。")
+    ] = "app",
 ) -> None:
-    """ComfyUIの画面を開き、完了した画像を自動保存します。終了はCtrl+Cです。"""
-    if view not in {"app", "graph"}:
-        raise typer.BadParameter("app または graph を指定してください。", param_hint="--view")
+    """ComfyUIの画面を開きます。"""
     with operation(ctx) as project, connected(project) as (client, session):
-        result = collect(project, client, session)
-        url = (
-            session.endpoint + "/?" + urlencode({"template": f"sd15_{view}", "source": "komaquill"})
-        )
+        client.json("/system_stats")
+        verify_runtime(client, session)
+        if session.backend == "colab":
+            url = (
+                session.endpoint
+                + "/?"
+                + urlencode({"template": f"sd15_{view}", "source": "komaquill"})
+            )
+        else:
+            workflow = resource_json("workflow.json")
+            workflow["extra"]["linearMode"] = view == "app"
+            path = project.runtime / "workflows" / f"sd15_{view}.json"
+            atomic_json(path, workflow)
+            typer.echo(f"画面にワークフローを読み込んでください: {path}")
+            url = session.endpoint + "/"
         webbrowser.open(url)
-        typer.echo("画面で生成した画像を保存します。終了はCtrl+Cです。")
-        report(result)
-        disconnected = False
-        try:
-            while True:
-                time.sleep(project.settings().poll_interval)
-                try:
-                    result = collect(project, client, session)
-                    if disconnected or result.saved:
-                        report(result)
-                    disconnected = False
-                except KomaquillError as exc:
-                    if not disconnected:
-                        typer.echo(str(exc), err=True)
-                        typer.echo(
-                            "再接続を待っています。接続先が変わった場合はstartを実行してください。"
-                        )
-                    disconnected = True
-        except KeyboardInterrupt:
-            try:
-                report(collect(project, client, session))
-            except KomaquillError:
-                typer.echo(
-                    "回収できていない結果があります。接続後にcollectを実行してください。", err=True
-                )
-            typer.echo("自動保存を終了しました。利用後はColabのランタイムを終了してください。")
+        typer.echo("画面を開きました。生成結果は start の端末が自動保存します。")
 
 
 @app.command()
 def doctor(ctx: typer.Context) -> None:
-    """接続と生成に必要なモデル・ノードを確認します。"""
+    """接続と生成に必要なGPU・モデル・ノードを確認します。"""
     with operation(ctx) as project, connected(project) as (client, session):
-        metadata = client.runtime()
-        if str(metadata.get("runtime_id")) != str(session.runtime_id):
-            raise KomaquillError("ランタイムが変わりました。start を実行してください。")
+        verify_runtime(client, session)
         stats = client.json("/system_stats")
         nodes = client.json("/object_info")
         missing = {
             n["class_type"] for n in resource_json("workflow-api.json").values()
         } - nodes.keys()
         if missing:
-            raise KomaquillError("必要な標準ノードがありません。Colabの準備をやり直してください。")
+            raise KomaquillError(
+                "生成に必要な標準ノードがありません。ComfyUIの構成を確認してください。"
+            )
         checkpoint = nodes["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
         if preset().filename not in checkpoint:
-            raise KomaquillError("使用モデルがColabにありません。ノートブックを確認してください。")
+            raise KomaquillError(
+                "使用モデルがComfyUIにありません。モデルの配置を確認してください。"
+            )
         if not any(device.get("type") == "cuda" for device in stats.get("devices", [])):
-            raise KomaquillError("GPUが見つかりません。ColabでGPUを選択してください。")
+            raise KomaquillError("GPUが見つかりません。接続先のGPUを確認してください。")
         typer.echo(f"接続・GPU・モデル・標準ノードを確認しました。保存先: {project.artifacts}")
+
+
+@app.command()
+def status(ctx: typer.Context) -> None:
+    """接続・Colab・未回収の状態を確認します。"""
+    with operation(ctx) as project:
+        colab = Colab(project)
+        receipt = colab.receipt()
+        if receipt is not None:
+            with colab.lock:
+                active = colab.refresh(receipt)
+            typer.echo(
+                "Colab: 利用中" if active else "Colab: 終了済み。stop で管理記録を整理できます。"
+            )
+        else:
+            typer.echo("Colab: 所有するランタイムはありません。")
+        lock = runtime.monitor_lock(project)
+        try:
+            lock.acquire(timeout=0)
+        except Timeout:
+            typer.echo("自動回収: 実行中")
+        else:
+            lock.release()
+            typer.echo("自動回収: 停止中")
+        if project.session_file.is_file():
+            try:
+                with connected(project) as (client, session):
+                    client.json("/system_stats")
+                    verify_runtime(client, session)
+                typer.echo("ComfyUI: 接続できます。")
+            except KomaquillError:
+                typer.echo("ComfyUI: 接続できません。start の実行状態を確認してください。")
+        pending = [
+            str(run.run_id) for run in load_runs(project) if run.state not in {"saved", "failed"}
+        ]
+        typer.echo(f"未回収: {len(pending)}件")
+        if pending:
+            typer.echo("\n".join(pending))
+
+
+@app.command()
+def stop(
+    ctx: typer.Context,
+    force: Annotated[
+        bool, typer.Option(help="生成完了を待たず、回収可能な結果を保存して終了する。")
+    ] = False,
+) -> None:
+    """生成と回収を待ち、所有するColabを終了します。"""
+    with operation(ctx) as project:
+        runtime.stop(project, force, typer.echo)

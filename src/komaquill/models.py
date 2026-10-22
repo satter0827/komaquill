@@ -27,10 +27,21 @@ class Session(BaseModel):
 
     endpoint: str
     runtime_id: UUID
-    source_revision: str
-    comfy_revision: str
-    frontend_version: str
-    model_sha256: str
+    backend: Literal["colab", "external"] = "colab"
+    source_revision: str | None = None
+    comfy_revision: str | None = None
+    frontend_version: str | None = None
+    model_sha256: str | None = None
+    username: str | None = None
+    excluded_prompt_ids: set[str] = Field(default_factory=set)
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str | None) -> str | None:
+        """Basic認証の区切り文字と空の利用者名を拒否する。"""
+        if value is not None and (not value.strip() or any(char in value for char in ":\r\n")):
+            raise ValueError("Basic認証の利用者名を確認してください。")
+        return value
 
     @field_validator("endpoint")
     @classmethod
@@ -69,10 +80,10 @@ class Run(BaseModel):
     state: Literal["prepared", "unknown", "queued", "saved", "failed"] = "prepared"
     app_version: str
     source_revision: str
-    remote_source_revision: str
-    comfy_revision: str
-    frontend_version: str
-    model_sha256: str
+    remote_source_revision: str | None
+    comfy_revision: str | None
+    frontend_version: str | None
+    model_sha256: str | None
     workflow_sha256: str
     images: list[str] = Field(default_factory=list)
     error: str | None = None

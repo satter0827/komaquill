@@ -18,7 +18,8 @@ dependencies = [
 komaquill = "komaquill.cli:app"
 
 [project.optional-dependencies]
-colab = [
+colab-client = ["google-colab-cli==0.7.5"]
+worker = [
   "torch==2.14.1; sys_platform == 'linux'", "torchvision==0.29.1; sys_platform == 'linux'",
   "comfyui-frontend-package==1.55.18; sys_platform == 'linux'",
   "comfyui-workflow-templates==0.11.89; sys_platform == 'linux'",
@@ -54,7 +55,7 @@ dev = [
 packages = ["src/komaquill"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "scripts", "notebooks", "docs", "README.md", "CONTRIBUTING.md", "AGENTS.md", "komaquill.toml", "pyproject.toml", "uv.lock", ".python-version", ".vscode", ".github", ".githooks", ".gitattributes", ".gitignore"]
+include = ["src", "tests", "scripts", "docs", "README.md", "CONTRIBUTING.md", "AGENTS.md", "komaquill.toml", "pyproject.toml", "uv.lock", ".python-version", ".vscode", ".github", ".githooks", ".gitattributes", ".gitignore"]
 
 [tool.ruff]
 line-length = 100
@@ -104,6 +105,12 @@ name = "CLIへの逆依存を禁止する"
 type = "forbidden"
 source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads"]
 forbidden_modules = ["komaquill.cli", "komaquill.__main__"]
+
+[[tool.importlinter.contracts]]
+name = "生成と保存からColab制御への依存を禁止する"
+type = "forbidden"
+source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads"]
+forbidden_modules = ["komaquill.colab", "komaquill.colab_entry", "komaquill.runtime", "colab_cli"]
 
 [[tool.importlinter.contracts]]
 name = "本体から開発用モジュールへの依存を禁止する"

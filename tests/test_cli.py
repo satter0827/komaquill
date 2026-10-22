@@ -5,8 +5,6 @@ from contextlib import contextmanager
 from typer.testing import CliRunner
 
 from komaquill import cli
-from komaquill.storage import load_runs
-from komaquill.workflow import resource_json
 
 
 def test_missing_connection_has_actionable_error(project):
@@ -21,7 +19,7 @@ def test_invalid_view_does_not_open_a_browser():
     assert result.exit_code == 2
 
 
-def test_open_uses_the_selected_view_and_collects(project, client, session, monkeypatch):
+def test_open_returns_after_opening_the_selected_view(project, client, session, monkeypatch):
     @contextmanager
     def connection(_project):
         yield client, session
@@ -29,17 +27,20 @@ def test_open_uses_the_selected_view_and_collects(project, client, session, monk
     opened = []
     monkeypatch.setattr(cli, "connected", connection)
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
-    client.submit(resource_json("workflow-api.json"), resource_json("workflow.json"), "ui-client")
-
-    def stop(_seconds):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(cli.time, "sleep", stop)
     result = CliRunner().invoke(
         cli.app, ["--project", str(project.root), "open", "--view", "graph"]
     )
     assert result.exit_code == 0, result.output
     assert "template=sd15_graph" in opened[0]
     assert "source=komaquill" in opened[0]
-    assert load_runs(project)[0].state == "saved"
-    assert "Colab" in result.output
+    assert "start" in result.output
+
+
+def test_status_without_a_session_never_creates_gpu(project, monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("確認でGPUを確保してはいけない")
+
+    monkeypatch.setattr(cli.Colab, "acquire", forbidden)
+    result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
+    assert result.exit_code == 0, result.output
+    assert "未回収: 0件" in result.output

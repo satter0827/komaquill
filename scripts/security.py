@@ -27,14 +27,6 @@ def main() -> None:
     candidates = git_text(
         root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"
     ).split("\0")
-    for name in candidates:
-        if name.endswith(".ipynb"):
-            notebook = json.loads((root / name).read_text(encoding="utf-8"))
-            if any(
-                cell.get("outputs") or cell.get("execution_count") is not None
-                for cell in notebook["cells"]
-            ):
-                raise SystemExit("ノートブックの出力を消してから公開してください。")
     findings: list[dict[str, str | int]] = []
     with default_settings() as settings:
         settings.disable_filters(

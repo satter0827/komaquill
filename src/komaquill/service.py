@@ -90,14 +90,26 @@ def save_images(project: Project, client: ComfyClient, run: Run, record: JsonObj
     return image_names
 
 
+def verify_runtime(client: ComfyClient, session: Session) -> None:
+    """管理する環境だけを識別ファイルで照合する。"""
+    if session.backend == "colab" and str(client.runtime().get("runtime_id")) != str(
+        session.runtime_id
+    ):
+        raise KomaquillError("ランタイムが変わりました。start で接続し直してください。")
+
+
+def collection_lock(project: Project) -> FileLock:
+    """生成要求と回収結果を同じ排他制御で更新する。"""
+    project.runs.mkdir(parents=True, exist_ok=True)
+    return FileLock(str(project.runs / ".collection.lock"))
+
+
 def collect(
     project: Project, client: ComfyClient, session: Session, only: UUID | None = None
 ) -> Collection:
     """生成元を問わず完了した画像を一度だけ保存する。"""
-    project.runs.mkdir(parents=True, exist_ok=True)
-    with FileLock(str(project.runs / ".collection.lock")):
-        if str(client.runtime().get("runtime_id")) != str(session.runtime_id):
-            raise KomaquillError("Colabのランタイムが変わりました。start で接続し直してください。")
+    with collection_lock(project):
+        verify_runtime(client, session)
         history = client.history()
         runs = {run.run_id: run for run in load_runs(project)}
         if only is not None and only not in runs:
@@ -114,7 +126,8 @@ def collect(
                 identity = request_id(prompt)
                 if identity in runs and len(prompt) > 1:
                     runs[identity].prompt_id = str(prompt[1])
-                    runs[identity].state = "queued"
+                    if runs[identity].state not in {"saved", "failed"}:
+                        runs[identity].state = "queued"
                     save_run(project, runs[identity])
         saved = 0
         for prompt_id, record in history.items():
@@ -127,6 +140,8 @@ def collect(
             graph = cast(JsonObject, prompt[2] if len(prompt) > 2 else {})
             run = runs.get(identity)
             if run is None:
+                if prompt_id in session.excluded_prompt_ids:
+                    continue
                 run = new_run(project, session, identity, graph)
                 run.prompt_id = prompt_id
                 run.state = "queued"
@@ -174,8 +189,7 @@ def generate(
     seed: int,
 ) -> Run:
     """送信前に記録し、ローカル保存が終わるまで待つ。"""
-    if str(client.runtime().get("runtime_id")) != str(session.runtime_id):
-        raise KomaquillError("Colabのランタイムが変わりました。start で接続し直してください。")
+    verify_runtime(client, session)
     run_id = uuid4()
     graph, ui = prepare(prompt, negative, seed, str(run_id))
     run = new_run(project, session, run_id, graph)
@@ -183,20 +197,28 @@ def generate(
     atomic_json(folder / "workflow-api.json", graph)
     atomic_json(folder / "workflow.json", ui)
     run.state = "unknown"
-    save_run(project, run)
+    with collection_lock(project):
+        save_run(project, run)
     try:
-        run.prompt_id = client.submit(graph, ui, str(run_id))
+        prompt_id = client.submit(graph, ui, str(run_id))
     except SubmissionUnknown as exc:
         raise SubmissionUnknown(
             f"受付結果が不明です。collect {run_id} で照合してください。"
         ) from exc
     except KomaquillError:
-        run.state = "failed"
-        run.error = "生成要求が受け付けられませんでした。"
-        save_run(project, run)
+        with collection_lock(project):
+            run = Run.model_validate_json((folder / "run.json").read_bytes())
+            if run.state not in {"saved", "failed"}:
+                run.state = "failed"
+                run.error = "生成要求が受け付けられませんでした。"
+                save_run(project, run)
         raise
-    run.state = "queued"
-    save_run(project, run)
+    with collection_lock(project):
+        run = Run.model_validate_json((folder / "run.json").read_bytes())
+        run.prompt_id = prompt_id
+        if run.state not in {"saved", "failed"}:
+            run.state = "queued"
+        save_run(project, run)
     settings = project.settings()
     deadline = time.monotonic() + settings.generation_timeout
     while time.monotonic() < deadline:

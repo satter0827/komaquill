@@ -29,7 +29,7 @@ jobs:
           version: '0.13.5'
           enable-cache: false
       - name: 品質を確認する
-        run: uv run --locked python scripts/check.py
+        run: uv run --locked --extra colab-client python scripts/check.py
       - name: 配布物を確認する
         run: uv build --out-dir artifacts/dist
       - name: バージョンと配布対象を確認する

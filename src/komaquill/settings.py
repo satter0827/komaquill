@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     poll_interval: float = Field(default=2.0, gt=0)
     request_timeout: float = Field(default=30.0, gt=0)
     generation_timeout: float = Field(default=600.0, gt=0)
+    preparation_timeout: float = Field(default=900.0, gt=0)
+    shutdown_timeout: float = Field(default=600.0, gt=0)
+    execution_timeout: float = Field(default=86400.0, gt=0)
+    control_timeout: float = Field(default=90.0, gt=0)
+    local_port: int = Field(default=18188, ge=1024, le=65535)
+    remote_port: int = Field(default=8188, ge=1024, le=65535)
+    gpu: str = Field(default="T4", pattern=r"^(T4|L4|G4|H100|A100)$")
 
 
 @dataclass(frozen=True)
@@ -29,6 +36,10 @@ class Project:
     @property
     def artifacts(self) -> Path:
         return self.root / "artifacts"
+
+    @property
+    def runtime(self) -> Path:
+        return self.artifacts / "runtime"
 
     @property
     def session_file(self) -> Path:

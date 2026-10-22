@@ -30,11 +30,16 @@ def test_authentication_is_sent_but_error_body_is_hidden():
     password = "test-only-password"  # pragma: allowlist secret 試験用の値
 
     def respond(request):
-        expected = base64.b64encode(f"komaquill:{password}".encode()).decode()
+        expected = base64.b64encode(f"example-user:{password}".encode()).decode()
         assert request.headers["Authorization"] == "Basic " + expected
         return httpx.Response(401, text=password)
 
-    client = ComfyClient("https://example.com", password, transport=httpx.MockTransport(respond))
+    client = ComfyClient(
+        "https://example.com",
+        password,
+        username="example-user",
+        transport=httpx.MockTransport(respond),
+    )
     with pytest.raises(KomaquillError) as error:
         client.json("/system_stats")
     assert password not in str(error.value)
@@ -49,7 +54,10 @@ def test_redirect_does_not_forward_credentials():
         return httpx.Response(302, headers={"location": "https://other.example.com"})
 
     client = ComfyClient(
-        "https://example.com", "test-only-password", transport=httpx.MockTransport(respond)
+        "https://example.com",
+        "test-only-password",
+        username="example-user",
+        transport=httpx.MockTransport(respond),
     )
     with pytest.raises(KomaquillError):
         client.json("/system_stats")

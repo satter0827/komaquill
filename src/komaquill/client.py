@@ -16,13 +16,17 @@ class ComfyClient:
     def __init__(
         self,
         endpoint: str,
-        password: str,
+        password: str | None = None,
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
+        *,
+        username: str | None = None,
     ) -> None:
         self.http = httpx.Client(
             base_url=endpoint,
-            auth=httpx.BasicAuth("komaquill", password),
+            auth=httpx.BasicAuth(username or "komaquill", password)
+            if password is not None
+            else None,
             timeout=timeout,
             follow_redirects=False,
             transport=transport,
@@ -42,7 +46,7 @@ class ComfyClient:
                     "受付結果が不明です。collect で履歴を照合してください。"
                 ) from exc
             raise KomaquillError(
-                "ComfyUIへ接続できません。接続先とColabを確認してください。"
+                "ComfyUIへ接続できません。接続先と start の実行状態を確認してください。"
             ) from exc
         if response.status_code == 401:
             raise KomaquillError("認証に失敗しました。start でパスワードを設定し直してください。")

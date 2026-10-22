@@ -1,4 +1,4 @@
-"""Colabでuvと固定した依存関係を用意する。"""
+"""GPU側でuvと固定した依存関係を用意する。"""
 
 import hashlib
 import os
@@ -50,12 +50,15 @@ def main() -> None:
         env[key] = str(artifacts / relative)
     (artifacts / "tmp").mkdir(exist_ok=True)
     subprocess.run(
-        [str(uv), "sync", "--locked", "--extra", "colab", "--no-dev"], cwd=root, env=env, check=True
+        [str(uv), "sync", "--locked", "--extra", "worker", "--no-dev"],
+        cwd=root,
+        env=env,
+        check=True,
     )
     print("ComfyUIとモデルを準備しています。", flush=True)
     python = artifacts / "runtime/venv/bin/python"
     subprocess.run(
-        [str(python), "-u", "-m", "komaquill.colab_runtime", str(root)],
+        [str(python), "-u", "-m", "komaquill.worker", str(root)],
         cwd=root,
         env=env,
         check=True,

@@ -1,6 +1,5 @@
 """公開ワークフローとパッケージの構造を検証する。"""
 
-import json
 import os
 import subprocess
 import sys
@@ -55,7 +54,7 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
         "PYTHONPYCACHEPREFIX": str(ROOT / "artifacts/cache/pycache"),
     }
     subprocess.run(
-        [sys.executable, "-c", "import komaquill.cli, komaquill.colab_runtime"],
+        [sys.executable, "-c", "import komaquill.cli, komaquill.worker, komaquill.colab"],
         cwd=tmp_path,
         env=env,
         check=True,
@@ -78,11 +77,3 @@ def test_subdirectory_uses_the_project_artifacts(monkeypatch):
     monkeypatch.delenv("KOMAQUILL_PROJECT_DIR", raising=False)
     monkeypatch.chdir(ROOT / "src/komaquill")
     assert find_project().artifacts == ROOT / "artifacts"
-
-
-def test_notebook_contains_no_saved_output():
-    notebook = json.loads((ROOT / "notebooks/comfyui.ipynb").read_text(encoding="utf-8"))
-    assert notebook["metadata"]["colab"]["private_outputs"]
-    for cell in notebook["cells"]:
-        assert not cell.get("outputs")
-        assert cell.get("execution_count") is None

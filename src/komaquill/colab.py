@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 from filelock import FileLock, ReadWriteLock
 from pydantic import BaseModel
 
-from komaquill.errors import KomaquillError
+from komaquill.errors import AllocationRefused, KomaquillError
 from komaquill.settings import Project
 from komaquill.storage import atomic_json
 
@@ -51,6 +51,8 @@ class Colab:
             raise KomaquillError("Colab CLIがありません。環境を準備し直してください。") from None
         if installed != COLAB_CLI_VERSION:
             raise KomaquillError("Colab CLIの版が異なります。環境を準備し直してください。")
+        # 公式CLIはロックの初期化後に親フォルダーを作るため、先に用意する。
+        self.config.parent.mkdir(parents=True, exist_ok=True)
         return [
             sys.executable,
             "-m",
@@ -66,8 +68,8 @@ class Colab:
             result = subprocess.run(
                 self.command(*arguments),
                 stdin=None if interactive else subprocess.DEVNULL,
-                stdout=None if interactive else subprocess.DEVNULL,
-                stderr=None if interactive else subprocess.DEVNULL,
+                stdout=None if interactive else subprocess.PIPE,
+                stderr=None if interactive else subprocess.PIPE,
                 timeout=self.project.settings().preparation_timeout
                 if arguments[0] == "new"
                 else self.project.settings().control_timeout,
@@ -78,6 +80,15 @@ class Colab:
                 "Colabの操作が時間内に完了しませんでした。status と stop で確認してください。"
             ) from None
         if result.returncode:
+            output = (result.stdout or b"") + (result.stderr or b"")
+            if b"Allocation refused" in output:
+                raise AllocationRefused(
+                    "Colabが確保を拒否しました。利用枠、空き状況、他の利用中ランタイムを確認してください。"
+                )
+            if b"Backend rejected accelerator" in output:
+                raise AllocationRefused(
+                    "指定GPUを利用できません。Colabのプランと利用枠を確認してください。"
+                )
             raise KomaquillError(
                 "Colabの操作に失敗しました。Google認証とランタイムの利用状態を確認してください。"
             )
@@ -121,17 +132,24 @@ class Colab:
             receipt = Receipt(
                 name=f"komaquill-{uuid4().hex}", runtime_id=uuid4(), source_revision=revision
             )
+            # 認証と公式ロックの初期化が成功してから確保へ進む。
+            authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
+            self.call("status", "-s", receipt.name, interactive=not authenticated)
             atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
             # 初回だけ公式のGoogle認証を端末で行う。秘密情報を独自に扱わない。
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
-            self.call(
-                "new",
-                "-s",
-                receipt.name,
-                "--gpu",
-                self.project.settings().gpu,
-                interactive=not authenticated,
-            )
+            try:
+                self.call(
+                    "new",
+                    "-s",
+                    receipt.name,
+                    "--gpu",
+                    self.project.settings().gpu,
+                    interactive=not authenticated,
+                )
+            except AllocationRefused:
+                self.receipt_file.unlink()
+                raise
             entry = self.entry(receipt)
             if entry is None:
                 raise KomaquillError(
@@ -148,7 +166,13 @@ class Colab:
             receipt = self.receipt()
             if receipt is None:
                 return
-            if self.refresh(receipt):
+            active = self.refresh(receipt)
+            entry = self.entry(receipt)
+            if receipt.endpoint_id is None and entry is None:
+                raise KomaquillError(
+                    "確保結果を確認できません。Colabの利用中ランタイムを確認してください。管理記録を残しました。"
+                )
+            if active:
                 self.call("stop", "-s", receipt.name)
                 if self.refresh(receipt):
                     raise KomaquillError(

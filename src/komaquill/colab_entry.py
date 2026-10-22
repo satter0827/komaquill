@@ -1,8 +1,12 @@
 """公式Colab CLIを詳細ログと秘密情報を含む例外表示なしで起動する。"""
 
 import importlib
+import json
 import logging
+import os
 import sys
+import traceback
+from pathlib import Path
 
 import click
 
@@ -18,7 +22,32 @@ def main() -> None:
         raise SystemExit(error.exit_code) from None
     except KeyboardInterrupt:
         raise SystemExit(130) from None
-    except Exception:
+    except Exception as error:
+        root = os.environ.get("KOMAQUILL_PROJECT_DIR")
+        if root:
+            # 例外の本文、引数、ローカル変数、HTTP本文は保存しない。
+            response = getattr(error, "response", None)
+            status = getattr(response, "status_code", None)
+            diagnostic = {
+                "type": type(error).__name__,
+                "status": status if isinstance(status, int) else None,
+                "frames": [
+                    {
+                        "file": Path(frame.filename).name,
+                        "function": frame.name,
+                        "line": frame.lineno,
+                    }
+                    for frame in traceback.extract_tb(error.__traceback__)
+                ],
+            }
+            try:
+                target = Path(root) / "artifacts/logs/colab-cli-error.json"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+            except OSError:
+                pass
         print("Colabの操作に失敗しました。認証と接続状態を確認してください。", file=sys.stderr)
         raise SystemExit(1) from None
 

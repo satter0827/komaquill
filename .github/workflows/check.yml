@@ -3,6 +3,7 @@ on:
   pull_request:
   push:
     branches: [main, 'feat/**', 'fix/**', 'chore/**']
+    tags: ['v*']
 permissions:
   contents: read
 env:
@@ -31,6 +32,8 @@ jobs:
         run: uv run --locked python scripts/check.py
       - name: 配布物を確認する
         run: uv build --out-dir artifacts/dist
+      - name: バージョンと配布対象を確認する
+        run: uv run --locked python scripts/check_package.py
   quality:
     name: quality
     needs: checks

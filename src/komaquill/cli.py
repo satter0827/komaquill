@@ -28,8 +28,9 @@ app = typer.Typer(
     help="ColabのComfyUIで画像を生成し、ローカルへ保存します。",
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
+    add_completion=False,
 )
-models_app = typer.Typer(help="モデルを取得します。", no_args_is_help=True)
+models_app = typer.Typer(help="モデルを取得します。", no_args_is_help=True, add_completion=False)
 app.add_typer(models_app, name="models")
 
 

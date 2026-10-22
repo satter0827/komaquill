@@ -17,6 +17,7 @@ def main() -> None:
     tools.mkdir(parents=True, exist_ok=True)
     config = tomllib.loads((root / "src/komaquill/resources/runtime.toml").read_text())
     uv = tools / "uv"
+    print("実行環境を準備しています。", flush=True)
     if not uv.is_file():
         asset = "uv-x86_64-unknown-linux-gnu.tar.gz"
         base = f"https://github.com/astral-sh/uv/releases/download/{config['uv_version']}/{asset}"
@@ -48,9 +49,13 @@ def main() -> None:
     subprocess.run(
         [str(uv), "sync", "--locked", "--extra", "colab", "--no-dev"], cwd=root, env=env, check=True
     )
+    print("ComfyUIとモデルを準備しています。", flush=True)
     python = artifacts / "runtime/venv/bin/python"
     subprocess.run(
-        [str(python), "-m", "komaquill.colab_runtime", str(root)], cwd=root, env=env, check=True
+        [str(python), "-u", "-m", "komaquill.colab_runtime", str(root)],
+        cwd=root,
+        env=env,
+        check=True,
     )
 
 

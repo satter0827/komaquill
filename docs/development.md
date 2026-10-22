@@ -28,6 +28,7 @@ activate.ps1のkomaquill関数も `python -m komaquill` を呼び出します。
 
 リリース時はmain上の版と一致する `v0.1.0` 等のタグを作成します。公開済みタグは変更・削除できません。
 配布物は `uv build --out-dir artifacts/dist` で生成します。PyPIへの自動公開は行いません。
+作成後に `python scripts/check_package.py` で版の一致、必要なワークフローの同梱、生成物の混入がないことを確認します。
 
 ## Colab検証
 

@@ -198,8 +198,8 @@ def main(root: Path) -> None:
     caddyfile = runtime / "Caddyfile"
     caddyfile.write_text(
         "{\n admin off\n}\n"
-        + proxy
-        + " {\n basic_auth {\n  komaquill "
+        + f"http://:{config['proxy_port']}"
+        + " {\n bind 127.0.0.1\n basic_auth {\n  komaquill "
         + hashed
         + "\n }\n reverse_proxy 127.0.0.1:"
         + str(config["comfy_port"])

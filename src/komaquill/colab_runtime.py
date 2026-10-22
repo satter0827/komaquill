@@ -159,7 +159,7 @@ def main(root: Path) -> None:
     project = Project(root.resolve())
     config = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
     password = os.environ.pop("KOMAQUILL_PASSWORD", "")
-    if len(password) < 20:
+    if len(password) < 20 or "\n" in password or "\r" in password:
         raise KomaquillError("Colab Secretsに20文字以上のKOMAQUILL_PASSWORDを設定してください。")
     if not torch.cuda.is_available():
         raise KomaquillError("GPUがありません。ColabのランタイムでGPUを選択してください。")
@@ -190,7 +190,10 @@ def main(root: Path) -> None:
     cloudflared = download_tool(tools, "cloudflared", config["cloudflared"])
     hashed = (
         subprocess.run(
-            [str(caddy), "hash-password"], input=password.encode(), capture_output=True, check=True
+            [str(caddy), "hash-password", "--algorithm", "argon2id"],
+            input=(password + "\n").encode(),
+            capture_output=True,
+            check=True,
         )
         .stdout.decode()
         .strip()
@@ -199,7 +202,7 @@ def main(root: Path) -> None:
     caddyfile.write_text(
         "{\n admin off\n}\n"
         + f"http://:{config['proxy_port']}"
-        + " {\n bind 127.0.0.1\n basic_auth {\n  komaquill "
+        + " {\n bind 127.0.0.1\n basic_auth argon2id {\n  komaquill "
         + hashed
         + "\n }\n reverse_proxy 127.0.0.1:"
         + str(config["comfy_port"])

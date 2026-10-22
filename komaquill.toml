@@ -1,0 +1,4 @@
+# 保存先はこのファイルのあるフォルダーを基準に決まります。
+poll_interval = 2.0
+request_timeout = 30.0
+generation_timeout = 600.0

@@ -1,0 +1,7 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {"label": "環境を準備する", "type": "process", "command": "pwsh", "args": ["-NoProfile", "-File", "${workspaceFolder}/scripts/setup.ps1", "-InstallExtensions"], "options": {"cwd": "${workspaceFolder}"}, "problemMatcher": []},
+    {"label": "品質を確認する", "type": "process", "command": "${workspaceFolder}/artifacts/runtime/venv/Scripts/python.exe", "args": ["${workspaceFolder}/scripts/check.py"], "options": {"cwd": "${workspaceFolder}", "env": {"PYTHONUTF8": "1", "PYTHONPYCACHEPREFIX": "${workspaceFolder}/artifacts/cache/pycache"}}, "problemMatcher": [], "group": {"kind": "test", "isDefault": true}}
+  ]
+}

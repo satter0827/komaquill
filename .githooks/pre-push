@@ -1,0 +1,9 @@
+#!/bin/sh
+# Git for WindowsのPowerShell 7またはWindows PowerShellから共通検査を呼びます。
+if command -v pwsh >/dev/null 2>&1; then
+    exec pwsh -NoProfile -File scripts/security.ps1
+elif command -v powershell.exe >/dev/null 2>&1; then
+    exec powershell.exe -NoProfile -File scripts/security.ps1
+else
+    exec python scripts/security.py
+fi

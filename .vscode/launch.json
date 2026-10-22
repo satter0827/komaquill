@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {"name": "Colabに接続する", "type": "debugpy", "request": "launch", "module": "komaquill", "args": ["start"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env", "justMyCode": true},
+    {"name": "画像を生成する", "type": "debugpy", "request": "launch", "module": "komaquill", "args": ["generate"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env", "justMyCode": true},
+    {"name": "入力画面を開く", "type": "debugpy", "request": "launch", "module": "komaquill", "args": ["open", "--view", "app"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env", "justMyCode": true},
+    {"name": "ノード画面を開く", "type": "debugpy", "request": "launch", "module": "komaquill", "args": ["open", "--view", "graph"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env", "justMyCode": true},
+    {"name": "結果を回収する", "type": "debugpy", "request": "launch", "module": "komaquill", "args": ["collect"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env", "justMyCode": true},
+    {"name": "接続を確認する", "type": "debugpy", "request": "launch", "module": "komaquill", "args": ["doctor"], "cwd": "${workspaceFolder}", "console": "integratedTerminal", "envFile": "${workspaceFolder}/artifacts/runtime/vscode.env", "justMyCode": true}
+  ]
+}

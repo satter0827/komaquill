@@ -1,4 +1,4 @@
-name: 検証
+name: Checks
 on:
   pull_request:
   push:
@@ -14,7 +14,7 @@ env:
   PYTHONUTF8: '1'
 jobs:
   checks:
-    name: 検査 (${{ matrix.os }})
+    name: Checks (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -36,7 +36,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: 全環境の成功を確認する
+      - name: Verify all platforms
         env:
           CHECK_RESULT: ${{ needs.checks.result }}
         run: test "$CHECK_RESULT" = success
@@ -52,5 +52,5 @@ jobs:
         with:
           version: '0.13.5'
           enable-cache: false
-      - name: 公開対象を確認する
+      - name: Check publishable files
         run: uv run --locked python scripts/check.py --group security

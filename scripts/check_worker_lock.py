@@ -7,13 +7,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from komaquill.messages import message
+
 
 def main(*, write: bool = False) -> None:
     """Export without resolving new versions and compare exact normalized content."""
     root = Path(__file__).resolve().parents[1]
     executable = os.environ.get("KOMAQUILL_UV") or shutil.which("uv")
     if not executable:
-        raise SystemExit("uvが見つかりません。開発環境を有効にしてください。")
+        raise SystemExit(message("quality.uv_is_unavailable_activate_the_development_environment"))
     temporary = root / ".artifacts/tmp"
     temporary.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="worker-lock-", dir=temporary) as folder:
@@ -48,13 +50,15 @@ def main(*, write: bool = False) -> None:
         if write:
             expected.write_text(content, encoding="utf-8")
         if content != expected.read_text(encoding="utf-8"):
-            raise SystemExit(
-                "GPU依存の固定定義がuv.lockと一致しません。依存定義を書き出し直してください。"
-            )
-    print("GPU依存とuv.lockの一致を確認しました。")
+            raise SystemExit(message("quality.gpu_dependencies_differ_from_uv_lock_export_the"))
+    print(message("quality.gpu_dependencies_match_uv_lock"))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="GPU依存の固定定義を検査します。")
-    parser.add_argument("--write", action="store_true", help="uv.lockから固定定義を書き出します。")
+    parser = argparse.ArgumentParser(description=message("quality.verify_pinned_gpu_dependencies"))
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help=message("quality.export_pinned_gpu_dependencies_from_uv_lock"),
+    )
     main(write=parser.parse_args().write)

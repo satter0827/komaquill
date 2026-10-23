@@ -13,7 +13,8 @@
       "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "start"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Open ComfyUI",
@@ -29,7 +30,8 @@
         "open",
         "--view",
         "${input:view}"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Generate Image",
@@ -45,7 +47,8 @@
         "generate",
         "--prompt",
         "${input:prompt}"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Collect Results",
@@ -59,7 +62,8 @@
       "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "collect"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Show Status",
@@ -73,7 +77,8 @@
       "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "status"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Check ComfyUI",
@@ -87,7 +92,8 @@
       "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "doctor"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Stop ComfyUI",
@@ -102,7 +108,8 @@
       "args": [
         "stop",
         "${input:stopMode}"
-      ]
+      ],
+      "subProcess": false
     },
     {
       "name": "Run CLI with Arguments",
@@ -114,7 +121,8 @@
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
       "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
-      "args": "${command:pickArgs}"
+      "args": "${command:pickArgs}",
+      "subProcess": false
     }
   ],
   "inputs": [

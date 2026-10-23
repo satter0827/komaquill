@@ -1,7 +1,7 @@
-# 実行結果・モデル・環境・キャッシュ
+# Results, models, environments and caches
 /.artifacts/
 
-# 資格情報
+# Credentials
 .env
 .env.*
 !.env.example
@@ -9,7 +9,7 @@
 *.key
 credentials*.json
 
-# 誤った場所に作られた生成物と実行環境
+# Generated files and environments outside the workspace storage
 /artifacts/
 .venv/
 __pycache__/
@@ -23,7 +23,7 @@ dist/
 build/
 *.egg-info/
 
-# モデルの誤追加を防止
+# Prevent accidental model commits
 *.safetensors
 *.ckpt
 *.pt

@@ -10,6 +10,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from komaquill.infrastructure.provenance import code_sha256, source_revision
+from komaquill.messages import message
+
 
 def main(group: str = "all") -> None:
     """Run selected gates, preserving a report even if a command fails."""
@@ -29,7 +32,9 @@ def main(group: str = "all") -> None:
     if group in {"all", "quality"}:
         uv = env.get("KOMAQUILL_UV") or shutil.which("uv")
         if not uv:
-            raise SystemExit("uv is unavailable. Activate the development environment.")
+            raise SystemExit(
+                message("quality.uv_is_unavailable_activate_the_development_environment")
+            )
         dist = root / ".artifacts/dist" / report.name
         commands.extend(
             [
@@ -48,9 +53,8 @@ def main(group: str = "all") -> None:
                     python,
                     "-m",
                     "pytest",
-                    "--ignore=tests/test_wheel.py",
-                    "--ignore=tests/test_live.py",
-                    "--ignore=tests/test_live_shutdown.py",
+                    "--ignore=tests/e2e",
+                    "--ignore=tests/live",
                     f"--junitxml={report / 'results.xml'}",
                     "--cov",
                     "--cov-branch",
@@ -92,6 +96,8 @@ def main(group: str = "all") -> None:
                 {
                     "finished_at": datetime.now(UTC).isoformat(),
                     "group": group,
+                    "source_revision": source_revision(),
+                    "code_sha256": code_sha256(),
                     "steps": results,
                 },
                 indent=2,
@@ -99,14 +105,14 @@ def main(group: str = "all") -> None:
             + "\n",
             encoding="utf-8",
         )
-        print(f"Check report: {report}")
+        print(message("quality.check_report", path=report))
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run GPU-free project checks.")
+    parser = argparse.ArgumentParser(description=message("quality.run_project_checks"))
     parser.add_argument("--group", choices=["all", "quality", "security"], default="all")
     try:
         main(parser.parse_args().group)
     except subprocess.CalledProcessError as error:
-        print("Project checks failed. Review the failed step above.", file=sys.stderr)
+        print(message("quality.project_checks_failed"), file=sys.stderr)
         raise SystemExit(error.returncode) from None

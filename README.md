@@ -42,7 +42,7 @@ komaquill --version
 komaquill start
 ```
 
-初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。「接続しました」と表示されたら、その端末を開いたままにします。
+初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。「Connected.」と表示されたら、その端末を開いたままにします。
 
 別の端末で同じ作業フォルダーを開き、次を実行します。ソースから導入した場合は、その端末でもbootstrap/activate.ps1を読み込みます。
 

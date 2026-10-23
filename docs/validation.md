@@ -12,9 +12,6 @@ ColabのGPUはT4、モデルはSD 1.5 FP16です。Python、公式Colab CLI、Co
 
 ```powershell
 python scripts/check.py
-python scripts/security.py
-uv build --out-dir .artifacts/dist
-python scripts/check_package.py
 ```
 
 すべて終了コード0で完了することを確認します。検査結果は`.artifacts/reports/quality/`、テスト用の一時ファイルは`.artifacts/tmp/pytest-プロセスID/`へ保存します。
@@ -26,7 +23,7 @@ python scripts/check_package.py
 | 終了 | 通常・強制終了、監視停止後の復旧、再接続・表示・回収の異常時もGPU終了を試行、所有記録の保持 |
 | ログ | 個別取得、既存ファイルの保全、秘密情報の除外 |
 | 外部接続 | 接続前の画像の除外、未回収要求の再照合、外部サーバーの継続 |
-| 構造と保存先 | 依存の4契約、.artifactsへの統一、Gitと配布物からの除外 |
+| 構造と保存先 | 依存方向と循環参照、.artifactsへの統一、Gitと配布物からの除外 |
 
 ## Colabと画面の実機検証
 
@@ -58,18 +55,21 @@ PCの電源断、ランタイム消失、監視が確認する前に失われた
 
 ## 確認済みの構成
 
-2026年10月23日にWindows ARM64、x64 Python 3.12.15、uv 0.13.5、公式Colab CLI 0.7.5、T4、SD 1.5 FP16で確認しました。GPU側はComfyUI 63be2f9、フロントエンド1.55.18です。検証したGPU用コードのSHA256は24d88ad5b54b08f6058cd4ae77afd1af735019d508841de756feeffdac4a5fb5です。
+パッケージ版0.1.0.dev0を、2026年10月23日16時台から17時台（日本時間）に検証しました。
+2026年10月23日にWindows ARM64、x64 Python 3.12.15、uv 0.13.5、公式Colab CLI 0.7.5、T4、SD 1.5 FP16で確認しました。GPU側はComfyUI 63be2f9、フロントエンド1.55.18です。検証したGPU用コードのSHA256は6006c55e03dce0ad76ed7987d382ebec0a32d4f05cacdb8f035c7cc2fa522672です。
 
 | 手順 | 結果 |
 |---|---|
 | CLI、App Mode、Node Graphからの生成 | 512×512画像と条件をローカルへ保存 |
 | HTTP・WebSocket、再回収 | 接続成功。保存済み画像の重複なし |
-| 起動中の環境変数変更と二重起動 | 起動設定を維持。二重起動を拒否 |
-| 通常終了 | 実行中の生成を待って保存。ログ3点取得、GPU終了、所有記録削除 |
-| 監視・SSHの中断後の強制終了 | 同じGPUへの接続を復旧。未完了要求1件をlostへ確定して終了 |
-| 終了後 | 所有記録、関連プロセス、待ち受けの残存を確認 |
-| 保存済みデータ | 元のモデル・画像・履歴・ログ110ファイルのサイズとSHA256が一致 |
+| 設定変更と二重起動 | 起動設定の保持と二重起動の拒否を回帰テストで確認 |
+| 通常終了 | 実行中の200ステップの生成を待って保存。ログ3点取得、GPU終了、所有記録削除 |
+| 監視・SSHの中断後の強制終了 | 同じGPUへの接続を復旧。意図的に中断した未完了要求1件をlostへ確定して終了 |
+| 終了後 | 所有記録・関連プロセス・18188番ポートの待ち受けが残っていないことを確認。再停止でも新規GPU確保なし |
+| 保存済みデータ | 元のモデル・画像・履歴110ファイルのサイズとSHA256が一致。既存25件の画像とlost 2件を保持し、検証で画像4件とlost 1件を追加 |
 | wheel | Gitを参照しない隔離環境で初期化、外部接続、生成・保存、転送物作成に成功 |
+
+ComfyUIはCUDA最適化とTorchの非推奨機能について警告を出力します。uvは`venv --system`の指定が無効であることと、pylock読み込みが実験的機能であることを通知します。この構成で画像生成・回収・終了が成功することを確認しました。依存を更新する場合は警告の変化と実機の動作を再確認してください。
 
 requirements形式への出力ではパッケージごとのインデックス指定を保持できず、別配布物を選んでハッシュ不一致となることを確認しました。GPU用は配布URLとハッシュを保持するpylockへ統一しています。uv 0.13.5のpylock読み込みは実験的機能のため、uv更新時は固定定義の照合と実機導入を再確認してください。
 
@@ -77,9 +77,9 @@ requirements形式への出力ではパッケージごとのインデックス�
 
 ```powershell
 $env:KOMAQUILL_LIVE = '1'
-python -m pytest tests/test_live.py -q
+python -m pytest tests/live/test_live.py -q
 $env:KOMAQUILL_LIVE_STOP = 'normal'
-python -m pytest tests/test_live_shutdown.py -q
+python -m pytest tests/live/test_live_shutdown.py -q
 ```
 
 監視停止からの復旧と強制終了を確認する場合は、別の起動済みランタイムに対してKOMAQUILL_LIVE_STOPをrecovery-forceへ設定します。この試験は対象の所有IDと起動引数を確認してローカルの監視・接続を中断し、未完了要求を残してGPUを終了します。実機試験の環境変数は、通常の品質検査の前に解除してください。

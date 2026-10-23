@@ -1,74 +1,18 @@
 """Provide ComfyUI test boundaries without network or GPU dependencies."""
 
-import io
-import json
 import os
-from dataclasses import dataclass, field
+import shutil
+from contextlib import suppress
 from uuid import uuid4
 
 import httpx
 import pytest
-from PIL import Image
 
-from komaquill.client import ComfyClient
-from komaquill.models import JsonObject, Session
-from komaquill.settings import Project
-from komaquill.workflow import preset
-
-
-@dataclass
-class ComfyStub:
-    session: Session
-    history: JsonObject = field(default_factory=dict)
-    submissions: int = 0
-    image_requests: int = 0
-    drop_response: bool = False
-    image_fails: bool = False
-    corrupt_image: bool = False
-    invalid_images: set[str] = field(default_factory=set)
-    queue: JsonObject = field(default_factory=lambda: {"queue_running": [], "queue_pending": []})
-
-    def respond(self, request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path == "/userdata/komaquill/session.json":
-            return httpx.Response(200, json=self.session.model_dump(mode="json"))
-        if path == "/history":
-            return httpx.Response(200, json=self.history)
-        if path == "/queue":
-            return httpx.Response(200, json=self.queue)
-        if path == "/prompt":
-            self.submissions += 1
-            data = json.loads(request.content)
-            prompt_id = str(uuid4())
-            self.history[prompt_id] = {
-                "prompt": [0, prompt_id, data["prompt"], data["extra_data"], ["9"]],
-                "outputs": {
-                    "9": {
-                        "images": [
-                            {"filename": "../../outside.png", "subfolder": "", "type": "output"}
-                        ]
-                    }
-                },
-                "status": {"status_str": "success", "completed": True},
-            }
-            if self.drop_response:
-                raise httpx.ReadTimeout("connection interrupted", request=request)
-            return httpx.Response(200, json={"prompt_id": prompt_id})
-        if path == "/view":
-            self.image_requests += 1
-            if self.image_fails:
-                raise httpx.ReadError("interrupted", request=request)
-            output = io.BytesIO()
-            Image.new("RGB", (8, 8), "green").save(output, "PNG")
-            return httpx.Response(
-                200,
-                content=b"not an image"
-                if self.corrupt_image or request.url.params.get("filename") in self.invalid_images
-                else output.getvalue(),
-            )
-        if path == "/system_stats":
-            return httpx.Response(200, json={"devices": [{"type": "cuda"}]})
-        return httpx.Response(404)
+from komaquill.domain.models import Session
+from komaquill.infrastructure.comfyui import ComfyClient
+from komaquill.infrastructure.configuration import Project
+from komaquill.infrastructure.workflows import preset
+from tests.support.comfy import ComfyStub
 
 
 @pytest.fixture
@@ -105,3 +49,17 @@ def client(stub):
     connection = ComfyClient(stub.session.endpoint, transport=httpx.MockTransport(stub.respond))
     yield connection
     connection.close()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Remove only the runner-owned temporary workspace, skipping locked files."""
+    folder = session.config.option.basetemp
+    if folder is None:
+        return
+    from pathlib import Path
+
+    folder = Path(folder).resolve()
+    allowed = (session.config.rootpath / ".artifacts/tmp").resolve()
+    if folder.is_relative_to(allowed) and folder != allowed:
+        with suppress(OSError):
+            shutil.rmtree(folder)

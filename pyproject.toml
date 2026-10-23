@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "komaquill"
 version = "0.1.0.dev0"
-description = "ComfyUIとGoogle Colabで画像を生成し、作品をローカルへ保存するCLI"
+description = "Generate images with ComfyUI and Colab and save results locally"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-komaquill = "komaquill.cli:app"
+komaquill = "komaquill.__main__:main"
 
 [project.optional-dependencies]
 colab-client = ["google-colab-cli==0.7.5"]
@@ -55,6 +55,7 @@ dev = [
 packages = ["src/komaquill"]
 
 [tool.hatch.build.targets.sdist]
+exclude = [".vscode/settings.json"]
 include = ["src", "tests", "scripts", "bootstrap", "docs", "README.md", "CONTRIBUTING.md", "AGENTS.md", "komaquill.toml", "pyproject.toml", "uv.lock", ".python-version", ".vscode", ".github", ".githooks", ".gitattributes", ".gitignore"]
 
 [tool.ruff]
@@ -103,24 +104,24 @@ root_package = "komaquill"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "循環参照を禁止する"
+name = "Acyclic package boundaries"
 type = "acyclic_siblings"
-ancestors = ["komaquill"]
+ancestors = ["komaquill", "komaquill.domain", "komaquill.application"]
 
 [[tool.importlinter.contracts]]
-name = "CLIへの逆依存を禁止する"
+name = "Application and domain do not import concrete adapters or presentation"
 type = "forbidden"
-source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads", "komaquill.events", "komaquill.provenance"]
-forbidden_modules = ["komaquill.cli", "komaquill.__main__"]
+source_modules = ["komaquill.application", "komaquill.domain"]
+forbidden_modules = ["komaquill.infrastructure", "komaquill.interfaces", "komaquill.gpu", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli"]
 
 [[tool.importlinter.contracts]]
-name = "生成と保存からColab制御への依存を禁止する"
+name = "GPU code does not import local interfaces or control"
 type = "forbidden"
-source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads", "komaquill.events", "komaquill.provenance"]
-forbidden_modules = ["komaquill.colab", "komaquill.colab_entry", "komaquill.runtime", "colab_cli"]
+source_modules = ["komaquill.gpu"]
+forbidden_modules = ["komaquill.interfaces", "komaquill.infrastructure.colab", "komaquill.infrastructure.runtime", "komaquill.infrastructure.colab_entry"]
 
 [[tool.importlinter.contracts]]
-name = "本体から開発用モジュールへの依存を禁止する"
+name = "Product code does not import development dependencies"
 type = "forbidden"
 source_modules = ["komaquill"]
 forbidden_modules = ["tests", "scripts", "pytest", "debugpy"]

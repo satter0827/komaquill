@@ -17,3 +17,10 @@ $KomaquillUv = Join-Path $KomaquillRoot '.artifacts/runtime/uv/uv.exe'
 $KomaquillPython = Join-Path $env:UV_PROJECT_ENVIRONMENT 'Scripts/python.exe'
 
 $env:KOMAQUILL_UV = $KomaquillUv
+
+# Read text without depending on the Python environment being installed.
+$KomaquillMessages = Get-Content -LiteralPath (Join-Path $KomaquillRoot 'src/komaquill/resources/messages.json') -Raw -Encoding utf8 | ConvertFrom-Json -AsHashtable
+function Get-KomaquillMessage([string]$Key) {
+    if (-not $KomaquillMessages.ContainsKey($Key)) { throw 'Message definitions are unavailable. Restore the source files.' }
+    return $KomaquillMessages[$Key]
+}

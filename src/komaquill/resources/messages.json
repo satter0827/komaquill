@@ -252,5 +252,10 @@
   "ui.generated": "Generation complete",
   "ui.retry": "Collection required",
   "ui.unavailable": "Local monitor is unavailable. Run start to resume preservation.",
-  "ui.cancel": "Cancel Preparation"
+  "ui.cancel": "Cancel Preparation",
+  "materials.lost": "Materials could not be preserved before the runtime ended: {identities}. Restore them from their source files before retrying.",
+  "materials.status": "Unpreserved materials: {count}",
+  "assets.status": "Model preparations awaiting completion: {count}",
+  "materials.shutdown": "Materials: {result}",
+  "quality.source_changed": "Source files changed during verification. Run the checks again before using this result."
 }

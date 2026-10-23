@@ -28,6 +28,7 @@ from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import create_payload
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.materials import MaterialCollector, finalize_materials
 from komaquill.infrastructure.monitor_state import (
     cancel_requested,
     check_cancel,
@@ -124,6 +125,15 @@ def drain(
                 request_stop(project, session, True)
             try:
                 result = collect(project, client, session)
+                material_errors = preserve(project, client) or ()
+                if material_errors:
+                    result = Collection(
+                        result.saved,
+                        result.pending,
+                        result.failed,
+                        (*result.errors, *material_errors),
+                        result.pending_ids,
+                    )
                 saved += result.saved
                 if result.saved:
                     echo(message("text.saved_saved", saved=result.saved))
@@ -149,7 +159,7 @@ def drain(
             if (
                 force
                 or stop_request(project, session) is True
-                or not result.pending_ids
+                or not (result.pending_ids or material_errors)
                 or time.monotonic() >= deadline
             ):
                 break
@@ -168,12 +178,13 @@ def watch(
     session: Session,
     echo: Callable[[str], None],
     reconnect: Callable[[], None] | None = None,
+    coordinator: Coordinator | None = None,
 ) -> bool:
     """Maintain the connection and collection until shutdown is requested."""
     project = project.configured(session.settings)
-    coordinator = Coordinator(project, client) if capabilities(client) else None
     disconnected = False
     previous_errors: tuple[UUID | str, ...] = ()
+    sidecar_failures: dict[str, object] = {}
     try:
         while stop_request(project, session) is None:
             if (cancel := cancel_requested(project)) is not None:
@@ -184,8 +195,37 @@ def watch(
                 if reconnect is not None:
                     reconnect()
                 if coordinator is not None:
-                    coordinator.tick()
+                    try:
+                        coordinator.tick()
+                        sidecar_failures.pop("preparation", None)
+                    except (KomaquillError, OSError, ValueError) as error:
+                        failure = failure_info(error, "preparation")
+                        if sidecar_failures.get("preparation") != failure:
+                            record_event(
+                                project,
+                                "preparation",
+                                "failed",
+                                runtime_id=session.runtime_id,
+                                failure=failure,
+                            )
+                            sidecar_failures["preparation"] = failure
                 result = collect(project, client, session)
+                if coordinator is not None:
+                    try:
+                        coordinator.materials.collect()
+                        coordinator.materials.notify_runs()
+                        sidecar_failures.pop("preservation", None)
+                    except (KomaquillError, OSError, ValueError) as error:
+                        failure = failure_info(error, "storage")
+                        if sidecar_failures.get("preservation") != failure:
+                            record_event(
+                                project,
+                                "preservation",
+                                "failed",
+                                runtime_id=session.runtime_id,
+                                failure=failure,
+                            )
+                            sidecar_failures["preservation"] = failure
                 if disconnected:
                     echo(message("text.reconnected"))
                     record_event(project, "connection", "restored", runtime_id=session.runtime_id)
@@ -215,6 +255,30 @@ def watch(
         echo(message("text.waiting_for_results_press_ctrl_c_again_to"))
         request_stop(project, session, False)
         return False
+
+
+def supervise(
+    project: Project,
+    client: ComfyClient,
+    session: Session,
+    echo: Callable[[str], None],
+    on_ready: Callable[[Session], None] | None,
+    reconnect: Callable[[], None] | None = None,
+) -> bool:
+    """Restore preserved materials before opening a ready session."""
+    coordinator = Coordinator(project, client) if capabilities(client) else None
+    try:
+        if coordinator is not None:
+            coordinator.materials.restore()
+        if on_ready is not None:
+            on_ready(session)
+        if coordinator is None:
+            return (
+                watch(project, client, session, echo, reconnect)
+                if reconnect
+                else watch(project, client, session, echo)
+            )
+        return watch(project, client, session, echo, reconnect, coordinator)
     finally:
         if coordinator is not None:
             try:
@@ -227,6 +291,15 @@ def watch(
                     runtime_id=session.runtime_id,
                     failure=failure_info(error, "preparation"),
                 )
+
+
+def preserve(project: Project, client: ComfyClient | None) -> tuple[str, ...] | None:
+    """Retry material collection independently of generation and GPU termination."""
+    if client is None or not capabilities(client):
+        return None
+    collector = MaterialCollector(project, client)
+    failures = collector.collect()
+    return tuple(failures)
 
 
 def finish_colab(
@@ -264,6 +337,9 @@ def finish_colab(
             raise errors[0]
 
     def display(result: ShutdownResult) -> None:
+        echo(message("materials.shutdown", result=result.materials))
+        if result.lost_materials:
+            echo(message("materials.lost", identities=", ".join(result.lost_materials)))
         if result.lost_ids:
             echo(
                 message("text.lost_lost_ids_count", lost_ids_count=len(result.lost_ids))
@@ -299,6 +375,8 @@ def finish_colab(
         release=lambda: colab.release(receipt),
         display=display,
         forced=lambda: session is not None and stop_request(project, session) is True,
+        preserve=lambda: preserve(project, client),
+        finalize_materials=lambda: finalize_materials(project, receipt.runtime_id),
     )
     result, released = shutdown(receipt.runtime_id, force, actions)
     for failure in result.errors:
@@ -398,9 +476,7 @@ def start_external(
         record_event(project, "connection", "ready", runtime_id=session.runtime_id)
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
-        if on_ready is not None:
-            on_ready(session)
-        force = watch(project, client, session, echo)
+        force = supervise(project, client, session, echo, on_ready)
     finally:
         try:
             if ready:
@@ -571,9 +647,7 @@ def start_colab(
             )
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
-        if on_ready is not None:
-            on_ready(session)
-        force = watch(project, client, session, echo, reconnect)
+        force = supervise(project, client, session, echo, on_ready, reconnect)
     except (Exception, KeyboardInterrupt) as error:
         if isinstance(error, KomaquillError) and error.code == "stopping":
             force = cancel_requested(project) is True

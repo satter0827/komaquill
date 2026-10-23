@@ -362,3 +362,31 @@ def test_stop_after_monitor_crash_attempts_gpu_stop_when_reconnect_fails(
     runtime.stop(project, True, lambda _: None)
     assert stopped == [True]
     assert colab.receipt() is None
+
+
+@pytest.mark.parametrize("stage", ["preparation", "preservation"])
+def test_sidecar_failure_never_prevents_image_collection(
+    project, client, session, monkeypatch, stage
+):
+    from types import SimpleNamespace
+
+    client.submit(resource_json("workflow-api.json"), {}, "new-browser")
+    calls = []
+
+    def fail():
+        raise KomaquillError(code="http_failed")
+
+    def pause(_):
+        atomic_json(
+            project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
+        )
+
+    coordinator = SimpleNamespace(
+        tick=fail if stage == "preparation" else lambda: None,
+        materials=SimpleNamespace(
+            collect=fail if stage == "preservation" else lambda: [], notify_runs=lambda: None
+        ),
+    )
+    monkeypatch.setattr(runtime.time, "sleep", pause)
+    runtime.watch(project, client, session, calls.append, coordinator=coordinator)
+    assert load_runs(project)[0].state == "saved"

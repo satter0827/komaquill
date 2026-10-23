@@ -1,9 +1,23 @@
 """Define pinned assets and generation presets independently of transport."""
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+ModelRole = Literal[
+    "checkpoints",
+    "loras",
+    "upscale_models",
+    "diffusion_models",
+    "text_encoders",
+    "vae",
+    "controlnet",
+    "clip_vision",
+    "embeddings",
+    "style_models",
+]
+MODEL_ROLES: tuple[str, ...] = get_args(ModelRole)
 
 
 class ModelPreset(BaseModel):
@@ -11,18 +25,7 @@ class ModelPreset(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
-    role: Literal[
-        "checkpoints",
-        "loras",
-        "upscale_models",
-        "diffusion_models",
-        "text_encoders",
-        "vae",
-        "controlnet",
-        "clip_vision",
-        "embeddings",
-        "style_models",
-    ] = "checkpoints"
+    role: ModelRole = "checkpoints"
     repo_id: str = ""
     revision: str = ""
     url: str | None = None

@@ -21,6 +21,7 @@ from komaquill.infrastructure.asset_store import inventory, model_path, verified
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.model_sources import resolve_model
 from komaquill.infrastructure.storage import atomic_json, load_session
 from komaquill.messages import message
@@ -65,6 +66,7 @@ class Coordinator:
             token = secrets.token_urlsafe(32)
             keyring.set_password("komaquill-extension", key, token)
         self.headers = {"X-Komaquill-Control": token}
+        self.materials = MaterialCollector(project, client, self.headers)
         self.client.request(
             "POST",
             PREFIX + "/monitor",
@@ -83,12 +85,18 @@ class Coordinator:
 
     def plan(self, job: Preparation) -> None:
         hints, unsupported = requirements(job.workflow, self.client.json("/object_info"))
+        registered = inventory(self.project.artifacts)
         assets = []
+        for reference in list(unsupported):
+            matches = [m for m in registered if m.reference == reference]
+            if len(matches) == 1:
+                assets.append(matches[0])
+                unsupported.remove(reference)
         for hint in hints:
             try:
                 candidates = [
                     m
-                    for m in inventory(self.project.artifacts)
+                    for m in registered
                     if m.filename == hint["name"] and m.role == hint["directory"]
                 ]
                 asset = (

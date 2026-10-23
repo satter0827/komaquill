@@ -37,6 +37,9 @@ class MemoryRepository:
 
 
 class MemoryBackend:
+    def resolve_models(self, graph, ui):
+        return graph, ui
+
     def __init__(self):
         self.record = None
         self.submissions = 0

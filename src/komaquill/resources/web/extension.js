@@ -42,6 +42,12 @@ async function prepare() {
   finally { running = false; }
 }
 text = (await request("/capabilities")).messages;
+api.addEventListener("execution_success", () => notify("ui.generated"));
+api.addEventListener("komaquill_saved", (event) => {
+  const keys = {saving: "ui.saving", saved: "ui.saved", retry: "ui.retry"};
+  const key = keys[event.detail?.state];
+  if (key) notify(key, event.detail.state === "retry" ? "warn" : "success");
+});
 app.registerExtension({
   name: "komaquill.workspace",
   commands: [{id: "komaquill.prepare", label: text["ui.prepare"], function: prepare},

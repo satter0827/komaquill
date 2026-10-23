@@ -253,6 +253,8 @@ def generate(
     verify_runtime(client, session)
     run_id = uuid4()
     graph, ui = project.prepare(prompt, negative, seed, str(run_id), profile_name)
+    if session.backend == "external":
+        graph, ui = client.resolve_models(graph, ui)
     run = new_run(project, session, run_id, graph)
     run.state = "unknown"
     with collection_lock(project):

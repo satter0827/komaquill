@@ -60,7 +60,7 @@ komaquill open --view app
 komaquill open --view graph
 ```
 
-appは画像説明と結果を表示するApp Mode、graphは標準ノードを編集するNode Graphです。どちらも同じ接続とGPUを使い、openではGPUを追加確保しません。画面からの生成もstartが実際に実行されたグラフとともに自動保存します。未実行の編集内容は自動回収の対象ではありません。残したいワークフローはComfyUIのExportでJSONとしてローカルへ保存してください。openはブラウザーを起動したら端末へ戻ります。
+appは画像説明と結果を表示するApp Mode、graphは標準ノードを編集するNode Graphです。どちらも同じ接続とGPUを使い、openではGPUを追加確保しません。画面からの生成もstartが実際に実行されたグラフとともに自動保存します。標準の画像・マスクのアップロードとSaveしたワークフローも保全します。未保存の編集内容は対象外です。保存と復元の範囲は[素材の保全](docs/preservation.md)を参照してください。openはブラウザーを起動したら端末へ戻ります。
 
 VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen GeneratorやGenerate Imageを選びます。Open GeneratorはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。どの入口も同じCLIと品質ゲートを呼び出します。
 
@@ -109,6 +109,8 @@ komaquill start --backend external --endpoint http://127.0.0.1:8188
 | フォルダー | 内容 |
 |---|---|
 | .artifacts/runs/ | 画像、生成条件、履歴 |
+| .artifacts/inputs/ | 入力画像・マスクの版と参照情報 |
+| .artifacts/workflows/ | 保存したワークフローと入力の参照情報 |
 | .artifacts/models/ | モデルのローカル正本 |
 | .artifacts/state/ | 所有記録、接続情報、SSH鍵 |
 | .artifacts/logs/ | 実行ログ、状態変化、終了結果 |

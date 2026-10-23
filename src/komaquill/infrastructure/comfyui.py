@@ -113,6 +113,49 @@ class ComfyClient:
         """Read managed runtime metadata from standard userdata."""
         return self.json("/userdata/" + quote("komaquill/session.json", safe=""))
 
+    def resolve_models(self, graph: JsonObject, ui: JsonObject) -> tuple[JsonObject, JsonObject]:
+        """Use the external server's standard model choices without claiming their hashes."""
+        import re
+        from pathlib import PurePosixPath
+
+        references = {
+            value
+            for node in graph.values()
+            if isinstance(node, dict)
+            for key, value in node.get("inputs", {}).items()
+            if key.endswith(("_name", "_name1", "_name2", "_name3")) and isinstance(value, str)
+        }
+        if not any(re.match(r"^[a-f0-9]{64}/", value) for value in references):
+            return graph, ui
+        definitions = self.json("/object_info")
+        changes: dict[str, dict[str, str]] = {}
+        for identity, node in graph.items():
+            for key, value in node.get("inputs", {}).items():
+                if not isinstance(value, str) or value not in references:
+                    continue
+                choices = input_choices(definitions, node.get("class_type", ""), key)
+                if not choices or value in choices:
+                    continue
+                candidates = [
+                    name
+                    for name in choices
+                    if PurePosixPath(name).name == PurePosixPath(value).name
+                ]
+                if len(candidates) != 1:
+                    raise KomaquillError(
+                        code="invalid_request",
+                        display_key="text.the_selected_model_is_missing_check_the_comfyui",
+                    )
+                node["inputs"][key] = candidates[0]
+                changes.setdefault(str(identity), {})[value] = candidates[0]
+        for node in ui.get("nodes", []):
+            replacements = changes.get(str(node["id"]), {})
+            node["widgets_values"] = [
+                replacements.get(value, value) if isinstance(value, str) else value
+                for value in node.get("widgets_values", [])
+            ]
+        return graph, ui
+
     def submit(self, graph: JsonObject, ui: JsonObject, run_id: str) -> str:
         """Submit a request and distinguish an unknown acceptance result."""
         response = self.request(

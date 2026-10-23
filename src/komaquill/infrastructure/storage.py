@@ -186,6 +186,18 @@ def save_conditions(project: WorkspacePaths, run: Run, prompt: list[Any]) -> Non
         save_run(project, run)
     extra = prompt[3] if len(prompt) > 3 else {}
     if isinstance(extra, dict):
+        extension = extra.get("komaquill", {})
+        supplied = extension.get("input_sha256", {}) if isinstance(extension, dict) else {}
+        if isinstance(supplied, dict):
+            import re
+
+            run.input_sha256 = {
+                name: sha
+                for name, sha in supplied.items()
+                if isinstance(name, str)
+                and isinstance(sha, str)
+                and re.fullmatch(r"[0-9a-f]{64}", sha)
+            }
         metadata = extra.get("extra_pnginfo", {})
         ui = metadata.get("workflow") if isinstance(metadata, dict) else None
         if isinstance(ui, dict) and not (folder / "workflow.json").is_file():

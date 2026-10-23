@@ -2,7 +2,7 @@ param([switch]$InstallExtensions)
 . "$PSScriptRoot/env.ps1"
 $uvVersion = '0.13.5'
 $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
-if ($architecture -notin @('arm64', 'x64')) { throw 'Windows ARM64またはx64が必要です。' }
+if ($architecture -notin @('arm64', 'x64')) { throw (Get-KomaquillMessage 'bootstrap.architecture') }
 $uvArchitecture = if ($architecture -eq 'arm64') { 'aarch64' } else { 'x86_64' }
 $toolRoot = Join-Path $KomaquillRoot '.artifacts/runtime'
 New-Item -ItemType Directory -Path $toolRoot -Force | Out-Null
@@ -11,7 +11,7 @@ function Install-VerifiedZip([string]$Url, [string]$Digest, [string]$Destination
     $archivePath = Join-Path $toolRoot $ArchiveName
     Invoke-WebRequest -Uri $Url -OutFile $archivePath
     if ((Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Digest) {
-        throw '配布物のSHA256が一致しません。'
+        throw (Get-KomaquillMessage 'bootstrap.checksum')
     }
     Expand-Archive -LiteralPath $archivePath -DestinationPath $Destination -Force
 }
@@ -23,10 +23,10 @@ if (-not (Test-Path -LiteralPath $KomaquillUv)) {
 }
 $KomaquillPythonVersion = (Get-Content -LiteralPath (Join-Path $KomaquillRoot '.python-version') -Raw).Trim()
 & $KomaquillUv sync --locked --group dev --extra colab-client --python "cpython-$KomaquillPythonVersion-windows-x86_64-none" --project $KomaquillRoot
-if ($LASTEXITCODE -ne 0) { throw 'Python環境の導入に失敗しました。' }
+if ($LASTEXITCODE -ne 0) { throw (Get-KomaquillMessage 'bootstrap.python') }
 
 git -C $KomaquillRoot config core.hooksPath .githooks
-if ($LASTEXITCODE -ne 0) { throw '送信前検査の設定に失敗しました。' }
+if ($LASTEXITCODE -ne 0) { throw (Get-KomaquillMessage 'bootstrap.hooks') }
 $editorEnvironment = Join-Path $toolRoot 'vscode.env'
 @(
     "KOMAQUILL_PROJECT_DIR=$KomaquillRoot"
@@ -41,7 +41,7 @@ $editorEnvironment = Join-Path $toolRoot 'vscode.env'
 if ($InstallExtensions) {
     foreach ($extension in @('ms-python.python', 'ms-python.debugpy', 'charliermarsh.ruff')) {
         & code --install-extension $extension
-        if ($LASTEXITCODE -ne 0) { throw 'VS Code拡張機能の導入に失敗しました。' }
+        if ($LASTEXITCODE -ne 0) { throw (Get-KomaquillMessage 'bootstrap.extensions') }
     }
 }
-Write-Output '環境を準備しました。. ./bootstrap/activate.ps1 で有効にできます。'
+Write-Output (Get-KomaquillMessage 'bootstrap.ready')

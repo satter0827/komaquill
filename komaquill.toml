@@ -1,4 +1,4 @@
-# 保存先はこのファイルのあるフォルダーを基準に決まります。
+# Storage paths are relative to the directory containing this file.
 gpu = "T4"
 local_port = 18188
 remote_port = 8188

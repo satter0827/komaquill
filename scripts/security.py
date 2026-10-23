@@ -9,7 +9,8 @@ from pathlib import Path
 from detect_secrets.core.scan import scan_diff, scan_file
 from detect_secrets.settings import default_settings
 
-from komaquill.storage import atomic_json
+from komaquill.infrastructure.storage import atomic_json
+from komaquill.messages import message
 
 
 def git_text(root: Path, *arguments: str) -> str:
@@ -26,7 +27,7 @@ def main() -> None:
     tracked = git_text(root, "ls-files", "-z").split("\0")
     forbidden = (".artifacts/", "artifacts/", ".venv/", ".env", "__pycache__/")
     if any(path.startswith(forbidden) and path != ".env.example" for path in tracked if path):
-        raise SystemExit("生成物または資格情報が追跡されています。")
+        raise SystemExit(message("quality.generated_data_or_credential_files_are_tracked_by"))
     candidates = git_text(
         root, "ls-files", "--cached", "--others", "--exclude-standard", "-z"
     ).split("\0")
@@ -64,9 +65,16 @@ def main() -> None:
     )
     if findings:
         for item in findings:
-            print(f"確認が必要です: {item['file']}:{item['line']} ({item['type']})")
+            print(
+                message(
+                    "quality.scan_finding",
+                    file=item["file"],
+                    line=item["line"],
+                    kind=item["type"],
+                )
+            )
         raise SystemExit(1)
-    print("秘密情報と追跡対象を確認しました。")
+    print(message("quality.scan_complete"))
 
 
 if __name__ == "__main__":

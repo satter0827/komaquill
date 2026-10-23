@@ -41,17 +41,35 @@ async function prepare() {
   } catch { notify("ui.retry", "error"); }
   finally { running = false; }
 }
-text = (await request("/capabilities")).messages;
 api.addEventListener("execution_success", () => notify("ui.generated"));
 api.addEventListener("komaquill_saved", (event) => {
   const keys = {saving: "ui.saving", saved: "ui.saved", retry: "ui.retry"};
   const key = keys[event.detail?.state];
   if (key) notify(key, event.detail.state === "retry" ? "warn" : "success");
 });
+let subscribed = null;
+async function subscribe() {
+  if (!api.clientId || subscribed === api.clientId || !text["ui.saved"]) return;
+  await request(`/capabilities?client_id=${encodeURIComponent(api.clientId)}`);
+  subscribed = api.clientId;
+}
+api.addEventListener("status", (event) => {
+  if (!event.detail) subscribed = null;
+  else subscribe().catch(() => notify("ui.unavailable", "warn"));
+});
+text = (await request("/capabilities")).messages;
+await subscribe();
+const cancel = async () => {
+  if (activeRequest) await request(`/requests/${activeRequest}`, {action: "cancel"});
+};
 app.registerExtension({
   name: "komaquill.workspace",
   commands: [{id: "komaquill.prepare", label: text["ui.prepare"], function: prepare},
-    {id: "komaquill.cancel", label: text["ui.cancel"], function: async () => { if (activeRequest) await request(`/requests/${activeRequest}`, {action: "cancel"}); }}],
+    {id: "komaquill.cancel", label: text["ui.cancel"], function: cancel}],
+  actionBarButtons: [
+    {icon: "icon-[lucide--package-check]", label: text["ui.prepare"], onClick: prepare},
+    {icon: "icon-[lucide--circle-stop]", tooltip: text["ui.cancel"], onClick: cancel}
+  ],
   menuCommands: [{path: ["Workflow"], commands: ["komaquill.prepare", "komaquill.cancel"]}],
   async afterConfigureGraph() {
     if (!app.refreshMissingModels) return;

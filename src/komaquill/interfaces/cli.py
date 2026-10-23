@@ -4,7 +4,7 @@ import secrets
 import subprocess
 import tomllib
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated, Literal
@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from komaquill.application.generation import Collection, collect, generate, verify_runtime
 from komaquill.domain.assets import Preparation
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.materials import Material
 from komaquill.domain.models import Session
 from komaquill.infrastructure import runtime as runtime
@@ -428,6 +428,10 @@ def logs_command(
     with operation(ctx) as project:
         try:
             for event in supervisor.events(project, follow):
+                failure = None
+                if isinstance(event.get("failure"), dict):
+                    with suppress(ValidationError):
+                        failure = FailureInfo.model_validate(event["failure"])
                 typer.echo(
                     message(
                         "monitor.log",
@@ -435,6 +439,7 @@ def logs_command(
                         operation=event.get("operation", "-"),
                         result=event.get("result", "-"),
                         identity=event.get("run_id") or event.get("asset") or "",
+                        failure=f"{failure.code}/{failure.stage}" if failure else "",
                     )
                 )
         except KeyboardInterrupt:

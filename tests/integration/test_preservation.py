@@ -18,10 +18,12 @@ def harness(project):
     control = Extension(project.artifacts, project.artifacts, 1)
     control.workspace_id = uuid4()
     control.control_token = "a" * 40
+    control.ui_clients.add("ui")
     notifications = []
     app = web.Application()
     server = SimpleNamespace(
         app=app,
+        sockets={"ui": object(), "not-subscribed": object()},
         routes=web.RouteTableDef(),
         send_sync=lambda *a: notifications.append(a),
         add_on_prompt_handler=lambda handler: None,
@@ -185,3 +187,12 @@ def test_saved_workflow_captures_the_input_revision_and_corrupt_records_are_repo
     (files.folder / f"{broken_id}.json").write_text("{broken")
     assert len(files.rows()) == 2
     assert files.errors == [str(broken_id)]
+
+
+def test_notifications_are_opt_in_and_do_not_target_loading_or_disconnected_clients(project):
+    control, files, server, notifications = harness(project)
+    files.emit({"state": "saving"})
+    assert notifications == [("komaquill_saved", {"state": "saving"}, "ui")]
+    server.sockets.clear()
+    files.emit({"state": "saved"})
+    assert len(notifications) == 1 and not control.ui_clients

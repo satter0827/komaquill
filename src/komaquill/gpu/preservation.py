@@ -28,6 +28,12 @@ class Preservation:
         self.blobs = control.root / "cache/preservation"
         self.lock = asyncio.Lock()
 
+    def emit(self, payload: dict[str, Any]) -> None:
+        """Notify only connected clients that have loaded the workspace extension."""
+        self.control.ui_clients.intersection_update(self.server.sockets)
+        for client_id in self.control.ui_clients:
+            self.server.send_sync("komaquill_saved", payload, client_id)
+
     def rows(self) -> list[Material]:
         rows = []
         self.errors = []
@@ -123,8 +129,7 @@ class Preservation:
         except Exception as error:
             # PromptServer continues after hook errors, so return its standard rejection shape.
             data.pop("prompt", None)
-            self.server.send_sync(
-                "komaquill_saved",
+            self.emit(
                 {
                     "state": "retry",
                     "failure": failure_info(error, "storage").model_dump(mode="json"),
@@ -181,8 +186,7 @@ class Preservation:
                             )
                             await asyncio.to_thread(self.snapshot, source, "workflows", name)
                 except Exception as error:
-                    self.server.send_sync(
-                        "komaquill_saved",
+                    self.emit(
                         {
                             "state": "retry",
                             "failure": failure_info(error, "storage").model_dump(mode="json"),
@@ -221,9 +225,7 @@ class Preservation:
             return web.json_response({"code": "identity_mismatch"}, status=409)
         row.state = "saved"
         atomic_json(path, row.model_dump(mode="json"))
-        self.server.send_sync(
-            "komaquill_saved", {"state": "saved", "material_id": str(identity), "kind": row.kind}
-        )
+        self.emit({"state": "saved", "material_id": str(identity), "kind": row.kind})
         return web.json_response(row.model_dump(mode="json"))
 
     async def notify(self, request: web.Request) -> web.Response:
@@ -233,9 +235,7 @@ class Preservation:
         state = data.get("state")
         if state not in {"saving", "saved", "retry"}:
             return web.json_response({"code": "invalid_request"}, status=400)
-        self.server.send_sync(
-            "komaquill_saved", {"state": state, "prompt_id": str(data.get("prompt_id", ""))}
-        )
+        self.emit({"state": state, "prompt_id": str(data.get("prompt_id", ""))})
         return web.json_response({"state": state})
 
     def install(self) -> None:

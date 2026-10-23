@@ -578,6 +578,7 @@ def start_colab(
         previous_progress: dict[str, str | None] = {}
         while True:
             check_cancel(project)
+            update_monitor(project)
             if time.monotonic() >= next_progress:
                 current_progress = colab.progress(receipt)
                 if current_progress and current_progress != previous_progress:

@@ -39,6 +39,7 @@ class Extension:
         self.workspace_id: UUID | None = None
         self.control_token: str | None = None
         self.preservation: Preservation | None = None
+        self.ui_clients: set[str] = set()
 
     def path(self, identity: str | UUID) -> Path:
         """Constrain externally supplied identifiers before filesystem access."""
@@ -132,6 +133,9 @@ class Extension:
         return web.json_response(self.read(job.request_id).model_dump(mode="json"))
 
     async def capabilities(self, request: web.Request) -> web.Response:
+        client_id = request.query.get("client_id")
+        if client_id and len(client_id) <= 128:
+            self.ui_clients.add(client_id)
         return web.json_response(
             {
                 "protocol_version": PROTOCOL_VERSION,

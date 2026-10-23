@@ -256,7 +256,7 @@ def prepare_workflow(
                         message(
                             "assets.row",
                             name=asset.filename,
-                            size=str(asset.size_bytes)
+                            size=message("assets.capacity", size_bytes=asset.size_bytes)
                             if asset.size_bytes is not None
                             else message("ui.unknown_size"),
                             source=asset.url or asset.repo_id,

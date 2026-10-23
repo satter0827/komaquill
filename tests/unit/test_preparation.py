@@ -154,7 +154,7 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
     workflow.write_text('{"nodes":[]}')
     client = Client()
     job = client.job
-    job.assets = [asset()]
+    job.assets = [asset().model_copy(update={"size_bytes": 5})]
     job.phase = "confirmation"
     job.unsupported = ["unknown"] if case == "unsupported" else []
     monkeypatch.setattr(module, "capabilities", lambda _: case != "no_extension")
@@ -179,7 +179,9 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
 
     monkeypatch.setattr(module.time, "sleep", sleep)
     if case == "ready":
-        module.prepare_workflow(project, client, workflow, lambda _: None, lambda _: True)
+        output = []
+        module.prepare_workflow(project, client, workflow, output.append, lambda _: True)
+        assert any("5 bytes" in line for line in output)
     else:
         with pytest.raises((KomaquillError, KeyboardInterrupt)):
             module.prepare_workflow(

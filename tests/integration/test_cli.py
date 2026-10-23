@@ -124,3 +124,26 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
     assert "ComfyUI: not started" in result.output
     assert "Colab: stopped" not in result.output
     assert colab.receipt_file.is_file()
+
+
+def test_logs_display_safe_categories_without_exception_payloads(project):
+    import json
+
+    folder = project.artifacts / "logs"
+    folder.mkdir(parents=True)
+    row = {
+        "created_at": "time",
+        "operation": "collection",
+        "result": "failed",
+        "response_body": "private-response",
+        "failure": {"code": "storage_failed", "stage": "storage", "exception_type": "OSError"},
+    }
+    (folder / "cli.jsonl").write_text(
+        json.dumps(row)
+        + "\n"
+        + json.dumps({"failure": {"code": "unknown", "exception_type": "private-response"}})
+        + "\n"
+    )
+    result = CliRunner().invoke(cli.app, ["--project", str(project.root), "logs"])
+    assert result.exit_code == 0 and "storage_failed/storage" in result.output
+    assert "private-response" not in result.output

@@ -19,3 +19,7 @@ for (const mode of ["confirm", "cancel", "unsupported", "missing"]) {
     assert.equal(calls[1].action, ["cancel", "unsupported"].includes(mode) ? "cancel" : "confirm");
   });
 }
+
+test("model capacity has units and grouping", () => {
+  assert.equal(assetRows({assets: [{filename: "model.sft", sha256: "a", size_bytes: 1048576, url: "https://source"}], reused: []}, "unknown")[0], "model.sft | 1,048,576 bytes | https://source | false");
+});

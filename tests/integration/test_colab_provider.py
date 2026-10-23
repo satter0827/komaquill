@@ -259,3 +259,27 @@ def test_bounded_provider_child_validates_output_without_revealing_stderr(
         with pytest.raises(KomaquillError) as error:
             control.provider_call("observe")
         assert "private-response" not in str(error.value)
+
+
+def test_account_preflight_does_not_require_or_modify_receipt(provider, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["bridge", "identity", "--request-timeout", "30"])
+    bridge.main()
+    assert json.loads(capsys.readouterr().out)["account_sha256"] == SUBJECT
+
+
+@pytest.mark.parametrize("cache", ["corrupt", "different"])
+def test_cached_state_cannot_redirect_or_block_owned_provider_shutdown(
+    provider, project, monkeypatch, cache
+):
+    client, assignments, calls, data = provider
+    control = Colab(project)
+    control.config = project.state / "official.json"
+    atomic_json(control.receipt_file, data)
+    control.config.write_text(
+        "{broken" if cache == "corrupt" else json.dumps({"owned": {"endpoint": "other"}})
+    )
+    monkeypatch.setattr(control, "provider_call", lambda action: bridge.execute(action, data))
+    assert control.refresh(Receipt.model_validate(data))
+    assert control.stop().stopped
+    assert calls == ["expected"]
+    assert control.receipt_file.exists()

@@ -18,7 +18,7 @@ CLIが要求の記録とローカル保存を担当し、GPU側のComfyUIが画�
 
 対応するCLI引数、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。設定は起動時に検証し、保存・回収・終了で同じ値を使用します。変更は次のstartから反映します。認証情報は設定へ含めません。
 
-Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime.toml、モデルはmodel.tomlで固定します。
+Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime.toml、モデルと生成プリセットはpresets.tomlで固定します。
 
 ## GPUへの転送
 

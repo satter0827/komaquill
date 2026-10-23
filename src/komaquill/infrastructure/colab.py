@@ -144,6 +144,15 @@ class Colab:
     def provider_command(self, action: str, *arguments: str) -> list[str]:
         """Use the pinned adapter with public identities, never tokens, in arguments."""
         self.command("version")
+        if action == "identity":
+            return [
+                sys.executable,
+                "-m",
+                "komaquill.infrastructure.colab_bridge",
+                action,
+                "--request-timeout",
+                str(self.settings.request_timeout),
+            ]
         return [
             sys.executable,
             "-m",
@@ -172,7 +181,6 @@ class Colab:
 
     def refresh(self, receipt: Receipt) -> bool:
         """Observe provider allocation; missing CLI cache is never shutdown evidence."""
-        self.entry(receipt)
         observation = self.provider_call("observe")
         if (
             observation.state == "unknown"
@@ -209,7 +217,6 @@ class Colab:
             # Authenticate and initialize official locking before allocation.
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
             self.call("status", "-s", receipt.name, interactive=not authenticated)
-            atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
             identity = self.provider_call("identity")
             if not identity.account_sha256:
                 raise KomaquillError(code="authentication_failed")
@@ -245,10 +252,11 @@ class Colab:
             receipt = self.receipt()
             if receipt is None:
                 raise KomaquillError(code="identity_mismatch")
-            entry = self.entry(receipt)
-            if receipt.endpoint_id is None and entry is not None:
-                receipt.endpoint_id = str(entry["endpoint"])
-                atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
+            if receipt.endpoint_id is None:
+                entry = self.entry(receipt)
+                if entry is not None:
+                    receipt.endpoint_id = str(entry["endpoint"])
+                    atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
             observation = self.provider_call("terminate")
             if (
                 not observation.stopped
@@ -439,8 +447,7 @@ class Colab:
                 capture_output=True,
             )
         with self.lock:
-            # This adapter never invokes the official SSH auto-allocation path.
-            self.entry(receipt)
+            # Provider evidence replaces optional local CLI cache for reconnection.
             if receipt.endpoint_id is None or receipt.account_sha256 is None:
                 raise KomaquillError(
                     display_key="text.the_runtime_is_unavailable_ssh_was_not_started"

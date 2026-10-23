@@ -20,6 +20,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Session
 from komaquill.infrastructure import runtime as runtime
 from komaquill.infrastructure.colab import Colab
+from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.runtime import connected
@@ -278,7 +279,7 @@ def doctor(ctx: typer.Context) -> None:
         }
         for asset in assets(settings):
             loader, field = loaders[asset.role]
-            choices = nodes.get(loader, {}).get("input", {}).get("required", {}).get(field, [[]])[0]
+            choices = input_choices(nodes, loader, field)
             if asset.filename not in choices:
                 raise KomaquillError(
                     display_key="text.the_selected_model_is_missing_check_the_comfyui"

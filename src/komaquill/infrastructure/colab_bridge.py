@@ -71,10 +71,12 @@ def session_state(receipt: dict[str, Any], assignment: Any) -> Any:
 def execute(action: str, receipt: dict[str, Any], *arguments: str) -> RuntimeObservation:
     """Observe, terminate or connect to an existing endpoint only."""
     client = provider()
+    if action == "identity":
+        return RuntimeObservation(
+            account_sha256=account(client, float(receipt["settings"]["request_timeout"]))
+        )
     settings = RuntimeSettings.model_validate(receipt["settings"])
     timeout = settings.request_timeout
-    if action == "identity":
-        return RuntimeObservation(account_sha256=account(client, timeout))
     observation, assignment = observe(client, receipt, timeout)
     if action == "observe":
         return observation
@@ -113,11 +115,15 @@ def main() -> None:
     logging.disable(logging.CRITICAL)
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("action", choices=["identity", "observe", "terminate", "proxy", "download"])
-    parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--request-timeout", type=float)
     parser.add_argument("arguments", nargs="*")
     args = parser.parse_intermixed_args()
     try:
-        receipt = json.loads(args.receipt.read_bytes())
+        if args.action == "identity":
+            receipt = {"settings": {"request_timeout": args.request_timeout}}
+        else:
+            receipt = json.loads(args.receipt.read_bytes())
         result = execute(args.action, receipt, *args.arguments)
         if args.action != "proxy":
             print(result.model_dump_json())

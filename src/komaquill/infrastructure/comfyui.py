@@ -153,3 +153,18 @@ class ComfyClient:
                 retryable=False,
             ) from None
         return cast(list[str], values)
+
+
+def input_choices(nodes: JsonObject, loader: str, field: str) -> list[str]:
+    """Read V1 list choices and V3 COMBO options from object_info."""
+    definition = nodes.get(loader, {}).get("input", {}).get("required", {}).get(field, [])
+    if not isinstance(definition, list) or not definition:
+        return []
+    options = definition[0]
+    if options == "COMBO":
+        options = (
+            definition[1].get("options", [])
+            if len(definition) > 1 and isinstance(definition[1], dict)
+            else []
+        )
+    return [item for item in options if isinstance(item, str)] if isinstance(options, list) else []

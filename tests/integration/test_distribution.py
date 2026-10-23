@@ -204,6 +204,11 @@ def test_worker_lock_satisfies_pinned_comfy_requirements():
     requirements = root / "tests/fixtures/comfy-requirements.txt"
     lock = tomllib.loads(files("komaquill").joinpath("resources/pylock.worker.toml").read_text())
     packages = {canonicalize_name(item["name"]): item["version"] for item in lock["packages"]}
+    runtime = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
+    assert (
+        "/blob/" + runtime["comfy_revision"] + "/requirements.txt"
+        in requirements.read_text().splitlines()[0]
+    )
     for line in requirements.read_text().splitlines():
         if line.strip() and not line.startswith("#"):
             requirement = Requirement(line)

@@ -20,6 +20,8 @@ def test_workflow_exports_have_identical_connections_and_parameters():
     for key, node in api.items():
         assert nodes[key]["type"] == node["class_type"]
         for socket in nodes[key].get("inputs", []):
+            if socket["link"] is None:
+                continue
             link = links[socket["link"]]
             assert node["inputs"][socket["name"]] == [str(link[1]), link[2]]
     widgets = {

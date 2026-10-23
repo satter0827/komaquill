@@ -90,3 +90,21 @@ def test_non_unicode_json_response_raises_safe_error():
             client.json("/history")
     finally:
         client.close()
+
+
+@pytest.mark.parametrize(
+    "definition,expected",
+    [
+        ([["model.pth"]], ["model.pth"]),
+        (["COMBO", {"options": ["model.pth"]}], ["model.pth"]),
+        ([], []),
+        (["COMBO"], []),
+        (["COMBO", "invalid"], []),
+        (["OTHER"], []),
+    ],
+)
+def test_model_choices_support_both_standard_node_schemas(definition, expected):
+    from komaquill.infrastructure.comfyui import input_choices
+
+    nodes = {"Loader": {"input": {"required": {"model_name": definition}}}}
+    assert input_choices(nodes, "Loader", "model_name") == expected

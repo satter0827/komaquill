@@ -1,6 +1,6 @@
 """Define pinned assets and generation presets independently of transport."""
 
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -25,7 +25,13 @@ class ModelPreset(BaseModel):
         """Reject ambiguous sources and paths outside the asset directory."""
         import re
 
-        if PurePosixPath(self.filename).name != self.filename or "\\" in self.filename:
+        if (
+            not self.filename
+            or self.filename in {".", ".."}
+            or PurePosixPath(self.filename).name != self.filename
+            or PureWindowsPath(self.filename).name != self.filename
+            or PureWindowsPath(self.filename).drive
+        ):
             raise ValueError("Asset filenames must be plain filenames.")
         if self.url:
             from urllib.parse import urlsplit

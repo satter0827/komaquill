@@ -29,14 +29,26 @@ class Collection:
 
 def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObject) -> Run:
     """Create a history record containing reproducible generation conditions."""
-    known = session.settings.assets if session.backend == "colab" and session.settings else {}
-    filenames = {
-        value
-        for node in graph.values()
-        if isinstance(node, dict)
-        for key, value in node.get("inputs", {}).items()
-        if key in {"ckpt_name", "lora_name", "model_name"} and isinstance(value, str)
-    }
+    settings = session.settings
+    enabled = (
+        {asset for name in settings.profiles for asset in settings.presets[name].asset_ids}
+        if settings
+        else set()
+    )
+    known = (
+        {name: asset for name, asset in settings.assets.items() if name in enabled}
+        if settings and session.backend == "colab"
+        else {}
+    )
+    filenames: set[str] = set()
+    for node in graph.values():
+        inputs = node.get("inputs") if isinstance(node, dict) else None
+        if isinstance(inputs, dict):
+            filenames.update(
+                value
+                for key, value in inputs.items()
+                if key in {"ckpt_name", "lora_name", "model_name"} and isinstance(value, str)
+            )
     used = {asset.filename: asset.sha256 for asset in known.values() if asset.filename in filenames}
     checkpoints = [
         asset.sha256

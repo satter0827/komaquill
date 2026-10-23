@@ -21,6 +21,8 @@ def test_profile_exports_match_api_and_widget_values(name):
     for key, data in graph.items():
         assert data["class_type"] == nodes[key]["type"]
         for socket in nodes[key].get("inputs", []):
+            if socket["link"] is None:
+                continue
             link = links[socket["link"]]
             assert data["inputs"][socket["name"]] == [str(link[1]), link[2]]
             assert link[4] == nodes[key]["inputs"].index(socket)
@@ -87,6 +89,8 @@ def test_workspace_profile_overrides_and_frozen_snapshot(project, monkeypatch):
     "changes",
     [
         {"filename": "../a"},
+        {"filename": ".."},
+        {"filename": "C:outside"},
         {"filename": "a\\b"},
         {"url": "http://example.com/a"},
         {"repo_id": "", "revision": ""},
@@ -97,3 +101,27 @@ def test_unsafe_or_ambiguous_asset_sources_are_rejected(changes):
     model = Settings().assets["pony"].model_dump()
     with pytest.raises(ValidationError):
         ModelPreset.model_validate({**model, **changes})
+
+
+@pytest.mark.parametrize("inputs", [None, [], "invalid", {"ckpt_name": "unknown.safetensors"}])
+def test_graph_provenance_handles_unknown_models_and_malformed_inputs(project, session, inputs):
+    from uuid import uuid4
+
+    from komaquill.application.generation import new_run
+
+    session.settings = project.settings()
+    run = new_run(project, session, uuid4(), {"4": {"inputs": inputs}})
+    assert run.model_sha256 is None and not run.asset_sha256
+
+
+def test_graph_provenance_uses_actual_prepared_assets(project, session):
+    from uuid import uuid4
+
+    from komaquill.application.generation import new_run
+
+    session.settings = project.settings()
+    graph = {"4": {"inputs": {"ckpt_name": "v6.safetensors"}}}
+    run = new_run(project, session, uuid4(), graph)
+    assert run.model_sha256 == session.settings.assets["pony"].sha256
+    graph["4"]["inputs"]["ckpt_name"] = session.settings.assets["sd15"].filename
+    assert new_run(project, session, uuid4(), graph).model_sha256 is None

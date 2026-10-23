@@ -78,3 +78,31 @@ def test_url_asset_is_verified_before_replacing_target(project, monkeypatch, cas
             fetch_model(project.artifacts, model)
         assert not (project.artifacts / "models/upscaler" / model.filename).is_file()
     assert not list((project.artifacts / "models/upscaler").glob("*.part"))
+
+
+def test_download_http_failure_has_safe_retryable_classification(project, monkeypatch):
+    from contextlib import contextmanager
+
+    import httpx
+
+    from komaquill.infrastructure import downloads as module
+
+    model = preset().model_copy(
+        update={
+            "name": "upscaler",
+            "repo_id": "",
+            "revision": "",
+            "url": "https://example.test/model.pth",
+        }
+    )
+
+    @contextmanager
+    def stream(*args, **kwargs):
+        raise httpx.ConnectError("private response")
+        yield
+
+    monkeypatch.setattr(module.httpx, "stream", stream)
+    with pytest.raises(KomaquillError) as error:
+        fetch_model(project.artifacts, model)
+    assert error.value.code == "http_failed" and error.value.stage == "preparation"
+    assert "private response" not in str(error.value)

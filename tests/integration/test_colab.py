@@ -42,7 +42,7 @@ def test_missing_session_never_calls_ssh_or_allocates(project, monkeypatch):
     assert not calls
 
 
-def test_runtime_id_mismatch_prevents_stop(project, monkeypatch):
+def test_cached_identity_mismatch_is_rejected_before_cli_operations(project, monkeypatch):
     colab, calls = controller(project, monkeypatch)
     receipt = Receipt(
         name="owned",
@@ -54,7 +54,7 @@ def test_runtime_id_mismatch_prevents_stop(project, monkeypatch):
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     atomic_json(colab.config, {"owned": {"endpoint": "other-runtime"}})
     with pytest.raises(KomaquillError):
-        colab.stop()
+        colab.entry(receipt)
     assert not calls
     assert colab.receipt_file.is_file()
 
@@ -165,7 +165,12 @@ def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypa
 
     fake = types.SimpleNamespace(app=FailingApp())
     monkeypatch.setenv("KOMAQUILL_PROJECT_DIR", str(project.root))
-    monkeypatch.setattr(colab_entry.importlib, "import_module", lambda name: fake)
+    original_import = colab_entry.importlib.import_module
+    monkeypatch.setattr(
+        colab_entry.importlib,
+        "import_module",
+        lambda name: fake if name == "colab_cli.cli" else original_import(name),
+    )
     with pytest.raises(SystemExit) as error:
         colab_entry.main()
     assert error.value.code == 1

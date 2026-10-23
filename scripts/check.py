@@ -83,10 +83,19 @@ def main(group: str = "all") -> None:
     if group in {"all", "security"}:
         commands.append([python, str(root / "scripts/security.py")])
     results: list[dict[str, str | int]] = []
+    started_at = datetime.now(UTC).isoformat()
     try:
         for command in commands:
+            step_started = datetime.now(UTC).isoformat()
             result = subprocess.run(command, cwd=root, env=env, check=True)
-            results.append({"step": " ".join(command[1:3]), "exit_code": result.returncode})
+            results.append(
+                {
+                    "step": " ".join(command[1:4]),
+                    "exit_code": result.returncode,
+                    "started_at": step_started,
+                    "finished_at": datetime.now(UTC).isoformat(),
+                }
+            )
     except subprocess.CalledProcessError as error:
         results.append({"step": " ".join(error.cmd[1:3]), "exit_code": error.returncode})
         raise
@@ -94,6 +103,7 @@ def main(group: str = "all") -> None:
         (report / "gate.json").write_text(
             json.dumps(
                 {
+                    "started_at": started_at,
                     "finished_at": datetime.now(UTC).isoformat(),
                     "group": group,
                     "source_revision": source_revision(),
@@ -105,6 +115,17 @@ def main(group: str = "all") -> None:
             + "\n",
             encoding="utf-8",
         )
+        if results and all(row["exit_code"] == 0 for row in results):
+            from komaquill.infrastructure.storage import atomic_json
+
+            atomic_json(
+                root / ".artifacts/reports/quality" / f"latest-{group}.json",
+                {
+                    "report": report.name,
+                    "source_revision": source_revision(),
+                    "code_sha256": code_sha256(),
+                },
+            )
         print(message("quality.check_report", path=report))
 
 

@@ -247,9 +247,11 @@ def test_bounded_provider_child_validates_output_without_revealing_stderr(
         if case == "timeout":
             raise subprocess.TimeoutExpired("provider", 1)
         return SimpleNamespace(
+            returncode=0,
+            stderr=b"",
             stdout=b"private-response"
             if case == "invalid"
-            else RuntimeObservation().model_dump_json()
+            else RuntimeObservation().model_dump_json(),
         )
 
     monkeypatch.setattr(module.subprocess, "run", run)

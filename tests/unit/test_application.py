@@ -76,7 +76,7 @@ def test_generation_uses_only_replaceable_contracts():
                 generation_timeout=1.0,
                 preparation_timeout=1.0,
                 shutdown_timeout=1.0,
-                execution_timeout=1.0,
+                worker_execution_timeout=1.0,
                 control_timeout=1.0,
                 local_port=18188,
                 remote_port=8188,

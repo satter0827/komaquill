@@ -15,6 +15,7 @@ import httpx
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
+from komaquill.gpu.progress import progress
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.storage import atomic_json
@@ -61,6 +62,7 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
             atomic_json(templates / f"{name}_{view}.json", workflow)
     paths = {}
     for asset in assets(settings):
+        progress(project.root, "model_preparation", asset.name)
         model = fetch_model(project.artifacts, asset)
         paths[asset.name] = {"base_path": str(model.parent), asset.role: "."}
     # JSON is a YAML subset, so the model path file needs no conversion.
@@ -99,6 +101,7 @@ def main(root: Path) -> None:
     atomic_json(user / "default/komaquill/session.json", metadata)
     logs = project.artifacts / "logs"
     logs.mkdir(parents=True, exist_ok=True)
+    progress(root, "server")
     port = project.settings().remote_port
     with (logs / "comfy.log").open("ab") as log:
         server = subprocess.Popen(
@@ -146,6 +149,7 @@ def main(root: Path) -> None:
                 stdout=handle,
                 check=True,
             )
+        progress(root, "ready")
         print(message("text.comfyui_started"), flush=True)
         result = server.wait()
         if result:

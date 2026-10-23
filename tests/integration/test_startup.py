@@ -160,12 +160,13 @@ def test_generate_cli_prompts_and_returns_saved_path(cli_connection, monkeypatch
 @pytest.mark.parametrize("command", ["start", "stop", "models"])
 def test_cli_delegates_operations_without_editor_dependencies(project, monkeypatch, command):
     calls = []
-    monkeypatch.setattr(cli.runtime, "start", lambda *args: calls.append(args))
+    monkeypatch.setattr(cli.supervisor, "start", lambda *args: calls.append(args))
     monkeypatch.setattr(cli.runtime, "stop", lambda *args: calls.append(args))
     monkeypatch.setattr(
         cli, "fetch_model", lambda *args: calls.append(args) or project.artifacts / "model"
     )
     monkeypatch.setattr(cli.typer, "prompt", lambda *args, **kwargs: "private-password")
+    monkeypatch.setattr(cli.keyring, "set_password", lambda *args: None)
     args = {
         "start": [
             "start",
@@ -204,18 +205,16 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
 ):
     calls = []
 
-    def start(bound, backend, endpoint, username, password, echo, on_ready):
+    def start(bound, backend, endpoint, username, open_browser, echo, foreground):
         assert bound.settings().profiles == ("pony-preview",)
-        session.settings = bound.settings()
+        assert open_browser is (not no_open)
+        assert foreground is None
         calls.append("connected")
-        if on_ready:
-            on_ready(session)
 
-    monkeypatch.setattr(cli.runtime, "start", start)
-    monkeypatch.setattr(cli, "open_view", lambda *args, **kwargs: calls.append("browser") or False)
+    monkeypatch.setattr(cli.supervisor, "start", start)
     arguments = ["--project", str(project.root), "start", "--profile", "pony-preview"]
     if no_open:
         arguments.append("--no-open")
     result = CliRunner().invoke(cli.app, arguments)
     assert result.exit_code == 0, result.output
-    assert calls == (["connected"] if no_open else ["connected", "browser"])
+    assert calls == ["connected"]

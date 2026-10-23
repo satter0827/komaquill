@@ -19,10 +19,12 @@ from komaquill.application.generation import Collection, collect, generate, veri
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Session
 from komaquill.infrastructure import runtime as runtime
+from komaquill.infrastructure import supervisor
 from komaquill.infrastructure.colab import Colab
 from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.monitor_state import alive, read_monitor
 from komaquill.infrastructure.runtime import connected
 from komaquill.infrastructure.storage import load_runs, load_session, run_dir
 from komaquill.infrastructure.views import open_view
@@ -166,6 +168,7 @@ def start(
         ),
     ] = None,
     profile: Annotated[list[str] | None, typer.Option(help=message("profile.start_help"))] = None,
+    foreground: Annotated[bool, typer.Option(help=message("monitor.foreground_help"))] = False,
     open_browser: Annotated[
         bool, typer.Option("--open/--no-open", help=message("profile.open_help"))
     ] = True,
@@ -182,17 +185,21 @@ def start(
             if username is not None:
                 password = typer.prompt(message("auth.prompt"), hide_input=True)
 
-        def show_browser(session: Session) -> None:
-            open_view(project, session, echo=typer.echo, strict=False)
+        if password is not None and endpoint is not None:
+            temporary = Session(
+                endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username
+            )
+            keyring.set_password("komaquill", runtime.credential_key(project, temporary), password)
+        from komaquill.interfaces.session_worker import main as session_main
 
-        runtime.start(
+        supervisor.start(
             project,
             backend,
             endpoint,
             username,
-            password,
+            open_browser,
             typer.echo,
-            show_browser if open_browser else None,
+            session_main if foreground else None,
         )
 
 
@@ -355,6 +362,17 @@ def status(ctx: typer.Context) -> None:
                 typer.echo(message("text.comfyui_connected"))
             except KomaquillError:
                 typer.echo(message("text.comfyui_disconnected_check_the_start_process"))
+        monitor = read_monitor(project)
+        if monitor is not None:
+            typer.echo(
+                message(
+                    "monitor.status",
+                    phase=monitor.phase
+                    if alive(monitor) or monitor.phase in {"stopped", "failed"}
+                    else "unknown",
+                    observed=monitor.observed_at.isoformat(),
+                )
+            )
         pending = [str(run.run_id) for run in load_runs(project) if run.pending]
         typer.echo(message("text.pending_pending_count", pending_count=len(pending)))
         lost = [str(run.run_id) for run in load_runs(project) if run.state == "lost"]
@@ -372,4 +390,27 @@ def stop(
 ) -> None:
     """Stop the owned runtime after collecting available results."""
     with operation(ctx) as project:
-        runtime.stop(project, force, typer.echo)
+        if not supervisor.stop(project, force, typer.echo):
+            runtime.stop(project, force, typer.echo)
+
+
+@app.command("logs", help=message("monitor.logs_help"))
+def logs_command(
+    ctx: typer.Context,
+    follow: Annotated[bool, typer.Option(help=message("monitor.follow_help"))] = False,
+) -> None:
+    """Render allowlisted event fields from retained JSON Lines."""
+    with operation(ctx) as project:
+        try:
+            for event in supervisor.events(project, follow):
+                typer.echo(
+                    message(
+                        "monitor.log",
+                        at=event.get("created_at", "-"),
+                        operation=event.get("operation", "-"),
+                        result=event.get("result", "-"),
+                        identity=event.get("run_id") or event.get("asset") or "",
+                    )
+                )
+        except KeyboardInterrupt:
+            return

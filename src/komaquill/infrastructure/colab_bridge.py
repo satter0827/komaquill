@@ -11,9 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from komaquill.domain.configuration import RuntimeSettings
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
-from komaquill.messages import message
 
 USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
@@ -127,8 +126,12 @@ def main() -> None:
         result = execute(args.action, receipt, *args.arguments)
         if args.action != "proxy":
             print(result.model_dump_json())
-    except (Exception, KeyboardInterrupt):
-        print(message("error.colab_failed"), file=sys.stderr)
+    except (Exception, KeyboardInterrupt) as error:
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        if args.action == "download" and status == 404:
+            error = KomaquillError(code="request_not_found", stage="log_download", http_status=404)
+        failure = failure_info(error, "colab_control")
+        print(json.dumps({"failure": failure.model_dump(mode="json")}), file=sys.stderr)
         raise SystemExit(1) from None
 
 

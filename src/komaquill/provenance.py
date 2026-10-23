@@ -14,7 +14,7 @@ RESOURCE_NAMES = (
     "runtime.toml",
     "workflow.json",
     "workflow-api.json",
-    "worker-requirements.txt",
+    "pylock.worker.toml",
 )
 
 

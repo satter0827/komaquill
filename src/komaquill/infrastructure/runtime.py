@@ -34,7 +34,7 @@ from komaquill.infrastructure.monitor_state import (
     read_monitor,
     update_monitor,
 )
-from komaquill.infrastructure.preparation import Coordinator, capabilities
+from komaquill.infrastructure.preparation import Coordinator, capabilities, verify_extension
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, stop_request
 from komaquill.infrastructure.workflows import assets
 from komaquill.messages import message
@@ -538,6 +538,7 @@ def start_colab(
                         retryable=False,
                     )
                 verify_runtime(client, session)
+                verify_extension(client)
                 break
             except KomaquillError as error:
                 if not error.retryable:

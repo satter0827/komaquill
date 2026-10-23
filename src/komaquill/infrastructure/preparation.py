@@ -38,6 +38,12 @@ def capabilities(client: ComfyClient) -> bool:
         raise
 
 
+def verify_extension(client: ComfyClient) -> None:
+    """Require the installed extension before claiming a managed session is ready."""
+    if not capabilities(client):
+        raise KomaquillError(code="extension_unavailable", stage="preparation", retryable=False)
+
+
 class Coordinator:
     """Run bounded preparation jobs separately from result collection."""
 

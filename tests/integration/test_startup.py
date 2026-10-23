@@ -41,6 +41,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     monkeypatch.setattr(runtime, "check_port", lambda _: None)
     monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
+    monkeypatch.setattr(runtime, "verify_extension", lambda _: None)
 
     def acquire(revision):
         calls.append("acquire")

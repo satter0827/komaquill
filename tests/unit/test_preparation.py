@@ -198,3 +198,14 @@ def test_bindings_are_scoped_to_the_verified_runtime(coordinator, session):
     assert control.project.prepared_assets(session)[asset().reference].sha256 == asset().sha256
     control.bind(client.job)
     assert not control.project.prepared_assets(session.model_copy(update={"runtime_id": uuid4()}))
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_managed_start_requires_a_functioning_extension(monkeypatch, available):
+    monkeypatch.setattr(module, "capabilities", lambda _: available)
+    if available:
+        module.verify_extension(None)
+    else:
+        with pytest.raises(KomaquillError) as error:
+            module.verify_extension(None)
+        assert error.value.code == "extension_unavailable" and not error.value.retryable

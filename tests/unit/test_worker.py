@@ -192,3 +192,85 @@ def test_worker_entrypoint_hides_traceback_for_gpu_unavailable(project, monkeypa
         )
     assert error.value.code == 1
     assert "GPU" in capsys.readouterr().err
+
+
+def test_transferred_extension_loads_from_comfy_working_directory(project, monkeypatch):
+    """Import the generated extension in a clean child without editable-install hooks."""
+    import site
+    import subprocess
+    import tomllib
+
+    from komaquill.infrastructure.deployment import create_payload
+
+    payload = create_payload(project)
+    root = project.artifacts / "tmp/worker-import"
+    root.mkdir(parents=True)
+    with tarfile.open(payload.path) as archive:
+        archive.extractall(root, filter="data")
+    script = root / "komaquill/gpu/bootstrap.py"
+    monkeypatch.setattr(bootstrap, "__file__", str(script))
+    uv = root / ".artifacts/runtime/tools/uv"
+    uv.parent.mkdir(parents=True)
+    uv.write_bytes(b"test-tool")
+    captured = []
+    real_run = subprocess.run
+    monkeypatch.setattr(
+        bootstrap.subprocess, "run", lambda args, **kwargs: captured.append(kwargs["env"])
+    )
+    bootstrap.main()
+    env = captured[-1]
+    assert env["PYTHONPATH"] == str(root)
+    bound = project.__class__(root, project.settings())
+    comfy = bound.runtime / "ComfyUI"
+    comfy.mkdir(parents=True)
+    runtime = tomllib.loads((root / "komaquill/resources/runtime.toml").read_text())
+    monkeypatch.setattr(
+        worker.subprocess, "check_output", lambda *a, **kw: runtime["comfy_revision"]
+    )
+    monkeypatch.setattr(
+        worker, "fetch_model", lambda *a: root / ".artifacts/models/checkpoints/sha/test.sft"
+    )
+    worker.prepare_server(bound, runtime, bound.runtime / "user")
+    (comfy / "folder_paths.py").write_text(
+        "def add_model_folder_path(*args): pass\ndef get_input_directory(): return 'input'\n"
+    )
+    (comfy / "server.py").write_text(
+        "from types import SimpleNamespace\nfrom aiohttp import web\n"
+        "class PromptServer:\n"
+        "    instance=SimpleNamespace(routes=web.RouteTableDef(), app=web.Application(),\n"
+        "        add_on_prompt_handler=lambda handler: None)\n"
+    )
+    code = "import sys; sys.path.extend(" + repr(site.getsitepackages()) + "); "
+    code += "import importlib.util, pathlib; p=pathlib.Path('custom_nodes/komaquill/__init__.py'); "
+    code += "s=importlib.util.spec_from_file_location('comfy_test',p); "
+    code += "m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
+    code += "from server import PromptServer; "
+    code += (
+        "assert '/komaquill/v1/capabilities' in {r.path for r in PromptServer.instance.routes}; "
+    )
+    code += "assert (p.parent / m.WEB_DIRECTORY).is_dir()"
+    env.update(
+        KOMAQUILL_ARTIFACTS=str(bound.artifacts),
+        KOMAQUILL_REQUEST_TIMEOUT="1",
+        PYTHONDONTWRITEBYTECODE="1",
+    )
+    result = real_run(
+        [sys.executable, "-S", "-c", code],
+        cwd=comfy,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    clean = dict(env)
+    clean.pop("PYTHONPATH", None)
+    rejected = real_run(
+        [sys.executable, "-S", "-c", code],
+        cwd=comfy,
+        env=clean,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert rejected.returncode != 0 and "No module named 'komaquill'" in rejected.stderr

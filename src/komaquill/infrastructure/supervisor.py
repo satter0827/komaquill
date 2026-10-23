@@ -58,7 +58,7 @@ def spawn(project: Project) -> subprocess.Popen[bytes]:
     log = project.artifacts / "logs/monitor.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     options: dict[str, Any] = {}
-    if os.name == "nt":
+    if sys.platform == "win32":
         options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     else:
         options["start_new_session"] = True

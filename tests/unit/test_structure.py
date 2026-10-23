@@ -130,8 +130,8 @@ def test_root_workspace_settings_are_valid():
 
 
 def test_browser_modules_use_comfyuis_uncached_javascript_routes():
-    from importlib.resources import files
     import re
+    from importlib.resources import files
 
     web = files("komaquill").joinpath("resources/web")
     modules = list(web.iterdir())

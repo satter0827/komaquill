@@ -14,7 +14,9 @@ from komaquill.errors import KomaquillError
 class Settings(BaseSettings):
     """通信と待機の設定。"""
 
-    model_config = SettingsConfigDict(env_prefix="KOMAQUILL_", extra="forbid")
+    model_config = SettingsConfigDict(
+        env_prefix="KOMAQUILL_", extra="forbid", frozen=True, allow_inf_nan=False
+    )
     poll_interval: float = Field(default=2.0, gt=0)
     request_timeout: float = Field(default=30.0, gt=0)
     generation_timeout: float = Field(default=600.0, gt=0)
@@ -32,6 +34,11 @@ class Project:
     """実行場所によらず一箇所に保存する。"""
 
     root: Path
+    effective_settings: Settings | None = None
+
+    def configured(self, settings: Settings | None = None) -> "Project":
+        """Bind a validated snapshot without changing the source configuration."""
+        return Project(self.root, settings or self.settings())
 
     @property
     def artifacts(self) -> Path:
@@ -51,6 +58,8 @@ class Project:
 
     def settings(self) -> Settings:
         """TOMLの初期値と環境変数を読み込む。"""
+        if self.effective_settings is not None:
+            return self.effective_settings
         with (self.root / "komaquill.toml").open("rb") as handle:
             defaults = tomllib.load(handle)
         # 環境変数をTOMLより優先する。秘密情報は設定に含めない。

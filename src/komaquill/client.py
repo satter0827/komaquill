@@ -46,14 +46,27 @@ class ComfyClient:
                     "受付結果が不明です。collect で履歴を照合してください。"
                 ) from exc
             raise KomaquillError(
-                "ComfyUIへ接続できません。接続先と start の実行状態を確認してください。"
+                "ComfyUIへ接続できません。接続先と start の実行状態を確認してください。",
+                code="connection_failed",
+                stage="communication",
             ) from exc
         if response.status_code == 401:
-            raise KomaquillError("認証に失敗しました。start でパスワードを設定し直してください。")
+            raise KomaquillError(
+                "認証に失敗しました。start でパスワードを設定し直してください。",
+                code="authentication_failed",
+                stage="communication",
+                http_status=401,
+                retryable=False,
+            )
         if method == "POST" and path == "/prompt" and response.status_code >= 500:
             raise SubmissionUnknown("受付結果が不明です。collect で履歴を照合してください。")
         if not response.is_success:
-            raise KomaquillError(f"ComfyUIの操作に失敗しました（HTTP {response.status_code}）。")
+            raise KomaquillError(
+                f"ComfyUIの操作に失敗しました（HTTP {response.status_code}）。",
+                code="http_failed",
+                stage="communication",
+                http_status=response.status_code,
+            )
         return response
 
     def json(self, path: str) -> JsonObject:
@@ -61,9 +74,17 @@ class ComfyClient:
         try:
             data = self.request("GET", path).json()
         except (JSONDecodeError, UnicodeDecodeError) as exc:
-            raise KomaquillError("ComfyUIの応答形式が想定と異なります。") from exc
+            raise KomaquillError(
+                "ComfyUIの応答形式が想定と異なります。",
+                code="invalid_response",
+                stage="communication",
+            ) from exc
         if not isinstance(data, dict):
-            raise KomaquillError("ComfyUIの応答形式が想定と異なります。")
+            raise KomaquillError(
+                "ComfyUIの応答形式が想定と異なります。",
+                code="invalid_response",
+                stage="communication",
+            )
         return cast(JsonObject, data)
 
     def queue(self) -> list[list[Any]]:

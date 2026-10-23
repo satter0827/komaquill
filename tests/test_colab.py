@@ -140,9 +140,9 @@ def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypa
         colab_entry.main()
     assert error.value.code == 1
     output = capsys.readouterr()
-    diagnostic = (project.artifacts / "logs/colab-cli-error.json").read_text(encoding="utf-8")
+    diagnostic = (project.artifacts / "logs/cli.jsonl").read_text(encoding="utf-8")
     assert "should-stay-private" not in output.out + output.err + diagnostic
-    assert json.loads(diagnostic)["type"] == "RuntimeError"
+    assert json.loads(diagnostic)["failure"]["exception_type"] == "RuntimeError"
 
 
 def test_owned_child_processes_are_terminated_together(tmp_path):
@@ -160,7 +160,8 @@ def test_owned_child_processes_are_terminated_together(tmp_path):
     parent_code = (
         "import subprocess,sys,time; from pathlib import Path; "
         f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}]); "
-        f"Path({str(marker)!r}).write_text(str(child.pid)); time.sleep(60)"
+        f"Path({str(marker) + '.tmp'!r}).write_text(str(child.pid)); "
+        f"Path({str(marker) + '.tmp'!r}).replace({str(marker)!r}); time.sleep(60)"
     )
     process = subprocess.Popen(
         [sys.executable, "-c", parent_code], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL

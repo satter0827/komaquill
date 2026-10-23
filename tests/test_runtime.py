@@ -208,9 +208,10 @@ def test_shutdown_failures_do_not_skip_gpu_stop_or_drop_ownership(
     monkeypatch.setattr(colab, "stop", stop)
     monkeypatch.setattr(colab, "cleanup_processes", cleanup)
     if failure == "logs":
-        runtime.finish_colab(
-            project, colab, receipt, client, session, True, lambda message: None, []
-        )
+        with pytest.raises(KomaquillError, match="ログ"):
+            runtime.finish_colab(
+                project, colab, receipt, client, session, True, lambda message: None, []
+            )
         assert colab.receipt() is None
         assert load_runs(project)[0].state == "lost"
     else:
@@ -252,7 +253,10 @@ def test_interrupt_during_log_recovery_still_stops_gpu(project, client, session,
 
     monkeypatch.setattr(colab, "recover_diagnostics", interrupted)
     monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
-    runtime.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
+    with pytest.raises(KomaquillError, match="ログ"):
+        runtime.finish_colab(
+            project, colab, receipt, client, session, True, lambda message: None, []
+        )
     assert stopped == [True]
     assert colab.receipt() is None
 
@@ -326,7 +330,7 @@ def test_failed_shutdown_output_does_not_skip_gpu_stop(project, client, session,
 
     monkeypatch.setattr(runtime, "drain", unavailable)
     monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
-    with pytest.raises(BrokenPipeError):
+    with pytest.raises(KomaquillError, match="端末"):
         runtime.finish_colab(project, colab, receipt, client, session, True, closed_terminal, [])
     assert stopped == [True]
     assert colab.receipt() is not None

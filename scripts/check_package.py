@@ -25,7 +25,9 @@ def main() -> None:
     wheel_path = root / f".artifacts/dist/komaquill-{expected}-py3-none-any.whl"
     with zipfile.ZipFile(wheel_path) as wheel:
         names = wheel.namelist()
-        metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+        metadata_name = next((name for name in names if name.endswith(".dist-info/METADATA")), None)
+        if metadata_name is None:
+            raise SystemExit("wheelにMETADATAがありません。")
         metadata = Parser().parsestr(wheel.read(metadata_name).decode())
         if metadata["Version"] != expected:
             raise SystemExit("wheelのバージョンが一致しません。")
@@ -34,7 +36,10 @@ def main() -> None:
             raise SystemExit("配布するワークフローまたは設定が不足しています。")
     with tarfile.open(root / f".artifacts/dist/komaquill-{expected}.tar.gz") as archive:
         names += archive.getnames()
-        member = archive.extractfile(f"komaquill-{expected}/PKG-INFO")
+        metadata_path = f"komaquill-{expected}/PKG-INFO"
+        if metadata_path not in archive.getnames():
+            raise SystemExit("sdistにPKG-INFOがありません。")
+        member = archive.extractfile(metadata_path)
         if member is None or Parser().parsestr(member.read().decode())["Version"] != expected:
             raise SystemExit("sdistのバージョンが一致しません。")
     if any({".artifacts", "artifacts", ".env"}.intersection(Path(name).parts) for name in names):

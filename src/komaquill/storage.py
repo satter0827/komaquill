@@ -90,7 +90,7 @@ def load_session(project: Project) -> Session:
 
 def stop_request(project: Project, session: Session) -> bool | None:
     """同じ接続に対する終了要求だけを読む。"""
-    path = project.runtime / "stop.json"
+    path = project.state / "stop.json"
     if not path.is_file():
         return None
     request = json.loads(path.read_text(encoding="utf-8"))

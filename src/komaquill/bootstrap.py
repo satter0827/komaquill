@@ -1,4 +1,4 @@
-"""GPU側でuvと固定した依存関係を用意する。"""
+"""Prepare uv and pinned dependencies on the GPU runtime."""
 
 import hashlib
 import os
@@ -10,12 +10,12 @@ from pathlib import Path
 
 
 def main() -> None:
-    """システムPythonを変更せず専用環境を起動する。"""
+    """Start an isolated environment without modifying system Python."""
     root = Path(__file__).resolve().parents[1]
     artifacts = root / ".artifacts"
     tools = artifacts / "runtime/tools"
     tools.mkdir(parents=True, exist_ok=True)
-    config = tomllib.loads((root / "src/komaquill/resources/runtime.toml").read_text())
+    config = tomllib.loads((root / "komaquill/resources/runtime.toml").read_text())
     uv = tools / "uv"
     print("実行環境を準備しています。", flush=True)
     if not uv.is_file():
@@ -52,14 +52,29 @@ def main() -> None:
     }.items():
         env[key] = str(artifacts / relative)
     (artifacts / "tmp").mkdir(exist_ok=True)
+    python = artifacts / "runtime/venv/bin/python"
     subprocess.run(
-        [str(uv), "sync", "--locked", "--extra", "worker", "--no-dev"],
+        [str(uv), "venv", "--python", config["python_version"], str(python.parent.parent)],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+    # Pylock records exact artifact URLs and hashes, preserving package source affinity.
+    subprocess.run(
+        [
+            str(uv),
+            "pip",
+            "sync",
+            "--python",
+            str(python),
+            "--require-hashes",
+            str(root / "komaquill/resources/pylock.worker.toml"),
+        ],
         cwd=root,
         env=env,
         check=True,
     )
     print("ComfyUIとモデルを準備しています。", flush=True)
-    python = artifacts / "runtime/venv/bin/python"
     subprocess.run(
         [str(python), "-u", "-m", "komaquill.worker", str(root)],
         cwd=root,

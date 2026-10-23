@@ -190,9 +190,7 @@ def test_lost_runs_never_return_to_pending(project, client, session, stub):
 def test_shutdown_request_prevents_new_submission(project, client, session, stub):
     from komaquill.storage import atomic_json
 
-    atomic_json(
-        project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
-    )
+    atomic_json(project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True})
     with pytest.raises(KomaquillError, match="終了処理中"):
         generate(project, client, session, "a cabin", "", 1)
     assert stub.submissions == 0

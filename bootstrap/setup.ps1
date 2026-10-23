@@ -44,4 +44,4 @@ if ($InstallExtensions) {
         if ($LASTEXITCODE -ne 0) { throw 'VS Code拡張機能の導入に失敗しました。' }
     }
 }
-Write-Output '環境を準備しました。. ./scripts/activate.ps1 で有効にできます。'
+Write-Output '環境を準備しました。. ./bootstrap/activate.ps1 で有効にできます。'

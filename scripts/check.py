@@ -15,6 +15,7 @@ def main() -> None:
         [sys.executable, "-m", "ruff", "format", "--check", "."],
         [sys.executable, "-m", "ruff", "check", "."],
         [sys.executable, "-m", "mypy", "src", "scripts"],
+        [sys.executable, str(root / "scripts/check_worker_lock.py")],
         [
             sys.executable,
             "-c",

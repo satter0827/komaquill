@@ -15,3 +15,5 @@ $env:TEMP = $env:TMP
 New-Item -ItemType Directory -Path $env:TMP -Force | Out-Null
 $KomaquillUv = Join-Path $KomaquillRoot '.artifacts/runtime/uv/uv.exe'
 $KomaquillPython = Join-Path $env:UV_PROJECT_ENVIRONMENT 'Scripts/python.exe'
+
+$env:KOMAQUILL_UV = $KomaquillUv

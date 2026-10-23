@@ -1,4 +1,4 @@
-"""配布物へ生成物が入らず、バージョンが一致することを確認する。"""
+"""Validate distribution versions and exclude generated or secret files."""
 
 import os
 import tarfile
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def main() -> None:
-    """wheel、sdist、宣言、タグのバージョンを照合する。"""
+    """Compare the wheel, sdist, declaration and release tag versions."""
     root = Path(__file__).resolve().parents[1]
     expected = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
@@ -31,8 +31,17 @@ def main() -> None:
         metadata = Parser().parsestr(wheel.read(metadata_name).decode())
         if metadata["Version"] != expected:
             raise SystemExit("wheelのバージョンが一致しません。")
-        required = {"workflow.json", "workflow-api.json", "model.toml", "runtime.toml"}
-        if not all(f"komaquill/resources/{name}" in names for name in required):
+        required = {
+            "workflow.json",
+            "workflow-api.json",
+            "model.toml",
+            "runtime.toml",
+            "defaults.toml",
+            "pylock.worker.toml",
+        }
+        if "komaquill/bootstrap.py" not in names or not all(
+            f"komaquill/resources/{name}" in names for name in required
+        ):
             raise SystemExit("配布するワークフローまたは設定が不足しています。")
     with tarfile.open(root / f".artifacts/dist/komaquill-{expected}.tar.gz") as archive:
         names += archive.getnames()

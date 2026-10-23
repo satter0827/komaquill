@@ -94,7 +94,7 @@ def stub(session):
 
 
 def pytest_configure(config):
-    (config.rootpath / ".artifacts/tests").mkdir(parents=True, exist_ok=True)
+    (config.rootpath / ".artifacts/reports/quality").mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture

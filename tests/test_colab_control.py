@@ -2,7 +2,6 @@
 
 import subprocess
 from contextlib import nullcontext
-from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -106,11 +105,9 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
     monkeypatch.setattr(control, "entry", lambda _: {})
     commands = []
 
-    def run(args, **kwargs):
-        commands.append(args)
-        Path(args[args.index("-o") + 1]).write_bytes(b"source archive")
+    from komaquill import deployment
 
-    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(deployment, "source_revision", lambda: "revision")
     monkeypatch.setattr(control, "call", lambda *args, **kwargs: commands.append(args))
     monkeypatch.setattr(control, "command", lambda *args: ["official", *args])
     process = SimpleNamespace()
@@ -118,11 +115,14 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
         module.subprocess, "Popen", lambda args, **kwargs: commands.append(args) or process
     )
     assert control.prepare(receipt) is process
-    script = (control.project.runtime / "prepare.py").read_text()
+    script = (control.project.runtime / "deployment/prepare.py").read_text()
     assert "hashlib.file_digest" in script and str(receipt.runtime_id) in script
     compile(script, "prepare.py", "exec")
-    assert "poll_interval = 0.001" in script
-    assert commands[1][0] == "upload" and "exec" in commands[2]
+    import tarfile
+
+    with tarfile.open(control.project.runtime / "deployment/payload.tar") as archive:
+        assert b"poll_interval = 0.001" in archive.extractfile("komaquill.toml").read()
+    assert commands[0][0] == "upload" and "exec" in commands[1]
     monkeypatch.setattr(control, "entry", lambda _: None)
     with pytest.raises(KomaquillError):
         control.prepare(receipt)

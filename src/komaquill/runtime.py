@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from komaquill.client import ComfyClient
 from komaquill.colab import Colab, Receipt, check_port, terminate
+from komaquill.deployment import create_payload
 from komaquill.downloads import fetch_model
 from komaquill.errors import KomaquillError, RuntimeEnded
 from komaquill.events import failure_info, record_event
@@ -22,7 +23,6 @@ from komaquill.service import (
     collect,
     collection_lock,
     mark_lost,
-    source_revision,
     verify_runtime,
 )
 from komaquill.settings import Project
@@ -69,8 +69,8 @@ def connected(project: Project) -> Iterator[tuple[ComfyClient, Session]]:
 
 def monitor_lock(project: Project) -> FileLock:
     """二重起動と終了中の再起動を防ぐ。"""
-    project.runtime.mkdir(parents=True, exist_ok=True)
-    return FileLock(str(project.runtime / ".monitor.lock"))
+    project.state.mkdir(parents=True, exist_ok=True)
+    return FileLock(str(project.state / ".monitor.lock"))
 
 
 def excluded_history(client: ComfyClient) -> set[str]:
@@ -82,10 +82,10 @@ def excluded_history(client: ComfyClient) -> set[str]:
 
 def request_stop(project: Project, session: Session, force: bool) -> None:
     """並行する終了要求で強制終了を通常終了へ戻さない。"""
-    with collection_lock(project), FileLock(str(project.runtime / ".stop.lock")):
+    with collection_lock(project), FileLock(str(project.state / ".stop.lock")):
         force = force or stop_request(project, session) is True
         atomic_json(
-            project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": force}
+            project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": force}
         )
 
 
@@ -440,13 +440,14 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
             raise KomaquillError("操作ログの保存先を確認してください。", code="diagnostics_failed")
         echo("モデルを取得・検証しています。")
         fetch_model(project.artifacts, preset())
+        payload = create_payload(project)
         cleanup_owned = colab.receipt() is None
-        receipt, created = colab.acquire(source_revision(project))
+        receipt, created = colab.acquire(payload.code_sha256)
         cleanup_owned = True
         worker = None
         if created:
             echo("Colabで実行環境とモデルを準備しています。")
-            worker = colab.prepare(receipt)
+            worker = colab.prepare(receipt, payload)
             processes.append(worker)
 
         def reconnect() -> None:
@@ -476,6 +477,10 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
                 )
                 if session.runtime_id != receipt.runtime_id:
                     raise KomaquillError("ColabのランタイムIDが所有記録と異なります。")
+                if receipt.code_sha256 is not None and session.code_sha256 != receipt.code_sha256:
+                    raise KomaquillError(
+                        "GPU側の実行コードが一致しません。stop後にstartしてください。"
+                    )
                 verify_runtime(client, session)
                 break
             except KomaquillError:
@@ -513,7 +518,7 @@ def start(
     """二重起動を拒否し、明示された接続先を開始する。"""
     try:
         with monitor_lock(project).acquire(timeout=0):
-            (project.runtime / "stop.json").unlink(missing_ok=True)
+            (project.state / "stop.json").unlink(missing_ok=True)
             if backend == "external":
                 if endpoint is None:
                     raise KomaquillError("外部接続には --endpoint を指定してください。")

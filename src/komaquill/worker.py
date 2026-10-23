@@ -74,7 +74,8 @@ def main(root: Path) -> None:
     comfy = prepare_server(project, config, user)
     metadata = {
         "runtime_id": os.environ["KOMAQUILL_RUNTIME_ID"],
-        "source_revision": os.environ["KOMAQUILL_SOURCE_REVISION"],
+        "source_revision": os.environ.get("KOMAQUILL_SOURCE_REVISION") or None,
+        "code_sha256": os.environ.get("KOMAQUILL_CODE_SHA256"),
         "comfy_revision": config["comfy_revision"],
         "frontend_version": config["frontend_version"],
         "model_sha256": preset().sha256,

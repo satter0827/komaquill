@@ -55,7 +55,7 @@ dev = [
 packages = ["src/komaquill"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "scripts", "docs", "README.md", "CONTRIBUTING.md", "AGENTS.md", "komaquill.toml", "pyproject.toml", "uv.lock", ".python-version", ".vscode", ".github", ".githooks", ".gitattributes", ".gitignore"]
+include = ["src", "tests", "scripts", "bootstrap", "docs", "README.md", "CONTRIBUTING.md", "AGENTS.md", "komaquill.toml", "pyproject.toml", "uv.lock", ".python-version", ".vscode", ".github", ".githooks", ".gitattributes", ".gitignore"]
 
 [tool.ruff]
 line-length = 100
@@ -80,7 +80,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "--basetemp=.artifacts/tests/tmp"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "--basetemp=.artifacts/tmp/pytest"]
 xfail_strict = true
 
 [tool.coverage.run]
@@ -110,13 +110,13 @@ ancestors = ["komaquill"]
 [[tool.importlinter.contracts]]
 name = "CLIへの逆依存を禁止する"
 type = "forbidden"
-source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads", "komaquill.events"]
+source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads", "komaquill.events", "komaquill.provenance"]
 forbidden_modules = ["komaquill.cli", "komaquill.__main__"]
 
 [[tool.importlinter.contracts]]
 name = "生成と保存からColab制御への依存を禁止する"
 type = "forbidden"
-source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads", "komaquill.events"]
+source_modules = ["komaquill.service", "komaquill.client", "komaquill.storage", "komaquill.workflow", "komaquill.settings", "komaquill.models", "komaquill.downloads", "komaquill.events", "komaquill.provenance"]
 forbidden_modules = ["komaquill.colab", "komaquill.colab_entry", "komaquill.runtime", "colab_cli"]
 
 [[tool.importlinter.contracts]]

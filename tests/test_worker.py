@@ -11,17 +11,16 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from komaquill import worker
+from komaquill import bootstrap, worker
 from komaquill.errors import KomaquillError
-from scripts import worker as bootstrap
 
 
 @pytest.mark.parametrize("case", ["download", "cached", "checksum", "missing"])
 def test_bootstrap_verifies_tools_and_starts_isolated_worker(tmp_path, monkeypatch, case):
-    script = tmp_path / "scripts/worker.py"
-    config = tmp_path / "src/komaquill/resources/runtime.toml"
+    script = tmp_path / "komaquill/bootstrap.py"
+    config = tmp_path / "komaquill/resources/runtime.toml"
     config.parent.mkdir(parents=True)
-    config.write_text('uv_version="test-version"')
+    config.write_text('uv_version="test-version"\npython_version="3.12.15"')
     monkeypatch.setattr(bootstrap, "__file__", str(script))
     content = io.BytesIO()
     with tarfile.open(fileobj=content, mode="w:gz") as archive:
@@ -53,9 +52,10 @@ def test_bootstrap_verifies_tools_and_starts_isolated_worker(tmp_path, monkeypat
         assert not commands
     else:
         bootstrap.main()
-        assert uv.is_file() and len(commands) == 2
-        assert commands[0][0][1:] == ["sync", "--locked", "--extra", "worker", "--no-dev"]
-        assert commands[1][0][2:4] == ["-m", "komaquill.worker"]
+        assert uv.is_file() and len(commands) == 3
+        assert commands[0][0][1:3] == ["venv", "--python"]
+        assert "--require-hashes" in commands[1][0]
+        assert commands[2][0][2:4] == ["-m", "komaquill.worker"]
         assert all(
             command[1]["env"]["TMPDIR"] == str(tmp_path / ".artifacts/tmp") for command in commands
         )

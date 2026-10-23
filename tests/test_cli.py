@@ -95,7 +95,7 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
     # 別インスタンスでロックし、同じスレッドの再入を避ける。
     from filelock import FileLock
 
-    with FileLock(str(project.runtime / ".colab.lock")):
+    with FileLock(str(project.state / ".colab.lock")):
         result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0
     assert "Colab: 起動または終了の処理中" in result.output

@@ -221,7 +221,7 @@ def doctor(ctx: typer.Context) -> None:
             raise KomaquillError(
                 "生成に必要な標準ノードがありません。ComfyUIの構成を確認してください。"
             )
-        checkpoint = nodes["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
+        checkpoint = client.checkpoints()
         if preset().filename not in checkpoint:
             raise KomaquillError(
                 "使用モデルがComfyUIにありません。モデルの配置を確認してください。"

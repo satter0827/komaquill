@@ -1,5 +1,6 @@
 """Enforce independent statement and branch thresholds from coverage.py JSON."""
 
+import argparse
 import json
 import tomllib
 from pathlib import Path
@@ -28,13 +29,15 @@ def check_totals(totals: dict[str, Any], line_minimum: float, branch_minimum: fl
     return failures
 
 
-def main() -> None:
+def main(report_path: Path | None = None) -> None:
     """Read the single quality policy and inspect both coverage and source inventory."""
     root = Path(__file__).resolve().parents[1]
     policy = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
         "komaquill"
     ]["coverage"]
-    report = json.loads((root / ".artifacts/reports/quality/coverage.json").read_bytes())
+    report = json.loads(
+        (report_path or root / ".artifacts/reports/quality/coverage.json").read_bytes()
+    )
     expected = {
         path.relative_to(root).as_posix()
         for base in ("src", "scripts")
@@ -48,4 +51,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Enforce coverage thresholds.")
+    parser.add_argument("--report", type=Path)
+    main(parser.parse_args().report)

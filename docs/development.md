@@ -6,13 +6,13 @@ src/は製品、bootstrap/は初回導入、scripts/は品質ゲート、tests/�
 
 ## 品質検査
 
-[環境構築](../CONTRIBUTING.md#環境を構築する)後、python scripts/check.pyとpython scripts/security.pyを実行します。Check Projectも同じ処理を呼び出します。
+[環境構築](../CONTRIBUTING.md#環境を構築する)後、python scripts/check.pyを実行します。Check Projectも同じ処理を呼び出します。
 
-check.pyはRuffの整形確認・lint、strict mypy、GPU依存ロックの一致、Import Linter、pytest、行・分岐カバレッジを順に確認します。srcとscriptsの未実行Pythonファイルも対象とし、testsは除外します。閾値はpyproject.tomlのtool.komaquill.coverageで管理します。
+check.pyはRuffの整形確認・lint、strict mypy、GPU依存ロックの一致、Import Linter、pytest、行・分岐カバレッジ、配布物、隔離wheel E2E、秘密情報を順に確認します。srcとscriptsの未実行Pythonファイルも対象とし、testsは除外します。閾値はpyproject.tomlのtool.komaquill.coverageで管理します。
 
 security.pyは公開対象、ステージ済み差分、全Git履歴をdetect-secretsで検査します。検出値を外部送信する確認機能は無効です。レポートへはファイル、行番号、検出種類だけを保存します。公開ハッシュや試験値の除外には行単位で理由を記載します。setup.ps1は同じ検査を送信前フックへ登録します。
 
-品質結果は.artifacts/reports/quality/へ保存します。自動テストは模擬応答と一時フォルダーを使い、GPUやGoogle認証を要求しません。PowerShellの構文・パス・終了コードはWindowsで確認します。
+品質結果は.artifacts/reports/quality/実行ID/へ保存します。CIは同じスクリプトの--group qualityと--group securityを使用します。自動テストは模擬応答と一時フォルダーを使い、GPUやGoogle認証を要求しません。PowerShellの構文・パス・終了コードはWindowsで確認します。
 
 ## 依存を更新する
 

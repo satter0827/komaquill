@@ -21,7 +21,8 @@ def main() -> None:
     cli = importlib.import_module("colab_cli.cli")
     cli.app.pretty_exceptions_enable = False
     try:
-        cli.app(standalone_mode=False)
+        result = cli.app(standalone_mode=False)
+        raise SystemExit(result if isinstance(result, int) else 0)
     except click.exceptions.Exit as error:
         raise SystemExit(error.exit_code) from None
     except KeyboardInterrupt:

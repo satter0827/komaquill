@@ -66,6 +66,7 @@ class ComfyClient:
                 code="http_failed",
                 stage="communication",
                 http_status=response.status_code,
+                retryable=response.status_code >= 500 or response.status_code == 429,
             )
         return response
 
@@ -133,3 +134,19 @@ class ComfyClient:
     def image(self, reference: ImageRef) -> bytes:
         """Download an image referenced by the server history."""
         return self.request("GET", "/view", params=reference.model_dump()).content
+
+    def checkpoints(self) -> list[str]:
+        """Validate checkpoint choices without exposing the remote payload."""
+        nodes = self.json("/object_info")
+        try:
+            values = nodes["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
+            if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
+                raise ValueError
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise KomaquillError(
+                "ComfyUI returned invalid checkpoint metadata.",
+                code="invalid_response",
+                stage="response_validation",
+                retryable=False,
+            ) from None
+        return cast(list[str], values)

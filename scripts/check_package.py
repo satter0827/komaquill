@@ -1,5 +1,6 @@
 """Validate distribution versions and exclude generated or secret files."""
 
+import argparse
 import os
 import tarfile
 import tomllib
@@ -9,7 +10,7 @@ from importlib.metadata import version
 from pathlib import Path
 
 
-def main() -> None:
+def main(dist_dir: Path | None = None) -> None:
     """Compare the wheel, sdist, declaration and release tag versions."""
     root = Path(__file__).resolve().parents[1]
     expected = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
@@ -22,7 +23,8 @@ def main() -> None:
         and os.environ.get("GITHUB_REF_NAME") != f"v{expected}"
     ):
         raise SystemExit("タグとバージョンが一致しません。")
-    wheel_path = root / f".artifacts/dist/komaquill-{expected}-py3-none-any.whl"
+    dist = dist_dir or root / ".artifacts/dist"
+    wheel_path = dist / f"komaquill-{expected}-py3-none-any.whl"
     with zipfile.ZipFile(wheel_path) as wheel:
         names = wheel.namelist()
         metadata_name = next((name for name in names if name.endswith(".dist-info/METADATA")), None)
@@ -43,7 +45,7 @@ def main() -> None:
             f"komaquill/resources/{name}" in names for name in required
         ):
             raise SystemExit("配布するワークフローまたは設定が不足しています。")
-    with tarfile.open(root / f".artifacts/dist/komaquill-{expected}.tar.gz") as archive:
+    with tarfile.open(dist / f"komaquill-{expected}.tar.gz") as archive:
         names += archive.getnames()
         metadata_path = f"komaquill-{expected}/PKG-INFO"
         if metadata_path not in archive.getnames():
@@ -57,4 +59,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Inspect built distributions.")
+    parser.add_argument("--dist-dir", type=Path)
+    main(parser.parse_args().dist_dir)

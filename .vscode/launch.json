@@ -2,135 +2,158 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ComfyUIを起動する",
+      "name": "Start ComfyUI (Colab)",
       "type": "debugpy",
       "request": "launch",
       "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "start"
-      ],
+      ]
+    },
+    {
+      "name": "Open ComfyUI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "画像を生成する",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "args": [
-        "generate"
-      ],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "入力画面を開く",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "open",
         "--view",
-        "app"
-      ],
+        "${input:view}"
+      ]
+    },
+    {
+      "name": "Generate Image",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "ノード画面を開く",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
-        "open",
-        "--view",
-        "graph"
-      ],
+        "generate",
+        "--prompt",
+        "${input:prompt}"
+      ]
+    },
+    {
+      "name": "Collect Results",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "結果を回収する",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "collect"
-      ],
+      ]
+    },
+    {
+      "name": "Show Status",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "接続を確認する",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "args": [
-        "doctor"
-      ],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "利用状態を確認する",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "status"
-      ],
+      ]
+    },
+    {
+      "name": "Check ComfyUI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "ComfyUIを終了する",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
-        "stop"
-      ],
+        "doctor"
+      ]
+    },
+    {
+      "name": "Stop ComfyUI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
-    },
-    {
-      "name": "生成を待たずに終了する",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "stop",
-        "--force"
-      ],
+        "${input:stopMode}"
+      ]
+    },
+    {
+      "name": "Run CLI with Arguments",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe"
+      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+      "args": "${command:pickArgs}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "view",
+      "type": "pickString",
+      "description": "Choose the ComfyUI view",
+      "options": [
+        {
+          "label": "App Mode",
+          "value": "app"
+        },
+        {
+          "label": "Node Graph",
+          "value": "graph"
+        }
+      ],
+      "default": "app"
+    },
+    {
+      "id": "prompt",
+      "type": "promptString",
+      "description": "Describe the image to generate"
+    },
+    {
+      "id": "stopMode",
+      "type": "pickString",
+      "description": "Choose how to stop ComfyUI",
+      "options": [
+        {
+          "label": "Wait for Results",
+          "value": "--no-force"
+        },
+        {
+          "label": "Stop Without Waiting",
+          "value": "--force"
+        }
+      ],
+      "default": "--no-force"
     }
   ]
 }

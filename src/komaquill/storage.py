@@ -1,4 +1,4 @@
-"""生成要求と回収結果を原子的に保存する。"""
+"""Persist generation requests and collection results atomically."""
 
 import json
 import os
@@ -13,7 +13,7 @@ from komaquill.settings import Project
 
 
 def atomic_bytes(path: Path, content: bytes) -> None:
-    """同じフォルダーの一時ファイルから置き換える。"""
+    """Replace a file using a temporary file in the same directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     try:
@@ -27,17 +27,17 @@ def atomic_bytes(path: Path, content: bytes) -> None:
 
 
 def atomic_json(path: Path, data: JsonObject) -> None:
-    """UTF-8でJSONを保存する。"""
+    """Write UTF-8 JSON atomically."""
     atomic_bytes(path, json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
 def run_dir(project: Project, run_id: UUID) -> Path:
-    """UUIDを使い遠隔ファイル名を保存パスに使わない。"""
+    """Use a local UUID rather than a remote filename for directories."""
     return project.runs / str(run_id)
 
 
 def save_run(project: Project, run: Run) -> None:
-    """生成状態を更新する。"""
+    """Persist changed request state and emit state transitions."""
     path = run_dir(project, run.run_id) / "run.json"
     previous = Run.model_validate_json(path.read_bytes()) if path.is_file() else None
     if previous == run:
@@ -58,7 +58,7 @@ def save_run(project: Project, run: Run) -> None:
 
 
 def load_runs(project: Project, *, unreadable: list[UUID | str] | None = None) -> list[Run]:
-    """履歴を読む。unreadableの指定時は読めないIDを報告して継続する。"""
+    """Read histories, optionally reporting unreadable identities while continuing."""
     runs: list[Run] = []
     for path in project.runs.glob("*/run.json"):
         try:
@@ -84,12 +84,12 @@ def load_runs(project: Project, *, unreadable: list[UUID | str] | None = None) -
 
 
 def load_session(project: Project) -> Session:
-    """保存済み接続先を読み込む。"""
+    """Read the saved connection."""
     return Session.model_validate_json(project.session_file.read_bytes())
 
 
 def stop_request(project: Project, session: Session) -> bool | None:
-    """同じ接続に対する終了要求だけを読む。"""
+    """Read a stop request for the current runtime only."""
     path = project.state / "stop.json"
     if not path.is_file():
         return None

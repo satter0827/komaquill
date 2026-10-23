@@ -1,4 +1,4 @@
-"""中継サーバーのエラーも受付不明として扱う。"""
+"""Treat gateway failures as unknown submission outcomes."""
 
 import httpx
 import pytest

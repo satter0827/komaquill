@@ -1,4 +1,4 @@
-"""モデルを正式な配布元から取得する。"""
+"""Download models from their pinned upstream locations."""
 
 import hashlib
 import os
@@ -11,13 +11,13 @@ from komaquill.models import ModelPreset
 
 
 def file_digest(path: Path) -> str:
-    """大きなファイルを分割して検証する。"""
+    """Verify large files using bounded chunks."""
     with path.open("rb") as handle:
         return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
 def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
-    """モデルを取得してSHA256を検証する。"""
+    """Download a model and verify its SHA256."""
     folder = artifacts / "models" / model.name
     folder.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(artifacts / "cache" / "huggingface")

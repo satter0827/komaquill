@@ -1,4 +1,4 @@
-"""生成・履歴照合・回収をCLIと画面で共通に行う。"""
+"""Share generation, reconciliation and collection across CLI and browser requests."""
 
 import hashlib
 import io
@@ -27,7 +27,7 @@ from komaquill.workflow import digest, prepare
 
 @dataclass(frozen=True)
 class Collection:
-    """回収結果。pendingには受付不明も含む。"""
+    """Describe the current collection, including unknown submissions."""
 
     saved: int
     pending: int
@@ -38,7 +38,7 @@ class Collection:
 
 
 def new_run(project: Project, session: Session, run_id: UUID, graph: JsonObject) -> Run:
-    """再実行に必要な条件を保存するための履歴を作る。"""
+    """Create a history record containing reproducible generation conditions."""
     return Run(
         run_id=run_id,
         runtime_id=session.runtime_id,
@@ -55,7 +55,7 @@ def new_run(project: Project, session: Session, run_id: UUID, graph: JsonObject)
 
 
 def request_id(prompt: list[Any]) -> UUID | None:
-    """ComfyUIが保持するextra_dataからローカル実行IDを読む。"""
+    """Read a local request identity from ComfyUI extra_data."""
     try:
         return UUID(str(prompt[3]["komaquill"]["run_id"]))
     except (IndexError, KeyError, TypeError, ValueError):
@@ -137,7 +137,7 @@ def generation_times(run: Run, status: JsonObject) -> None:
 
 
 def verify_runtime(client: ComfyClient, session: Session) -> None:
-    """管理する環境だけを識別ファイルで照合する。"""
+    """Verify runtime identity for managed endpoints only."""
     if session.backend == "colab" and str(client.runtime().get("runtime_id")) != str(
         session.runtime_id
     ):
@@ -145,13 +145,13 @@ def verify_runtime(client: ComfyClient, session: Session) -> None:
 
 
 def collection_lock(project: Project) -> FileLock:
-    """生成要求と回収結果を同じ排他制御で更新する。"""
+    """Serialize request recording and collection updates with the same lock."""
     project.runs.mkdir(parents=True, exist_ok=True)
     return FileLock(str(project.runs / ".collection.lock"))
 
 
 def save_conditions(project: Project, run: Run, prompt: list[Any]) -> None:
-    """観測した生成条件を、完了を待たず保存する。"""
+    """Record observed conditions before generation completes."""
     folder = run_dir(project, run.run_id)
     graph = prompt[2]
     if not isinstance(graph, dict):
@@ -173,7 +173,7 @@ def save_conditions(project: Project, run: Run, prompt: list[Any]) -> None:
 def collect(
     project: Project, client: ComfyClient, session: Session, only: UUID | None = None
 ) -> Collection:
-    """キューと履歴を記録し、要求ごとに画像を回収する。"""
+    """Observe queue and history, then collect each request independently."""
     project = project.configured(session.settings)
     with collection_lock(project):
         verify_runtime(client, session)
@@ -273,7 +273,7 @@ def collect(
 
 
 def mark_lost(project: Project, runtime_id: UUID) -> tuple[UUID, ...]:
-    """終了を確認したColabの未回収要求を確定する。"""
+    """Finalize pending requests after confirming the owned runtime has ended."""
     lost: list[UUID] = []
     with collection_lock(project):
         unreadable: list[UUID | str] = []
@@ -299,7 +299,7 @@ def generate(
     negative: str,
     seed: int,
 ) -> Run:
-    """送信前に記録し、ローカル保存が終わるまで待つ。"""
+    """Record before submission and wait until local persistence completes."""
     project = project.configured(session.settings)
     verify_runtime(client, session)
     run_id = uuid4()
@@ -316,6 +316,13 @@ def generate(
     try:
         prompt_id = client.submit(graph, ui, str(run_id))
     except SubmissionUnknown as exc:
+        with collection_lock(project):
+            run = Run.model_validate_json((folder / "run.json").read_bytes())
+            if run.pending:
+                run.failure = failure_info(
+                    KomaquillError("", code="submission_unknown"), "submission"
+                )
+                save_run(project, run)
         raise SubmissionUnknown(
             f"受付結果が不明です。collect {run_id} で照合してください。"
         ) from exc

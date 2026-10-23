@@ -1,4 +1,4 @@
-"""確保・接続・停止の所有範囲を検証する。"""
+"""Test allocation, connection and shutdown ownership."""
 
 import json
 from uuid import uuid4

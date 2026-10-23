@@ -1,4 +1,4 @@
-"""VS Codeに依存しない操作と画面利用中の自動保存を検証する。"""
+"""Test CLI operations independently of VS Code."""
 
 from contextlib import contextmanager
 
@@ -92,7 +92,7 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
     receipt = Receipt(name="starting", runtime_id=uuid4(), source_revision="a" * 40)
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     monkeypatch.setattr(cli, "Colab", lambda project: colab)
-    # 別インスタンスでロックし、同じスレッドの再入を避ける。
+    # Use a different lock instance to avoid reentrant locking.
     from filelock import FileLock
 
     with FileLock(str(project.state / ".colab.lock")):

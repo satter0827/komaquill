@@ -1,4 +1,4 @@
-"""設定と保存データの型。"""
+"""Define validated runtime and persistence records."""
 
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -13,7 +13,7 @@ JsonObject = dict[str, Any]
 
 
 class ModelPreset(BaseModel):
-    """取得するモデルを不変のリビジョンで指定する。"""
+    """Pin a model to an immutable upstream revision."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str
@@ -25,7 +25,7 @@ class ModelPreset(BaseModel):
 
 
 class Session(BaseModel):
-    """接続先と遠隔ランタイムの識別情報。秘密情報は含めない。"""
+    """Identify the endpoint and remote runtime without secrets."""
 
     endpoint: str
     runtime_id: UUID
@@ -42,7 +42,7 @@ class Session(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str | None) -> str | None:
-        """Basic認証の区切り文字と空の利用者名を拒否する。"""
+        """Reject empty usernames and Basic authentication delimiters."""
         if value is not None and (not value.strip() or any(char in value for char in ":\r\n")):
             raise ValueError("Basic認証の利用者名を確認してください。")
         return value
@@ -50,9 +50,9 @@ class Session(BaseModel):
     @field_validator("endpoint")
     @classmethod
     def validate_endpoint(cls, value: str) -> str:
-        """TLSまたはローカル接続だけを許可する。"""
+        """Allow TLS or loopback connections only."""
         url = urlsplit(value)
-        # urlsplitはportを参照するまで、数値と範囲を検証しない。
+        # Accessing port triggers urlsplit numeric and range validation.
         if url.port == 0:
             raise ValueError("接続先のポート番号を確認してください。")
         if (
@@ -70,7 +70,7 @@ class Session(BaseModel):
 
 
 class ImageRef(BaseModel):
-    """ComfyUIが返す画像への参照。"""
+    """Reference an image reported by ComfyUI."""
 
     filename: str
     subfolder: str = ""
@@ -98,7 +98,7 @@ class ImageMetadata(BaseModel):
 
 
 class Run(BaseModel):
-    """再接続後も回収を再開するための履歴。"""
+    """Retain generation conditions for collection after reconnecting."""
 
     run_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -125,7 +125,7 @@ class Run(BaseModel):
 
     @property
     def pending(self) -> bool:
-        """保存または終了が確定していない要求かを返す。"""
+        """Return whether the request still needs a terminal outcome."""
         return self.state not in {"saved", "failed", "lost"}
 
 

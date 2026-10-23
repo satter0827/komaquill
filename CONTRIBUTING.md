@@ -11,31 +11,31 @@ python scripts/check.py
 python scripts/security.py
 ```
 
-すべて終了コード0で完了すれば、開発環境と品質検査を実行できています。検査にGPUやGoogle認証は必要ありません。
+終了コード0で完了することを確認します。品質検査にGPU、Google認証、モデルのダウンロードは必要ありません。LinuxではPython 3.12とuvを導入し、uv sync --locked --extra colab-clientで環境を準備します。CIはWindowsとLinuxで同じ検査を実行します。
 
 ## 変更する
 
-最新のmainから `feat/内容`、`fix/内容`、`docs/内容` などの作業ブランチを作成します。
-CLIを操作の中心に置き、VS Codeには起動設定だけを置きます。生成・保存処理からColab制御への依存を追加しないでください。
+最新mainからfeat/内容、fix/内容、docs/内容などの作業ブランチを作成します。[開発規約](AGENTS.md)に従い、設計・保存・秘密情報・文言・検証の規約を確認してください。scriptsは品質ゲート、bootstrapは導入処理、testsはテストを担当します。
 
-根本原因と同じ原因がある箇所を確認し、目的に必要な範囲を変更します。標準ライブラリと成熟したライブラリを優先し、不要な処理は削除します。
-PythonのdocstringはGoogle形式を基本とします。文書と利用者向けメッセージは日本語で記載します。
+対応する不具合を再現するテストを追加し、同じ原因のある箇所も確認します。設定値と固定バージョンの管理方法は[構成と設定](docs/architecture.md)、依存更新と配布物の検証は[開発とリリース](docs/development.md)を参照してください。
 
-保存先は `.artifacts/` です。画像、モデル、ログ、認証情報をコミットしないでください。認証情報を引数やURLへ含めることも禁止します。
-
-## 検証してPRを作成する
-
-変更に対応する回帰テストを追加し、品質検査と秘密情報検査を実行します。配布対象を変更した場合は配布物も確認します。
+## 検証する
 
 ```powershell
+python scripts/check.py
+python scripts/security.py
 uv build --out-dir .artifacts/dist
 python scripts/check_package.py
+$env:KOMAQUILL_WHEEL = '.artifacts/dist'
+python -m pytest tests/test_wheel.py -q
 ```
 
-コミットは `fix: 回収失敗後も正常な画像を保存する` のように、変更の目的を日本語で記載します。
-PRには解決する問題、変更後の動作、実施した検証、残る制約を記載します。
-mainへのマージにはPRと必須CIの成功が必要です。マージはリポジトリ所有者が行います。
+すべて終了コード0で完了することを確認します。srcとscriptsのPythonを計測し、testsを除外して行90%以上・分岐80%以上を独立判定します。検査結果は.artifacts/reports/quality/、配布物は.artifacts/dist/へ保存します。wheel検証はリポジトリ外の一時環境を作成し、終了時に削除します。
 
-Colabへ転送するソースはHEADコミットです。変更したコードで実機検証する前にコミットしてください。GitHubへのpushは起動条件ではありません。
+GPU、SSH、起動・回収・終了を変更した場合は[実機検証](docs/validation.md)も実施します。作品・モデル・履歴・秘密情報は公開しないでください。
 
-依存関係、検証、バージョン更新の手順は[開発とリリース](docs/development.md)を参照してください。
+## PRとリリース
+
+PRには問題、変更後の動作、検証結果、残る制約を記載します。関連する段階を複数PRへ分けた場合は先行PRを基点とし、そのマージ後にmainへ基点を揃えてCIを再確認します。必須のqualityとsecurityを通し、mainへのマージはリポジトリ所有者が行います。
+
+バージョンと公開手順は[開発とリリース](docs/development.md#バージョンとリリース)を参照してください。

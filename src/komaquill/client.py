@@ -1,4 +1,4 @@
-"""ComfyUI標準HTTP APIへの通信。"""
+"""Access the standard ComfyUI HTTP API."""
 
 from json import JSONDecodeError
 from typing import Any, cast
@@ -11,7 +11,7 @@ from komaquill.models import ImageRef, JsonObject
 
 
 class ComfyClient:
-    """リダイレクトせず認証情報を接続先だけに送る。"""
+    """Send credentials only to the selected endpoint without redirects."""
 
     def __init__(
         self,
@@ -33,11 +33,11 @@ class ComfyClient:
         )
 
     def close(self) -> None:
-        """接続を閉じる。"""
+        """Close the HTTP client."""
         self.http.close()
 
     def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        """エラー応答の本文や資格情報を表示しない。"""
+        """Classify failures without exposing response bodies or credentials."""
         try:
             response = self.http.request(method, path, **kwargs)
         except httpx.RequestError as exc:
@@ -70,7 +70,7 @@ class ComfyClient:
         return response
 
     def json(self, path: str) -> JsonObject:
-        """オブジェクト形式の応答を読み込む。"""
+        """Read an object response."""
         try:
             data = self.request("GET", path).json()
         except (JSONDecodeError, UnicodeDecodeError) as exc:
@@ -88,7 +88,7 @@ class ComfyClient:
         return cast(JsonObject, data)
 
     def queue(self) -> list[list[Any]]:
-        """標準キューの行を検証し、応答本文を例外へ含めない。"""
+        """Validate standard queue rows without including response bodies in errors."""
         data = self.json("/queue")
         result: list[list[Any]] = []
         for key in ("queue_running", "queue_pending"):
@@ -102,15 +102,15 @@ class ComfyClient:
         return result
 
     def history(self) -> JsonObject:
-        """現在のランタイムの履歴を取得する。"""
+        """Read the current server history."""
         return self.json("/history")
 
     def runtime(self) -> JsonObject:
-        """準備スクリプトが標準userdataへ保存した識別情報を取得する。"""
+        """Read managed runtime metadata from standard userdata."""
         return self.json("/userdata/" + quote("komaquill/session.json", safe=""))
 
     def submit(self, graph: JsonObject, ui: JsonObject, run_id: str) -> str:
-        """生成要求を送信する。通信断では受付不明として扱う。"""
+        """Submit a request and distinguish an unknown acceptance result."""
         response = self.request(
             "POST",
             "/prompt",
@@ -131,5 +131,5 @@ class ComfyClient:
         return cast(str, data["prompt_id"])
 
     def image(self, reference: ImageRef) -> bytes:
-        """履歴に記録された画像を取得する。"""
+        """Download an image referenced by the server history."""
         return self.request("GET", "/view", params=reference.model_dump()).content

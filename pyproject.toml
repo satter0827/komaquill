@@ -74,13 +74,13 @@ mypy_path = "src"
 cache_dir = ".artifacts/cache/mypy"
 
 [[tool.mypy.overrides]]
-# 外部ライブラリが型マーカーを配布していない箇所だけを指定する。
+# Limit missing-type exemptions to libraries without distributed type markers.
 module = ["detect_secrets.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "--basetemp=.artifacts/tmp/pytest"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider"]
 xfail_strict = true
 
 [tool.coverage.run]

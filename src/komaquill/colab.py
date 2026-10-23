@@ -1,4 +1,4 @@
-"""公式Colab CLIとOpenSSHによるランタイムの制御。"""
+"""Control owned runtimes with the official Colab CLI and OpenSSH."""
 
 import hashlib
 import json
@@ -32,7 +32,7 @@ PROCESS_EXIT_GRACE = 3.0
 
 
 class Receipt(BaseModel):
-    """終了確認まで保持する所有記録。トークンは保存しない。"""
+    """Retain ownership until shutdown is confirmed without storing tokens."""
 
     name: str
     runtime_id: UUID
@@ -44,7 +44,7 @@ class Receipt(BaseModel):
 
 
 class Colab:
-    """プロジェクトが確保したランタイムだけを操作する。"""
+    """Operate only the runtime allocated by this workspace."""
 
     def __init__(self, project: Project) -> None:
         self.project = project
@@ -58,14 +58,14 @@ class Colab:
         )
 
     def command(self, *arguments: str) -> list[str]:
-        """固定した公式CLIを同じPython環境で呼ぶ。"""
+        """Invoke the pinned official CLI in the current Python environment."""
         try:
             installed = version("google-colab-cli")
         except PackageNotFoundError:
             raise KomaquillError("Colab CLIがありません。環境を準備し直してください。") from None
         if installed != COLAB_CLI_VERSION:
             raise KomaquillError("Colab CLIの版が異なります。環境を準備し直してください。")
-        # 公式CLIはロックの初期化後に親フォルダーを作るため、先に用意する。
+        # The official CLI initializes its lock before creating the parent directory.
         self.config.parent.mkdir(parents=True, exist_ok=True)
         return [
             sys.executable,
@@ -79,7 +79,7 @@ class Colab:
     def call(
         self, *arguments: str, interactive: bool = False, timeout: float | None = None
     ) -> None:
-        """公式CLIの応答本文をログや例外へ転載しない。"""
+        """Keep official CLI response bodies out of logs and exceptions."""
         try:
             process = subprocess.Popen(
                 self.command(*arguments),
@@ -116,13 +116,13 @@ class Colab:
             )
 
     def receipt(self) -> Receipt | None:
-        """所有記録だけを読む。"""
+        """Read the ownership receipt."""
         if not self.receipt_file.is_file():
             return None
         return Receipt.model_validate_json(self.receipt_file.read_bytes())
 
     def entry(self, receipt: Receipt) -> dict[str, Any] | None:
-        """公式のセッション状態から所有するIDを照合する。"""
+        """Compare the owned identity with official session state."""
         if not self.config.is_file():
             return None
         with ReadWriteLock(str(self.config) + ".lock", is_singleton=False).read_lock():
@@ -133,13 +133,13 @@ class Colab:
         return entry
 
     def refresh(self, receipt: Receipt) -> bool:
-        """確認によって新しいランタイムを作らない。呼び出し元がロックする。"""
+        """Refresh existing state without allocating; the caller holds the lock."""
         self.entry(receipt)
         self.call("status", "-s", receipt.name)
         return self.entry(receipt) is not None
 
     def acquire(self, revision: str) -> tuple[Receipt, bool]:
-        """明示的なstartだけが新規確保する。残存時は同じ環境へ接続する。"""
+        """Allocate only from explicit startup, or reconnect to the owned runtime."""
         self.project.state.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()
@@ -158,11 +158,11 @@ class Colab:
                 code_sha256=revision,
                 settings=self.settings,
             )
-            # 認証と公式ロックの初期化が成功してから確保へ進む。
+            # Authenticate and initialize official locking before allocation.
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
             self.call("status", "-s", receipt.name, interactive=not authenticated)
             atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
-            # 初回だけ公式のGoogle認証を端末で行う。秘密情報を独自に扱わない。
+            # Delegate initial authentication and credentials to the official CLI.
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
             try:
                 self.call(
@@ -186,7 +186,7 @@ class Colab:
             return receipt, True
 
     def stop(self) -> None:
-        """所有するIDの終了を公式CLIで確認する。"""
+        """Confirm shutdown of the owned identity through the official CLI."""
         self.project.state.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()
@@ -206,7 +206,7 @@ class Colab:
                     )
 
     def release(self, receipt: Receipt) -> None:
-        """終了後の保存と後始末が終わってから所有記録を消す。"""
+        """Release ownership after persistence and cleanup have completed."""
         with self.lock:
             current = self.receipt()
             if current is not None and current.runtime_id != receipt.runtime_id:
@@ -214,7 +214,7 @@ class Colab:
             self.receipt_file.unlink(missing_ok=True)
 
     def cleanup_processes(self, receipt: Receipt) -> None:
-        """監視の強制終了後も、所有する公式CLIの待機処理を終了する。"""
+        """Clean up owned CLI processes after an interrupted monitor."""
         for process in psutil.process_iter(["cmdline"]):
             try:
                 arguments = process.info["cmdline"] or []
@@ -333,7 +333,15 @@ class Colab:
                 failed.append(name)
                 item["failure"] = failure_info(error, "log_collection").model_dump(mode="json")
             finally:
-                temporary.unlink(missing_ok=True)
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError as error:
+                    if name not in failed:
+                        failed.append(name)
+                    item.update(
+                        result="failed",
+                        failure=failure_info(error, "log_cleanup").model_dump(mode="json"),
+                    )
             if (folder / name).is_file():
                 item["size_bytes"] = (folder / name).stat().st_size
             files[name] = item
@@ -355,7 +363,7 @@ class Colab:
         return tuple(failed)
 
     def tunnel(self, receipt: Receipt) -> subprocess.Popen[bytes]:
-        """一つのSSH接続を共有し、ローカルの待ち受けをループバックに限定する。"""
+        """Share one SSH connection bound to the loopback interface."""
         ssh = shutil.which("ssh")
         keygen = shutil.which("ssh-keygen")
         if not ssh or not keygen:
@@ -370,7 +378,7 @@ class Colab:
                 capture_output=True,
             )
         with self.lock:
-            # sshには自動作成経路があるため、名前の存在とIDを照合してから呼ぶ。
+            # The SSH command may allocate, so verify the existing name and identity first.
             if self.entry(receipt) is None or receipt.endpoint_id is None:
                 raise KomaquillError("ランタイムがありません。SSH接続は開始しませんでした。")
             proxy_arguments = self.command(
@@ -404,7 +412,7 @@ class Colab:
                 f"127.0.0.1:{settings.local_port}:127.0.0.1:{settings.remote_port}",
                 "root@colab-runtime",
             ]
-            # stderrはトークンを含まない日本語表示に置き換える。
+            # Replace stderr with a safe Japanese message.
             process = subprocess.Popen(
                 arguments,
                 stdin=subprocess.DEVNULL,
@@ -422,7 +430,7 @@ class Colab:
                         with socket.create_connection(
                             ("127.0.0.1", settings.local_port), timeout=1
                         ):
-                            # ローカル転送が待ち受けた時点でSSH認証とセッション選択が完了している。
+                            # A listening forward confirms SSH authentication and session selection.
                             return process
                     except OSError:
                         time.sleep(settings.poll_interval)
@@ -433,7 +441,7 @@ class Colab:
 
 
 def check_port(port: int) -> None:
-    """新規確保前にポート競合を検出する。"""
+    """Detect port conflicts before allocation."""
     try:
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", port))
@@ -444,7 +452,7 @@ def check_port(port: int) -> None:
 
 
 def terminate(process: subprocess.Popen[bytes], timeout: float) -> None:
-    """WindowsのPythonランチャーを含め、所有する子プロセスを終了する。"""
+    """Terminate owned children, including the Windows Python launcher."""
     if process.poll() is not None:
         return
     try:
@@ -458,7 +466,7 @@ def terminate(process: subprocess.Popen[bytes], timeout: float) -> None:
 
 
 def terminate_tree(parent: psutil.Process, timeout: float) -> None:
-    """親子関係を確認したプロセスを、上限内にまとめて終了する。"""
+    """Terminate verified process trees within the deadline."""
     children = parent.children(recursive=True)
     for child in reversed(children):
         with suppress(psutil.NoSuchProcess):

@@ -17,7 +17,7 @@ uv build --out-dir .artifacts/dist
 python scripts/check_package.py
 ```
 
-すべて終了コード0で完了することを確認します。検査結果は`.artifacts/reports/quality/`、テスト用の一時ファイルは`.artifacts/tests/tmp/`へ保存します。
+すべて終了コード0で完了することを確認します。検査結果は`.artifacts/reports/quality/`、テスト用の一時ファイルは`.artifacts/tmp/pytest/`へ保存します。
 
 | 対象 | 確認内容 |
 |---|---|

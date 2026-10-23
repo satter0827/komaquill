@@ -31,6 +31,7 @@ class Session(BaseModel):
     runtime_id: UUID
     backend: Literal["colab", "external"] = "colab"
     source_revision: str | None = None
+    code_sha256: str | None = None
     comfy_revision: str | None = None
     frontend_version: str | None = None
     model_sha256: str | None = None
@@ -105,7 +106,9 @@ class Run(BaseModel):
     prompt_id: str | None = None
     state: Literal["prepared", "unknown", "queued", "saved", "failed", "lost"] = "prepared"
     app_version: str
-    source_revision: str
+    source_revision: str | None
+    code_sha256: str | None = None
+    remote_code_sha256: str | None = None
     remote_source_revision: str | None
     comfy_revision: str | None
     frontend_version: str | None

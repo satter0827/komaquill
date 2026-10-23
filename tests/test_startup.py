@@ -33,7 +33,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     if case == "existing":
         atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
     monkeypatch.setattr(runtime, "Colab", lambda _: control)
-    monkeypatch.setattr(runtime, "source_revision", lambda _: "revision")
+
     monkeypatch.setattr(runtime, "fetch_model", lambda *args: None)
     monkeypatch.setattr(runtime, "check_port", lambda _: None)
     monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
@@ -48,7 +48,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
 
     monkeypatch.setattr(control, "acquire", acquire)
     process = SimpleNamespace(poll=lambda: 1 if case == "startup_failure" else None)
-    monkeypatch.setattr(control, "prepare", lambda _: calls.append("prepare") or process)
+    monkeypatch.setattr(control, "prepare", lambda *args: calls.append("prepare") or process)
     monkeypatch.setattr(control, "refresh", lambda _: True)
     monkeypatch.setattr(control, "tunnel", lambda _: calls.append("ssh") or process)
     monkeypatch.setattr(control, "recover_diagnostics", lambda _: calls.append("logs") or ())

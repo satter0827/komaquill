@@ -34,7 +34,7 @@ def main() -> None:
             status = getattr(response, "status_code", None)
             runtime_id = None
             try:
-                receipt = Path(root) / ".artifacts/runtime/colab.json"
+                receipt = Path(root) / ".artifacts/state/colab.json"
                 runtime_id = str(UUID(json.loads(receipt.read_bytes())["runtime_id"]))
             except (OSError, ValueError, KeyError, TypeError):
                 pass

@@ -5,11 +5,12 @@ import json
 import subprocess
 import tarfile
 import zipfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from scripts import check, check_coverage, check_package, security
+from scripts import check, check_coverage, check_package, check_worker_lock, security
 
 
 def test_thresholds_are_independent_and_not_rounded():
@@ -115,9 +116,17 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
             f"komaquill-{expected}.dist-info/METADATA",
             "Version: " + ("0.0.0" if case == "wheel_version" else expected),
         )
-        for resource in ("workflow.json", "workflow-api.json", "model.toml", "runtime.toml"):
+        for resource in (
+            "workflow.json",
+            "workflow-api.json",
+            "model.toml",
+            "runtime.toml",
+            "defaults.toml",
+            "worker-requirements.txt",
+        ):
             if case != "resources":
                 archive.writestr("komaquill/resources/" + resource, "data")
+        archive.writestr("komaquill/bootstrap.py", "pass")
         if case == "artifacts":
             archive.writestr(".artifacts/private.txt", "private")
     with tarfile.open(folder / f"komaquill-{expected}.tar.gz", "w:gz") as archive:
@@ -183,3 +192,31 @@ def test_security_git_invocation_preserves_argument_boundaries(tmp_path, monkeyp
     )
     assert security.git_text(tmp_path, "show", "a b") == "value"
     assert calls == [["git", "-C", str(tmp_path), "show", "a b"]]
+
+
+@pytest.mark.parametrize("case", ["matching", "different", "missing_uv"])
+def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, monkeypatch, case):
+    resource = tmp_path / "src/komaquill/resources/worker-requirements.txt"
+    resource.parent.mkdir(parents=True)
+    resource.write_text("locked\n")
+    monkeypatch.setattr(
+        check_worker_lock, "__file__", str(tmp_path / "scripts/check_worker_lock.py")
+    )
+    if case == "missing_uv":
+        monkeypatch.delenv("KOMAQUILL_UV", raising=False)
+        monkeypatch.setattr(check_worker_lock.shutil, "which", lambda _: None)
+    else:
+        monkeypatch.setenv("KOMAQUILL_UV", "uv-test")
+
+    def export(args, **kwargs):
+        assert "--locked" in args and kwargs["check"]
+        Path(args[args.index("--output-file") + 1]).write_text(
+            "different\n" if case == "different" else "locked\n"
+        )
+
+    monkeypatch.setattr(check_worker_lock.subprocess, "run", export)
+    if case == "matching":
+        check_worker_lock.main()
+    else:
+        with pytest.raises(SystemExit):
+            check_worker_lock.main()

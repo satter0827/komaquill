@@ -23,7 +23,7 @@ from komaquill.errors import KomaquillError
 from komaquill.models import Session
 from komaquill.runtime import connected
 from komaquill.service import Collection, collect, generate, verify_runtime
-from komaquill.settings import Project, find_project
+from komaquill.settings import Project, find_project, initialize
 from komaquill.storage import atomic_json, load_runs, load_session, run_dir
 from komaquill.workflow import preset, resource_json
 
@@ -43,6 +43,21 @@ def show_version(value: bool) -> None:
     if value:
         typer.echo(version("komaquill"))
         raise typer.Exit()
+
+
+@app.command("init", help="画像と生成履歴を保存する作業フォルダーを準備します。")
+def init_command(
+    directory: Annotated[
+        Path, typer.Argument(help="作業フォルダー。省略時は現在のフォルダー。")
+    ] = Path("."),
+) -> None:
+    """Initialize a workspace independently of a source checkout."""
+    try:
+        project = initialize(directory)
+    except (OSError, ValueError):
+        typer.echo("作業フォルダーを準備できません。設定とアクセス権を確認してください。", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"作業フォルダーを準備しました: {project.root}")
 
 
 @app.callback()

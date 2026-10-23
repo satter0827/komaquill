@@ -20,8 +20,10 @@ import psutil
 from filelock import FileLock, ReadWriteLock
 from pydantic import BaseModel
 
+from komaquill.deployment import Payload, create_payload
 from komaquill.errors import AllocationRefused, KomaquillError
 from komaquill.events import failure_info, record_event
+from komaquill.provenance import source_revision
 from komaquill.settings import Project, Settings
 from komaquill.storage import atomic_json
 
@@ -34,7 +36,9 @@ class Receipt(BaseModel):
 
     name: str
     runtime_id: UUID
-    source_revision: str
+    source_revision: str | None = None
+    code_sha256: str | None = None
+    payload_sha256: str | None = None
     endpoint_id: str | None = None
     settings: Settings | None = None
 
@@ -46,8 +50,8 @@ class Colab:
         self.project = project
         identity = hashlib.sha256(str(project.root).encode()).hexdigest()[:16]
         self.config = Path.home() / ".config/colab-cli/komaquill" / identity / "sessions.json"
-        self.receipt_file = project.runtime / "colab.json"
-        self.lock = FileLock(str(project.runtime / ".colab.lock"))
+        self.receipt_file = project.state / "colab.json"
+        self.lock = FileLock(str(project.state / ".colab.lock"))
         saved = self.receipt()
         self.settings = (
             saved.settings if saved and saved.settings is not None else project.settings()
@@ -136,7 +140,7 @@ class Colab:
 
     def acquire(self, revision: str) -> tuple[Receipt, bool]:
         """明示的なstartだけが新規確保する。残存時は同じ環境へ接続する。"""
-        self.project.runtime.mkdir(parents=True, exist_ok=True)
+        self.project.state.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()
             if receipt is not None:
@@ -144,13 +148,14 @@ class Colab:
                     raise KomaquillError(
                         "前回のランタイムは終了しています。stop 後に start してください。"
                     )
-                if receipt.source_revision != revision:
+                if receipt.code_sha256 != revision:
                     raise KomaquillError("前回のソースと異なります。stop 後に start してください。")
                 return receipt, False
             receipt = Receipt(
                 name=f"komaquill-{uuid4().hex}",
                 runtime_id=uuid4(),
-                source_revision=revision,
+                source_revision=source_revision(),
+                code_sha256=revision,
                 settings=self.settings,
             )
             # 認証と公式ロックの初期化が成功してから確保へ進む。
@@ -182,7 +187,7 @@ class Colab:
 
     def stop(self) -> None:
         """所有するIDの終了を公式CLIで確認する。"""
-        self.project.runtime.mkdir(parents=True, exist_ok=True)
+        self.project.state.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()
             if receipt is None:
@@ -227,53 +232,40 @@ class Colab:
             except psutil.NoSuchProcess:
                 continue
 
-    def prepare(self, receipt: Receipt) -> subprocess.Popen[bytes]:
-        """コミットのソースを一時転送し、GPU側の処理を実行し続ける。"""
-        archive = self.project.runtime / "source.tar"
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(self.project.root),
-                "archive",
-                "--format=tar",
-                "-o",
-                str(archive),
-                receipt.source_revision,
-            ],
-            check=True,
-        )
+    def prepare(self, receipt: Receipt, payload: Payload | None = None) -> subprocess.Popen[bytes]:
+        """Transfer a verified package snapshot without depending on a Git checkout."""
+        payload = payload or create_payload(self.project.configured(self.settings))
         with self.lock:
             if self.entry(receipt) is None:
                 raise KomaquillError("ランタイムがありません。status で確認してください。")
-            self.call("upload", "-s", receipt.name, str(archive), "content/komaquill-source.tar")
+            receipt.payload_sha256 = payload.sha256
+            atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
+            self.call(
+                "upload", "-s", receipt.name, str(payload.path), "content/komaquill-runtime.tar"
+            )
         remote_root = f"/content/komaquill-{receipt.runtime_id}"
-        with archive.open("rb") as handle:
-            archive_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
-        snapshot = "\n".join(
-            f"{key} = {json.dumps(value)}" for key, value in self.settings.model_dump().items()
-        )
-        script = self.project.runtime / "prepare.py"
+        script = self.project.runtime / "deployment/prepare.py"
+        script.parent.mkdir(parents=True, exist_ok=True)
         script.write_text(
-            "import hashlib, os, subprocess, sys, tarfile\n"
-            "with open('/content/komaquill-source.tar', 'rb') as archive:\n"
-            f"    assert hashlib.file_digest(archive, 'sha256').hexdigest() == {archive_sha256!r}\n"
+            "import hashlib, json, os, subprocess, sys, tarfile\n"
+            "with open('/content/komaquill-runtime.tar', 'rb') as archive:\n"
+            f"    if hashlib.file_digest(archive, 'sha256').hexdigest() != {payload.sha256!r}:\n"
+            "        raise RuntimeError('Transferred payload failed SHA256 verification')\n"
             f"root = {remote_root!r}\n"
             "os.makedirs(root, exist_ok=True)\n"
-            "with tarfile.open('/content/komaquill-source.tar') as bundle:\n"
+            "with tarfile.open('/content/komaquill-runtime.tar') as bundle:\n"
             "    bundle.extractall(root, filter='data')\n"
-            "with open(root + '/komaquill.toml', 'w', encoding='utf-8') as config:\n"
-            f"    config.write({snapshot!r})\n"
-            f"os.environ['KOMAQUILL_SOURCE_REVISION'] = {receipt.source_revision!r}\n"
+            "with open(root + '/manifest.json') as handle:\n"
+            "    manifest = json.load(handle)\n"
+            "os.environ['KOMAQUILL_SOURCE_REVISION'] = manifest.get('source_revision') or ''\n"
+            "os.environ['KOMAQUILL_CODE_SHA256'] = manifest['code_sha256']\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
-            f"os.environ['KOMAQUILL_REMOTE_PORT'] = {str(self.settings.remote_port)!r}\n"
             "os.makedirs(root + '/.artifacts/logs', exist_ok=True)\n"
             "with open(root + '/.artifacts/logs/bootstrap.log', 'ab') as log:\n"
-            "    subprocess.run([sys.executable, root + '/scripts/worker.py'],\n"
-            "                   stdout=log, stderr=subprocess.STDOUT, check=True)\n",
+            "    subprocess.run([sys.executable, root + '/komaquill/bootstrap.py'],\n"
+            "                   cwd=root, stdout=log, stderr=subprocess.STDOUT, check=True)\n",
             encoding="utf-8",
         )
-        # セルを実行中に保つ。独自のkeep-aliveは作らない。
         with self.lock:
             if self.entry(receipt) is None:
                 raise KomaquillError("ランタイムがありません。status で確認してください。")
@@ -368,7 +360,7 @@ class Colab:
         keygen = shutil.which("ssh-keygen")
         if not ssh or not keygen:
             raise KomaquillError("OpenSSHクライアントを導入してください。")
-        folder = self.project.runtime / "ssh"
+        folder = self.project.state / "ssh"
         folder.mkdir(parents=True, exist_ok=True)
         key = folder / "id_ed25519"
         if not key.is_file():

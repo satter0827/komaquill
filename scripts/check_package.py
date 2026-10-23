@@ -31,8 +31,17 @@ def main() -> None:
         metadata = Parser().parsestr(wheel.read(metadata_name).decode())
         if metadata["Version"] != expected:
             raise SystemExit("wheelのバージョンが一致しません。")
-        required = {"workflow.json", "workflow-api.json", "model.toml", "runtime.toml"}
-        if not all(f"komaquill/resources/{name}" in names for name in required):
+        required = {
+            "workflow.json",
+            "workflow-api.json",
+            "model.toml",
+            "runtime.toml",
+            "defaults.toml",
+            "worker-requirements.txt",
+        }
+        if "komaquill/bootstrap.py" not in names or not all(
+            f"komaquill/resources/{name}" in names for name in required
+        ):
             raise SystemExit("配布するワークフローまたは設定が不足しています。")
     with tarfile.open(root / f".artifacts/dist/komaquill-{expected}.tar.gz") as archive:
         names += archive.getnames()

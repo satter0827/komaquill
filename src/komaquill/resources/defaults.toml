@@ -1,0 +1,11 @@
+# 保存先はこのファイルのあるフォルダーを基準に決まります。
+gpu = "T4"
+local_port = 18188
+remote_port = 8188
+poll_interval = 2.0
+request_timeout = 30.0
+preparation_timeout = 900.0
+generation_timeout = 600.0
+shutdown_timeout = 600.0
+control_timeout = 90.0
+execution_timeout = 86400.0

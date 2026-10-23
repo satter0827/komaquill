@@ -15,8 +15,8 @@ Pythonとuvは導入スクリプトがプロジェクト内へ配置します。
 PowerShell 7でリポジトリのフォルダーを開き、1行ずつ実行します。
 
 ```powershell
-./scripts/setup.ps1
-. ./scripts/activate.ps1
+./bootstrap/setup.ps1
+. ./bootstrap/activate.ps1
 komaquill --version
 ```
 
@@ -34,7 +34,7 @@ komaquill start
 別のPowerShellで同じフォルダーを開き、次を実行します。
 
 ```powershell
-. ./scripts/activate.ps1
+. ./bootstrap/activate.ps1
 komaquill doctor
 komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 ```

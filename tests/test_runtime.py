@@ -31,7 +31,7 @@ def test_external_uses_only_standard_api_and_saves_new_browser_job(project, clie
         assert old_id in session.excluded_prompt_ids
         client.submit(resource_json("workflow-api.json"), {}, "new-browser")
         atomic_json(
-            project.runtime / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
+            project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
         )
         return original_watch(project, client, session, echo)
 
@@ -70,7 +70,7 @@ def test_shutdown_timeout_reports_unresolved_run(project, client, session, monke
 
 
 def test_stale_stop_request_does_not_stop_new_runtime(project, session):
-    atomic_json(project.runtime / "stop.json", {"runtime_id": str(uuid4()), "force": True})
+    atomic_json(project.state / "stop.json", {"runtime_id": str(uuid4()), "force": True})
     assert runtime.stop_request(project, session) is None
 
 

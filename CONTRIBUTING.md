@@ -5,8 +5,8 @@
 [必要な環境](README.md#必要な環境)を用意し、PowerShell 7でリポジトリのフォルダーを開きます。
 
 ```powershell
-./scripts/setup.ps1 -InstallExtensions
-. ./scripts/activate.ps1
+./bootstrap/setup.ps1 -InstallExtensions
+. ./bootstrap/activate.ps1
 python scripts/check.py
 python scripts/security.py
 ```

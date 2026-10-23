@@ -95,9 +95,9 @@ def test_generation_paths_agree_across_entrypoints_and_tools():
         assert entry["module"] == "komaquill"
         assert entry["envFile"] == "${workspaceFolder}/.artifacts/runtime/vscode.env"
     files = [
-        "scripts/env.ps1",
-        "scripts/setup.ps1",
-        "scripts/worker.py",
+        "bootstrap/env.ps1",
+        "bootstrap/setup.ps1",
+        "src/komaquill/bootstrap.py",
         "scripts/check.py",
         ".github/workflows/check.yml",
         ".vscode/tasks.json",

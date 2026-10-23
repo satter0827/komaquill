@@ -15,7 +15,7 @@ def main() -> None:
     artifacts = root / ".artifacts"
     tools = artifacts / "runtime/tools"
     tools.mkdir(parents=True, exist_ok=True)
-    config = tomllib.loads((root / "src/komaquill/resources/runtime.toml").read_text())
+    config = tomllib.loads((root / "komaquill/resources/runtime.toml").read_text())
     uv = tools / "uv"
     print("実行環境を準備しています。", flush=True)
     if not uv.is_file():
@@ -52,14 +52,31 @@ def main() -> None:
     }.items():
         env[key] = str(artifacts / relative)
     (artifacts / "tmp").mkdir(exist_ok=True)
+    python = artifacts / "runtime/venv/bin/python"
     subprocess.run(
-        [str(uv), "sync", "--locked", "--extra", "worker", "--no-dev"],
+        [str(uv), "venv", "--python", config["python_version"], str(python.parent.parent)],
+        cwd=root,
+        env=env,
+        check=True,
+    )
+    # All versions and hashes are fixed; permit both recorded public indexes.
+    subprocess.run(
+        [
+            str(uv),
+            "pip",
+            "sync",
+            "--python",
+            str(python),
+            "--require-hashes",
+            "--index-strategy",
+            "unsafe-best-match",
+            str(root / "komaquill/resources/worker-requirements.txt"),
+        ],
         cwd=root,
         env=env,
         check=True,
     )
     print("ComfyUIとモデルを準備しています。", flush=True)
-    python = artifacts / "runtime/venv/bin/python"
     subprocess.run(
         [str(python), "-u", "-m", "komaquill.worker", str(root)],
         cwd=root,

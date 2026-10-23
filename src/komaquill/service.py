@@ -2,7 +2,6 @@
 
 import hashlib
 import io
-import subprocess
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -20,6 +19,7 @@ from komaquill.client import ComfyClient
 from komaquill.errors import KomaquillError, SubmissionUnknown
 from komaquill.events import failure_info
 from komaquill.models import FailureInfo, ImageMetadata, ImageRef, JsonObject, Run, Session
+from komaquill.provenance import code_sha256, source_revision
 from komaquill.settings import Project
 from komaquill.storage import atomic_bytes, atomic_json, load_runs, run_dir, save_run, stop_request
 from komaquill.workflow import digest, prepare
@@ -37,24 +37,15 @@ class Collection:
     failure: FailureInfo | None = None
 
 
-def source_revision(project: Project) -> str:
-    """実際のローカルソースのコミットを記録する。"""
-    result = subprocess.run(
-        ["git", "-C", str(project.root), "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout.strip() if result.returncode == 0 else "uncommitted"
-
-
 def new_run(project: Project, session: Session, run_id: UUID, graph: JsonObject) -> Run:
     """再実行に必要な条件を保存するための履歴を作る。"""
     return Run(
         run_id=run_id,
         runtime_id=session.runtime_id,
         app_version=version("komaquill"),
-        source_revision=source_revision(project),
+        source_revision=source_revision(),
+        code_sha256=code_sha256(),
+        remote_code_sha256=session.code_sha256,
         remote_source_revision=session.source_revision,
         comfy_revision=session.comfy_revision,
         frontend_version=session.frontend_version,

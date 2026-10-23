@@ -127,3 +127,15 @@ def test_artifacts_are_ignored_without_creating_a_directory():
 def test_root_workspace_settings_are_valid():
     """Include the shipped workspace configuration in the startup contract."""
     assert find_project(ROOT).settings().worker_execution_timeout > 0
+
+
+def test_browser_modules_use_comfyuis_uncached_javascript_routes():
+    from importlib.resources import files
+    import re
+
+    web = files("komaquill").joinpath("resources/web")
+    modules = list(web.iterdir())
+    assert modules and all(module.name.endswith(".js") for module in modules)
+    for module in modules:
+        for relative in re.findall(r'from "(\./[^"]+)"', module.read_text(encoding="utf-8")):
+            assert web.joinpath(relative.removeprefix("./")).is_file()

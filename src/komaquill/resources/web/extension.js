@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { applyPreparedModels, prepareWorkflow } from "./preparation.mjs";
+import { applyPreparedModels, prepareWorkflow } from "./preparation.js";
 
 let text = {};
 const POLL_INTERVAL_MS = 1000;

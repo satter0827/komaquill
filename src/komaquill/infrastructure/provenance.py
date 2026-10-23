@@ -25,7 +25,7 @@ RESOURCE_NAMES = (
     "workflow-api.json",
     "pylock.worker.toml",
     "web/extension.js",
-    "web/preparation.mjs",
+    "web/preparation.js",
 )
 
 

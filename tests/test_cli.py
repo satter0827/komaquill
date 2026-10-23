@@ -26,7 +26,7 @@ def test_open_returns_after_opening_the_selected_view(project, client, session, 
 
     opened = []
     monkeypatch.setattr(cli, "connected", connection)
-    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url) or True)
     result = CliRunner().invoke(
         cli.app, ["--project", str(project.root), "open", "--view", "graph"]
     )

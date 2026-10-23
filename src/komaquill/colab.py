@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from contextlib import suppress
+from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,8 @@ from filelock import FileLock, ReadWriteLock
 from pydantic import BaseModel
 
 from komaquill.errors import AllocationRefused, KomaquillError
-from komaquill.settings import Project
+from komaquill.events import failure_info, record_event
+from komaquill.settings import Project, Settings
 from komaquill.storage import atomic_json
 
 COLAB_CLI_VERSION = "0.7.5"
@@ -34,6 +36,7 @@ class Receipt(BaseModel):
     runtime_id: UUID
     source_revision: str
     endpoint_id: str | None = None
+    settings: Settings | None = None
 
 
 class Colab:
@@ -45,6 +48,10 @@ class Colab:
         self.config = Path.home() / ".config/colab-cli/komaquill" / identity / "sessions.json"
         self.receipt_file = project.runtime / "colab.json"
         self.lock = FileLock(str(project.runtime / ".colab.lock"))
+        saved = self.receipt()
+        self.settings = (
+            saved.settings if saved and saved.settings is not None else project.settings()
+        )
 
     def command(self, *arguments: str) -> list[str]:
         """固定した公式CLIを同じPython環境で呼ぶ。"""
@@ -77,14 +84,14 @@ class Colab:
                 stderr=None if interactive else subprocess.PIPE,
             )
             timeout = timeout or (
-                self.project.settings().preparation_timeout
+                self.settings.preparation_timeout
                 if arguments[0] == "new"
-                else self.project.settings().control_timeout
+                else self.settings.control_timeout
             )
             try:
                 stdout, stderr = process.communicate(timeout=timeout)
             except BaseException:
-                terminate(process, self.project.settings().control_timeout)
+                terminate(process, self.settings.control_timeout)
                 raise
         except subprocess.TimeoutExpired:
             raise KomaquillError(
@@ -141,7 +148,10 @@ class Colab:
                     raise KomaquillError("前回のソースと異なります。stop 後に start してください。")
                 return receipt, False
             receipt = Receipt(
-                name=f"komaquill-{uuid4().hex}", runtime_id=uuid4(), source_revision=revision
+                name=f"komaquill-{uuid4().hex}",
+                runtime_id=uuid4(),
+                source_revision=revision,
+                settings=self.settings,
             )
             # 認証と公式ロックの初期化が成功してから確保へ進む。
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
@@ -155,7 +165,7 @@ class Colab:
                     "-s",
                     receipt.name,
                     "--gpu",
-                    self.project.settings().gpu,
+                    self.settings.gpu,
                     interactive=not authenticated,
                 )
             except AllocationRefused:
@@ -213,7 +223,7 @@ class Colab:
                 name = arguments[arguments.index("-s") + 1 :][:1]
                 if config != [str(self.config)] or name != [receipt.name]:
                     continue
-                terminate_tree(process, self.project.settings().control_timeout)
+                terminate_tree(process, self.settings.control_timeout)
             except psutil.NoSuchProcess:
                 continue
 
@@ -240,6 +250,9 @@ class Colab:
         remote_root = f"/content/komaquill-{receipt.runtime_id}"
         with archive.open("rb") as handle:
             archive_sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+        snapshot = "\n".join(
+            f"{key} = {json.dumps(value)}" for key, value in self.settings.model_dump().items()
+        )
         script = self.project.runtime / "prepare.py"
         script.write_text(
             "import hashlib, os, subprocess, sys, tarfile\n"
@@ -249,9 +262,11 @@ class Colab:
             "os.makedirs(root, exist_ok=True)\n"
             "with tarfile.open('/content/komaquill-source.tar') as bundle:\n"
             "    bundle.extractall(root, filter='data')\n"
+            "with open(root + '/komaquill.toml', 'w', encoding='utf-8') as config:\n"
+            f"    config.write({snapshot!r})\n"
             f"os.environ['KOMAQUILL_SOURCE_REVISION'] = {receipt.source_revision!r}\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
-            f"os.environ['KOMAQUILL_REMOTE_PORT'] = {str(self.project.settings().remote_port)!r}\n"
+            f"os.environ['KOMAQUILL_REMOTE_PORT'] = {str(self.settings.remote_port)!r}\n"
             "os.makedirs(root + '/.artifacts/logs', exist_ok=True)\n"
             "with open(root + '/.artifacts/logs/bootstrap.log', 'ab') as log:\n"
             "    subprocess.run([sys.executable, root + '/scripts/worker.py'],\n"
@@ -270,7 +285,7 @@ class Colab:
                     "-f",
                     str(script),
                     "--timeout",
-                    str(self.project.settings().execution_timeout),
+                    str(self.settings.execution_timeout),
                 ),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -278,25 +293,40 @@ class Colab:
             )
 
     def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
-        """ログを個別に回収し、失敗しても既存ファイルを保持する。"""
+        """Download independent snapshots and preserve the last successful capture."""
         folder = self.project.artifacts / "logs" / str(receipt.runtime_id)
         folder.mkdir(parents=True, exist_ok=True)
         remote = f"content/komaquill-{receipt.runtime_id}/.artifacts"
         failed: list[str] = []
-        deadline = time.monotonic() + self.project.settings().control_timeout
+        capture = folder / "capture.json"
+        try:
+            previous = json.loads(capture.read_bytes()) if capture.is_file() else {}
+        except (OSError, ValueError):
+            previous = {}
+        raw_files = previous.get("files", {}) if isinstance(previous, dict) else {}
+        files = raw_files if isinstance(raw_files, dict) else {}
+        started = datetime.now(UTC).isoformat()
+        deadline = time.monotonic() + self.settings.control_timeout
         for source, name in [
             ("logs/bootstrap.log", "bootstrap.log"),
             ("logs/comfy.log", "comfy.log"),
             ("runtime/environment.txt", "environment.txt"),
         ]:
             temporary = folder / f".{name}.{uuid4().hex}.tmp"
+            prior = files.get(name)
+            prior = prior if isinstance(prior, dict) else {}
+            item = {
+                "attempted_at": started,
+                "result": "failed",
+                "last_success_at": prior.get("last_success_at"),
+            }
             try:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    raise KomaquillError("ログ取得の待機時間を超えました。")
+                    raise KomaquillError("ログ取得の待機時間を超えました。", code="log_timeout")
                 with self.lock:
                     if self.entry(receipt) is None:
-                        raise KomaquillError("ランタイムがありません。")
+                        raise KomaquillError("ランタイムがありません。", code="runtime_ended")
                     self.call(
                         "download",
                         "-s",
@@ -306,11 +336,30 @@ class Colab:
                         timeout=remaining,
                     )
                 temporary.replace(folder / name)
-            except (KomaquillError, OSError):
+                item.update(result="saved", last_success_at=datetime.now(UTC).isoformat())
+            except (KomaquillError, OSError) as error:
                 failed.append(name)
+                item["failure"] = failure_info(error, "log_collection").model_dump(mode="json")
             finally:
                 temporary.unlink(missing_ok=True)
-        atomic_json(folder / "recovery.json", {"failed": failed})
+            if (folder / name).is_file():
+                item["size_bytes"] = (folder / name).stat().st_size
+            files[name] = item
+        atomic_json(
+            capture,
+            {
+                "captured_at": datetime.now(UTC).isoformat(),
+                "runtime_id": str(receipt.runtime_id),
+                "files": files,
+                "failed": failed,
+            },
+        )
+        record_event(
+            self.project,
+            "log_collection",
+            "failed" if failed else "saved",
+            runtime_id=receipt.runtime_id,
+        )
         return tuple(failed)
 
     def tunnel(self, receipt: Receipt) -> subprocess.Popen[bytes]:
@@ -340,7 +389,7 @@ class Colab:
                 if os.name == "nt"
                 else shlex.join(proxy_arguments)
             )
-            settings = self.project.settings()
+            settings = self.settings
             arguments = [
                 ssh,
                 "-N",

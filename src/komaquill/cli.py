@@ -81,7 +81,9 @@ def operation(ctx: typer.Context) -> Iterator[Project]:
 
 def report(result: Collection) -> None:
     """回収状況を表示する。"""
-    typer.echo(f"保存 {result.saved}件 / 未回収 {result.pending}件 / 失敗 {result.failed}件")
+    typer.echo(
+        f"保存 {result.saved}件 / 未回収 {result.pending}件 / 生成失敗の累計 {result.failed}件"
+    )
     if result.errors:
         raise KomaquillError("再回収が必要です: " + ", ".join(map(str, result.errors)))
 
@@ -173,8 +175,13 @@ def open_command(
             atomic_json(path, workflow)
             typer.echo(f"画面にワークフローを読み込んでください: {path}")
             url = session.endpoint + "/"
-        webbrowser.open(url)
-        typer.echo("画面を開きました。生成結果は start の端末が自動保存します。")
+        if not webbrowser.open(url):
+            raise KomaquillError(
+                f"ブラウザーを起動できません。このURLを開いてください: {url}",
+                code="browser_failed",
+                retryable=False,
+            )
+        typer.echo("ブラウザーを起動しました。自動保存には start の実行を続けてください。")
 
 
 @app.command()
@@ -205,6 +212,7 @@ def doctor(ctx: typer.Context) -> None:
 def status(ctx: typer.Context) -> None:
     """接続・Colab・未回収の状態を確認します。"""
     with operation(ctx) as project:
+        project = runtime.session_project(project)
         colab = Colab(project)
         receipt = colab.receipt()
         active: bool | None = None

@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from komaquill.settings import Settings
+
 JsonObject = dict[str, Any]
 
 
@@ -33,6 +35,7 @@ class Session(BaseModel):
     frontend_version: str | None = None
     model_sha256: str | None = None
     username: str | None = None
+    settings: Settings | None = None
     excluded_prompt_ids: set[str] = Field(default_factory=set)
 
     @field_validator("username")
@@ -73,6 +76,26 @@ class ImageRef(BaseModel):
     type: Literal["output", "temp"] = "output"
 
 
+class FailureInfo(BaseModel):
+    """Describe a failure without copying exception messages or response bodies."""
+
+    code: str
+    stage: str
+    exception_type: str
+    http_status: int | None = None
+    retryable: bool = True
+
+
+class ImageMetadata(BaseModel):
+    """Describe bytes that were verified and written to local storage."""
+
+    sha256: str
+    size_bytes: int
+    width: int
+    height: int
+    source: ImageRef
+
+
 class Run(BaseModel):
     """再接続後も回収を再開するための履歴。"""
 
@@ -90,8 +113,31 @@ class Run(BaseModel):
     workflow_sha256: str
     images: list[str] = Field(default_factory=list)
     error: str | None = None
+    updated_at: datetime | None = None
+    saved_at: datetime | None = None
+    generation_started_at: datetime | None = None
+    generation_completed_at: datetime | None = None
+    image_metadata: dict[str, ImageMetadata] = Field(default_factory=dict)
+    failure: FailureInfo | None = None
 
     @property
     def pending(self) -> bool:
         """保存または終了が確定していない要求かを返す。"""
         return self.state not in {"saved", "failed", "lost"}
+
+
+class ShutdownResult(BaseModel):
+    """Keep independent shutdown outcomes after ownership records are removed."""
+
+    runtime_id: UUID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    finished_at: datetime | None = None
+    force: bool
+    collection: str = "skipped"
+    logs: str = "skipped"
+    gpu: str = "unknown"
+    connections: str = "ok"
+    history: str = "skipped"
+    pending_ids: list[UUID] = Field(default_factory=list)
+    lost_ids: list[UUID] = Field(default_factory=list)
+    errors: list[FailureInfo] = Field(default_factory=list)

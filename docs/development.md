@@ -10,11 +10,13 @@ python scripts/security.py
 ```
 
 check.pyはRuffの整形確認・lint、strict mypy、Import Linter、pytestを実行します。
+srcとscriptsのPythonコードを計測し、行90%以上・分岐80%以上をそれぞれ判定します。testsは計測対象に含めません。
+結果は`.artifacts/reports/quality/`へ保存します。
 循環参照、CLIへの逆依存、生成・保存からColab制御への依存、本体から開発用モジュールへの依存を禁止します。
 テストは模擬応答と一時フォルダーを使用し、GPU、Google認証、モデルのダウンロードに依存しません。
 
 security.pyは公開対象、ステージ済み差分、全Git履歴をdetect-secretsで検査します。検出値を外部送信する確認機能は無効にしています。
-レポートは場所と種類だけを`.artifacts/security/`へ保存します。公開リビジョン、SHA256、明示した試験値の除外には行単位の理由を記載します。
+レポートは場所と種類だけを`.artifacts/reports/quality/security.json`へ保存します。公開リビジョン、SHA256、明示した試験値の除外には行単位の理由を記載します。
 setup.ps1は送信前の検査をGitフックへ登録します。WindowsとLinuxのCIも同じ検査を実行します。
 
 ## 実行環境と依存関係

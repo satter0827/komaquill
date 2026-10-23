@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import sys
-import traceback
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
 import click
+
+from komaquill.events import record_event
+from komaquill.models import FailureInfo
+from komaquill.settings import Project
 
 
 def main() -> None:
@@ -37,29 +39,18 @@ def main() -> None:
             except (OSError, ValueError, KeyError, TypeError):
                 pass
             actions = {"new", "status", "stop", "exec", "ssh", "upload", "download"}
-            diagnostic = {
-                "created_at": datetime.now(UTC).isoformat(),
-                "operation": next((value for value in sys.argv[1:] if value in actions), None),
-                "runtime_id": runtime_id,
-                "type": type(error).__name__,
-                "status": status if isinstance(status, int) else None,
-                "frames": [
-                    {
-                        "file": Path(frame.filename).name,
-                        "function": frame.name,
-                        "line": frame.lineno,
-                    }
-                    for frame in traceback.extract_tb(error.__traceback__)
-                ],
-            }
-            try:
-                target = Path(root) / ".artifacts/logs/colab-cli-error.json"
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(
-                    json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
-            except OSError:
-                pass
+            record_event(
+                Project(Path(root)),
+                "colab_" + next((value for value in sys.argv[1:] if value in actions), "operation"),
+                "failed",
+                runtime_id=UUID(runtime_id) if runtime_id else None,
+                failure=FailureInfo(
+                    code="colab_failed",
+                    stage="colab_control",
+                    exception_type=type(error).__name__,
+                    http_status=status if isinstance(status, int) else None,
+                ),
+            )
         print("Colabの操作に失敗しました。認証と接続状態を確認してください。", file=sys.stderr)
         raise SystemExit(1) from None
 

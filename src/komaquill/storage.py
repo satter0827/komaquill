@@ -2,10 +2,12 @@
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from komaquill.errors import KomaquillError
+from komaquill.events import record_event
 from komaquill.models import JsonObject, Run, Session
 from komaquill.settings import Project
 
@@ -36,17 +38,36 @@ def run_dir(project: Project, run_id: UUID) -> Path:
 
 def save_run(project: Project, run: Run) -> None:
     """生成状態を更新する。"""
-    atomic_json(run_dir(project, run.run_id) / "run.json", run.model_dump(mode="json"))
+    path = run_dir(project, run.run_id) / "run.json"
+    previous = Run.model_validate_json(path.read_bytes()) if path.is_file() else None
+    if previous == run:
+        return
+    run.updated_at = datetime.now(UTC)
+    if run.state == "saved" and run.saved_at is None:
+        run.saved_at = run.updated_at
+    atomic_json(path, run.model_dump(mode="json"))
+    if previous is None or previous.state != run.state or previous.failure != run.failure:
+        record_event(
+            project,
+            "generation",
+            run.state,
+            runtime_id=run.runtime_id,
+            run_id=run.run_id,
+            failure=run.failure,
+        )
 
 
-def load_runs(project: Project, *, unreadable: list[UUID] | None = None) -> list[Run]:
+def load_runs(project: Project, *, unreadable: list[UUID | str] | None = None) -> list[Run]:
     """履歴を読む。unreadableの指定時は読めないIDを報告して継続する。"""
     runs: list[Run] = []
     for path in project.runs.glob("*/run.json"):
         try:
             identity = UUID(path.parent.name)
         except ValueError:
-            raise KomaquillError("生成履歴のフォルダー名を確認してください。") from None
+            if unreadable is None:
+                raise KomaquillError("生成履歴のフォルダー名を確認してください。") from None
+            unreadable.append(f"runs/{path.parent.name!r}")
+            continue
         try:
             run = Run.model_validate_json(path.read_bytes())
             if run.run_id != identity:

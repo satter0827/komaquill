@@ -1,13 +1,32 @@
-"""利用者へ伝える操作エラー。"""
+"""Expose safe error categories without including remote payloads."""
 
 
 class KomaquillError(Exception):
-    """操作を継続できないときのエラー。"""
+    """Describe an actionable failure and safe diagnostic attributes."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "operation_failed",
+        stage: str = "operation",
+        http_status: int | None = None,
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.stage = stage
+        self.http_status = http_status
+        self.retryable = retryable
 
 
 class SubmissionUnknown(KomaquillError):
-    """送信後の応答が得られず受付結果が不明な状態。"""
+    """Indicate that a request must be reconciled rather than resubmitted."""
 
 
 class AllocationRefused(KomaquillError):
-    """Colabが新規確保を明示的に拒否した。"""
+    """Indicate that the provider explicitly refused allocation."""
+
+
+class RuntimeEnded(KomaquillError):
+    """Indicate that the owned runtime is confirmed absent."""

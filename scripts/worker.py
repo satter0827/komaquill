@@ -29,7 +29,10 @@ def main() -> None:
         if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
             raise RuntimeError("uvのSHA256が一致しません。")
         with tarfile.open(archive) as bundle:
-            source = bundle.extractfile("uv-x86_64-unknown-linux-gnu/uv")
+            member = "uv-x86_64-unknown-linux-gnu/uv"
+            if member not in bundle.getnames():
+                raise RuntimeError("uvが配布物にありません。")
+            source = bundle.extractfile(member)
             if source is None:
                 raise RuntimeError("uvが配布物にありません。")
             uv.write_bytes(source.read())

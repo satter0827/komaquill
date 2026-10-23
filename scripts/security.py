@@ -1,12 +1,15 @@
 """公開前とCIに共通する秘密情報・追跡対象の検査。"""
 
-import json
 import os
 import subprocess
+from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 
 from detect_secrets.core.scan import scan_diff, scan_file
 from detect_secrets.settings import default_settings
+
+from komaquill.storage import atomic_json
 
 
 def git_text(root: Path, *arguments: str) -> str:
@@ -47,9 +50,18 @@ def main() -> None:
                     {"file": secret.filename, "line": secret.line_number, "type": secret.type}
                     for secret in scan_diff(diff)
                 )
-    report = root / ".artifacts/security/results.json"
-    report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(json.dumps(findings, ensure_ascii=False, indent=2), encoding="utf-8")
+    report = root / ".artifacts/reports/quality/security.json"
+    atomic_json(
+        report,
+        {
+            "created_at": datetime.now(UTC).isoformat(),
+            "source_revision": git_text(root, "rev-parse", "HEAD").strip(),
+            "tool": "detect-secrets",
+            "tool_version": version("detect-secrets"),
+            "scope": ["working_tree", "staged", "history"],
+            "findings": findings,
+        },
+    )
     if findings:
         for item in findings:
             print(f"確認が必要です: {item['file']}:{item['line']} ({item['type']})")

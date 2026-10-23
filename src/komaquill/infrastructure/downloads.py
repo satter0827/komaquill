@@ -1,6 +1,5 @@
 """Download models from their pinned upstream locations."""
 
-import hashlib
 import os
 import time
 from pathlib import Path
@@ -11,21 +10,17 @@ from huggingface_hub.errors import HfHubHTTPError
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ModelPreset
+from komaquill.infrastructure.asset_store import file_digest as file_digest
+from komaquill.infrastructure.asset_store import register
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
 
 DOWNLOAD_TIMEOUT = 60
 
 
-def file_digest(path: Path) -> str:
-    """Verify large files using bounded chunks."""
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
-
-
 def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
     """Download a model and verify its SHA256."""
-    folder = artifacts / "models" / model.name
+    folder = artifacts / "models" / model.role / model.sha256
     folder.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(artifacts / "cache" / "huggingface")
     os.environ["HF_XET_CACHE"] = str(artifacts / "cache" / "xet")
@@ -43,6 +38,7 @@ def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
                 asset=model.name,
                 elapsed_seconds=round(time.monotonic() - started, 3),
             )
+            register(artifacts, model, existing)
             return existing
         record_event(project, "model", "download_started", asset=model.name)
         try:
@@ -92,4 +88,5 @@ def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
             asset=model.name,
             elapsed_seconds=round(time.monotonic() - started, 3),
         )
+        register(artifacts, model, target)
         return target

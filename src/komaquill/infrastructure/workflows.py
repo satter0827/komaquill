@@ -71,7 +71,7 @@ def prepare(
             "sampler_name": profile.sampler,
             "scheduler": profile.scheduler,
         },
-        "4": {"ckpt_name": settings.assets[profile.checkpoint].filename},
+        "4": {"ckpt_name": settings.assets[profile.checkpoint].reference},
         "5": {"width": profile.width, "height": profile.height},
         "7": {"text": profile.negative if negative is None else negative},
         "9": {"filename_prefix": f"komaquill/{run_id}"},
@@ -83,11 +83,11 @@ def prepare(
         values["6"] = {"text": prompt}
     if profile.lora:
         values["12"] = {
-            "lora_name": settings.assets[profile.lora].filename,
+            "lora_name": settings.assets[profile.lora].reference,
             "strength_model": profile.lora_strength,
         }
     if profile.upscaler:
-        values["13"] = {"model_name": settings.assets[profile.upscaler].filename}
+        values["13"] = {"model_name": settings.assets[profile.upscaler].reference}
         values["15"] = {"width": profile.upscale_width, "height": profile.upscale_height}
         values["16"] = {"filename_prefix": f"komaquill/{run_id}-upscaled"}
     widgets: dict[str, list[str | None]] = {

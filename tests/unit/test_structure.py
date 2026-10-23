@@ -36,7 +36,7 @@ def test_workflow_exports_have_identical_connections_and_parameters():
         for index, name in enumerate(names):
             if name and not isinstance(api[key]["inputs"][name], list):
                 assert nodes[key]["widgets_values"][index] == api[key]["inputs"][name]
-    assert api["4"]["inputs"]["ckpt_name"] == preset().filename
+    assert api["4"]["inputs"]["ckpt_name"] == preset().reference
     assert ui["extra"]["linearData"]["outputs"] == ["9"]
 
 

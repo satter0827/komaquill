@@ -276,7 +276,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "v6.safetensors"
+        "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3/v6.safetensors"
       ]
     },
     {
@@ -392,7 +392,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "Hyper-SDXL-8steps-CFG-lora.safetensors",
+        "55b51334c85061afff5eff7c550b61963c8b8607a5868bbe4f26db49374719b1/Hyper-SDXL-8steps-CFG-lora.safetensors",
         1.0
       ]
     }

@@ -100,7 +100,7 @@ def test_server_preparation_pins_source_and_registers_both_views(
         )
         assert json.loads((project.runtime / "model-paths.json").read_bytes())["pony"][
             "base_path"
-        ] == str(model.parent)
+        ] == str(model.parent.parent)
         assert user.is_dir()
         assert bool(commands) == (not exists)
 

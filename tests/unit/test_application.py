@@ -83,6 +83,9 @@ def test_generation_uses_only_replaceable_contracts():
                 gpu="T4",
             )
 
+        def prepared_assets(self, session):
+            return {}
+
         def identity(self):
             return {"app_version": "test", "source_revision": None, "code_sha256": None}
 

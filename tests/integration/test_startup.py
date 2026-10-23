@@ -129,7 +129,7 @@ def cli_connection(project, session, client, monkeypatch):
 def test_doctor_reports_actual_generation_requirements(cli_connection, client, monkeypatch, case):
     original = client.json
     nodes = {row["class_type"]: {} for row in resource_json("workflow-api.json").values()}
-    nodes["CheckpointLoaderSimple"] = {"input": {"required": {"ckpt_name": [[preset().filename]]}}}
+    nodes["CheckpointLoaderSimple"] = {"input": {"required": {"ckpt_name": [[preset().reference]]}}}
     if case == "nodes":
         nodes.pop("KSampler")
     if case == "model":

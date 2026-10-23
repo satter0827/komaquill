@@ -29,7 +29,7 @@
   "4": {
     "class_type": "CheckpointLoaderSimple",
     "inputs": {
-      "ckpt_name": "v6.safetensors"
+      "ckpt_name": "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3/v6.safetensors"
     }
   },
   "5": {
@@ -107,7 +107,7 @@
   "13": {
     "class_type": "UpscaleModelLoader",
     "inputs": {
-      "model_name": "RealESRGAN_x4plus_anime_6B.pth"
+      "model_name": "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da/RealESRGAN_x4plus_anime_6B.pth"
     }
   },
   "14": {

@@ -24,6 +24,8 @@ RESOURCE_NAMES = (
     "workflow.json",
     "workflow-api.json",
     "pylock.worker.toml",
+    "web/extension.js",
+    "web/preparation.mjs",
 )
 
 
@@ -76,6 +78,10 @@ GPU_MODULES = frozenset(
         "gpu/__init__.py",
         "gpu/bootstrap.py",
         "gpu/progress.py",
+        "gpu/extension.py",
+        "domain/assets.py",
+        "infrastructure/asset_download.py",
+        "infrastructure/asset_store.py",
         "gpu/worker.py",
         "infrastructure/__init__.py",
         "infrastructure/configuration.py",
@@ -99,7 +105,7 @@ def gpu_contents() -> Iterator[tuple[str, bytes]]:
     ]
     anchor = files("komaquill")
     all_text = json.loads(anchor.joinpath("resources/messages.json").read_text(encoding="utf-8"))
-    keys = {key for key in all_text if key.startswith("error.")}
+    keys = {key for key in all_text if key.startswith(("error.", "ui."))}
     for name, content in entries:
         if not name.endswith(".py"):
             continue

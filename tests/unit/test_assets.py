@@ -244,7 +244,7 @@ def test_standard_requirements_exclude_muted_and_unavailable_or_nonimage_nodes()
             "Custom": {"python_module": "custom"},
         },
     )
-    assert hints == [{"name": "model.safetensors"}]
+    assert hints == [{"name": "model.safetensors", "node_id": ""}]
     assert set(unsupported) == {"Missing", "unknown.sft", "LoadAudio", "Custom"}
     assert workflow_models({}) == []
 

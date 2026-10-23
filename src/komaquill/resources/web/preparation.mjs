@@ -29,3 +29,14 @@ export async function prepareWorkflow({request, workflow, confirm, status, text,
     job = next;
   }
 }
+
+export async function applyPreparedModels(app, job) {
+  await app.refreshComboInNodes();
+  for (const node of app.graph._nodes) {
+    const references = job.node_models?.[String(node.id)] || {};
+    for (const widget of node.widgets || []) {
+      if (Object.hasOwn(references, widget.value)) widget.value = references[widget.value];
+    }
+  }
+  if (app.refreshMissingModels) await app.refreshMissingModels({silent: true, reloadDefs: false});
+}

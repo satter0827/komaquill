@@ -236,7 +236,16 @@ def test_native_mask_upload_preserves_the_composited_input():
             "POST",
             "/upload/mask",
             files={"image": (target, mask.getvalue(), "image/png")},
-            data={"type": "input", "original_ref": json.dumps(source)},
+            data={
+                "type": "input",
+                "original_ref": json.dumps(
+                    {
+                        "filename": source["name"],
+                        "type": source["type"],
+                        "subfolder": source["subfolder"],
+                    }
+                ),
+            },
         ).json()
         content = client.request(
             "GET",
@@ -271,3 +280,48 @@ def test_native_mask_upload_preserves_the_composited_input():
         )
         run = next(run for run in load_runs(project) if run.prompt_id == identity)
         assert digest in run.input_sha256.values()
+
+
+def test_monitor_and_ssh_recovery_reuses_the_owned_runtime():
+    import psutil
+
+    from komaquill.infrastructure.colab import Colab
+    from komaquill.infrastructure.monitor_state import alive, read_monitor
+
+    project = find_project(Path(os.environ["KOMAQUILL_PROJECT_DIR"]))
+    control = Colab(project)
+    receipt = control.receipt()
+    monitor = read_monitor(project)
+    assert receipt is not None and monitor is not None and alive(monitor)
+    process = psutil.Process(monitor.pid)
+    process.terminate()
+    process.wait(timeout=10)
+    control.cleanup_processes(receipt)
+    assert control.refresh(receipt)
+    started = time.monotonic()
+    response = subprocess.run(
+        [sys.executable, "-B", "-m", "komaquill", "start", "--no-open"],
+        cwd=project.root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=180,
+    )
+    assert response.returncode == 0, response.stdout + response.stderr
+    current = control.receipt()
+    assert current.runtime_id == receipt.runtime_id and current.code_sha256 == receipt.code_sha256
+    current_monitor = read_monitor(project)
+    assert alive(current_monitor) and current_monitor.operation_id != monitor.operation_id
+    with connected(project) as (client, session):
+        assert str(session.runtime_id) == client.runtime()["runtime_id"]
+    output = project.artifacts / "reports/live-seamless/reconnection-session-3.json"
+    output.write_text(
+        json.dumps(
+            {
+                "runtime_id": str(receipt.runtime_id),
+                "elapsed_seconds": time.monotonic() - started,
+                "same_runtime": True,
+            }
+        ),
+        encoding="utf-8",
+    )

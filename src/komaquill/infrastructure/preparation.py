@@ -87,6 +87,7 @@ class Coordinator:
         hints, unsupported = requirements(job.workflow, self.client.json("/object_info"))
         registered = inventory(self.project.artifacts)
         assets = []
+        node_models: dict[str, dict[str, str]] = {}
         for reference in list(unsupported):
             matches = [m for m in registered if m.reference == reference]
             if len(matches) == 1:
@@ -109,14 +110,28 @@ class Coordinator:
                         self.project.settings().request_timeout,
                     )
                 )
+                bindings = node_models.setdefault(str(hint.get("node_id", "")), {})
+                previous = bindings.get(hint["name"])
+                if previous is not None and previous != asset.reference:
+                    unsupported.append(hint["name"])
+                bindings[hint["name"]] = asset.reference
                 if asset not in assets:
                     assets.append(asset)
             except (KomaquillError, KeyError):
                 unsupported.append(str(hint.get("name", "unknown")))
+        assets = [
+            model.model_copy(
+                update={"size_bytes": model_path(self.project.artifacts, model).stat().st_size}
+            )
+            if model.size_bytes is None and verified_cache(self.project.artifacts, model)
+            else model
+            for model in assets
+        ]
         self.update(
             job,
             "plan",
             assets=[a.model_dump(mode="json") for a in assets],
+            node_models=node_models,
             unsupported=sorted(set(unsupported)),
             reused=[a.reference for a in assets if verified_cache(self.project.artifacts, a)],
         )

@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { prepareWorkflow } from "./preparation.mjs";
+import { applyPreparedModels, prepareWorkflow } from "./preparation.mjs";
 
 let text = {};
 const POLL_INTERVAL_MS = 1000;
@@ -28,14 +28,7 @@ async function prepare() {
       status: (phase, job) => { activeRequest = job?.request_id; if (phase === "preparing") notify("ui.preparing"); },
       sleep: () => new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))});
     if (job.phase === "ready") {
-      await app.refreshComboInNodes();
-      // Content-addressed references distinguish equal filenames with different bytes.
-      for (const node of app.graph._nodes) {
-        for (const widget of node.widgets || []) {
-          const asset = job.assets.find((item) => item.filename === widget.value);
-          if (asset) widget.value = `${asset.sha256}/${asset.filename}`;
-        }
-      }
+      await applyPreparedModels(app, job);
       notify("ui.saved");
     } else notify("ui.retry", "warn");
   } catch { notify("ui.retry", "error"); }

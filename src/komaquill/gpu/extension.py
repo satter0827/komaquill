@@ -184,6 +184,7 @@ class Extension:
                 identity,
                 phase="confirmation",
                 assets=data["assets"],
+                node_models=data.get("node_models", {}),
                 reused=data["reused"],
                 unsupported=data["unsupported"],
             )

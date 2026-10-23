@@ -239,3 +239,65 @@ def test_timeouts_must_be_finite():
 
     with pytest.raises(ValidationError):
         Settings(request_timeout=float("inf"))
+
+
+def test_unknown_submission_records_safe_failure_before_reconciliation(
+    project, client, session, stub
+):
+    from komaquill.errors import SubmissionUnknown
+    from komaquill.storage import load_runs
+
+    stub.drop_response = True
+    with pytest.raises(SubmissionUnknown):
+        generate(project, client, session, "a cabin", "", 2)
+    run = load_runs(project)[0]
+    assert run.state == "unknown" and run.failure.code == "submission_unknown"
+    assert run.failure.stage == "submission" and run.failure.retryable
+    assert collect(project, client, session).saved == 1
+    assert load_runs(project)[0].failure is None
+
+
+def test_log_temporary_cleanup_failure_does_not_skip_other_files(project, monkeypatch):
+    colab = Colab(project)
+    receipt = Receipt(name="owned", runtime_id=uuid4())
+    monkeypatch.setattr(colab, "entry", lambda _: {})
+    original = Path.unlink
+
+    def unlink(path, *args, **kwargs):
+        if path.name.startswith(".bootstrap.log."):
+            raise PermissionError("private filesystem information")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    monkeypatch.setattr(colab, "call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"log"))
+    assert colab.recover_diagnostics(receipt) == ("bootstrap.log",)
+    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    report = json.loads((folder / "capture.json").read_bytes())
+    assert report["files"]["bootstrap.log"]["failure"]["stage"] == "log_cleanup"
+    assert report["files"]["comfy.log"]["result"] == "saved"
+    assert "private filesystem information" not in json.dumps(report)
+
+
+def test_forced_shutdown_reports_lost_count_without_claiming_full_collection(
+    project, client, session, monkeypatch
+):
+    from komaquill.service import new_run
+    from komaquill.storage import save_run
+
+    run = new_run(project, session, uuid4(), {})
+    save_run(project, run)
+    colab = Colab(project)
+    receipt = Receipt(name="owned", runtime_id=session.runtime_id, settings=project.settings())
+    atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
+    monkeypatch.setattr(colab, "recover_diagnostics", lambda _: ())
+    monkeypatch.setattr(colab, "stop", lambda: None)
+    monkeypatch.setattr(colab, "cleanup_processes", lambda _: None)
+    messages = []
+    runtime.finish_colab(project, colab, receipt, client, session, True, messages.append, [])
+    result = ShutdownResult.model_validate_json(
+        (project.artifacts / "logs" / str(session.runtime_id) / "shutdown.json").read_bytes()
+    )
+    assert result.collection == "incomplete" and result.lost_ids == [run.run_id]
+    assert not result.errors and not colab.receipt_file.exists()
+    assert any("回収不能: 1件" in message for message in messages)
+    assert any("画像回収: 未回収あり" in message for message in messages)

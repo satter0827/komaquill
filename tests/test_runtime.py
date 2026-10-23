@@ -1,4 +1,4 @@
-"""起動監視、外部接続と終了時の回収を検証する。"""
+"""Test monitoring, external connections and shutdown collection."""
 
 from uuid import uuid4
 
@@ -17,7 +17,7 @@ def test_second_start_is_rejected_before_allocation(project, monkeypatch):
             pytest.fail("二重起動でColabを操作してはいけない")
 
     monkeypatch.setattr(runtime, "Colab", ForbiddenColab)
-    # 同じスレッドの再入ではなく別のロックインスタンスで競合させる。
+    # Use a separate instance to test contention instead of reentrancy.
     with runtime.monitor_lock(project), pytest.raises(KomaquillError, match="すでに start"):
         runtime.start(project, "colab", None, None, None, lambda message: None)
 

@@ -1,4 +1,4 @@
-"""ローカルとCIに共通する品質確認。"""
+"""Run shared local and CI quality checks."""
 
 import os
 import subprocess
@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def main() -> None:
-    """同じPython環境で全検査を実行する。"""
+    """Run every check with the same Python interpreter."""
     root = Path(__file__).resolve().parents[1]
     (root / ".artifacts/reports/quality").mkdir(parents=True, exist_ok=True)
     os.environ["PYTHONPYCACHEPREFIX"] = str(root / ".artifacts/cache/pycache")

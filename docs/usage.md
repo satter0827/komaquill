@@ -2,14 +2,14 @@
 
 ## 起動と接続
 
-[導入手順](../README.md#環境を準備する)で環境を有効にし、`komaquill start` を実行します。初回のGoogle認証は公式Colab CLIの案内に従います。
+[導入手順](../README.md#ソースから導入する)で環境を有効にし、`komaquill start` を実行します。初回のGoogle認証は公式Colab CLIの案内に従います。
 
 設定はstart時に確定します。起動中に設定ファイルを変更しても反映されません。stop後のstartで新しい設定を使用します。
 
 `start`は同じ端末でSSH接続と自動回収を維持します。別の端末から生成や画面の起動を行ってください。
 GPUを新しく確保する操作はstartだけです。status、doctor、collect、stopはGPUを作成しません。
 
-GPUへ転送するソースはHEADコミットです。変更したコードで起動する前にコミットします。残存ランタイムとソースが異なる場合は、stop後に起動し直します。
+GPUへは実行中のパッケージから転送物を作成します。コードや起動設定が残存ランタイムと異なる場合は、stop後に起動し直します。
 
 ## 画像を生成する
 
@@ -86,3 +86,25 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 接続ポートの競合は起動済みのstartと設定を確認します。ホスト鍵が変わった接続は拒否します。Google認証とGPUの利用枠はColab側で確認してください。
 別フォルダーから使う場合は`komaquill --project 作業フォルダー コマンド`を指定します。
+
+## ログを読む
+
+| ファイル | 内容 |
+|---|---|
+| logs/cli.jsonl | ランタイム確保前を含むCLIの状態変化と失敗 |
+| logs/ランタイムID/events.jsonl | 接続、要求状態、回収・終了の状態変化と失敗 |
+| logs/ランタイムID/bootstrap.log | GPU側の導入と起動 |
+| logs/ランタイムID/comfy.log | ComfyUIの実行出力 |
+| logs/ランタイムID/environment.txt | GPU側の導入済み依存 |
+| logs/ランタイムID/capture.json | ファイルごとの取得日時、成否、最終成功日時 |
+| logs/ランタイムID/shutdown.json | 回収、ログ、GPU、接続、履歴確定それぞれの結果 |
+
+パスは.artifacts/を基準にしています。取得に失敗したファイルは以前の内容を保持するため、ログ本文だけでなくcapture.jsonの最終成功日時も確認してください。保存済みの過去のログにcapture.jsonがない場合は取得日時が不明です。
+
+診断のfailureはcode、stage、exception_type、http_status、retryableを持ちます。通信、画像検証、保存を区別し、retryableがtrueなら接続と保存先を確認してcollectを再実行します。run.jsonには画像のSHA256、サイズ、寸法、観測・更新・保存時刻を記録します。generation_started_atとgeneration_completed_atはComfyUIが報告した時刻だけを使用し、不明な値はnullです。
+
+## VS Codeから実行する
+
+Run and DebugのStart ComfyUI (Colab)で起動し、接続後にGenerate Imageでプロンプトを入力します。Open ComfyUIではApp ModeまたはNode Graph、Stop ComfyUIではWait for ResultsまたはStop Without Waitingを選びます。Run CLI with Argumentsにはgenerate --prompt "a small cabin"などの引数を入力できます。引数欄へパスワードや認証コードを入力しないでください。
+
+TaskのSetup Environmentは導入、Check Projectは品質・秘密情報検査、Build Packageはビルド・配布物検査を行います。通常の操作はターミナルから同じCLIを直接実行できます。

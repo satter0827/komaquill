@@ -1,4 +1,4 @@
-"""接続の維持、自動回収と終了を行う。"""
+"""Maintain the connection, collection and shutdown lifecycle."""
 
 import subprocess
 import time
@@ -40,13 +40,13 @@ def session_project(project: Project) -> Project:
 
 
 def credential_key(project: Project, session: Session) -> str:
-    """接続先と利用者を資格情報の保存先に含める。"""
+    """Scope credential storage to the workspace, endpoint and username."""
     return f"{project.root}|{session.endpoint}|{session.username}"
 
 
 @contextmanager
 def connected(project: Project) -> Iterator[tuple[ComfyClient, Session]]:
-    """保存した接続先を使い、GPUを新しく確保しない。"""
+    """Use a saved endpoint without allocating a runtime."""
     if not project.session_file.is_file():
         raise KomaquillError("接続先が未設定です。start を実行してください。")
     session = load_session(project)
@@ -68,20 +68,20 @@ def connected(project: Project) -> Iterator[tuple[ComfyClient, Session]]:
 
 
 def monitor_lock(project: Project) -> FileLock:
-    """二重起動と終了中の再起動を防ぐ。"""
+    """Prevent concurrent startup and teardown."""
     project.state.mkdir(parents=True, exist_ok=True)
     return FileLock(str(project.state / ".monitor.lock"))
 
 
 def excluded_history(client: ComfyClient) -> set[str]:
-    """接続前のキューと履歴を回収対象から外す。"""
+    """Exclude queue and history entries that precede the connection."""
     excluded = {str(row[1]) for row in client.queue()}
     excluded.update(client.history())
     return excluded
 
 
 def request_stop(project: Project, session: Session, force: bool) -> None:
-    """並行する終了要求で強制終了を通常終了へ戻さない。"""
+    """Keep forced shutdown requests monotonic across processes."""
     with collection_lock(project), FileLock(str(project.state / ".stop.lock")):
         force = force or stop_request(project, session) is True
         atomic_json(
@@ -152,7 +152,7 @@ def watch(
     echo: Callable[[str], None],
     reconnect: Callable[[], None] | None = None,
 ) -> bool:
-    """接続と回収を維持し、終了時に待機方法を返す。"""
+    """Maintain the connection and collection until shutdown is requested."""
     project = project.configured(session.settings)
     disconnected = False
     previous_errors: tuple[UUID | str, ...] = ()
@@ -292,7 +292,10 @@ def finish_colab(
             result.lost_ids = list(mark_lost(project, receipt.runtime_id))
             result.history = "ok"
             if result.lost_ids:
-                announce("回収不能: " + ", ".join(map(str, result.lost_ids)))
+                result.collection = "incomplete"
+                announce(
+                    f"回収不能: {len(result.lost_ids)}件 / " + ", ".join(map(str, result.lost_ids))
+                )
                 if not result.force:
                     result.collection = "incomplete"
                     failed(
@@ -310,7 +313,18 @@ def finish_colab(
         atomic_json(folder / "shutdown.json", result.model_dump(mode="json"))
     except OSError as error:
         failed("summary", "終了結果を保存できません。", error)
-    announce(f"画像回収: {result.collection} / ログ取得: {result.logs} / Colab: {result.gpu}")
+    labels = {
+        "ok": "完了",
+        "failed": "失敗",
+        "skipped": "未実施",
+        "incomplete": "未回収あり",
+        "stopped": "終了確認済み",
+        "unknown": "未確認",
+    }
+    announce(
+        f"画像回収: {labels[result.collection]} / ログ取得: {labels[result.logs]} / "
+        f"Colab: {labels[result.gpu]}"
+    )
     if result.gpu == "stopped" and not fatal:
         try:
             colab.release(receipt)
@@ -376,7 +390,7 @@ def start_external(
     password: str | None,
     echo: Callable[[str], None],
 ) -> None:
-    """起動済みComfyUIへの接続だけを維持する。"""
+    """Monitor an already running ComfyUI server."""
     project = project.configured()
     session = Session(
         endpoint=endpoint,
@@ -419,7 +433,7 @@ def start_external(
 
 
 def start_colab(project: Project, echo: Callable[[str], None]) -> None:
-    """確保から終了確認まで一つのColabを所有する。"""
+    """Own one runtime from allocation through confirmed shutdown."""
     requested = project.settings()
     colab = Colab(project)
     saved = colab.receipt()
@@ -433,6 +447,7 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
     client: ComfyClient | None = None
     session: Session | None = None
     cleanup_owned = False
+    ready = False
     force = True
     try:
         check_port(project.settings().local_port)
@@ -496,12 +511,33 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
         atomic_json(project.session_file, session.model_dump(mode="json"))
         record_event(project, "connection", "ready", runtime_id=session.runtime_id)
         echo("接続しました。この端末を開いたまま generate または open を実行してください。")
+        ready = True
         force = watch(project, client, session, echo, reconnect)
+    except (Exception, KeyboardInterrupt) as error:
+        if not ready:
+            record_event(
+                project,
+                "start",
+                "failed",
+                runtime_id=session.runtime_id if session else None,
+                failure=failure_info(error, "preparation"),
+            )
+            echo("ComfyUIを起動できませんでした。.artifacts/logs の起動ログを確認してください。")
+        raise
     finally:
         try:
             final_receipt = colab.receipt() if cleanup_owned else None
             if final_receipt is not None:
-                finish_colab(project, colab, final_receipt, client, session, force, echo, processes)
+                finish_colab(
+                    project,
+                    colab,
+                    final_receipt,
+                    client if ready else None,
+                    session if ready else None,
+                    force,
+                    echo,
+                    processes,
+                )
         finally:
             if client is not None:
                 client.close()
@@ -515,7 +551,7 @@ def start(
     password: str | None,
     echo: Callable[[str], None],
 ) -> None:
-    """二重起動を拒否し、明示された接続先を開始する。"""
+    """Start the requested backend while preventing duplicate monitors."""
     try:
         with monitor_lock(project).acquire(timeout=0):
             (project.state / "stop.json").unlink(missing_ok=True)
@@ -538,7 +574,7 @@ def start(
 
 
 def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
-    """監視中は終了を依頼し、監視がなければ残存Colabだけを終了する。"""
+    """Request active monitor shutdown or recover and stop a remaining owned runtime."""
     project = session_project(project)
     lock = monitor_lock(project)
     had_monitor = False

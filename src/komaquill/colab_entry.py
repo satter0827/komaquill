@@ -1,4 +1,4 @@
-"""公式Colab CLIを詳細ログと秘密情報を含む例外表示なしで起動する。"""
+"""Invoke the official CLI without verbose logs or credential-bearing tracebacks."""
 
 import importlib
 import json
@@ -16,7 +16,7 @@ from komaquill.settings import Project
 
 
 def main() -> None:
-    """公式CLIの引数と認証手順を使用する。"""
+    """Use the official argument and authentication flows."""
     logging.disable(logging.CRITICAL)
     cli = importlib.import_module("colab_cli.cli")
     cli.app.pretty_exceptions_enable = False
@@ -29,7 +29,7 @@ def main() -> None:
     except Exception as error:
         root = os.environ.get("KOMAQUILL_PROJECT_DIR")
         if root:
-            # 例外の本文、引数、ローカル変数、HTTP本文は保存しない。
+            # Do not store exception text, arguments, locals or HTTP bodies.
             response = getattr(error, "response", None)
             status = getattr(response, "status_code", None)
             runtime_id = None

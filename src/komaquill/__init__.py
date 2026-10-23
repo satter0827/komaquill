@@ -1,1 +1,1 @@
-"""ComfyUIを操作するローカルCLI。"""
+"""Operate ComfyUI from a local CLI."""

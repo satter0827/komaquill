@@ -1,4 +1,4 @@
-comfy_revision = "63be2f9b82ad0dac88a7ceaa28a9cf3154125a18" # pragma: allowlist secret 公開リビジョン
+comfy_revision = "63be2f9b82ad0dac88a7ceaa28a9cf3154125a18" # pragma: allowlist secret Public immutable revision.
 frontend_version = "1.55.18"
 uv_version = "0.13.5"
 

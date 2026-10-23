@@ -1,16 +1,12 @@
 # Komaquill
 
-ComfyUIで画像を生成し、画像と生成条件をローカルへ保存するPython CLIです。Google ColabのGPU、または起動済みのComfyUIを利用します。SD 1.5 FP16で512×512の画像を生成します。
+ComfyUIで画像を生成し、画像と生成条件をローカルへ保存するPython CLIです。Google ColabのGPU、または起動済みのComfyUIを利用します。標準ワークフローはSD 1.5 FP16、512×512です。
 
 ## 必要な環境
 
-- Windows x64またはARM64、PowerShell 7、Git、OpenSSHクライアント。
-- GPUを利用できるGoogle Colabアカウント。利用可能なGPUはプラン・利用枠・空き状況によって変わります。
-- VS Codeは任意です。
+Windows x64またはARM64、PowerShell 7、OpenSSHクライアントを使用します。ソースから導入する場合はGitも必要です。Colabを使う場合はGPUを利用できるGoogleアカウントを用意してください。VS Codeは任意です。
 
-Pythonとuvは導入スクリプトがプロジェクト内へ配置します。Windows ARM64でもPythonはx64版を使用します。
-
-## 環境を準備する
+## ソースから導入する
 
 PowerShell 7でリポジトリのフォルダーを開き、1行ずつ実行します。
 
@@ -20,75 +16,94 @@ PowerShell 7でリポジトリのフォルダーを開き、1行ずつ実行し�
 komaquill --version
 ```
 
-バージョンが表示されれば準備完了です。VS Codeの拡張機能も導入する場合は、最初のコマンドに `-InstallExtensions` を付けます。
+バージョンが表示されれば導入完了です。Pythonとuvは.artifacts/runtime/へ配置します。Windows ARM64ではx64 Pythonを使用します。VS Codeの拡張機能も導入する場合はsetup.ps1へ-InstallExtensionsを指定します。
 
-## 起動して生成する
+## wheelから導入する
+
+uvを用意し、配布されたwheelを専用環境へ導入します。ファイル名のパスとバージョンは配布物に合わせてください。
+
+```powershell
+New-Item -ItemType Directory ./my-images
+cd ./my-images
+$env:UV_PYTHON_INSTALL_DIR = "$PWD/.artifacts/runtime/python"
+$env:UV_CACHE_DIR = "$PWD/.artifacts/cache/uv"
+uv venv --python 3.12 .artifacts/runtime/venv
+uv pip install --python .artifacts/runtime/venv/Scripts/python.exe '../komaquill-0.1.0.dev0-py3-none-any.whl[colab-client]'
+. ./.artifacts/runtime/venv/Scripts/Activate.ps1
+komaquill init
+komaquill --version
+```
+
+外部ComfyUIだけを使う場合、[colab-client]は不要です。initは設定ファイルと保存先を準備します。既存の設定は上書きしません。Gitリポジトリは必要ありません。別の端末では作業フォルダーを開き、同じActivate.ps1で環境を有効にします。
+
+## 起動して画像を生成する
 
 ```powershell
 komaquill start
 ```
 
-初回は公式Colab CLIの案内に従ってGoogle認証を行います。認証コードは端末だけに入力します。
-モデルを検証し、ColabのT4上でComfyUIを起動します。「接続しました」と表示されたら、その端末を開いたままにします。
+初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。「接続しました」と表示されたら、その端末を開いたままにします。
 
-別のPowerShellで同じフォルダーを開き、次を実行します。
+別の端末で同じ作業フォルダーを開き、次を実行します。ソースから導入した場合は、その端末でもbootstrap/activate.ps1を読み込みます。
 
 ```powershell
-. ./bootstrap/activate.ps1
 komaquill doctor
 komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 ```
 
-画像、seed、プロンプト、ワークフローを `.artifacts/runs/実行ID/` へ保存します。保存先が表示されたら画像を確認できます。
+保存先が表示されたら、.artifacts/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
 
-## ComfyUIの画面を開く
+## ComfyUIの画面を使う
 
 ```powershell
 komaquill open --view app
 komaquill open --view graph
 ```
 
-`app` は入力欄と結果を中心に使う画面、`graph` はノードを編集する画面です。画面を開くと端末へ戻ります。画面から生成した画像も `start` が自動保存します。
+appは入力欄と結果を中心に使うApp Mode、graphはノードを編集するNode Graphです。画面からの生成もstartが自動保存します。openはブラウザーを起動したら端末へ戻ります。
 
-## 終了する
+VS CodeではRun and DebugからStart ComfyUI (Colab)を起動し、接続後にOpen ComfyUIやGenerate Imageを選びます。Open ComfyUIはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。どの入口も同じCLIと品質ゲートを呼び出します。
+
+## 状態確認と終了
 
 ```powershell
 komaquill status
+komaquill collect
 komaquill stop
 ```
 
-生成と回収を待ち、所有するColabを終了します。`start` の端末でCtrl+Cを押しても同じ動作です。
-生成完了を待たずに終了する場合は `stop --force`、または2回目のCtrl+Cを使います。回収できなかった要求は履歴へ残します。
+stopは生成と回収を待ち、所有するColabを終了します。startの端末のCtrl+Cも同じ動作です。生成を待たずに終了する場合はstop --force、または2回目のCtrl+Cを使います。未回収要求は回収不能として件数と履歴を残します。電源断によるGPU終了は保証できないため、次回のstatusとstopで確認してください。
 
-## 起動済みのComfyUIを使う
+## 起動済みのComfyUIへ接続する
 
 ```powershell
 komaquill start --backend external --endpoint http://127.0.0.1:8188
 ```
 
-同じ生成・保存コマンドを使用できます。Basic認証が必要な場合は `--username 利用者名` を指定し、パスワードを非表示の入力欄へ入力します。終了時に外部ComfyUIを停止することはありません。
+同じ生成・保存コマンドを使えます。Basic認証が必要な場合は--usernameを指定し、パスワードを非表示の入力欄へ入力します。外部接続の終了は監視だけを停止します。外部サーバーは停止しません。
 
 ## 保存場所
 
 | フォルダー | 内容 |
 |---|---|
-| `.artifacts/runs/` | 画像、生成条件、生成履歴 |
-| `.artifacts/models/` | モデル |
-| `.artifacts/runtime/` | 実行環境、接続の管理記録、SSH鍵 |
-| `.artifacts/logs/` | 実行ログ、環境一覧、診断情報 |
-| `.artifacts/cache/` | 再作成可能なキャッシュ |
+| .artifacts/runs/ | 画像、生成条件、履歴 |
+| .artifacts/models/ | モデルのローカル正本 |
+| .artifacts/state/ | 所有記録、接続情報、SSH鍵 |
+| .artifacts/logs/ | 実行ログ、状態変化、終了結果 |
+| .artifacts/runtime/ | 再構築できる実行環境と転送物 |
+| .artifacts/reports/ | 検査結果 |
+| .artifacts/cache/ | 再作成可能なキャッシュ |
+| .artifacts/tmp/ | 一時ファイル |
+| .artifacts/dist/ | wheelとsdist |
 
-`.artifacts/`全体をGitの対象外にしています。モデル・画像・履歴を残す場合は、このフォルダーを削除しないでください。
-Google認証と公式Colab CLIの管理ファイルは標準のユーザーフォルダー、外部接続のパスワードはOSの資格情報ストアへ保存します。
+.artifacts/全体をGitの対象外にしています。作品を残す場合はこのフォルダーを削除しないでください。Google認証と公式Colab CLIの管理ファイルは標準のユーザーフォルダー、外部接続のパスワードはOSの資格情報ストアへ保存します。
 
-Google Driveは使いません。Colabは配布元からモデルを直接取得し、ランタイム内で再利用します。ローカルからモデルを毎回アップロードする必要はありません。
+Google Driveは使いません。モデルはローカルとColabが配布元から直接取得し、SHA256を検証します。Colab内のモデルはランタイム内で再利用し、毎回のアップロードは行いません。新しいランタイムでは取得が必要です。
 
-## 開発と詳しい使い方
+## 詳細
 
-- [開発への参加](CONTRIBUTING.md)
 - [操作と障害対応](docs/usage.md)
 - [構成と設定](docs/architecture.md)
+- [開発への参加](CONTRIBUTING.md)
 - [開発とリリース](docs/development.md)
 - [検証手順](docs/validation.md)
-
-VS Codeの起動設定も同じCLIを呼び出します。プロンプトや認証コードは統合ターミナルへ入力します。

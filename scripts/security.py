@@ -1,4 +1,4 @@
-"""公開前とCIに共通する秘密情報・追跡対象の検査。"""
+"""Inspect publishable files and history for secrets."""
 
 import os
 import subprocess
@@ -13,14 +13,14 @@ from komaquill.storage import atomic_json
 
 
 def git_text(root: Path, *arguments: str) -> str:
-    """Gitの内容を画面へ出さず検査へ渡す。"""
+    """Read Git content without displaying it."""
     return subprocess.check_output(
         ["git", "-C", str(root), *arguments], text=True, encoding="utf-8", errors="replace"
     )
 
 
 def main() -> None:
-    """公開対象と全履歴を検査し、秘密そのものを記録しない。"""
+    """Inspect public files and history without persisting secret values."""
     root = Path(__file__).resolve().parents[1]
     os.chdir(root)
     tracked = git_text(root, "ls-files", "-z").split("\0")

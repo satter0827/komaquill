@@ -1,7 +1,8 @@
-"""ネットワークとGPUを使わないComfyUI境界の試験環境。"""
+"""Provide ComfyUI test boundaries without network or GPU dependencies."""
 
 import io
 import json
+import os
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -94,6 +95,8 @@ def stub(session):
 
 
 def pytest_configure(config):
+    if config.option.basetemp is None:
+        config.option.basetemp = config.rootpath / ".artifacts/tmp" / f"pytest-{os.getpid()}"
     (config.rootpath / ".artifacts/reports/quality").mkdir(parents=True, exist_ok=True)
 
 

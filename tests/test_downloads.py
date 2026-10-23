@@ -1,4 +1,4 @@
-"""取得済みモデルの再利用と破損時の再取得。"""
+"""Test cached model reuse and replacement after corruption."""
 
 import hashlib
 

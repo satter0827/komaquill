@@ -1,7 +1,8 @@
-"""端末から起動・生成・保存を行う。"""
+"""Operate ComfyUI from the terminal."""
 
 import secrets
 import subprocess
+import tomllib
 import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -27,8 +28,10 @@ from komaquill.settings import Project, find_project, initialize
 from komaquill.storage import atomic_json, load_runs, load_session, run_dir
 from komaquill.workflow import preset, resource_json
 
+APP_HELP = "ComfyUIで画像を生成し、ローカルへ保存します。"
+
 app = typer.Typer(
-    help="ComfyUIで画像を生成し、ローカルへ保存します。",
+    help=APP_HELP,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
     pretty_exceptions_enable=False,
@@ -39,7 +42,7 @@ app.add_typer(models_app, name="models")
 
 
 def show_version(value: bool) -> None:
-    """パッケージと同じバージョンを表示する。"""
+    """Display the installed distribution version."""
     if value:
         typer.echo(version("komaquill"))
         raise typer.Exit()
@@ -60,7 +63,7 @@ def init_command(
     typer.echo(f"作業フォルダーを準備しました: {project.root}")
 
 
-@app.callback()
+@app.callback(help=APP_HELP)
 def main(
     ctx: typer.Context,
     project: Annotated[Path | None, typer.Option("--project", help="作業フォルダー。")] = None,
@@ -68,19 +71,20 @@ def main(
         bool, typer.Option("--version", callback=show_version, is_eager=True, help="版を表示する。")
     ] = False,
 ) -> None:
-    """プロジェクトを選ぶ。"""
+    """Select the workspace."""
     del version_flag
     ctx.obj = project
 
 
 @contextmanager
 def operation(ctx: typer.Context) -> Iterator[Project]:
-    """秘密を含むトレースを表示せず、操作エラーを伝える。"""
+    """Report safe operational errors without credential-bearing tracebacks."""
     try:
         yield find_project(ctx.obj)
     except (
         KomaquillError,
         ValidationError,
+        tomllib.TOMLDecodeError,
         OSError,
         keyring.errors.KeyringError,
         subprocess.SubprocessError,
@@ -95,23 +99,27 @@ def operation(ctx: typer.Context) -> Iterator[Project]:
 
 
 def report(result: Collection) -> None:
-    """回収状況を表示する。"""
+    """Display collection outcomes."""
     typer.echo(
         f"保存 {result.saved}件 / 未回収 {result.pending}件 / 生成失敗の累計 {result.failed}件"
     )
     if result.errors:
-        raise KomaquillError("再回収が必要です: " + ", ".join(map(str, result.errors)))
+        raise KomaquillError(
+            "再回収が必要です: "
+            + ", ".join(map(str, result.errors))
+            + "。接続と保存先を確認し、komaquill collect を再実行してください。"
+        )
 
 
-@models_app.command("fetch")
+@models_app.command("fetch", help="使用モデルを取得し、内容を検証します。")
 def models_fetch(ctx: typer.Context) -> None:
-    """使用モデルを取得し、内容を検証します。"""
+    """Fetch and verify the selected model."""
     with operation(ctx) as project:
         typer.echo("モデルを取得・検証しています。")
         typer.echo(str(fetch_model(project.artifacts, preset())))
 
 
-@app.command()
+@app.command(help="ComfyUIへ接続し、自動回収を維持します。終了はCtrl+Cです。")
 def start(
     ctx: typer.Context,
     backend: Annotated[
@@ -123,7 +131,7 @@ def start(
         str | None, typer.Option(help="外部接続でBasic認証を使う場合の利用者名。")
     ] = None,
 ) -> None:
-    """ComfyUIへ接続し、自動回収を維持します。終了はCtrl+Cです。"""
+    """Maintain the connection and automatic collection until interrupted."""
     with operation(ctx) as project:
         password = None
         if backend == "external" and endpoint is not None:
@@ -133,14 +141,14 @@ def start(
         runtime.start(project, backend, endpoint, username, password, typer.echo)
 
 
-@app.command("generate")
+@app.command("generate", help="画像を生成して保存します。")
 def generate_command(
     ctx: typer.Context,
     prompt: Annotated[str | None, typer.Option(help="生成したい画像の説明。")] = None,
     negative: Annotated[str, typer.Option(help="避けたい内容。")] = "text, watermark",
     seed: Annotated[int | None, typer.Option(min=0, max=2**64 - 1, help="乱数の初期値。")] = None,
 ) -> None:
-    """画像を生成して保存します。"""
+    """Generate an image and save its conditions."""
     with operation(ctx) as project, connected(project) as (client, session):
         text = prompt if prompt is not None else typer.prompt("生成したい画像の説明")
         if not text.strip():
@@ -157,23 +165,23 @@ def generate_command(
         typer.echo(f"保存しました: {run_dir(project, run.run_id)}")
 
 
-@app.command("collect")
+@app.command("collect", help="完了した画像と履歴を回収します。")
 def collect_command(
     ctx: typer.Context, run_id: Annotated[UUID | None, typer.Argument()] = None
 ) -> None:
-    """完了した画像と履歴を回収します。"""
+    """Collect completed images and generation conditions."""
     with operation(ctx) as project, connected(project) as (client, session):
         report(collect(project, client, session, run_id))
 
 
-@app.command("open")
+@app.command("open", help="ComfyUIの画面を開きます。")
 def open_command(
     ctx: typer.Context,
     view: Annotated[
-        Literal["app", "graph"], typer.Option(help="app: 入力画面、graph: ノード画面。")
+        Literal["app", "graph"], typer.Option(help="app: App Mode、graph: Node Graph。")
     ] = "app",
 ) -> None:
-    """ComfyUIの画面を開きます。"""
+    """Open the selected ComfyUI view."""
     with operation(ctx) as project, connected(project) as (client, session):
         client.json("/system_stats")
         verify_runtime(client, session)
@@ -199,9 +207,9 @@ def open_command(
         typer.echo("ブラウザーを起動しました。自動保存には start の実行を続けてください。")
 
 
-@app.command()
+@app.command(help="接続と生成に必要なGPU・モデル・ノードを確認します。")
 def doctor(ctx: typer.Context) -> None:
-    """接続と生成に必要なGPU・モデル・ノードを確認します。"""
+    """Verify the connection, GPU, model and required nodes."""
     with operation(ctx) as project, connected(project) as (client, session):
         verify_runtime(client, session)
         stats = client.json("/system_stats")
@@ -223,9 +231,9 @@ def doctor(ctx: typer.Context) -> None:
         typer.echo(f"接続・GPU・モデル・標準ノードを確認しました。保存先: {project.artifacts}")
 
 
-@app.command()
+@app.command(help="接続・Colab・未回収の状態を確認します。")
 def status(ctx: typer.Context) -> None:
-    """接続・Colab・未回収の状態を確認します。"""
+    """Display runtime, monitor and collection state."""
     with operation(ctx) as project:
         project = runtime.session_project(project)
         colab = Colab(project)
@@ -286,13 +294,13 @@ def status(ctx: typer.Context) -> None:
             typer.echo("\n".join(pending))
 
 
-@app.command()
+@app.command(help="生成と回収を待ち、所有するColabを終了します。")
 def stop(
     ctx: typer.Context,
     force: Annotated[
         bool, typer.Option(help="生成完了を待たず、回収可能な結果を保存して終了する。")
     ] = False,
 ) -> None:
-    """生成と回収を待ち、所有するColabを終了します。"""
+    """Stop the owned runtime after collecting available results."""
     with operation(ctx) as project:
         runtime.stop(project, force, typer.echo)

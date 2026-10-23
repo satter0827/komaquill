@@ -1,4 +1,4 @@
-# 環境変数の設定だけを共有します。処理はCLIまたは各スクリプトで行います。
+# Share environment paths; commands remain in the CLI and quality gates.
 $ErrorActionPreference = 'Stop'
 $KomaquillRoot = Split-Path -Parent $PSScriptRoot
 $env:KOMAQUILL_PROJECT_DIR = $KomaquillRoot

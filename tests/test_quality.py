@@ -122,7 +122,7 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
             "model.toml",
             "runtime.toml",
             "defaults.toml",
-            "worker-requirements.txt",
+            "pylock.worker.toml",
         ):
             if case != "resources":
                 archive.writestr("komaquill/resources/" + resource, "data")
@@ -196,7 +196,7 @@ def test_security_git_invocation_preserves_argument_boundaries(tmp_path, monkeyp
 
 @pytest.mark.parametrize("case", ["matching", "different", "missing_uv"])
 def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, monkeypatch, case):
-    resource = tmp_path / "src/komaquill/resources/worker-requirements.txt"
+    resource = tmp_path / "src/komaquill/resources/pylock.worker.toml"
     resource.parent.mkdir(parents=True)
     resource.write_text("locked\n")
     monkeypatch.setattr(
@@ -220,3 +220,23 @@ def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, mo
     else:
         with pytest.raises(SystemExit):
             check_worker_lock.main()
+
+
+def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypatch):
+    resource = tmp_path / "src/komaquill/resources/pylock.worker.toml"
+    resource.parent.mkdir(parents=True)
+    monkeypatch.setattr(
+        check_worker_lock, "__file__", str(tmp_path / "scripts/check_worker_lock.py")
+    )
+    monkeypatch.setenv("KOMAQUILL_UV", "uv-test")
+
+    def export(args, **kwargs):
+        Path(args[args.index("--output-file") + 1]).write_text(
+            'wheels = [{hashes = { sha256 = "public" }}]\n'
+        )
+
+    monkeypatch.setattr(check_worker_lock.subprocess, "run", export)
+    check_worker_lock.main(write=True)
+    text = resource.read_text()
+    assert text.endswith("# pragma: allowlist secret Public artifact SHA256 from uv.lock.\n")
+    check_worker_lock.main()

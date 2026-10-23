@@ -1,7 +1,93 @@
 {
   "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}",
+    "env": {
+      "PYTHONUTF8": "1",
+      "PYTHONPYCACHEPREFIX": "${workspaceFolder}/.artifacts/cache/pycache",
+      "KOMAQUILL_UV": "${workspaceFolder}/.artifacts/runtime/uv/uv.exe"
+    }
+  },
   "tasks": [
-    {"label": "環境を準備する", "type": "process", "command": "pwsh", "args": ["-NoProfile", "-File", "${workspaceFolder}/bootstrap/setup.ps1", "-InstallExtensions"], "options": {"cwd": "${workspaceFolder}"}, "problemMatcher": []},
-    {"label": "品質を確認する", "type": "process", "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe", "args": ["${workspaceFolder}/scripts/check.py"], "options": {"cwd": "${workspaceFolder}", "env": {"PYTHONUTF8": "1", "PYTHONPYCACHEPREFIX": "${workspaceFolder}/.artifacts/cache/pycache"}}, "problemMatcher": [], "group": {"kind": "test", "isDefault": true}}
+    {
+      "label": "Setup Environment",
+      "type": "process",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-File",
+        "${workspaceFolder}/bootstrap/setup.ps1",
+        "-InstallExtensions"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Check Project",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Check Quality",
+        "Check Secrets"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Build Package",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Build Distributions",
+        "Check Distributions"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Check Quality",
+      "type": "process",
+      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+      "args": [
+        "${workspaceFolder}/scripts/check.py"
+      ],
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Check Secrets",
+      "type": "process",
+      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+      "args": [
+        "${workspaceFolder}/scripts/security.py"
+      ],
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Check Distributions",
+      "type": "process",
+      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+      "args": [
+        "${workspaceFolder}/scripts/check_package.py"
+      ],
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Build Distributions",
+      "type": "process",
+      "command": "${workspaceFolder}/.artifacts/runtime/uv/uv.exe",
+      "args": [
+        "build",
+        "--out-dir",
+        "${workspaceFolder}/.artifacts/dist"
+      ],
+      "hide": true,
+      "problemMatcher": []
+    }
   ]
 }

@@ -1,4 +1,4 @@
-"""再送・部分保存・画面からの生成を含む回収の検証。"""
+"""Test reconciliation, partial persistence and browser generation."""
 
 import pytest
 

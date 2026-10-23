@@ -1,4 +1,4 @@
-"""公開ワークフローとパッケージの構造を検証する。"""
+"""Verify workflow exports and package structure."""
 
 import os
 import subprocess

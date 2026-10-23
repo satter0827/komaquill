@@ -1,4 +1,4 @@
-"""固定ワークフローに生成条件を反映する。"""
+"""Apply generation conditions to the fixed workflow."""
 
 import copy
 import hashlib
@@ -11,23 +11,23 @@ from komaquill.models import JsonObject, ModelPreset
 
 
 def resource_json(name: str) -> JsonObject:
-    """配布するワークフローを読み込む。"""
+    """Read a packaged workflow."""
     return cast(JsonObject, json.loads(files("komaquill").joinpath("resources", name).read_text()))
 
 
 def preset() -> ModelPreset:
-    """モデルの取得条件を読み込む。"""
+    """Read the pinned model definition."""
     data = tomllib.loads(files("komaquill").joinpath("resources", "model.toml").read_text())
     return ModelPreset.model_validate(data)
 
 
 def digest(data: JsonObject) -> str:
-    """JSONの表記に依存しないハッシュを返す。"""
+    """Hash JSON independently of serialization details."""
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
 
 def prepare(prompt: str, negative: str, seed: int, run_id: str) -> tuple[JsonObject, JsonObject]:
-    """CLIと画面用の両形式へ同じ条件を反映する。"""
+    """Apply identical conditions to API and browser workflows."""
     api = copy.deepcopy(resource_json("workflow-api.json"))
     ui = copy.deepcopy(resource_json("workflow.json"))
     api["6"]["inputs"]["text"] = prompt

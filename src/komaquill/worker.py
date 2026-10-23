@@ -1,4 +1,4 @@
-"""GPU側で固定したComfyUIを起動する。"""
+"""Run the pinned ComfyUI environment on the GPU runtime."""
 
 import importlib
 import os
@@ -20,7 +20,7 @@ from komaquill.workflow import preset, resource_json
 
 
 def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
-    """ソースを固定し、標準テンプレートを登録する。"""
+    """Pin the server source and register standard workflow templates."""
     runtime = project.artifacts / "runtime"
     comfy = runtime / "ComfyUI"
     if not comfy.exists():
@@ -55,14 +55,14 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
         atomic_json(templates / f"sd15_{view}.json", workflow)
     model = fetch_model(project.artifacts, preset())
     paths = {"komaquill": {"base_path": str(model.parent), "checkpoints": "."}}
-    # JSONはYAMLの部分集合なので追加の変換層を作らない。
+    # JSON is a YAML subset, so the model path file needs no conversion.
     atomic_json(runtime / "model-paths.json", paths)
     user.mkdir(parents=True, exist_ok=True)
     return comfy
 
 
 def main(root: Path) -> None:
-    """実行中のComfyUIを待ち、ランタイム内だけにキャッシュする。"""
+    """Wait for ComfyUI and keep caches inside the temporary runtime."""
     torch = importlib.import_module("torch")
     if not torch.cuda.is_available():
         raise KomaquillError("GPUが見つかりません。利用可能なGPUを確認してください。")

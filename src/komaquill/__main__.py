@@ -1,4 +1,4 @@
-"""python -m komaquill の入口。"""
+"""Run the module entrypoint."""
 
 from komaquill.cli import app
 

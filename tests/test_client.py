@@ -1,4 +1,4 @@
-"""認証情報と接続先の境界を検証する。"""
+"""Test endpoint and authentication boundaries."""
 
 import base64
 
@@ -15,7 +15,7 @@ from komaquill.models import Session
     "endpoint",
     [
         "http://example.com",
-        "https://user:password@example.com",  # pragma: allowlist secret 試験用の認証文字列
+        "https://user:password@example.com",  # pragma: allowlist secret Test URL.
         "https://example.com/?token=secret",
         "file:///tmp/data",
         "https://example.com/other",
@@ -27,7 +27,7 @@ def test_unsafe_endpoint_is_rejected(session, endpoint):
 
 
 def test_authentication_is_sent_but_error_body_is_hidden():
-    password = "test-only-password"  # pragma: allowlist secret 試験用の値
+    password = "test-only-password"  # pragma: allowlist secret Test-only value.
 
     def respond(request):
         expected = base64.b64encode(f"example-user:{password}".encode()).decode()

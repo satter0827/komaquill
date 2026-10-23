@@ -1,4 +1,4 @@
-"""GPU側でuvと固定した依存関係を用意する。"""
+"""Prepare uv and pinned dependencies on the GPU runtime."""
 
 import hashlib
 import os
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def main() -> None:
-    """システムPythonを変更せず専用環境を起動する。"""
+    """Start an isolated environment without modifying system Python."""
     root = Path(__file__).resolve().parents[1]
     artifacts = root / ".artifacts"
     tools = artifacts / "runtime/tools"
@@ -59,7 +59,7 @@ def main() -> None:
         env=env,
         check=True,
     )
-    # All versions and hashes are fixed; permit both recorded public indexes.
+    # Pylock records exact artifact URLs and hashes, preserving package source affinity.
     subprocess.run(
         [
             str(uv),
@@ -68,9 +68,7 @@ def main() -> None:
             "--python",
             str(python),
             "--require-hashes",
-            "--index-strategy",
-            "unsafe-best-match",
-            str(root / "komaquill/resources/worker-requirements.txt"),
+            str(root / "komaquill/resources/pylock.worker.toml"),
         ],
         cwd=root,
         env=env,

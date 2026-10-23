@@ -1,4 +1,4 @@
-"""プロジェクト設定とパス。インポート時にはファイルを作らない。"""
+"""Define validated settings and workspace paths without import side effects."""
 
 import os
 import tomllib
@@ -18,7 +18,7 @@ from komaquill.errors import KomaquillError
 
 
 class Settings(BaseSettings):
-    """通信と待機の設定。"""
+    """Validate transport and operation limits."""
 
     model_config = SettingsConfigDict(
         env_prefix="KOMAQUILL_", extra="forbid", frozen=True, allow_inf_nan=False
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
 @dataclass(frozen=True)
 class Project:
-    """実行場所によらず一箇所に保存する。"""
+    """Keep all application files in one workspace."""
 
     root: Path
     effective_settings: Settings | None = None
@@ -81,12 +81,12 @@ class Project:
         return self.artifacts / "runs"
 
     def settings(self) -> Settings:
-        """TOMLの初期値と環境変数を読み込む。"""
+        """Read workspace overrides and environment variables."""
         if self.effective_settings is not None:
             return self.effective_settings
         with (self.root / "komaquill.toml").open("rb") as handle:
             defaults = tomllib.load(handle)
-        # 環境変数をTOMLより優先する。秘密情報は設定に含めない。
+        # Environment overrides workspace TOML; secrets are excluded from settings.
         for name in list(defaults):
             if f"KOMAQUILL_{name.upper()}" in os.environ:
                 del defaults[name]
@@ -94,7 +94,7 @@ class Project:
 
 
 def find_project(explicit: Path | None = None) -> Project:
-    """設定ファイルのあるプロジェクトを探索する。"""
+    """Find the workspace configuration."""
     start = explicit or Path(os.environ.get("KOMAQUILL_PROJECT_DIR", Path.cwd()))
     start = start.resolve()
     candidates = [start] if explicit else [start, *start.parents]

@@ -75,7 +75,7 @@ def test_payload_is_reproducible_and_excludes_local_data(project, monkeypatch):
     with tarfile.open(fileobj=io.BytesIO(content)) as archive:
         names = archive.getnames()
         assert "komaquill/bootstrap.py" in names
-        assert "komaquill/resources/worker-requirements.txt" in names
+        assert "komaquill/resources/pylock.worker.toml" in names
         assert all(
             name.startswith("komaquill/") or name in {"manifest.json", "komaquill.toml"}
             for name in names
@@ -164,4 +164,27 @@ def test_powershell_entrypoints_parse_and_create_only_project_artifacts(tmp_path
         [shell, "-NoProfile", "-File", str(script), str(root), str(tmp_path)],
         check=True,
         capture_output=True,
+    )
+
+
+def test_worker_lock_records_exact_public_sources_and_hashes():
+    from urllib.parse import urlsplit
+
+    lock = tomllib.loads(files("komaquill").joinpath("resources/pylock.worker.toml").read_text())
+    assert lock["requires-python"] == "==3.12.*"
+    packages = {item["name"]: item for item in lock["packages"]}
+    for item in packages.values():
+        for artifact in [*item.get("wheels", []), *([item["sdist"]] if "sdist" in item else [])]:
+            url = urlsplit(artifact["url"])
+            assert url.scheme == "https" and not url.username and not url.password and not url.query
+            assert url.hostname in {
+                "files.pythonhosted.org",
+                "download.pytorch.org",
+                "download-r2.pytorch.org",
+            }
+            assert len(artifact["hashes"]["sha256"]) == 64
+    assert packages["triton"]["index"] == "https://pypi.org/simple"
+    assert all("files.pythonhosted.org" in row["url"] for row in packages["triton"]["wheels"])
+    assert all(
+        urlsplit(row["url"]).hostname.endswith("pytorch.org") for row in packages["torch"]["wheels"]
     )

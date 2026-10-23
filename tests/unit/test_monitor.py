@@ -339,3 +339,36 @@ def test_corrupt_monitor_does_not_block_provider_shutdown(project):
     project.state.mkdir(parents=True)
     (project.state / "monitor.json").write_text("{broken")
     assert supervisor.stop(project, False, lambda _: None) is False
+
+
+def test_progress_cleanup_failure_does_not_abort_startup(project, session, monkeypatch):
+    from pathlib import Path
+
+    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.infrastructure.storage import atomic_json
+
+    control = Colab(project)
+    receipt = Receipt(
+        name="owned",
+        runtime_id=session.runtime_id,
+        source_revision=None,
+        endpoint_id="endpoint",
+        settings=project.settings(),
+    )
+
+    def download(action, remote, target, **kwargs):
+        atomic_json(Path(target), {"phase": "dependencies", "asset": None})
+
+    monkeypatch.setattr(control, "provider_call", download)
+    original = Path.unlink
+
+    def remove(path, **kwargs):
+        if path.name.startswith("progress-"):
+            raise PermissionError("private-path")
+        return original(path, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", remove)
+        assert control.progress(receipt) == {"phase": "dependencies", "asset": None}
+    event = (project.artifacts / "logs" / str(session.runtime_id) / "events.jsonl").read_text()
+    assert "progress_cleanup" in event and "private-path" not in event

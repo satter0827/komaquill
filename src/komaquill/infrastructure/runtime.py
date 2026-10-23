@@ -467,6 +467,7 @@ def start_external(
     )
     force = True
     ready = False
+    primary_error: BaseException | None = None
     try:
         client.json("/system_stats")
         session.excluded_prompt_ids = excluded_history(client)
@@ -477,10 +478,17 @@ def start_external(
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
         force = supervise(project, client, session, echo, on_ready)
+    except (Exception, KeyboardInterrupt) as error:
+        primary_error = error
+        raise
     finally:
         try:
             if ready:
-                finish_external(project, client, session, force, echo)
+                try:
+                    finish_external(project, client, session, force, echo)
+                except (Exception, KeyboardInterrupt):
+                    if primary_error is None:
+                        raise
         finally:
             client.close()
 
@@ -524,6 +532,7 @@ def start_colab(
     cleanup_owned = False
     ready = False
     force = True
+    primary_error: BaseException | None = None
     try:
         check_port(project.settings().local_port)
         if not record_event(project, "start", "preparing"):
@@ -650,6 +659,7 @@ def start_colab(
         ready = True
         force = supervise(project, client, session, echo, on_ready, reconnect)
     except (Exception, KeyboardInterrupt) as error:
+        primary_error = error
         if isinstance(error, KomaquillError) and error.code == "stopping":
             force = cancel_requested(project) is True
         if not ready:
@@ -666,16 +676,20 @@ def start_colab(
         try:
             final_receipt = colab.receipt() if cleanup_owned else None
             if final_receipt is not None:
-                finish_colab(
-                    project,
-                    colab,
-                    final_receipt,
-                    client if ready else None,
-                    session if ready else None,
-                    force,
-                    echo,
-                    processes,
-                )
+                try:
+                    finish_colab(
+                        project,
+                        colab,
+                        final_receipt,
+                        client if ready else None,
+                        session if ready else None,
+                        force,
+                        echo,
+                        processes,
+                    )
+                except (Exception, KeyboardInterrupt):
+                    if primary_error is None:
+                        raise
         finally:
             local_models.shutdown(wait=True, cancel_futures=True)
             if client is not None:

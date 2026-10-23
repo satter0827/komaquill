@@ -4,6 +4,8 @@ import hashlib
 import io
 import json
 import os
+import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
@@ -22,6 +24,10 @@ if TYPE_CHECKING:
     from komaquill.application.ports import GenerationBackend
 from komaquill.infrastructure.paths import WorkspacePaths
 
+WINDOWS_REPLACE_ERRORS = frozenset({5, 32, 33})
+REPLACE_TIMEOUT_SECONDS = 1.0
+REPLACE_RETRY_SECONDS = 0.05
+
 
 def atomic_bytes(path: Path, content: bytes) -> None:
     """Replace a file using a temporary file in the same directory."""
@@ -32,7 +38,23 @@ def atomic_bytes(path: Path, content: bytes) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        temporary.replace(path)
+        deadline = None
+        while True:
+            try:
+                temporary.replace(path)
+                break
+            except PermissionError as error:
+                if (
+                    sys.platform != "win32"
+                    or getattr(error, "winerror", None) not in WINDOWS_REPLACE_ERRORS
+                ):
+                    raise
+                now = time.monotonic()
+                if deadline is None:
+                    deadline = now + REPLACE_TIMEOUT_SECONDS
+                elif now >= deadline:
+                    raise
+                time.sleep(REPLACE_RETRY_SECONDS)
     finally:
         temporary.unlink(missing_ok=True)
 

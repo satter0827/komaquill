@@ -390,7 +390,16 @@ class Colab:
         except (KomaquillError, OSError, ValueError):
             return {}
         finally:
-            target.unlink(missing_ok=True)
+            try:
+                target.unlink(missing_ok=True)
+            except OSError as error:
+                record_event(
+                    self.project,
+                    "progress_cleanup",
+                    "failed",
+                    runtime_id=receipt.runtime_id,
+                    failure=failure_info(error, "preparation"),
+                )
 
     def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
         """Download independent snapshots and preserve the last successful capture."""

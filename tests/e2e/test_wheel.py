@@ -127,6 +127,7 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                         "-m",
                         "komaquill",
                         "start",
+                        "--no-open",
                         "--backend",
                         "external",
                         "--endpoint",

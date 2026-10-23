@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 from typer.testing import CliRunner
 
+from komaquill.infrastructure import views
 from komaquill.interfaces import cli as cli
 
 
@@ -26,12 +27,16 @@ def test_open_returns_after_opening_the_selected_view(project, client, session, 
 
     opened = []
     monkeypatch.setattr(cli, "connected", connection)
-    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url) or True)
+    monkeypatch.setattr(
+        views.webbrowser,
+        "open",
+        lambda url: opened.append(url) or True,
+    )
     result = CliRunner().invoke(
         cli.app, ["--project", str(project.root), "open", "--view", "graph"]
     )
     assert result.exit_code == 0, result.output
-    assert "template=sd15_graph" in opened[0]
+    assert "template=pony_graph" in opened[0]
     assert "source=komaquill" in opened[0]
     assert "start" in result.output
 

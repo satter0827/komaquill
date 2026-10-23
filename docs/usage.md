@@ -6,7 +6,7 @@
 
 設定はstart時に確定します。起動中に設定ファイルを変更しても反映されません。stop後のstartで新しい設定を使用します。
 
-`start`は同じ端末でSSH接続と自動回収を維持します。別の端末から生成や画面の起動を行ってください。
+`start`は同じ端末でSSH接続と自動回収を維持します。準備が完了するとApp Modeを開きます。追加の操作は別の端末から同じCLIで実行できます。`--no-open`を指定すると画面を開きません。
 GPUを新しく確保する操作はstartだけです。status、doctor、collect、stopはGPUを作成しません。
 
 GPUへは実行中のパッケージから転送物を作成します。コードや起動設定が残存ランタイムと異なる場合は、stop後に起動し直します。
@@ -19,7 +19,7 @@ komaquill open --view app
 komaquill open --view graph
 ```
 
-プロンプトを省略すると入力を求めます。SD 1.5への画像説明は英語が適しています。入力画面とノード画面はComfyUIの標準機能です。
+プロンプトを省略すると入力を求めます。Ponyへの画像説明には英語のタグや短文を使用します。品質タグは標準ノードで自動付加します。入力画面とノード画面はComfyUIの標準機能です。
 外部ComfyUIでは、画面を開いた後に表示されたワークフローJSONを読み込みます。
 
 ## 結果を回収する
@@ -105,6 +105,20 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 ## VS Codeから実行する
 
-Run and DebugのStart ComfyUI (Colab)で起動し、接続後にGenerate Imageでプロンプトを入力します。Open ComfyUIではApp ModeまたはNode Graph、Stop ComfyUIではWait for ResultsまたはStop Without Waitingを選びます。Run CLI with Argumentsにはgenerate --prompt "a small cabin"などの引数を入力できます。引数欄へパスワードや認証コードを入力しないでください。
+Run and DebugのStart Sessionで起動し、接続後にGenerate Imageでプロンプトを入力します。Open GeneratorではApp ModeまたはNode Graph、Stop SessionではWait for ResultsまたはStop Without Waitingを選びます。Run CLI with Argumentsにはgenerate --prompt "a small cabin"などの引数を入力できます。引数欄へパスワードや認証コードを入力しないでください。
 
 TaskのSetup Environmentは導入、Check Projectは品質・秘密情報検査、Build Packageはビルド・配布物検査を行います。通常の操作はターミナルから同じCLIを直接実行できます。
+
+## グラフを編集する
+
+`open --view graph`は標準のNode Graphを開きます。App Modeと別のGPUを確保しません。ノードの追加・接続、サンプラー、モデル、LoRA、ネガティブプロンプトなどを編集できます。標準ノード以外を使う場合は、そのノードと対応資源をGPU側へ導入する必要があります。
+
+実行したグラフは生成条件として保存します。既定プリセットの値で上書きしません。未実行の編集内容はComfyUIのExportでJSONへ保存してください。Colabの一時領域だけに置いたファイルはランタイム終了時に失われます。
+
+## GPUの所有を確認する
+
+Googleの安定したアカウント識別子から作ったSHA256と、確保したエンドポイントIDを所有記録へ保存します。メールアドレスやアクセストークンは保存しません。終了は同じアカウントでプロバイダーの一覧を取得し、対象の不在を確認してから確定します。
+
+公式CLIのローカル記録がなくても、対象が動作していれば既存GPUへ接続して回収・終了を試みます。認証失敗、通信失敗、アカウント不一致は不明として扱い、所有記録を保持します。認証と接続を確認して`stop`を再実行してください。`status`、回収、再接続、終了が新しいGPUを確保することはありません。
+
+GPU側のモデル準備イベントは、取得したログのworker-events.jsonlへ保存します。bootstrap.logの依存導入時間と合わせて準備の所要時間を確認できます。画像の初回生成時間は履歴の生成開始・完了時刻から確認してください。

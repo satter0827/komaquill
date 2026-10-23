@@ -28,7 +28,7 @@ from komaquill.infrastructure.deployment import create_payload
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, stop_request
-from komaquill.infrastructure.workflows import preset
+from komaquill.infrastructure.workflows import assets
 from komaquill.messages import message
 
 
@@ -330,6 +330,7 @@ def start_external(
     username: str | None,
     password: str | None,
     echo: Callable[[str], None],
+    on_ready: Callable[[Session], None] | None = None,
 ) -> None:
     """Monitor an already running ComfyUI server."""
     project = project.configured()
@@ -364,6 +365,8 @@ def start_external(
         record_event(project, "connection", "ready", runtime_id=session.runtime_id)
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
+        if on_ready is not None:
+            on_ready(session)
         force = watch(project, client, session, echo)
     finally:
         try:
@@ -373,7 +376,9 @@ def start_external(
             client.close()
 
 
-def start_colab(project: Project, echo: Callable[[str], None]) -> None:
+def start_colab(
+    project: Project, echo: Callable[[str], None], on_ready: Callable[[Session], None] | None = None
+) -> None:
     """Own one runtime from allocation through confirmed shutdown."""
     requested = project.settings()
     colab = Colab(project)
@@ -409,7 +414,8 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
                 code="diagnostics_failed",
             )
         echo(message("text.downloading_and_verifying_the_model"))
-        fetch_model(project.artifacts, preset())
+        for asset in assets(project.settings()):
+            fetch_model(project.artifacts, asset)
         phase("model_verified")
         payload = create_payload(project)
         phase("payload_ready")
@@ -490,6 +496,8 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
             )
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
+        if on_ready is not None:
+            on_ready(session)
         force = watch(project, client, session, echo, reconnect)
     except (Exception, KeyboardInterrupt) as error:
         if not ready:
@@ -528,6 +536,7 @@ def start(
     username: str | None,
     password: str | None,
     echo: Callable[[str], None],
+    on_ready: Callable[[Session], None] | None = None,
 ) -> None:
     """Start the requested backend while preventing duplicate monitors."""
     try:
@@ -542,13 +551,13 @@ def start(
                     raise KomaquillError(
                         display_key="text.an_owned_colab_runtime_remains_run_stop_before"
                     )
-                start_external(project, endpoint, username, password, echo)
+                start_external(project, endpoint, username, password, echo, on_ready)
             else:
                 if endpoint is not None or username is not None:
                     raise KomaquillError(
                         display_key="text.endpoint_and_basic_authentication_options_apply_only_to"
                     )
-                start_colab(project, echo)
+                start_colab(project, echo, on_ready)
     except Timeout:
         raise KomaquillError(
             display_key="text.a_start_process_is_already_running_run_stop"

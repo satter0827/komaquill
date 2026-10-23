@@ -40,3 +40,7 @@ sdistとwheelのバージョン、ワークフロー、設定・起動用ファ�
 バージョンの正本はpyproject.tomlです。SemVerを基本とし、Pythonの事前版にはPEP 440形式を使います。uv version --bump patchなどでロックと一緒に更新します。0.xの破壊的変更ではminorを上げます。
 
 qualityとsecurityが成功したmain上で、宣言した版と一致するv0.1.0などのタグを作成します。公開済みタグは変更・削除しません。リリースノートには利用者への変更と必要な操作を記載します。PyPIへの自動公開は行いません。
+
+GPU環境の依存はpyproject.tomlのworkerグループです。CLI専用の依存を含めず、uv.lockからpylock.worker.tomlを出力します。モデル定義の変更は[プリセットの管理](presets.md)に従い、APIと画面の接続・パラメーターの一致も検査してください。
+
+ComfyUIの固定リビジョンを更新するときは、同じリビジョンのrequirements.txtをtests/fixtures/comfy-requirements.txtへ保存します。品質ゲートはGPUロックがその依存一覧とバージョン条件を満たすことを確認します。

@@ -51,9 +51,9 @@
   "text.unknown": "unknown",
   "text.collection_collection_logs_logs_colab_gpu": "Collection: {collection} / Logs: {logs} / Colab: {gpu}",
   "text.collection_failed_check_the_connection_and_storage_then": "Collection failed. Check the connection and storage, then run collect.",
-  "text.connected_keep_this_terminal_open_and_run_generate": "Connected. Keep this terminal open and run generate or open.",
+  "text.connected_keep_this_terminal_open_and_run_generate": "Connected. Keep this terminal open to collect images. Use generate or open --view graph for detailed editing.",
   "text.settings_differ_from_the_active_session_run_stop": "Settings differ from the active session. Run stop, then start to apply them.",
-  "text.downloading_and_verifying_the_model": "Downloading and verifying the model.",
+  "text.downloading_and_verifying_the_model": "Checking the selected model files; downloading only missing or invalid files.",
   "text.stopped_2": "Stopped.",
   "text.credentials_are_unavailable_run_start_to_reconnect": "Credentials are unavailable. Run start to reconnect.",
   "text.pending_results": "Pending results: ",
@@ -216,5 +216,10 @@
   "quality.select_one_wheel": "Select a directory containing exactly one Komaquill wheel.",
   "quality.check_installed_wheel": "Check an installed wheel without a GPU.",
   "quality.enforce_coverage": "Enforce coverage thresholds.",
-  "quality.inspect_distributions": "Inspect built distributions."
+  "quality.inspect_distributions": "Inspect built distributions.",
+  "profile.start_help": "Prepare these generation profiles (repeat to select several). Default: pony.",
+  "profile.select_help": "Use a profile prepared by start.",
+  "profile.open_help": "Open App Mode when the connection is ready.",
+  "profile.not_enabled": "Profile {profile} is not prepared. Stop the session, then start with --profile {profile}.",
+  "profile.colab_unknown": "Colab: unknown. Check authentication and connectivity, then run stop. Ownership records are retained."
 }

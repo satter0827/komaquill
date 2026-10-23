@@ -37,15 +37,9 @@ def main(dist_dir: Path | None = None) -> None:
         metadata = Parser().parsestr(wheel.read(metadata_name).decode())
         if metadata["Version"] != expected:
             raise SystemExit(message("quality.the_wheel_version_does_not_match_the_declaration"))
-        required = {
-            "messages.json",
-            "workflow.json",
-            "workflow-api.json",
-            "model.toml",
-            "runtime.toml",
-            "defaults.toml",
-            "pylock.worker.toml",
-        }
+        from komaquill.infrastructure.provenance import RESOURCE_NAMES
+
+        required = set(RESOURCE_NAMES)
         if "komaquill/gpu/bootstrap.py" not in names or not all(
             f"komaquill/resources/{name}" in names for name in required
         ):

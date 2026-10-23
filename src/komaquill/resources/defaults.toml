@@ -9,3 +9,5 @@ generation_timeout = 600.0
 shutdown_timeout = 600.0
 control_timeout = 90.0
 execution_timeout = 86400.0
+
+profiles = ["pony"]

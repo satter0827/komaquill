@@ -4,7 +4,6 @@ from contextlib import nullcontext
 from uuid import uuid4
 
 from komaquill.application.generation import generate
-from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.models import Session
 
 
@@ -69,7 +68,9 @@ def test_generation_uses_only_replaceable_contracts():
             return self
 
         def settings(self):
-            return RuntimeSettings(
+            from komaquill.infrastructure.configuration import Settings
+
+            return Settings(
                 poll_interval=0.001,
                 request_timeout=1.0,
                 generation_timeout=1.0,
@@ -85,7 +86,7 @@ def test_generation_uses_only_replaceable_contracts():
         def identity(self):
             return {"app_version": "test", "source_revision": None, "code_sha256": None}
 
-        def prepare(self, prompt, negative, seed, identity):
+        def prepare(self, prompt, negative, seed, identity, profile_name=None):
             return {"prompt": prompt, "seed": seed}, {}
 
         def stop_requested(self, session):

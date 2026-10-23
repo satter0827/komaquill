@@ -1,6 +1,6 @@
 # Komaquill
 
-ComfyUIで画像を生成し、画像と生成条件をローカルへ保存するPython CLIです。Google ColabのGPU、または起動済みのComfyUIを利用します。標準ワークフローはSD 1.5 FP16、512×512です。
+ComfyUIで画像を生成し、画像と生成条件をローカルへ保存するPython CLIです。Google ColabのGPU、または起動済みのComfyUIを利用します。既定のモデルはPony Diffusion V6 XL、生成サイズは1024×1024です。
 
 ## 必要な環境
 
@@ -42,7 +42,7 @@ komaquill --version
 komaquill start
 ```
 
-初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。「Connected.」と表示されたら、その端末を開いたままにします。
+初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。接続後はApp Modeが開きます。例のプロンプトが入力されているので、そのままRunで生成できます。端末は自動回収のため開いたままにします。ブラウザーを開かない場合は`start --no-open`を使います。
 
 別の端末で同じ作業フォルダーを開き、次を実行します。ソースから導入した場合は、その端末でもbootstrap/activate.ps1を読み込みます。
 
@@ -60,9 +60,31 @@ komaquill open --view app
 komaquill open --view graph
 ```
 
-appは入力欄と結果を中心に使うApp Mode、graphはノードを編集するNode Graphです。画面からの生成もstartが自動保存します。openはブラウザーを起動したら端末へ戻ります。
+appは画像説明と結果を表示するApp Mode、graphは標準ノードを編集するNode Graphです。どちらも同じ接続とGPUを使い、openではGPUを追加確保しません。画面からの生成もstartが実際に実行されたグラフとともに自動保存します。未実行の編集内容は自動回収の対象ではありません。残したいワークフローはComfyUIのExportでJSONとしてローカルへ保存してください。openはブラウザーを起動したら端末へ戻ります。
 
-VS CodeではRun and DebugからStart ComfyUI (Colab)を起動し、接続後にOpen ComfyUIやGenerate Imageを選びます。Open ComfyUIはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。どの入口も同じCLIと品質ゲートを呼び出します。
+VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen GeneratorやGenerate Imageを選びます。Open GeneratorはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。どの入口も同じCLIと品質ゲートを呼び出します。
+
+## プリセットを選ぶ
+
+通常は`start`だけでPony標準を使えます。品質タグは画像説明の前へ自動で付け、CLIP skipは2を使用します。Node Graphでは、品質タグ、ネガティブプロンプト、サンプラー、サイズ、シードを編集できます。
+
+| プリセット | 内容 | 準備する資源 |
+|---|---|---|
+| pony | 1024×1024、25ステップ | Pony V6 XL |
+| pony-preview | 1024×1024、8ステップ | PonyとHyper-SDXL CFG LoRA |
+| pony-upscale | 元画像と2048×2048の拡大画像を保存 | PonyとReal-ESRGAN anime |
+| sd15 | 512×512、20ステップの比較用 | SD 1.5 FP16 |
+
+追加のプリセットを使う場合は、起動時にまとめて選びます。最初に指定したものが既定です。Pony標準以外の資源は、選択した場合だけ取得します。
+
+```powershell
+komaquill start --profile pony --profile pony-preview --profile pony-upscale
+komaquill open --profile pony-preview
+komaquill open --view graph --profile pony-upscale
+komaquill generate --profile pony-preview --prompt "a sunny forest"
+```
+
+起動中に別のモデルを追加する場合は、stop後に対象を選んでstartし直します。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/presets.md)を参照してください。
 
 ## 状態確認と終了
 

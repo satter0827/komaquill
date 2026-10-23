@@ -16,11 +16,13 @@ from komaquill.application.generation import collect, generate, generation_times
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import ShutdownResult
 from komaquill.infrastructure import runtime as runtime
+from komaquill.infrastructure import views
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, run_dir
 from komaquill.infrastructure.workflows import resource_json
 from komaquill.interfaces import cli as cli
+from tests.support.provider import stopped as confirmed_stop
 
 
 def test_saved_images_record_integrity_and_server_times(project, client, session, stub):
@@ -191,7 +193,11 @@ def test_browser_failure_returns_url_and_failure_exit(project, client, session, 
         yield client, session
 
     monkeypatch.setattr(cli, "connected", connection)
-    monkeypatch.setattr(cli.webbrowser, "open", lambda _: False)
+    monkeypatch.setattr(
+        views.webbrowser,
+        "open",
+        lambda _: False,
+    )
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "open"])
     assert result.exit_code == 1 and "http://127.0.0.1" in result.output
     assert "Browser opened" not in result.output
@@ -202,7 +208,7 @@ def test_capture_records_freshness_without_destroying_last_success(project, monk
     receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="a" * 40)
     monkeypatch.setattr(colab, "entry", lambda _: {})
     monkeypatch.setattr(
-        colab, "call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"complete")
+        colab, "provider_call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"complete")
     )
     assert not colab.recover_diagnostics(receipt)
     folder = project.artifacts / "logs" / str(receipt.runtime_id)
@@ -211,8 +217,8 @@ def test_capture_records_freshness_without_destroying_last_success(project, monk
     def fail(*args, **kwargs):
         raise KomaquillError("private-response")
 
-    monkeypatch.setattr(colab, "call", fail)
-    assert len(colab.recover_diagnostics(receipt)) == 3
+    monkeypatch.setattr(colab, "provider_call", fail)
+    assert len(colab.recover_diagnostics(receipt)) == 4
     after = json.loads((folder / "capture.json").read_bytes())
     for name, item in after["files"].items():
         assert item["last_success_at"] == before["files"][name]["last_success_at"]
@@ -270,7 +276,9 @@ def test_log_temporary_cleanup_failure_does_not_skip_other_files(project, monkey
         return original(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "unlink", unlink)
-    monkeypatch.setattr(colab, "call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"log"))
+    monkeypatch.setattr(
+        colab, "provider_call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"log")
+    )
     assert colab.recover_diagnostics(receipt) == ("bootstrap.log",)
     folder = project.artifacts / "logs" / str(receipt.runtime_id)
     report = json.loads((folder / "capture.json").read_bytes())
@@ -291,7 +299,7 @@ def test_forced_shutdown_reports_lost_count_without_claiming_full_collection(
     receipt = Receipt(name="owned", runtime_id=session.runtime_id, settings=project.settings())
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     monkeypatch.setattr(colab, "recover_diagnostics", lambda _: ())
-    monkeypatch.setattr(colab, "stop", lambda: None)
+    monkeypatch.setattr(colab, "stop", confirmed_stop)
     monkeypatch.setattr(colab, "cleanup_processes", lambda _: None)
     messages = []
     runtime.finish_colab(project, colab, receipt, client, session, True, messages.append, [])

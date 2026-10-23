@@ -13,6 +13,7 @@ from pathlib import Path
 
 from pydantic_settings import (
     BaseSettings,
+    InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
@@ -42,7 +43,13 @@ class Settings(RuntimeSettings, BaseSettings):
         """Use typed packaged defaults without loading dotenv or secret files."""
         with as_file(files("komaquill").joinpath("resources/defaults.toml")) as path:
             defaults = TomlConfigSettingsSource(settings_cls, toml_file=path)
-        return init_settings, env_settings, defaults
+        catalog = tomllib.loads(files("komaquill").joinpath("resources/presets.toml").read_text())
+        return (
+            init_settings,
+            env_settings,
+            defaults,
+            InitSettingsSource(settings_cls, init_kwargs=catalog),
+        )
 
 
 @dataclass(frozen=True)
@@ -86,11 +93,18 @@ class Project(WorkspacePaths):
         }
 
     def prepare(
-        self, prompt: str, negative: str, seed: int, run_id: str
+        self,
+        prompt: str,
+        negative: str | None,
+        seed: int,
+        run_id: str,
+        profile_name: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         from komaquill.infrastructure.workflows import prepare
 
-        return prepare(prompt, negative, seed, run_id)
+        return prepare(
+            prompt, negative, seed, run_id, settings=self.settings(), profile_name=profile_name
+        )
 
     def stop_requested(self, session: "Session") -> bool | None:
         from komaquill.infrastructure.storage import stop_request

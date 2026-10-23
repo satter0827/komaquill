@@ -84,7 +84,8 @@ def test_payload_is_reproducible_and_excludes_local_data(project, monkeypatch):
         )
         settings = tomllib.loads(archive.extractfile("komaquill.toml").read().decode())
         manifest = json.load(archive.extractfile("manifest.json"))
-    assert settings == project.settings().model_dump()
+    assert manifest["settings"] == project.settings().model_dump(mode="json")
+    assert settings["profiles"] == list(project.settings().profiles)
     assert manifest["code_sha256"] == first.code_sha256 and manifest["source_revision"] is None
     assert b"not for transfer" not in content and b"local work" not in content
 
@@ -193,3 +194,19 @@ def test_worker_lock_records_exact_public_sources_and_hashes():
     assert all(
         urlsplit(row["url"]).hostname.endswith("pytorch.org") for row in packages["torch"]["wheels"]
     )
+
+
+def test_worker_lock_satisfies_pinned_comfy_requirements():
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+
+    root = Path(__file__).resolve().parents[2]
+    requirements = root / "tests/fixtures/comfy-requirements.txt"
+    lock = tomllib.loads(files("komaquill").joinpath("resources/pylock.worker.toml").read_text())
+    packages = {canonicalize_name(item["name"]): item["version"] for item in lock["packages"]}
+    for line in requirements.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            requirement = Requirement(line)
+            name = canonicalize_name(requirement.name)
+            assert name in packages, name
+            assert packages[name] in requirement.specifier, name

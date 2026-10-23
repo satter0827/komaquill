@@ -951,6 +951,21 @@ dependencies = [
 colab-client = [
     { name = "google-colab-cli" },
 ]
+
+[package.dev-dependencies]
+dev = [
+    { name = "debugpy" },
+    { name = "detect-secrets" },
+    { name = "import-linter" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "types-psutil" },
+    { name = "types-setuptools" },
+    { name = "unidiff" },
+    { name = "websockets" },
+]
 worker = [
     { name = "aiohttp", marker = "sys_platform == 'linux'" },
     { name = "alembic", marker = "sys_platform == 'linux'" },
@@ -963,8 +978,15 @@ worker = [
     { name = "comfyui-frontend-package", marker = "sys_platform == 'linux'" },
     { name = "comfyui-workflow-templates", marker = "sys_platform == 'linux'" },
     { name = "einops", marker = "sys_platform == 'linux'" },
+    { name = "filelock" },
+    { name = "hf-xet" },
+    { name = "httpx" },
+    { name = "huggingface-hub" },
     { name = "kornia", marker = "sys_platform == 'linux'" },
     { name = "numpy", marker = "sys_platform == 'linux'" },
+    { name = "pillow" },
+    { name = "psutil" },
+    { name = "pydantic-settings" },
     { name = "pyopengl", marker = "sys_platform == 'linux'" },
     { name = "pyyaml", marker = "sys_platform == 'linux'" },
     { name = "requests", marker = "sys_platform == 'linux'" },
@@ -984,65 +1006,20 @@ worker = [
     { name = "yarl", marker = "sys_platform == 'linux'" },
 ]
 
-[package.dev-dependencies]
-dev = [
-    { name = "debugpy" },
-    { name = "detect-secrets" },
-    { name = "import-linter" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "types-psutil" },
-    { name = "types-setuptools" },
-    { name = "unidiff" },
-    { name = "websockets" },
-]
-
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=3.11.8" },
-    { name = "alembic", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "av", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=17" },
-    { name = "blake3", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "comfy-aimdo", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==0.5.6" },
-    { name = "comfy-angle", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "comfy-kitchen", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==0.2.39" },
-    { name = "comfyui-embedded-docs", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==0.5.14" },
-    { name = "comfyui-frontend-package", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==1.55.18" },
-    { name = "comfyui-workflow-templates", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==0.11.89" },
-    { name = "einops", marker = "sys_platform == 'linux' and extra == 'worker'" },
     { name = "filelock", specifier = ">=3.20,<4" },
     { name = "google-colab-cli", marker = "extra == 'colab-client'", specifier = "==0.7.5" },
     { name = "hf-xet", specifier = ">=1.7,<2" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "huggingface-hub", specifier = ">=0.35,<2" },
     { name = "keyring", specifier = ">=25.6,<27" },
-    { name = "kornia", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=0.7.1" },
-    { name = "numpy", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=1.25" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "psutil", specifier = ">=7,<8" },
     { name = "pydantic-settings", specifier = ">=2.11,<3" },
-    { name = "pyopengl", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=3.1.8" },
-    { name = "pyyaml", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "requests", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "safetensors", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=0.4.2" },
-    { name = "scipy", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "sentencepiece", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "simpleeval", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=1" },
-    { name = "spandrel", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "sqlalchemy", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=2" },
-    { name = "tokenizers", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=0.13.3" },
-    { name = "torch", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==2.14.1", index = "https://download.pytorch.org/whl/cu126" },
-    { name = "torchsde", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "torchvision", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = "==0.29.1", index = "https://download.pytorch.org/whl/cu126" },
-    { name = "tqdm", marker = "sys_platform == 'linux' and extra == 'worker'" },
-    { name = "transformers", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=4.50.3" },
     { name = "typer", specifier = ">=0.19,<1" },
-    { name = "websockets", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=15,<17" },
-    { name = "yarl", marker = "sys_platform == 'linux' and extra == 'worker'", specifier = ">=1.18" },
 ]
-provides-extras = ["colab-client", "worker"]
+provides-extras = ["colab-client"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1057,6 +1034,45 @@ dev = [
     { name = "types-setuptools", specifier = ">=80" },
     { name = "unidiff", specifier = ">=0.7.5,<1" },
     { name = "websockets", specifier = ">=15,<17" },
+]
+worker = [
+    { name = "aiohttp", marker = "sys_platform == 'linux'", specifier = ">=3.11.8" },
+    { name = "alembic", marker = "sys_platform == 'linux'" },
+    { name = "av", marker = "sys_platform == 'linux'", specifier = ">=17" },
+    { name = "blake3", marker = "sys_platform == 'linux'" },
+    { name = "comfy-aimdo", marker = "sys_platform == 'linux'", specifier = "==0.5.6" },
+    { name = "comfy-angle", marker = "sys_platform == 'linux'" },
+    { name = "comfy-kitchen", marker = "sys_platform == 'linux'", specifier = "==0.2.39" },
+    { name = "comfyui-embedded-docs", marker = "sys_platform == 'linux'", specifier = "==0.5.14" },
+    { name = "comfyui-frontend-package", marker = "sys_platform == 'linux'", specifier = "==1.55.18" },
+    { name = "comfyui-workflow-templates", marker = "sys_platform == 'linux'", specifier = "==0.11.89" },
+    { name = "einops", marker = "sys_platform == 'linux'" },
+    { name = "filelock", specifier = ">=3.20,<4" },
+    { name = "hf-xet", specifier = ">=1.7,<2" },
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "huggingface-hub", specifier = ">=0.35,<2" },
+    { name = "kornia", marker = "sys_platform == 'linux'", specifier = ">=0.7.1" },
+    { name = "numpy", marker = "sys_platform == 'linux'", specifier = ">=1.25" },
+    { name = "pillow", specifier = ">=11,<13" },
+    { name = "psutil", specifier = ">=7,<8" },
+    { name = "pydantic-settings", specifier = ">=2.11,<3" },
+    { name = "pyopengl", marker = "sys_platform == 'linux'", specifier = ">=3.1.8" },
+    { name = "pyyaml", marker = "sys_platform == 'linux'" },
+    { name = "requests", marker = "sys_platform == 'linux'" },
+    { name = "safetensors", marker = "sys_platform == 'linux'", specifier = ">=0.4.2" },
+    { name = "scipy", marker = "sys_platform == 'linux'" },
+    { name = "sentencepiece", marker = "sys_platform == 'linux'" },
+    { name = "simpleeval", marker = "sys_platform == 'linux'", specifier = ">=1" },
+    { name = "spandrel", marker = "sys_platform == 'linux'" },
+    { name = "sqlalchemy", marker = "sys_platform == 'linux'", specifier = ">=2" },
+    { name = "tokenizers", marker = "sys_platform == 'linux'", specifier = ">=0.13.3" },
+    { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.14.1", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "torchsde", marker = "sys_platform == 'linux'" },
+    { name = "torchvision", marker = "sys_platform == 'linux'", specifier = "==0.29.1", index = "https://download.pytorch.org/whl/cu126" },
+    { name = "tqdm", marker = "sys_platform == 'linux'" },
+    { name = "transformers", marker = "sys_platform == 'linux'", specifier = ">=4.50.3" },
+    { name = "websockets", marker = "sys_platform == 'linux'", specifier = ">=15,<17" },
+    { name = "yarl", marker = "sys_platform == 'linux'", specifier = ">=1.18" },
 ]
 
 [[package]]

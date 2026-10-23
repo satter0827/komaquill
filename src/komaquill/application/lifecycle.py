@@ -8,7 +8,7 @@ from uuid import UUID
 
 from komaquill.application.generation import Collection
 from komaquill.domain.errors import KomaquillError, failure_info
-from komaquill.domain.models import ShutdownResult
+from komaquill.domain.models import RuntimeObservation, ShutdownResult
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class ShutdownActions:
 
     collect: Callable[[], Collection | None]
     logs: Callable[[], tuple[str, ...]]
-    stop: Callable[[], None]
+    stop: Callable[[], RuntimeObservation]
     disconnect: Callable[[], None]
     finalize: Callable[[], tuple[UUID, ...]]
     persist: Callable[[ShutdownResult], None]
@@ -67,9 +67,12 @@ def shutdown(
         )
     try:
         try:
-            actions.stop()
+            observation = actions.stop()
         except KeyboardInterrupt:
-            actions.stop()
+            observation = actions.stop()
+        if not isinstance(observation, RuntimeObservation) or not observation.stopped:
+            raise KomaquillError(code="colab_failed", stage="gpu_stop")
+        result.gpu_observation = observation
         result.gpu = "stopped"
     except (Exception, KeyboardInterrupt) as error:
         failed("gpu_stop", error)

@@ -31,7 +31,7 @@ def test_live_owned_shutdown(mode):
         graph, ui = prepare(
             "a cabin in a mountain valley, watercolor", "text, watermark", 834, str(uuid4())
         )
-        steps = 200 if mode == "normal" else 10000
+        steps = 25 if mode == "normal" else 10000
         graph["3"]["inputs"]["steps"] = steps
         next(node for node in ui["nodes"] if node["id"] == 3)["widgets_values"][2] = steps
         identity = client.submit(graph, ui, str(uuid4()))

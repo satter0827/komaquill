@@ -1,6 +1,6 @@
 {
-  "last_node_id": 9,
-  "last_link_id": 9,
+  "last_node_id": 11,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 7,
@@ -20,7 +20,7 @@
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 5
+          "link": 13
         }
       ],
       "outputs": [
@@ -35,7 +35,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "text, watermark"
+        ""
       ]
     },
     {
@@ -54,9 +54,17 @@
       "mode": 0,
       "inputs": [
         {
+          "name": "text",
+          "type": "STRING",
+          "link": 10,
+          "widget": {
+            "name": "text"
+          }
+        },
+        {
           "name": "clip",
           "type": "CLIP",
-          "link": 3
+          "link": 12
         }
       ],
       "outputs": [
@@ -100,8 +108,8 @@
       ],
       "properties": {},
       "widgets_values": [
-        512,
-        512,
+        1024,
+        1024,
         1
       ]
     },
@@ -154,10 +162,10 @@
       "properties": {},
       "widgets_values": [
         1,
-        "fixed",
-        20,
-        7,
-        "euler",
+        "randomize",
+        25,
+        7.0,
+        "euler_ancestral",
         "normal",
         1
       ]
@@ -223,7 +231,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "komaquill"
+        "komaquill/pony"
       ]
     },
     {
@@ -253,8 +261,7 @@
           "name": "CLIP",
           "type": "CLIP",
           "links": [
-            3,
-            5
+            11
           ],
           "slot_index": 1
         },
@@ -269,7 +276,77 @@
       ],
       "properties": {},
       "widgets_values": [
-        "v1-5-pruned-emaonly-fp16.safetensors"
+        "v6.safetensors"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "StringConcatenate",
+      "pos": [
+        20,
+        30
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up",
+        "a small cabin in a sunny forest, illustration, warm light",
+        ", "
+      ],
+      "title": "Image Description"
+    },
+    {
+      "id": 11,
+      "type": "CLIPSetLastLayer",
+      "pos": [
+        20,
+        300
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            12,
+            13
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        -2
       ]
     }
   ],
@@ -291,28 +368,12 @@
       "LATENT"
     ],
     [
-      3,
-      4,
-      1,
-      6,
-      0,
-      "CLIP"
-    ],
-    [
       4,
       6,
       0,
       3,
       1,
       "CONDITIONING"
-    ],
-    [
-      5,
-      4,
-      1,
-      7,
-      0,
-      "CLIP"
     ],
     [
       6,
@@ -345,6 +406,38 @@
       9,
       0,
       "IMAGE"
+    ],
+    [
+      10,
+      10,
+      0,
+      6,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      4,
+      1,
+      11,
+      0,
+      "CLIP"
+    ],
+    [
+      12,
+      11,
+      0,
+      6,
+      1,
+      "CLIP"
+    ],
+    [
+      13,
+      11,
+      0,
+      7,
+      0,
+      "CLIP"
     ]
   ],
   "groups": [],
@@ -360,24 +453,15 @@
     "linearData": {
       "inputs": [
         [
-          "6",
-          "text"
-        ],
-        [
-          "7",
-          "text"
-        ],
-        [
-          "3",
-          "seed"
+          "10",
+          "string_b"
         ]
       ],
       "outputs": [
         "9"
       ]
     },
-    "linearMode": false,
-    "source": "https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/browser_tests/assets/linear-basic-app-1.json"
+    "linearMode": false
   },
   "version": 0.4
 }

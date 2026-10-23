@@ -9,20 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
+from komaquill.domain.presets import ModelPreset as ModelPreset
 
 JsonObject = dict[str, Any]
-
-
-class ModelPreset(BaseModel):
-    """Pin a model to an immutable upstream revision."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    name: str
-    repo_id: str
-    revision: str = Field(pattern=r"^[0-9a-f]{40}$")
-    filename: str
-    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    license: str
 
 
 class Session(BaseModel):
@@ -104,6 +93,7 @@ class Run(BaseModel):
     comfy_revision: str | None
     frontend_version: str | None
     model_sha256: str | None
+    asset_sha256: dict[str, str] = Field(default_factory=dict)
     workflow_sha256: str
     images: list[str] = Field(default_factory=list)
     error: str | None = None
@@ -120,6 +110,21 @@ class Run(BaseModel):
         return self.state not in {"saved", "failed", "lost"}
 
 
+class RuntimeObservation(BaseModel):
+    """Report provider evidence separately from local process and CLI cache state."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    state: Literal["running", "stopped", "unknown"] = "unknown"
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    endpoint_id: str | None = None
+    account_sha256: str | None = None
+
+    @property
+    def stopped(self) -> bool:
+        """Require endpoint and account evidence before accepting termination."""
+        return self.state == "stopped" and bool(self.endpoint_id and self.account_sha256)
+
+
 class ShutdownResult(BaseModel):
     """Keep independent shutdown outcomes after ownership records are removed."""
 
@@ -130,6 +135,7 @@ class ShutdownResult(BaseModel):
     collection: str = "skipped"
     logs: str = "skipped"
     gpu: str = "unknown"
+    gpu_observation: RuntimeObservation | None = None
     connections: str = "ok"
     history: str = "skipped"
     pending_ids: list[UUID] = Field(default_factory=list)

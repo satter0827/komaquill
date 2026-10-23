@@ -6,6 +6,7 @@ import pytest
 
 from komaquill.application.generation import Collection
 from komaquill.application.lifecycle import ShutdownActions, shutdown
+from tests.support.provider import stopped as confirmed_stop
 
 
 @pytest.mark.parametrize(
@@ -30,7 +31,7 @@ def test_shutdown_attempts_gpu_stop_and_keeps_unfinished_ownership(failure):
         ShutdownActions(
             collect=action("collect", Collection(0, 0, 0)),
             logs=action("logs", ()),
-            stop=action("stop"),
+            stop=action("stop", confirmed_stop()),
             disconnect=action("disconnect"),
             finalize=action("finalize", ()),
             persist=action("persist"),

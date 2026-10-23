@@ -1,6 +1,7 @@
 """Run the pinned ComfyUI environment on the GPU runtime."""
 
 import importlib
+import json
 import os
 import subprocess
 import sys
@@ -11,12 +12,13 @@ from pathlib import Path
 
 import httpx
 
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.storage import atomic_json
-from komaquill.infrastructure.workflows import preset, resource_json
+from komaquill.infrastructure.workflows import assets, prepare
 from komaquill.messages import error_message, message
 
 
@@ -48,12 +50,19 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     templates = extension / "example_workflows"
     templates.mkdir(parents=True, exist_ok=True)
     (extension / "__init__.py").write_text("NODE_CLASS_MAPPINGS = {}\n")
-    for view in ["graph", "app"]:
-        workflow = resource_json("workflow.json")
-        workflow["extra"]["linearMode"] = view == "app"
-        atomic_json(templates / f"sd15_{view}.json", workflow)
-    model = fetch_model(project.artifacts, preset())
-    paths = {"komaquill": {"base_path": str(model.parent), "checkpoints": "."}}
+    settings = project.settings()
+    for name in settings.profiles:
+        profile = settings.presets[name]
+        for view in ["graph", "app"]:
+            _, workflow = prepare(
+                profile.sample_prompt, None, 1, name, settings=settings, profile_name=name
+            )
+            workflow["extra"]["linearMode"] = view == "app"
+            atomic_json(templates / f"{name}_{view}.json", workflow)
+    paths = {}
+    for asset in assets(settings):
+        model = fetch_model(project.artifacts, asset)
+        paths[asset.name] = {"base_path": str(model.parent), asset.role: "."}
     # JSON is a YAML subset, so the model path file needs no conversion.
     atomic_json(runtime / "model-paths.json", paths)
     user.mkdir(parents=True, exist_ok=True)
@@ -65,7 +74,13 @@ def main(root: Path) -> None:
     torch = importlib.import_module("torch")
     if not torch.cuda.is_available():
         raise KomaquillError(display_key="text.no_gpu_was_found_check_runtime_gpu_availability")
-    project = Project(root.resolve())
+    manifest = root / "manifest.json"
+    effective = (
+        RuntimeSettings.model_validate(json.loads(manifest.read_bytes())["settings"])
+        if manifest.is_file()
+        else None
+    )
+    project = Project(root.resolve(), effective)
     config = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
     runtime = project.runtime
     runtime.mkdir(parents=True, exist_ok=True)
@@ -77,7 +92,9 @@ def main(root: Path) -> None:
         "code_sha256": os.environ.get("KOMAQUILL_CODE_SHA256"),
         "comfy_revision": config["comfy_revision"],
         "frontend_version": config["frontend_version"],
-        "model_sha256": preset().sha256,
+        "model_sha256": project.settings()
+        .assets[project.settings().presets[project.settings().profiles[0]].checkpoint]
+        .sha256,
     }
     atomic_json(user / "default/komaquill/session.json", metadata)
     logs = project.artifacts / "logs"

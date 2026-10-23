@@ -23,6 +23,7 @@ def record_event(
     failure: FailureInfo | None = None,
     operation_id: UUID | None = None,
     elapsed_seconds: float | None = None,
+    asset: str | None = None,
 ) -> bool:
     """Append an event; return false if diagnostics storage is unavailable."""
     folder = project.artifacts / "logs"
@@ -32,6 +33,7 @@ def record_event(
     data = {
         "created_at": datetime.now(UTC).isoformat(),
         "operation": operation,
+        "asset": asset,
         "operation_id": str(operation_id) if operation_id else None,
         "elapsed_seconds": elapsed_seconds,
         "result": result,

@@ -32,7 +32,7 @@ def test_workflow_exports_have_identical_connections_and_parameters():
     }
     for key, names in widgets.items():
         for index, name in enumerate(names):
-            if name:
+            if name and not isinstance(api[key]["inputs"][name], list):
                 assert nodes[key]["widgets_values"][index] == api[key]["inputs"][name]
     assert api["4"]["inputs"]["ckpt_name"] == preset().filename
     assert ui["extra"]["linearData"]["outputs"] == ["9"]
@@ -41,7 +41,7 @@ def test_workflow_exports_have_identical_connections_and_parameters():
 def test_prepared_workflow_records_the_same_requested_values():
     api, ui = prepare("a cabin", "watermark", 123, "test-id")
     nodes = {node["id"]: node for node in ui["nodes"]}
-    assert api["6"]["inputs"]["text"] == nodes[6]["widgets_values"][0] == "a cabin"
+    assert api["10"]["inputs"]["string_b"] == nodes[10]["widgets_values"][1] == "a cabin"
     assert api["3"]["inputs"]["seed"] == nodes[3]["widgets_values"][0] == 123
     assert api["9"]["inputs"]["filename_prefix"] == nodes[9]["widgets_values"][0]
     assert resource_json("workflow-api.json")["3"]["inputs"]["seed"] == 1

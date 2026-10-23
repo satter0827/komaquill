@@ -127,15 +127,9 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
         )
         if case == "editor_settings":
             archive.writestr(".vscode/settings.json", "{}")
-        for resource in (
-            "messages.json",
-            "workflow.json",
-            "workflow-api.json",
-            "model.toml",
-            "runtime.toml",
-            "defaults.toml",
-            "pylock.worker.toml",
-        ):
+        from komaquill.infrastructure.provenance import RESOURCE_NAMES
+
+        for resource in RESOURCE_NAMES:
             if case != "resources":
                 archive.writestr("komaquill/resources/" + resource, "data")
         archive.writestr("komaquill/gpu/bootstrap.py", "pass")

@@ -9,10 +9,12 @@ from typer.testing import CliRunner
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ShutdownResult
 from komaquill.infrastructure import runtime as runtime
+from komaquill.infrastructure import views
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.storage import atomic_json, load_session
 from komaquill.infrastructure.workflows import preset, resource_json
 from komaquill.interfaces import cli as cli
+from tests.support.provider import stopped as confirmed_stop
 
 
 @pytest.mark.parametrize(
@@ -53,7 +55,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     monkeypatch.setattr(control, "refresh", lambda _: True)
     monkeypatch.setattr(control, "tunnel", lambda _: calls.append("ssh") or process)
     monkeypatch.setattr(control, "recover_diagnostics", lambda _: calls.append("logs") or ())
-    monkeypatch.setattr(control, "stop", lambda: calls.append("stop"))
+    monkeypatch.setattr(control, "stop", lambda: calls.append("stop") or confirmed_stop())
     monkeypatch.setattr(control, "cleanup_processes", lambda _: calls.append("cleanup"))
     monkeypatch.setattr(runtime, "terminate", lambda *args: calls.append("close"))
     monkeypatch.setattr(runtime.time, "sleep", lambda _: None)
@@ -186,7 +188,11 @@ def test_external_open_exports_workflow_and_returns_to_terminal(
     cli_connection, session, project, monkeypatch
 ):
     session.backend = "external"
-    monkeypatch.setattr(cli.webbrowser, "open", lambda _: True)
+    monkeypatch.setattr(
+        views.webbrowser,
+        "open",
+        lambda _: True,
+    )
     result = cli_connection("open", "--view", "app")
     assert result.exit_code == 0, result.output
-    assert (project.runtime / "workflows/sd15_app.json").is_file()
+    assert (project.runtime / "workflows/pony_app.json").is_file()

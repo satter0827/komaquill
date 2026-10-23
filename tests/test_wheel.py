@@ -25,7 +25,13 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
     wheel = next(directory.glob("komaquill-*-py3-none-any.whl"))
     uv = os.environ.get("KOMAQUILL_UV") or shutil.which("uv")
     assert uv
-    history = {}
+    history = {
+        "before-connection": {
+            "prompt": [0, "before-connection", {}, {}, []],
+            "status": {"completed": True},
+            "outputs": {},
+        }
+    }
     png = io.BytesIO()
     Image.new("RGB", (16, 16), "blue").save(png, "PNG")
 
@@ -73,7 +79,12 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
         with tempfile.TemporaryDirectory(prefix="komaquill-wheel-", dir=parent) as temporary:
             root = Path(temporary)
             env = dict(os.environ, PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
-            for name in ["PYTHONPATH", "KOMAQUILL_PROJECT_DIR", "COVERAGE_PROCESS_START"]:
+            for name in [
+                "PYTHONPATH",
+                "KOMAQUILL_PROJECT_DIR",
+                "COVERAGE_PROCESS_START",
+                "PYTEST_ADDOPTS",
+            ]:
                 env.pop(name, None)
             python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
             subprocess.run(
@@ -136,6 +147,21 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                     command("generate", "--prompt", "a quiet blue lake", "--seed", "5")
                     command("collect")
                     command("status")
+                    for arguments, expected in [
+                        (["open", "--view", "invalid"], 2),
+                        (["doctor"], 1),
+                    ]:
+                        failed = subprocess.run(
+                            [str(python), "-B", "-m", "komaquill", *arguments],
+                            cwd=workspace,
+                            env=env,
+                            text=True,
+                            encoding="utf-8",
+                            capture_output=True,
+                            timeout=30,
+                        )
+                        assert failed.returncode == expected
+                        assert "Traceback" not in failed.stdout + failed.stderr
                     command("stop")
                     assert monitor.wait(timeout=30) == 0
                 finally:

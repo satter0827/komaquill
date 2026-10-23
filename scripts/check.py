@@ -1,48 +1,112 @@
-"""Run shared local and CI quality checks."""
+"""Run the same GPU-free quality and security gates locally and in CI."""
 
+import argparse
+import json
 import os
+import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 
-def main() -> None:
-    """Run every check with the same Python interpreter."""
+def main(group: str = "all") -> None:
+    """Run selected gates, preserving a report even if a command fails."""
     root = Path(__file__).resolve().parents[1]
-    (root / ".artifacts/reports/quality").mkdir(parents=True, exist_ok=True)
-    os.environ["PYTHONPYCACHEPREFIX"] = str(root / ".artifacts/cache/pycache")
-    commands = [
-        [sys.executable, "-m", "ruff", "format", "--check", "."],
-        [sys.executable, "-m", "ruff", "check", "."],
-        [sys.executable, "-m", "mypy", "src", "scripts"],
-        [sys.executable, str(root / "scripts/check_worker_lock.py")],
-        [
-            sys.executable,
-            "-c",
-            "from importlinter.cli import lint_imports_command\nlint_imports_command()",
-            "--cache-dir",
-            ".artifacts/cache/import-linter",
-        ],
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "--junitxml=.artifacts/reports/quality/results.xml",
-            "--cov",
-            "--cov-branch",
-            "--cov-report=term-missing:skip-covered",
-            "--cov-report=json:.artifacts/reports/quality/coverage.json",
-            "--cov-report=html",
-        ],
-        [sys.executable, str(root / "scripts/check_coverage.py")],
-    ]
-    for command in commands:
-        subprocess.run(command, cwd=root, check=True)
+    report = root / ".artifacts/reports/quality" / uuid4().hex
+    report.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    for name in list(env):
+        if name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV":
+            env.pop(name)
+    env.pop("PYTEST_ADDOPTS", None)
+    env["PYTHONPYCACHEPREFIX"] = str(root / ".artifacts/cache/pycache")
+    env["PYTHONUTF8"] = "1"
+    env["COVERAGE_FILE"] = str(report / ".coverage")
+    python = sys.executable
+    commands = []
+    if group in {"all", "quality"}:
+        uv = env.get("KOMAQUILL_UV") or shutil.which("uv")
+        if not uv:
+            raise SystemExit("uv is unavailable. Activate the development environment.")
+        dist = root / ".artifacts/dist" / report.name
+        commands.extend(
+            [
+                [python, "-m", "ruff", "format", "--check", "."],
+                [python, "-m", "ruff", "check", "."],
+                [python, "-m", "mypy", "src", "scripts"],
+                [python, str(root / "scripts/check_worker_lock.py")],
+                [
+                    python,
+                    "-c",
+                    "from importlinter.cli import lint_imports_command; lint_imports_command()",
+                    "--cache-dir",
+                    ".artifacts/cache/import-linter",
+                ],
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "--ignore=tests/test_wheel.py",
+                    "--ignore=tests/test_live.py",
+                    "--ignore=tests/test_live_shutdown.py",
+                    f"--junitxml={report / 'results.xml'}",
+                    "--cov",
+                    "--cov-branch",
+                    "--cov-report=term-missing:skip-covered",
+                    f"--cov-report=json:{report / 'coverage.json'}",
+                    f"--cov-report=html:{report / 'coverage'}",
+                ],
+                [
+                    python,
+                    str(root / "scripts/check_coverage.py"),
+                    "--report",
+                    str(report / "coverage.json"),
+                ],
+                [uv, "build", "--out-dir", str(dist)],
+                [python, str(root / "scripts/check_package.py"), "--dist-dir", str(dist)],
+                [
+                    python,
+                    str(root / "scripts/check_e2e.py"),
+                    "--wheel",
+                    str(dist),
+                    "--report-dir",
+                    str(report),
+                ],
+            ]
+        )
+    if group in {"all", "security"}:
+        commands.append([python, str(root / "scripts/security.py")])
+    results: list[dict[str, str | int]] = []
+    try:
+        for command in commands:
+            result = subprocess.run(command, cwd=root, env=env, check=True)
+            results.append({"step": " ".join(command[1:3]), "exit_code": result.returncode})
+    except subprocess.CalledProcessError as error:
+        results.append({"step": " ".join(error.cmd[1:3]), "exit_code": error.returncode})
+        raise
+    finally:
+        (report / "gate.json").write_text(
+            json.dumps(
+                {
+                    "finished_at": datetime.now(UTC).isoformat(),
+                    "group": group,
+                    "steps": results,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        print(f"Check report: {report}")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run GPU-free project checks.")
+    parser.add_argument("--group", choices=["all", "quality", "security"], default="all")
     try:
-        main()
+        main(parser.parse_args().group)
     except subprocess.CalledProcessError as error:
-        print("品質検査に失敗しました。直前の検査結果を確認してください。", file=sys.stderr)
+        print("Project checks failed. Review the failed step above.", file=sys.stderr)
         raise SystemExit(error.returncode) from None

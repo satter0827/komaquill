@@ -491,14 +491,19 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
                     {**metadata, "endpoint": session.endpoint, "settings": project.settings()}
                 )
                 if session.runtime_id != receipt.runtime_id:
-                    raise KomaquillError("ColabのランタイムIDが所有記録と異なります。")
+                    raise KomaquillError(
+                        "ColabのランタイムIDが所有記録と異なります。", retryable=False
+                    )
                 if receipt.code_sha256 is not None and session.code_sha256 != receipt.code_sha256:
                     raise KomaquillError(
-                        "GPU側の実行コードが一致しません。stop後にstartしてください。"
+                        "GPU側の実行コードが一致しません。stop後にstartしてください。",
+                        retryable=False,
                     )
                 verify_runtime(client, session)
                 break
-            except KomaquillError:
+            except KomaquillError as error:
+                if not error.retryable:
+                    raise
                 if (
                     time.monotonic() >= deadline
                     or (worker is not None and worker.poll() is not None)

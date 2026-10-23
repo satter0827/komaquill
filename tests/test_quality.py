@@ -77,12 +77,19 @@ def test_quality_gate_runs_tools_in_order_and_stops_on_failure(tmp_path, monkeyp
     monkeypatch.setattr(check, "__file__", str(tmp_path / "scripts/check.py"))
     commands = []
     monkeypatch.setattr(
-        check.subprocess, "run", lambda command, **kwargs: commands.append((command, kwargs))
+        check.subprocess,
+        "run",
+        lambda command, **kwargs: (
+            commands.append((command, kwargs)) or SimpleNamespace(returncode=0)
+        ),
     )
+    monkeypatch.setenv("KOMAQUILL_UV", "uv-test")
     check.main()
     assert commands[0][0][2:4] == ["ruff", "format"]
     assert any("--cov" in args for args, _ in commands)
-    assert commands[-1][0][-1].endswith("check_coverage.py")
+    assert any("check_coverage.py" in " ".join(args) for args, _ in commands)
+    assert commands[-1][0][-1].endswith("security.py")
+    assert any("check_e2e.py" in " ".join(args) for args, _ in commands)
     assert all(options["check"] and options["cwd"] == tmp_path for _, options in commands)
 
     def failure(*args, **kwargs):
@@ -240,3 +247,43 @@ def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypat
     text = resource.read_text()
     assert text.endswith("# pragma: allowlist secret Public artifact SHA256 from uv.lock.\n")
     check_worker_lock.main()
+
+
+@pytest.mark.parametrize("valid", [False, True])
+def test_e2e_gate_requires_one_wheel_and_clears_live_flags(tmp_path, monkeypatch, valid):
+    from scripts import check_e2e
+
+    wheel = tmp_path / "dist"
+    wheel.mkdir()
+    if valid:
+        (wheel / "komaquill-1.0-py3-none-any.whl").write_bytes(b"fixture")
+    monkeypatch.setenv("KOMAQUILL_LIVE", "1")
+    monkeypatch.setenv("KOMAQUILL_LIVE_STOP", "normal")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
+    calls = []
+    monkeypatch.setattr(check_e2e.subprocess, "run", lambda command, **kw: calls.append(kw))
+    if valid:
+        check_e2e.main(wheel, tmp_path / "reports")
+        assert calls[0]["env"]["KOMAQUILL_WHEEL"] == str(wheel)
+        assert "KOMAQUILL_LIVE" not in calls[0]["env"]
+        assert "KOMAQUILL_LIVE_STOP" not in calls[0]["env"]
+        assert "PYTEST_ADDOPTS" not in calls[0]["env"]
+    else:
+        with pytest.raises(SystemExit):
+            check_e2e.main(wheel, tmp_path / "reports")
+
+
+def test_security_group_never_needs_uv_and_missing_uv_fails_quality(tmp_path, monkeypatch):
+    monkeypatch.setattr(check, "__file__", str(tmp_path / "scripts/check.py"))
+    monkeypatch.delenv("KOMAQUILL_UV", raising=False)
+    monkeypatch.setattr(check.shutil, "which", lambda _: None)
+    calls = []
+    monkeypatch.setattr(
+        check.subprocess,
+        "run",
+        lambda args, **kw: calls.append(args) or SimpleNamespace(returncode=0),
+    )
+    check.main("security")
+    assert len(calls) == 1 and calls[0][-1].endswith("security.py")
+    with pytest.raises(SystemExit):
+        check.main("quality")

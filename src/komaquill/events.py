@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from filelock import FileLock
+from pydantic import ValidationError
 
 from komaquill.errors import KomaquillError
 from komaquill.models import FailureInfo
@@ -15,12 +16,20 @@ from komaquill.settings import Project
 
 def failure_info(error: BaseException, stage: str) -> FailureInfo:
     """Keep allowlisted attributes, never exception text or local variables."""
+    if isinstance(error, KomaquillError):
+        code, retryable = error.code, error.retryable
+    elif isinstance(error, ValidationError):
+        code, retryable = "invalid_response", False
+    elif isinstance(error, OSError):
+        code, retryable = "storage_failed", True
+    else:
+        code, retryable = "internal_error", False
     return FailureInfo(
-        code=error.code if isinstance(error, KomaquillError) else "storage_failed",
+        code=code,
         stage=stage,
         exception_type=type(error).__name__,
         http_status=error.http_status if isinstance(error, KomaquillError) else None,
-        retryable=error.retryable if isinstance(error, KomaquillError) else True,
+        retryable=retryable,
     )
 
 

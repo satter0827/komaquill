@@ -8,7 +8,6 @@
 ./bootstrap/setup.ps1 -InstallExtensions
 . ./bootstrap/activate.ps1
 python scripts/check.py
-python scripts/security.py
 ```
 
 終了コード0で完了することを確認します。品質検査にGPU、Google認証、モデルのダウンロードは必要ありません。LinuxではPython 3.12とuvを導入し、uv sync --locked --extra colab-clientで環境を準備します。CIはWindowsとLinuxで同じ検査を実行します。
@@ -23,14 +22,10 @@ python scripts/security.py
 
 ```powershell
 python scripts/check.py
-python scripts/security.py
-uv build --out-dir .artifacts/dist
-python scripts/check_package.py
-$env:KOMAQUILL_WHEEL = '.artifacts/dist'
-python -m pytest tests/test_wheel.py -q
+
 ```
 
-すべて終了コード0で完了することを確認します。srcとscriptsのPythonを計測し、testsを除外して行90%以上・分岐80%以上を独立判定します。検査結果は.artifacts/reports/quality/、配布物は.artifacts/dist/へ保存します。wheel検証はリポジトリ外の一時環境を作成し、終了時に削除します。
+終了コード0で完了することを確認します。整形確認、lint、型検査、構造検査、テスト、配布物、隔離wheel E2E、秘密情報検査を一つのコマンドで実行します。srcとscriptsのPythonを計測し、testsを除外して行90%以上・分岐80%以上を独立判定します。検査結果は.artifacts/reports/quality/実行ID/、配布物は.artifacts/dist/実行ID/へ保存します。wheel検証はリポジトリ外の一時環境を作成し、終了時に削除します。
 
 GPU、SSH、起動・回収・終了を変更した場合は[実機検証](docs/validation.md)も実施します。作品・モデル・履歴・秘密情報は公開しないでください。
 

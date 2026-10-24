@@ -7,7 +7,7 @@
 ```powershell
 ./bootstrap/setup.ps1 -InstallExtensions
 . ./bootstrap/activate.ps1
-python scripts/check.py
+python scripts/check.py --level 2
 ```
 
 終了コード0で完了することを確認します。品質検査にGPU、Google認証、モデルのダウンロードは必要ありません。LinuxではPython 3.12とuvを導入し、uv sync --locked --extra colab-clientで環境を準備します。CIはWindowsとLinuxで同じ検査を実行します。
@@ -23,7 +23,7 @@ python scripts/check.py
 ## 検証する
 
 ```powershell
-python scripts/check.py
+python scripts/check.py --level 2
 
 ```
 
@@ -35,4 +35,6 @@ GPU、SSH、起動・回収・終了を変更した場合は[実機検証](docs/
 
 PRには問題、変更後の動作、検証結果、残る制約を記載します。関連する段階を複数PRへ分けた場合は先行PRを基点とし、そのマージ後にmainへ基点を揃えてCIを再確認します。必須のqualityとsecurityを通し、mainへのマージはリポジトリ所有者が行います。
 
-バージョンと公開手順は[開発とリリース](docs/development/workflow.md#バージョンとリリース)を参照してください。
+バージョンと公開手順は[開発とリリース](docs/development/workflow.md#公開する)を参照してください。
+
+公開前は python scripts/check.py --level 3 を実行します。レベルと結果の確認方法は[開発とリリース](docs/development/workflow.md)を参照してください。

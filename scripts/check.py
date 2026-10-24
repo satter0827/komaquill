@@ -1,7 +1,7 @@
-"""Run the same GPU-free quality and security gates locally and in CI."""
+"""Run cumulative checks and preserve evidence independently of product imports."""
 
 import argparse
-import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -10,30 +10,71 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from komaquill.infrastructure.provenance import code_sha256, source_revision
-from komaquill.infrastructure.storage import atomic_json
-from komaquill.messages import message
+# Direct script invocation puts scripts, rather than the repository, on sys.path.
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts._plan import inventory
+from scripts._support import (
+    atomic_json,
+    freshness,
+    input_fingerprint,
+    message,
+    policy,
+    source_revision,
+)
 
 
-def input_fingerprint(root: Path) -> str:
-    """Identify every source and configuration input without hashing generated data."""
-    digest = hashlib.sha256()
-    roots = ("src", "scripts", "tests", "bootstrap", "docs", ".vscode", ".github", ".githooks")
-    paths = [p for name in roots for p in (root / name).rglob("*") if p.is_file()]
-    paths.extend(p for p in root.iterdir() if p.is_file() and p.name != ".DS_Store")
-    for path in sorted(set(paths)):
-        if "__pycache__" in path.parts or path.suffix == ".pyc" or path.is_symlink():
-            continue
-        digest.update(path.relative_to(root).as_posix().encode() + b"\0")
-        digest.update(hashlib.sha256(path.read_bytes()).digest())
-    return digest.hexdigest()
-
-
-def main(group: str = "all") -> None:
-    """Run selected gates, preserving a report even if a command fails."""
+def main(
+    level: int = 2,
+    *,
+    selected: list[str] | None = None,
+    plan: bool = False,
+    json_output: bool = False,
+    status: bool = False,
+) -> bool:
+    """Run independent checks after failures without promoting partial verification."""
+    if level not in {1, 2, 3}:
+        raise ValueError(message("quality.invalid_level"))
     root = Path(__file__).resolve().parents[1]
-    report = root / ".artifacts/records/reports/quality" / uuid4().hex
-    report.mkdir(parents=True, exist_ok=True)
+    if status:
+        data = freshness(root, level)
+        print(
+            json.dumps(data)
+            if json_output
+            else message("quality.evidence_status", data=json.dumps(data))
+        )
+        return True
+    reports = root / ".artifacts/records/reports/quality"
+    report = reports / uuid4().hex
+    uv = os.environ.get("KOMAQUILL_UV") or shutil.which("uv") or "uv"
+    checks = inventory(root, report, uv)
+    if selected:
+        known = {check.id for check in checks}
+        if not set(selected) <= known:
+            raise ValueError(message("quality.unknown_check"))
+        identities = set(selected)
+        for check in reversed(checks):
+            if check.id in identities:
+                identities.update(check.requires)
+        checks = tuple(check for check in checks if check.id in identities)
+    else:
+        checks = tuple(check for check in checks if check.level <= level)
+    if plan:
+        data = {
+            "scope": "checks" if selected else "level",
+            "level": None if selected else level,
+            "requirements": [
+                "Python development environment",
+                "Node.js for L2 and L3",
+                "uv and Git",
+            ],
+            "report": str(report),
+            "checks": [check.describe() for check in checks],
+        }
+        print(json.dumps(data) if json_output else "\n".join(check.id for check in checks))
+        return True
+
     env = dict(os.environ)
     for name in list(env):
         if name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV":
@@ -42,156 +83,109 @@ def main(group: str = "all") -> None:
     env["PYTHONPYCACHEPREFIX"] = str(root / ".artifacts/cache/pycache")
     env["PYTHONUTF8"] = "1"
     env["COVERAGE_FILE"] = str(report / ".coverage")
-    python = sys.executable
-    commands = []
-    if group in {"all", "quality"}:
-        uv = env.get("KOMAQUILL_UV") or shutil.which("uv")
-        if not uv:
-            raise SystemExit(
-                message("quality.uv_is_unavailable_activate_the_development_environment")
-            )
-        dist = root / ".artifacts/dist" / report.name
-        commands.extend(
-            [
-                [python, "-m", "ruff", "format", "--check", "."],
-                [python, "-m", "ruff", "check", "."],
-                [python, "-m", "mypy", "src", "scripts"],
-                ["node", "--test", "tests/js/*.test.mjs"],
-                [python, str(root / "scripts/check_worker_lock.py")],
-                [python, str(root / "scripts/check_docs.py")],
-                [
-                    python,
-                    "-c",
-                    "from importlinter.cli import lint_imports_command; lint_imports_command()",
-                    "--cache-dir",
-                    ".artifacts/cache/import-linter",
-                ],
-                [
-                    python,
-                    "-m",
-                    "pytest",
-                    "--ignore=tests/e2e",
-                    "--ignore=tests/live",
-                    f"--junitxml={report / 'results.xml'}",
-                    "--cov",
-                    "--cov-branch",
-                    "--cov-report=term-missing:skip-covered",
-                    f"--cov-report=json:{report / 'coverage.json'}",
-                    f"--cov-report=html:{report / 'coverage'}",
-                ],
-                [
-                    python,
-                    str(root / "scripts/check_coverage.py"),
-                    "--report",
-                    str(report / "coverage.json"),
-                ],
-                [uv, "build", "--out-dir", str(dist)],
-                [python, str(root / "scripts/check_package.py"), "--dist-dir", str(dist)],
-                [
-                    python,
-                    str(root / "scripts/check_e2e.py"),
-                    "--wheel",
-                    str(dist),
-                    "--report-dir",
-                    str(report),
-                ],
-            ]
-        )
-    if group in {"all", "security"}:
-        commands.append([python, str(root / "scripts/security.py"), "--report-dir", str(report)])
-    results: list[dict[str, str | int]] = []
-    started_at = datetime.now(UTC).isoformat()
-    tested_code = code_sha256()
-    tested_revision = source_revision()
-    tested_inputs = input_fingerprint(root)
-    completed = False
-    primary: BaseException | None = None
-    step_started = started_at
-    active: list[str] | None = None
-    try:
-        for command in commands:
-            active = command
-            step_started = datetime.now(UTC).isoformat()
-            result = subprocess.run(command, cwd=root, env=env, check=True)
-            results.append(
-                {
-                    "step": " ".join(command[1:4]),
-                    "exit_code": result.returncode,
-                    "started_at": step_started,
-                    "finished_at": datetime.now(UTC).isoformat(),
-                }
-            )
-            active = None
-        if code_sha256() != tested_code or input_fingerprint(root) != tested_inputs:
-            results.append(
-                {
-                    "step": "source_identity",
-                    "exit_code": 1,
-                    "started_at": started_at,
-                    "finished_at": datetime.now(UTC).isoformat(),
-                }
-            )
-            raise SystemExit(message("quality.source_changed"))
-        completed = len(results) == len(commands) and bool(commands)
-    except BaseException as error:
-        primary = error
-        if active is not None:
-            results.append(
-                {
-                    "step": " ".join(active[1:4]),
-                    "exit_code": error.returncode
-                    if isinstance(error, subprocess.CalledProcessError)
-                    else 130
-                    if isinstance(error, KeyboardInterrupt)
-                    else 1,
-                    "exception_type": type(error).__name__,
-                    "started_at": step_started,
-                    "finished_at": datetime.now(UTC).isoformat(),
-                }
-            )
-        raise
-    finally:
-        data = {
-            "started_at": started_at,
-            "finished_at": datetime.now(UTC).isoformat(),
-            "group": group,
-            "status": "passed"
-            if completed
-            else "interrupted"
-            if isinstance(primary, KeyboardInterrupt)
-            else "failed",
-            "planned_steps": len(commands),
-            "source_revision": tested_revision,
-            "code_sha256": tested_code,
-            "input_sha256": tested_inputs,
-            "steps": results,
+    timeout = float(policy(root).get("step_timeout", 600))
+    started = datetime.now(UTC).isoformat()
+    fingerprint = input_fingerprint(root)
+    revision = source_revision(root)
+    steps: list[dict[str, object]] = []
+    outcomes: dict[str, str] = {}
+    interrupted = False
+    report.mkdir(parents=True, exist_ok=True)
+    for check in checks:
+        step_started = datetime.now(UTC).isoformat()
+        result: dict[str, object] = {
+            "id": check.id,
+            "started_at": step_started,
+            "exit_code": None,
+            "status": "skipped",
+            "reason": None,
         }
-        try:
-            atomic_json(report / "gate.json", data)
-            if completed:
-                atomic_json(
-                    report.parent / f"latest-{group}.json",
-                    {
-                        "report": report.name,
-                        "source_revision": tested_revision,
-                        "code_sha256": tested_code,
-                        "input_sha256": tested_inputs,
-                    },
+        if interrupted or any(outcomes.get(key) != "passed" for key in check.requires):
+            result["reason"] = "interrupted" if interrupted else "prerequisite_failed"
+        else:
+            try:
+                if check.id == "build":
+                    atomic_json(
+                        root / ".artifacts/dist" / report.name / ".owner.json",
+                        {
+                            "owner": "quality",
+                            "report": report.name,
+                            "purpose": "distribution",
+                        },
+                    )
+                subprocess.run(check.command, cwd=root, env=env, check=True, timeout=timeout)
+                result.update(status="passed", exit_code=0)
+            except KeyboardInterrupt:
+                interrupted = True
+                result.update(
+                    status="interrupted", exit_code=130, exception_type="KeyboardInterrupt"
                 )
-        except OSError:
-            if primary is None:
-                raise
-            print(message("quality.report_unavailable"), file=sys.stderr)
+            except (OSError, subprocess.SubprocessError) as error:
+                result.update(
+                    status="failed",
+                    exit_code=error.returncode
+                    if isinstance(error, subprocess.CalledProcessError)
+                    else 1,
+                    exception_type=type(error).__name__,
+                    os_error=getattr(error, "winerror", None) or getattr(error, "errno", None),
+                )
+        result["finished_at"] = datetime.now(UTC).isoformat()
+        steps.append(result)
+        outcomes[check.id] = str(result["status"])
+    unchanged = input_fingerprint(root) == fingerprint
+    passed = unchanged and all(state == "passed" for state in outcomes.values()) and bool(checks)
+    data = {
+        "format_version": 2,
+        "scope": "checks" if selected else "level",
+        "level": None if selected else level,
+        "started_at": started,
+        "finished_at": datetime.now(UTC).isoformat(),
+        "source_revision": revision,
+        "input_sha256": fingerprint,
+        "inputs_unchanged": unchanged,
+        "status": "passed" if passed else "interrupted" if interrupted else "failed",
+        "planned_steps": len(checks),
+        "steps": steps,
+    }
+    pointer = {
+        "report": report.name,
+        "source_revision": revision,
+        "input_sha256": fingerprint,
+        "level": data["level"],
+        "status": data["status"],
+    }
+    try:
+        atomic_json(report / "gate.json", data)
+        if not selected:
+            atomic_json(reports / f"latest-attempt-l{level}.json", pointer)
+            if passed:
+                atomic_json(reports / f"latest-success-l{level}.json", pointer)
+    except OSError:
+        print(message("quality.report_unavailable"), file=sys.stderr)
+        return False
+    if json_output:
+        print(json.dumps({**pointer, "report_path": str(report / "gate.json")}))
+    else:
         print(message("quality.check_report", path=report))
+    if interrupted:
+        raise KeyboardInterrupt
+    if not passed:
+        print(message("quality.project_checks_failed"), file=sys.stderr)
+    return passed
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=message("quality.run_project_checks"))
-    parser.add_argument("--group", choices=["all", "quality", "security"], default="all")
+    parser.add_argument("--level", type=int, choices=(1, 2, 3), default=2)
+    parser.add_argument("--check", action="append", dest="selected")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--plan", action="store_true")
+    modes.add_argument("--status", action="store_true")
+    parser.add_argument("--json", action="store_true", dest="json_output")
     try:
-        main(parser.parse_args().group)
-    except (subprocess.CalledProcessError, OSError) as error:
+        raise SystemExit(0 if main(**vars(parser.parse_args())) else 1)
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None
+    except (OSError, ValueError):
         print(message("quality.project_checks_failed"), file=sys.stderr)
-        raise SystemExit(
-            error.returncode if isinstance(error, subprocess.CalledProcessError) else 1
-        ) from None
+        raise SystemExit(1) from None

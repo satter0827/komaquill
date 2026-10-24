@@ -129,11 +129,11 @@ def test_quality_entrypoint_returns_tool_failure_without_traceback(tmp_path, mon
         raise subprocess.CalledProcessError(7, args[0])
 
     monkeypatch.setattr(check.subprocess, "run", fail)
-    monkeypatch.setattr(check.sys, "argv", ["check.py", "--group", "security"])
+    monkeypatch.setattr(check.sys, "argv", ["check.py", "--check", "secrets-worktree"])
     namespace = {"__name__": "__main__", "__file__": str(tmp_path / "scripts/check.py")}
     with pytest.raises(SystemExit) as error:
         exec(
             compile(Path(check.__file__).read_text(encoding="utf-8"), check.__file__, "exec"),
             namespace,
         )
-    assert error.value.code == 7 and "Project checks failed" in capsys.readouterr().err
+    assert error.value.code == 1 and "Project checks failed" in capsys.readouterr().err

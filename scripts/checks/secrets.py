@@ -11,8 +11,7 @@ from uuid import uuid4
 from detect_secrets.core.scan import scan_diff, scan_file
 from detect_secrets.settings import default_settings
 
-from komaquill.infrastructure.storage import atomic_json
-from komaquill.messages import message
+from scripts._support import atomic_json, message
 
 
 def git_text(root: Path, *arguments: str) -> str:
@@ -22,9 +21,9 @@ def git_text(root: Path, *arguments: str) -> str:
     )
 
 
-def main(report_dir: Path | None = None) -> None:
+def main(report_dir: Path | None = None, *, scope: str = "history") -> None:
     """Inspect public files and history without persisting secret values."""
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     os.chdir(root)
     tracked = git_text(root, "ls-files", "-z").split("\0")
     forbidden = (".artifacts/", "artifacts/", ".venv/", ".env", "__pycache__/")
@@ -44,10 +43,14 @@ def main(report_dir: Path | None = None) -> None:
                     {"file": secret.filename, "line": secret.line_number, "type": secret.type}
                     for secret in scan_file(name)
                 )
-        for diff in [
+        differences = [
             git_text(root, "diff", "--cached", "--no-ext-diff"),
-            git_text(root, "log", "--all", "--format=", "--patch", "--no-ext-diff"),
-        ]:
+        ]
+        if scope == "history":
+            differences.append(
+                git_text(root, "log", "--all", "--format=", "--patch", "--no-ext-diff")
+            )
+        for diff in differences:
             if diff.strip():
                 findings.extend(
                     {"file": secret.filename, "line": secret.line_number, "type": secret.type}
@@ -55,7 +58,7 @@ def main(report_dir: Path | None = None) -> None:
                 )
     report = (
         report_dir or root / ".artifacts/records/reports/quality" / uuid4().hex
-    ) / "security.json"
+    ) / f"security-{scope}.json"
     atomic_json(
         report,
         {
@@ -63,7 +66,7 @@ def main(report_dir: Path | None = None) -> None:
             "source_revision": git_text(root, "rev-parse", "HEAD").strip(),
             "tool": "detect-secrets",
             "tool_version": version("detect-secrets"),
-            "scope": ["working_tree", "staged", "history"],
+            "scope": ["working_tree", "staged"] + (["history"] if scope == "history" else []),
             "findings": findings,
         },
     )
@@ -84,4 +87,6 @@ def main(report_dir: Path | None = None) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=message("quality.inspect_security"))
     parser.add_argument("--report-dir", type=Path)
-    main(parser.parse_args().report_dir)
+    parser.add_argument("--scope", choices=("worktree", "history"), default="history")
+    options = parser.parse_args()
+    main(options.report_dir, scope=options.scope)

@@ -279,5 +279,19 @@
   "status.connection_unknown": "ComfyUI: unknown; inspect the saved session record.",
   "status.unreadable": "Some records could not be read: {identities}. Check their files before retrying status.",
   "quality.docs_invalid": "Documentation references are invalid: {identities}. Update the links and requirement registry.",
-  "quality.docs_valid": "Documentation links and requirement references verified."
+  "quality.docs_valid": "Documentation links and requirement references verified.",
+  "quality.invalid_level": "Choose a check level from 1 to 3.",
+  "quality.unknown_check": "Choose a known check ID from --plan --json.",
+  "error.invalid_evaluation": "Invalid evaluation. Check the referenced runs, evaluation mode and reviewer provenance.",
+  "evaluations.help": "Record evaluations and export evidence for analysis.",
+  "evaluations.add": "Record an adoption decision and its reason.",
+  "evaluations.compare": "Record a preference between two generated results.",
+  "evaluations.import": "Import versioned evaluation records from JSON.",
+  "evaluations.list": "List evaluation records as JSON.",
+  "evaluations.export": "Export evaluation records, saved conditions and image references for analysis.",
+  "evaluations.saved": "Evaluation recorded: {identity}",
+  "evaluations.imported": "Evaluation records imported.",
+  "evaluations.exported": "Evaluation evidence exported: {path}",
+  "quality.evidence_status": "Check evidence: {data}",
+  "cleanup.removed": "Removed {count} files ({size} logical bytes)."
 }

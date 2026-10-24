@@ -5,7 +5,7 @@ import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from komaquill.messages import message
+from scripts._support import message
 
 
 def anchors(text: str) -> set[str]:
@@ -76,7 +76,7 @@ def validate(root: Path) -> list[str]:
 
 def main(root: Path | None = None) -> None:
     """Fail the gate on stale links or incomplete implemented requirements."""
-    errors = validate(root or Path(__file__).resolve().parents[1])
+    errors = validate(root or Path(__file__).resolve().parents[2])
     if errors:
         raise SystemExit(message("quality.docs_invalid", identities=", ".join(errors)))
     print(message("quality.docs_valid"))

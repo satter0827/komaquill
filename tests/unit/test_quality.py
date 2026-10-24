@@ -2,7 +2,6 @@
 
 import io
 import json
-import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
@@ -10,7 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts import check, check_coverage, check_package, check_worker_lock, security
+from scripts.checks import coverage as check_coverage
+from scripts.checks import distribution as check_package
+from scripts.checks import secrets as security
+from scripts.checks import worker_lock as check_worker_lock
 
 
 def test_thresholds_are_independent_and_not_rounded():
@@ -65,40 +67,12 @@ def test_coverage_gate_checks_source_inventory_and_configured_policy(tmp_path, m
     if case == "inventory":
         files["tests/test_app.py"] = {}
     (folder / "coverage.json").write_text(json.dumps({"files": files, "totals": totals}))
-    monkeypatch.setattr(check_coverage, "__file__", str(tmp_path / "scripts/check_coverage.py"))
+    monkeypatch.setattr(check_coverage, "__file__", str(tmp_path / "scripts/checks/coverage.py"))
     if case == "pass":
         check_coverage.main()
     else:
         with pytest.raises(SystemExit):
             check_coverage.main()
-
-
-def test_quality_gate_runs_tools_in_order_and_stops_on_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(check, "__file__", str(tmp_path / "scripts/check.py"))
-    commands = []
-    monkeypatch.setattr(
-        check.subprocess,
-        "run",
-        lambda command, **kwargs: (
-            commands.append((command, kwargs)) or SimpleNamespace(returncode=0)
-        ),
-    )
-    monkeypatch.setenv("KOMAQUILL_UV", "uv-test")
-    monkeypatch.setattr(check, "source_revision", lambda: None)
-    check.main()
-    assert commands[0][0][2:4] == ["ruff", "format"]
-    assert any("--cov" in args for args, _ in commands)
-    assert any("check_coverage.py" in " ".join(args) for args, _ in commands)
-    assert any(arg.endswith("security.py") for arg in commands[-1][0])
-    assert any("check_e2e.py" in " ".join(args) for args, _ in commands)
-    assert all(options["check"] and options["cwd"] == tmp_path for _, options in commands)
-
-    def failure(*args, **kwargs):
-        raise subprocess.CalledProcessError(1, args[0])
-
-    monkeypatch.setattr(check.subprocess, "run", failure)
-    with pytest.raises(subprocess.CalledProcessError):
-        check.main()
 
 
 @pytest.mark.parametrize(
@@ -140,7 +114,7 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
             member = tarfile.TarInfo(f"komaquill-{expected}/PKG-INFO")
             member.size = len(data)
             archive.addfile(member, io.BytesIO(data))
-    monkeypatch.setattr(check_package, "__file__", str(tmp_path / "scripts/check_package.py"))
+    monkeypatch.setattr(check_package, "__file__", str(tmp_path / "scripts/checks/distribution.py"))
     monkeypatch.setattr(
         check_package, "version", lambda _: "0.0.0" if case == "installed" else expected
     )
@@ -157,7 +131,7 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
 def test_security_gate_reports_scope_and_never_secret_values(tmp_path, monkeypatch, case):
     (tmp_path / "example.txt").write_text("public content")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(security, "__file__", str(tmp_path / "scripts/security.py"))
+    monkeypatch.setattr(security, "__file__", str(tmp_path / "scripts/checks/secrets.py"))
 
     def git_text(root, *args):
         if args[:1] == ("rev-parse",):
@@ -184,7 +158,7 @@ def test_security_gate_reports_scope_and_never_secret_values(tmp_path, monkeypat
             security.main()
     if case != "tracked":
         report = next(
-            (tmp_path / ".artifacts/records/reports/quality").glob("*/security.json")
+            (tmp_path / ".artifacts/records/reports/quality").glob("*/security-history.json")
         ).read_text(encoding="utf-8")
         data = json.loads(report)
         assert data["scope"] == ["working_tree", "staged", "history"]
@@ -207,7 +181,7 @@ def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, mo
     resource.parent.mkdir(parents=True)
     resource.write_text("locked\n")
     monkeypatch.setattr(
-        check_worker_lock, "__file__", str(tmp_path / "scripts/check_worker_lock.py")
+        check_worker_lock, "__file__", str(tmp_path / "scripts/checks/worker_lock.py")
     )
     if case == "missing_uv":
         monkeypatch.delenv("KOMAQUILL_UV", raising=False)
@@ -233,7 +207,7 @@ def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypat
     resource = tmp_path / "src/komaquill/resources/runtime/pylock.worker.toml"
     resource.parent.mkdir(parents=True)
     monkeypatch.setattr(
-        check_worker_lock, "__file__", str(tmp_path / "scripts/check_worker_lock.py")
+        check_worker_lock, "__file__", str(tmp_path / "scripts/checks/worker_lock.py")
     )
     monkeypatch.setenv("KOMAQUILL_UV", "uv-test")
 
@@ -243,7 +217,12 @@ def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypat
         )
 
     monkeypatch.setattr(check_worker_lock.subprocess, "run", export)
-    check_worker_lock.main(write=True)
+    from bootstrap import update_worker_lock
+
+    monkeypatch.setattr(
+        update_worker_lock, "__file__", str(tmp_path / "bootstrap/update_worker_lock.py")
+    )
+    update_worker_lock.main()
     text = resource.read_text()
     assert text.endswith("# pragma: allowlist secret Public artifact SHA256 from uv.lock.\n")
     check_worker_lock.main()
@@ -251,7 +230,7 @@ def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypat
 
 @pytest.mark.parametrize("valid", [False, True])
 def test_e2e_gate_requires_one_wheel_and_clears_live_flags(tmp_path, monkeypatch, valid):
-    from scripts import check_e2e
+    from scripts.checks import installed_wheel as check_e2e
 
     wheel = tmp_path / "dist"
     wheel.mkdir()
@@ -271,19 +250,3 @@ def test_e2e_gate_requires_one_wheel_and_clears_live_flags(tmp_path, monkeypatch
     else:
         with pytest.raises(SystemExit):
             check_e2e.main(wheel, tmp_path / "reports")
-
-
-def test_security_group_never_needs_uv_and_missing_uv_fails_quality(tmp_path, monkeypatch):
-    monkeypatch.setattr(check, "__file__", str(tmp_path / "scripts/check.py"))
-    monkeypatch.delenv("KOMAQUILL_UV", raising=False)
-    monkeypatch.setattr(check.shutil, "which", lambda _: None)
-    calls = []
-    monkeypatch.setattr(
-        check.subprocess,
-        "run",
-        lambda args, **kw: calls.append(args) or SimpleNamespace(returncode=0),
-    )
-    check.main("security")
-    assert len(calls) == 1 and any(arg.endswith("security.py") for arg in calls[0])
-    with pytest.raises(SystemExit):
-        check.main("quality")

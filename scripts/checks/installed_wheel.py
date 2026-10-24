@@ -6,12 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-from komaquill.messages import message
+from scripts._support import message
 
 
 def main(wheel: Path, report_dir: Path) -> None:
     """Invoke installed-wheel acceptance tests with live switches removed."""
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     wheel = wheel.resolve()
     if len(list(wheel.glob("komaquill-*-py3-none-any.whl"))) != 1:
         raise SystemExit(message("quality.select_one_wheel"))
@@ -39,10 +39,10 @@ def main(wheel: Path, report_dir: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=message("quality.check_installed_wheel"))
-    parser.add_argument("--wheel", type=Path, required=True)
+    parser.add_argument("--dist-dir", type=Path, required=True)
     parser.add_argument("--report-dir", type=Path, required=True)
     options = parser.parse_args()
     try:
-        main(options.wheel, options.report_dir)
+        main(options.dist_dir, options.report_dir)
     except subprocess.CalledProcessError as error:
         raise SystemExit(error.returncode) from None

@@ -24,6 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
         with:
           version: '0.13.5'
@@ -32,7 +33,7 @@ jobs:
         with:
           node-version: '24'
       - name: Check quality and installed wheel
-        run: uv run --locked --extra colab-client python scripts/check.py --group quality
+        run: uv run --locked --extra colab-client python scripts/check.py --level 3
   quality:
     name: quality
     needs: checks
@@ -56,4 +57,4 @@ jobs:
           version: '0.13.5'
           enable-cache: false
       - name: Check publishable files
-        run: uv run --locked python scripts/check.py --group security
+        run: uv run --locked python scripts/check.py --check secrets-history

@@ -9,12 +9,12 @@ from email.parser import Parser
 from importlib.metadata import version
 from pathlib import Path
 
-from komaquill.messages import message
+from scripts._support import message
 
 
 def main(dist_dir: Path | None = None) -> None:
     """Compare the wheel, sdist, declaration and release tag versions."""
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     expected = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
     ]

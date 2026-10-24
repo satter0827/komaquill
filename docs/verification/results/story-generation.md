@@ -2,15 +2,15 @@
 
 ## 対象と環境
 
-検証日: 2026年10月24日。対象はfeat/story-generationの製品コードSHA256 `cfb1ff871168ab26f34b0a5360535ce857ca943372d14b75defba1524e357ad3` です。6a9cf72以降、保存済み試行の一覧でもIDと保存位置を照合するよう修正しました。LLMと画像送信の処理・指示は変更していません。以下の実機結果では実行時の製品ハッシュを分けて記載します。Windows ARM64上のx64 Python 3.12.15、LM Studio 0.4.26、Colab T4、Pony V6 XLを使用しました。
+検証日: 2026年10月24日。対象はfeat/story-generationの製品コードSHA256 `43aba1fd51a5f296fd279ae290da812fb6e66920b9a51c12bf0583d64f682857` です。6a9cf72以降、保存済み試行の一覧でもIDと保存位置を照合し、CLIの回収失敗時に再開方法を表示し、計画失敗の安全な分類を記録するよう修正しました。LLMと画像送信の処理・指示は変更していません。以下の実機結果では実行時の製品ハッシュを分けて記載します。Windows ARM64上のx64 Python 3.12.15、LM Studio 0.4.26、Colab T4、Pony V6 XLを使用しました。
 
 固定依存はuv.lockとGPU用ロック、LLM設定はパッケージのdefaults.tomlに従います。実行ログ、原文、計画、可視出力、画像、完全な検査結果は.artifacts内に保全し、公開しません。
 
 ## GPUを使わない検査
 
-製品コードc0aaf580…f2c6f8bbのWindows L3実行 `7518f563551945ce8b8f3714bc59f840` で、formatter、lint、strict mypy、依存・循環参照、文書参照、秘密情報、Python・JavaScript・PowerShell、固定依存、配布物、隔離wheelを確認しました。Pythonは634件成功、OS固有の2件をスキップ、行95.43%、分岐87.70%でした。
+54408ed・製品コードcfb1ff87…4e357ad3のWindows L3実行 `6bac51e6283841e59a6a7e7cafd82910` で、formatter、lint、strict mypy、依存・循環参照、文書参照、秘密情報、Python・JavaScript・PowerShell、固定依存、配布物、隔離wheelを確認しました。Pythonは636件成功、OS固有の2件をスキップ、行95.47%、分岐87.81%でした。
 
-その後、Linux CIで計画修正のテストがファイル列挙順へ依存して失敗しました。01.jsonを直接参照するよう修正し、モデルの通信タイムアウトとセッション停止時の送信抑止も追加確認しました。Windows／LinuxのL3と必須quality・securityの対象コミットと結果は[PR #18](https://github.com/satter0827/komaquill/pull/18)から確認できます。以前のコミットの成功を新しい対象版の成功へ流用しません。
+先行するCIでは、Linuxで計画修正のテストがファイル列挙順へ依存して失敗しました。01.jsonを直接参照するよう修正し、モデルの通信タイムアウトとセッション停止時の送信抑止も追加確認しました。Windows／LinuxのL3と必須quality・securityの対象コミットと結果は[PR #18](https://github.com/satter0827/komaquill/pull/18)から確認できます。以前のコミットの成功を新しい対象版の成功へ流用しません。
 
 FakeListLLMとlocalhostの擬似ComfyUIで、1・4・8枚、設定反映、順次保存、JSON、JSON Lines、部分失敗、二重実行、受付不明、中断、再開、別条件での再生成を確認しました。隔離wheelではLLM追加依存なしのhelpと不足依存の案内、追加依存ありの4場面生成と評価出力を確認しました。
 

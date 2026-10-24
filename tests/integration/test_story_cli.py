@@ -184,3 +184,32 @@ def test_generate_rejects_unavailable_devices_without_planning(
     monkeypatch.setattr(stories, "make_plan", lambda *args: (_ for _ in ()).throw(AssertionError()))
     result = invoke("generate", file, "--llm-profile", "fake")
     assert result.exit_code == 1 and "GPU" in result.output
+
+
+def test_collection_error_always_identifies_rendering_and_resume_command(cli_story, monkeypatch):
+    file, invoke, _ = cli_story
+
+    def failure(*args, **kwargs):
+        raise KomaquillError(code="collection_failed")
+
+    monkeypatch.setattr(stories, "render_story", failure)
+    result = invoke("generate", file, "--llm-profile", "fake", "--json")
+    assert result.exit_code == 1 and result.stdout == ""
+    assert "Rendering:" in result.stderr and "stories resume" in result.stderr
+
+
+def test_planning_diagnostics_keep_safe_failure_classification(project, cli_story):
+    file, invoke, _ = cli_story
+    file.write_text("Not the paired sample.", encoding="utf-8")
+    result = invoke("plan", file, "--llm-profile", "fake")
+    assert result.exit_code == 1
+    events = [
+        json.loads(line)
+        for path in project.logs.rglob("*.jsonl")
+        for line in path.read_text().splitlines()
+    ]
+    failed = next(
+        row for row in events if row["operation"] == "story_planning" and row["result"] == "failed"
+    )
+    assert failed["failure"]["code"] == "fake_story_mismatch"
+    assert failed["story_id"] and "Not the paired sample." not in json.dumps(events)

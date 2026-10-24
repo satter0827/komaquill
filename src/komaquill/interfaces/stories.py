@@ -14,7 +14,7 @@ import typer
 from komaquill.application.generation import verify_runtime
 from komaquill.application.stories.planning import plan_story
 from komaquill.application.stories.rendering import create_render, render_story, story_view
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import JsonObject, Session
 from komaquill.domain.stories import StoryInput, StoryPlan
 from komaquill.infrastructure.comfyui import ComfyClient
@@ -79,13 +79,14 @@ def make_plan(
     except KeyboardInterrupt:
         typer.echo(message("stories.planning_interrupted", story_id=request.story_id), err=True)
         raise typer.Exit(130) from None
-    except Exception:
+    except Exception as error:
         record_event(
             project,
             "story_planning",
             "failed",
             story_id=request.story_id,
             elapsed_seconds=time.monotonic() - started,
+            failure=failure_info(error, "story_planning"),
         )
         raise
     record_event(
@@ -202,6 +203,9 @@ def execute_render(
     except KeyboardInterrupt:
         typer.echo(message("stories.interrupted", render_id=render_id), err=True)
         raise typer.Exit(130) from None
+    except KomaquillError:
+        typer.echo(message("stories.incomplete", render_id=render_id), err=True)
+        raise
     if json_output:
         typer.echo(json.dumps(value, ensure_ascii=False))
     if not value["complete"]:

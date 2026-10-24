@@ -64,7 +64,7 @@
   "text.stop_requested_waiting_for_generation_and_collection": "Stop requested. Waiting for generation and collection.",
   "text.the_connection_changed_the_shutdown_target_is_unconfirmed": "The connection changed. The shutdown target is unconfirmed. Check status.",
   "text.lost_lost_ids_count": "Lost: {lost_ids_count} / ",
-  "text.comfyui_startup_failed_check_the_startup_logs_under": "ComfyUI startup failed. Check the startup logs under .artifacts/logs.",
+  "text.comfyui_startup_failed_check_the_startup_logs_under": "ComfyUI startup failed. Run status and logs to inspect the connection and preparation results.",
   "text.startup_is_in_progress_press_ctrl_c_in": "Startup is in progress. Press Ctrl+C in the start terminal.",
   "text.some_shutdown_phases_failed_check_the_shutdown_report": "Some shutdown phases failed. Check the shutdown report.",
   "text.saved_saved": "Saved: {saved}",

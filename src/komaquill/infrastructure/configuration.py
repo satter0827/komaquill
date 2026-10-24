@@ -22,7 +22,7 @@ from pydantic_settings import (
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.paths import WorkspacePaths
+from komaquill.infrastructure.paths import GpuPaths, WorkspacePaths
 from komaquill.infrastructure.preset_catalog import catalog
 
 
@@ -201,8 +201,8 @@ class GpuProject(Project):
 
     @property
     def data(self) -> Path:
-        return self.artifacts
+        return GpuPaths(self.root).data
 
     @property
     def records(self) -> Path:
-        return self.artifacts
+        return GpuPaths(self.root).records

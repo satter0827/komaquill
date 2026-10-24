@@ -77,3 +77,7 @@ ComfyUI上の拡張は標準の書き込みと生成要求を観測し、一時�
 | resources/runtime | 固定バージョンとGPU依存ロック |
 
 具体的な依存方向はImport Linterで検査します。ComfyUI用インターフェースはGPUへ配布しますが、CLI・Colab制御・ローカル監視は配布しません。詳細な状態と失敗は[契約](contracts.md)を参照してください。
+
+## ローカルとGPUの保存先
+
+WorkspacePathsはローカルのdata・records・state・runtimeなどを分けます。GpuPathsは一時ランタイムの配置を定義し、GpuProjectと起動前の進捗発行・取得で共有します。ローカルの保全分類をGPU側の進捗・ログへ無条件に適用しません。両者のファイル対応は発行と取得を結ぶテストで確認します。

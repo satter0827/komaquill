@@ -69,3 +69,15 @@ class WorkspacePaths:
     @property
     def session_file(self) -> Path:
         return self.state / "session.json"
+
+
+class GpuPaths(WorkspacePaths):
+    """Keep transient GPU files independent of local preservation categories."""
+
+    @property
+    def data(self) -> Path:
+        return self.artifacts
+
+    @property
+    def records(self) -> Path:
+        return self.artifacts

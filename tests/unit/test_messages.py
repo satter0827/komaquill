@@ -99,10 +99,12 @@ def test_catalog_loader_rejects_missing_or_invalid_content(monkeypatch, tmp_path
 def test_extension_catalog_and_executable_resources_are_packaged():
     import re
 
-    resources = ROOT / "src/komaquill/resources"
-    for path in (resources / "web").glob("*.js"):
-        name = path.relative_to(resources).as_posix()
+    package = ROOT / "src/komaquill"
+    scripts = list((package / "interfaces/comfyui/web").glob("*.js"))
+    assert scripts
+    for path in scripts:
+        name = path.relative_to(package).as_posix()
         source = path.read_text(encoding="utf-8")
         for key in re.findall(r'"(ui\.[a-z_]+)"', source):
             assert key in messages.catalog()
-        assert "komaquill/resources/" + name in dict(provenance.gpu_contents())
+        assert "komaquill/" + name in dict(provenance.gpu_contents())

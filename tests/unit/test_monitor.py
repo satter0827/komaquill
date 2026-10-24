@@ -372,3 +372,28 @@ def test_progress_cleanup_failure_does_not_abort_startup(project, session, monke
         assert control.progress(receipt) == {"phase": "dependencies", "asset": None}
     event = (project.logs / str(session.runtime_id) / "events.jsonl").read_text()
     assert "progress_cleanup" in event and "private-path" not in event
+
+
+def test_progress_transport_reads_the_file_published_by_the_gpu(project, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from komaquill.gpu.progress import progress
+    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.infrastructure.configuration import GpuProject
+    from komaquill.infrastructure.paths import GpuPaths
+
+    receipt = Receipt(name="owned", runtime_id=uuid4())
+    server = tmp_path / "server"
+    remote = server / "content" / f"komaquill-{receipt.runtime_id}"
+    progress(remote, "dependencies")
+    expected = GpuPaths(remote).logs / "progress.json"
+    assert expected.is_file() and expected.parent == GpuProject(remote).logs
+    assert expected.parent != project.logs
+    control = Colab(project)
+
+    def download(action, source, target, **kwargs):
+        assert action == "download"
+        Path(target).write_bytes((server / source).read_bytes())
+
+    monkeypatch.setattr(control, "provider_call", download)
+    assert control.progress(receipt) == {"phase": "dependencies", "asset": None}

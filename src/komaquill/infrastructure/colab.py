@@ -339,6 +339,8 @@ class Colab:
             "os.environ['KOMAQUILL_SOURCE_REVISION'] = manifest.get('source_revision') or ''\n"
             "os.environ['KOMAQUILL_CODE_SHA256'] = manifest['code_sha256']\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
+            "os.environ['KOMAQUILL_OPERATION_ID'] = "
+            f"{os.environ.get('KOMAQUILL_OPERATION_ID', '')!r}\n"
             "sys.path.insert(0, root)\n"
             "from komaquill.infrastructure.paths import GpuPaths\n"
             "from pathlib import Path\n"

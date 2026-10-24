@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
+from komaquill.api._errors import api_operation
 from komaquill.application.evaluations import register
 from komaquill.application.generation import Collection, collect, generate
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.models import JsonObject, Run
 from komaquill.domain.status import SessionStatus
@@ -35,7 +36,11 @@ class ImageService:
         seed: int | None = None,
         profile: str | None = None,
     ) -> Run:
-        with operation_scope(), connected(self._project) as (backend, session):
+        with (
+            operation_scope(),
+            api_operation(OperationStage.GENERATION, invalid=ErrorCode.INVALID_CONFIGURATION),
+            connected(self._project) as (backend, session),
+        ):
             return generate(
                 self._project,
                 backend,
@@ -47,7 +52,7 @@ class ImageService:
             )
 
     def collect(self, run_id: UUID | None = None) -> Collection:
-        with operation_scope():
+        with operation_scope(), api_operation(OperationStage.COLLECTION):
             with connected(self._project) as (backend, session):
                 result = collect(self._project, backend, session, run_id)
                 if capabilities(backend):
@@ -85,14 +90,26 @@ class SessionService:
         progress: Callable[[str], None] | None = None,
         interactive_auth: bool = False,
         foreground: Callable[[Path], int] | None = None,
+        profiles: list[str] | None = None,
+        open_browser: bool = False,
     ) -> SessionStatus:
-        with operation_scope():
+        with (
+            operation_scope(),
+            api_operation(OperationStage.PREPARATION, invalid=ErrorCode.INVALID_CONFIGURATION),
+        ):
+            project = self._project
+            if profiles is not None:
+                settings = project.settings()
+                settings = type(settings).model_validate(
+                    {**settings.model_dump(), "profiles": profiles}
+                )
+                project = project.configured(settings)
             supervisor.start(
-                self._project,
+                project,
                 backend,
                 endpoint,
                 username,
-                False,
+                open_browser,
                 progress or (lambda _: None),
                 foreground,
                 interactive_auth=interactive_auth,
@@ -103,7 +120,7 @@ class SessionService:
         self, *, force: bool = False, progress: Callable[[str], None] | None = None
     ) -> SessionStatus:
         echo = progress or (lambda _: None)
-        with operation_scope():
+        with operation_scope(), api_operation(OperationStage.GPU_STOP):
             if not supervisor.stop(self._project, force, echo):
                 shutdown.stop(self._project, force, echo)
             return self.status()
@@ -114,11 +131,14 @@ class EvaluationService:
         self._project = project
 
     def add(self, records: list[Evaluation]) -> list[Evaluation]:
-        register(self._project.repository, FileEvaluationRepository(self._project), records)
-        return records
+        with api_operation(OperationStage.EVALUATION):
+            register(self._project.repository, FileEvaluationRepository(self._project), records)
+            return records
 
     def list(self, run_id: UUID | None = None) -> list[Evaluation]:
-        return select(self._project, run_id)
+        with api_operation(OperationStage.EVALUATION):
+            return select(self._project, run_id)
 
     def export(self, run_id: UUID | None = None) -> JsonObject:
-        return export_evidence(self._project, run_id)
+        with api_operation(OperationStage.EVALUATION):
+            return export_evidence(self._project, run_id)

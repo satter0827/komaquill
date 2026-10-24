@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
 
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.configuration import Project
+from komaquill.infrastructure.configuration import Project, merge_settings
 
 
 class LLMProfile(BaseModel):
@@ -96,20 +96,9 @@ def settings(project: Project, **overrides: object) -> StorySettings:
     for name, value in workspace.get("llm_profiles", {}).items():
         data["llm_profiles"][name] = {**data["llm_profiles"].get(name, {}), **value}
 
-    def merge(base: dict[str, object], changes: dict[str, object]) -> dict[str, object]:
-        result = dict(base)
-        for key, value in changes.items():
-            prior = result.get(key)
-            result[key] = (
-                merge(prior, value)
-                if isinstance(prior, dict) and isinstance(value, dict)
-                else value
-            )
-        return result
-
     environment = EnvSettingsSource(StorySettings)()
     explicit = {key: value for key, value in overrides.items() if value is not None}
-    preliminary = merge(merge(data, environment), explicit)
+    preliminary = merge_settings(merge_settings(data, environment), explicit)
     profile = str(preliminary["image_profile"])
     from komaquill.infrastructure.preset_catalog import catalog
 
@@ -123,9 +112,9 @@ def settings(project: Project, **overrides: object) -> StorySettings:
     )
     policy = defaults["planning"]
     if policy_file.is_file():
-        policy = merge(policy, tomllib.loads(policy_file.read_text(encoding="utf-8")))
-    data["planning"] = merge(policy, workspace.get("story", {}).get("planning", {}))
-    combined = merge(merge(data, environment), explicit)
+        policy = merge_settings(policy, tomllib.loads(policy_file.read_text(encoding="utf-8")))
+    data["planning"] = merge_settings(policy, workspace.get("story", {}).get("planning", {}))
+    combined = merge_settings(merge_settings(data, environment), explicit)
     return StorySettings.model_validate(combined)
 
 

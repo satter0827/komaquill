@@ -9,6 +9,7 @@ from uuid import UUID
 
 from filelock import FileLock
 
+from komaquill.application.stories.listing import list_stories
 from komaquill.application.stories.ports import StoryRepository
 from komaquill.application.stories.rendering import story_view
 from komaquill.domain.errors import KomaquillError
@@ -70,6 +71,28 @@ def _publish_story(
     write_document(render_folder / "story.md", lines)
 
 
+def publish_listing(repository: PublicationSource, project: Project) -> None:
+    """Make the storage root a readable entrypoint, including unfinished plans."""
+    listing = list_stories(repository, project)
+    root = project.data / "stories"
+    lines = [message("stories.catalog_heading")]
+    for row in listing.stories:
+        folder = repository.folder(row.story_id)
+        if not (folder / "README.md").exists():
+            write_document(
+                folder / "README.md", [f"# {prose(row.title)}", message("stories.plan_unavailable")]
+            )
+        key = (folder.relative_to(root) / "README.md").as_posix()
+        count = row.image_count if row.image_count is not None else "?"
+        lines.append(
+            f"- [{prose(row.title)}]({quote(key, safe='/')}) — {row.created_at.isoformat()}"
+            f" — {row.state} — {row.saved_images}/{count} — {row.purpose}"
+        )
+    for identity in listing.unreadable_ids:
+        lines.append(message("stories.catalog_unreadable", story_id=identity))
+    write_document(root / "README.md", lines)
+
+
 def publish_story(
     repository: PublicationSource, project: Project, story_id: UUID, render_id: UUID | None = None
 ) -> None:
@@ -77,3 +100,5 @@ def publish_story(
     project.state.mkdir(parents=True, exist_ok=True)
     with FileLock(str(project.state / f".story-publication-{story_id}.lock")):
         _publish_story(repository, project, story_id, render_id)
+        with FileLock(str(project.state / ".story-listing.lock")):
+            publish_listing(repository, project)

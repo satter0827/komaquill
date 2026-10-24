@@ -42,11 +42,12 @@ def plan_story(
         != planner.provenance.instruction_sha256
     ):
         raise KomaquillError(code="invalid_configuration", stage="story_planning")
+    provenance = planner.provenance.model_copy(update={"repair_attempts": repair_attempts})
     repository.begin(request)
     schema = output_schema(request)
     correction = None
     for index in range(repair_attempts + 1):
-        repository.prepare_attempt(request, planner.provenance, schema, index + 1, correction)
+        repository.prepare_attempt(request, provenance, schema, index + 1, correction)
         applied_correction = correction
         started = datetime.now(UTC)
         response = None
@@ -117,7 +118,7 @@ def plan_story(
                     Scene(**scene.model_dump(), scene_id=uuid4(), position=i)
                     for i, scene in enumerate(draft.scenes, 1)
                 ],
-                planner=planner.provenance,
+                planner=provenance,
             )
             repository.complete(plan)
             return repository.read(request.story_id)

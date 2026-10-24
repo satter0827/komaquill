@@ -3,11 +3,14 @@
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from importlib.resources import files
 from typing import Any
 from urllib.parse import urlsplit
 
 import keyring
+from filelock import FileLock, Timeout
 from pydantic import SecretStr
 
 from komaquill.application.stories.ports import planner_input
@@ -36,7 +39,11 @@ def token_usage(value: Any) -> TokenUsage | None:
         input_tokens=counter("input_tokens", "prompt_tokens"),
         output_tokens=counter("output_tokens", "completion_tokens"),
         total_tokens=counter("total_tokens"),
-        reasoning_tokens=reasoning if isinstance(reasoning, int) and reasoning >= 0 else None,
+        reasoning_tokens=(
+            reasoning
+            if isinstance(reasoning, int) and not isinstance(reasoning, bool) and reasoning >= 0
+            else None
+        ),
     )
 
 
@@ -182,3 +189,24 @@ def planner(project: Project, options: StorySettings, *, allow_real_llm: bool) -
             cache=False,
         )
     return LangChainPlanner(provenance, model)
+
+
+@contextmanager
+def serialized_planning(project: Project, timeout: float) -> Iterator[None]:
+    """Keep one workspace's planning calls and repairs on a single local model queue."""
+    project.state.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(project.state / ".story-planning.lock"), timeout=timeout)
+    try:
+        lock.acquire()
+    except Timeout:
+        raise KomaquillError(
+            code="operation_failed",
+            stage="story_planning",
+            retryable=True,
+            details={"reason": "planning_busy"},
+            display_key="stories.planning_busy",
+        ) from None
+    try:
+        yield
+    finally:
+        lock.release()

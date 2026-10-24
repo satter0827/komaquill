@@ -28,6 +28,12 @@ class FileStoryRepository:
         self.project = project
         self.root = project.data / "stories"
 
+    def ids(self) -> tuple[UUID, ...]:
+        return tuple(Locations(self.project).read().stories)
+
+    def request(self, story_id: UUID) -> StoryInput:
+        return StoryInput.model_validate_json((self.folder(story_id) / "request.json").read_bytes())
+
     def folder(self, story_id: UUID) -> Path:
         return Locations(self.project).story(story_id)
 
@@ -40,6 +46,10 @@ class FileStoryRepository:
         from komaquill.infrastructure.atomic import atomic_bytes
 
         atomic_bytes(folder / "source.txt", request.source_text.encode("utf-8"))
+        from komaquill.infrastructure.stories.publication import publish_listing
+
+        with FileLock(str(self.project.state / ".story-listing.lock")):
+            publish_listing(self, self.project)
 
     def prepare_attempt(
         self,

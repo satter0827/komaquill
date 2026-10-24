@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+from contextlib import AbstractContextManager, nullcontext
 from importlib.metadata import version
 from pathlib import Path
 from uuid import UUID
@@ -13,6 +14,7 @@ import click
 import typer
 
 from komaquill.domain.errors import ErrorCode, FailureInfo, OperationStage
+from komaquill.infrastructure.colab_execution import execution_transport
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.messages import message
@@ -24,7 +26,15 @@ def main() -> None:
     cli = importlib.import_module("colab_cli.cli")
     cli.app.pretty_exceptions_enable = False
     try:
-        result = cli.app(standalone_mode=False)
+        root = os.environ.get("KOMAQUILL_PROJECT_DIR")
+        transport: AbstractContextManager[None] = nullcontext()
+        if root and "exec" in sys.argv[1:]:
+            from komaquill.infrastructure.colab import Colab
+
+            timeout = Colab(Project(Path(root))).settings.control_timeout
+            transport = execution_transport(timeout)
+        with transport:
+            result = cli.app(standalone_mode=False)
         raise SystemExit(result if isinstance(result, int) else 0)
     except (click.exceptions.Exit, typer.Exit) as error:
         raise SystemExit(error.exit_code) from None
@@ -47,8 +57,15 @@ def main() -> None:
             trace = error.__traceback__
             while trace is not None:
                 filename = trace.tb_frame.f_code.co_filename.replace("\\", "/")
-                if "/colab_cli/" in filename:
-                    function = trace.tb_frame.f_code.co_name
+                if any(
+                    f"/{name}/" in filename
+                    for name in ("colab_cli", "jupyter_kernel_client", "websocket")
+                ):
+                    function = (
+                        str(trace.tb_frame.f_globals.get("__name__", "unknown"))
+                        + "."
+                        + trace.tb_frame.f_code.co_name
+                    )
                 trace = trace.tb_next
             record_event(
                 Project(Path(root)),

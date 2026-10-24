@@ -1,6 +1,7 @@
 """Append safe operational events under a process-shared lock."""
 
 import json
+import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
@@ -62,6 +63,9 @@ def record_event(
         ):
             session_operation_id = monitor["operation_id"]
     operation_id = operation_id or _OPERATION.get()
+    if operation_id is None:
+        with suppress(ValueError):
+            operation_id = UUID(os.environ.get("KOMAQUILL_OPERATION_ID", ""))
     data = {
         "format_version": 2,
         "session_operation_id": session_operation_id,

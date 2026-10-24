@@ -23,7 +23,12 @@ def test_auto_or_fixed_count_and_pre_call_evidence(project, count):
     model = planner(project, options, allow_real_llm=False)
     result = plan_story(repo, model, value, max_images=options.max_images)
     assert len(result.scenes) == (4 if count == "auto" else count)
-    assert (repo.folder(value.story_id) / "provenance.json").is_file()
+    assert (
+        json.loads((repo.folder(value.story_id) / "provenance.json").read_bytes())[
+            "repair_attempts"
+        ]
+        == options.repair_attempts
+    )
     before = json.loads(
         (repo.folder(value.story_id) / "planning/inputs/attempt-01.json").read_bytes()
     )
@@ -78,6 +83,7 @@ def test_truncation_is_not_repaired_and_failed_input_is_preserved(project):
 
 def test_provider_counters_are_not_estimated_or_summed_when_missing():
     assert token_usage(None) is None
+    assert token_usage({"output_token_details": {"reasoning": False}}).reasoning_tokens is None
     actual = token_usage(
         {
             "prompt_tokens": 20,
@@ -127,3 +133,32 @@ def test_failed_plan_can_be_exported_without_guessing_a_successful_plan(project)
     assert evidence["story"] is None and evidence["plan"] is None
     assert evidence["planning"]["provenance"]["provider"] == "fake"
     assert evidence["planning"]["attempts"][0]["failure"]["code"] == "fake_story_mismatch"
+
+
+def test_non_english_visual_output_is_repaired_but_historical_structure_remains_valid(project):
+    from komaquill.domain.stories import StoryDraft, validate_draft, validate_structure
+
+    text = (
+        files("komaquill")
+        .joinpath("resources/stories/examples/rainy-cat/plan-4.json")
+        .read_text(encoding="utf-8")
+    )
+    original = json.loads(text)
+    original["scenes"][0]["visual_description"] = "傘を持った少女"
+    draft = StoryDraft.model_validate(original)
+    validate_structure(draft, request())
+    with pytest.raises(ValueError, match="English"):
+        validate_draft(draft, request())
+
+
+def test_new_language_validation_does_not_rewrite_or_reject_old_structure():
+    from komaquill.domain.stories import StoryDraft, validate_draft, validate_structure
+
+    value = json.loads(
+        files("komaquill").joinpath("resources/stories/examples/rainy-cat/plan-4.json").read_bytes()
+    )
+    value["scenes"][0]["narrative"] = "Mio shelters a kitten."
+    draft = StoryDraft.model_validate(value)
+    validate_structure(draft, request())
+    with pytest.raises(ValueError, match="Japanese"):
+        validate_draft(draft, request())

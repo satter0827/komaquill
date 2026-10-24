@@ -145,6 +145,7 @@ class PlannerProvenance(StoryRecord):
     instruction_sha256: str
     timeout_seconds: float
     max_output_tokens: int
+    repair_attempts: int | None = Field(default=None, ge=0, le=1)
     require_model_match: bool = False
     base_url: str | None = None
     reasoning_effort: str | None = None
@@ -237,6 +238,15 @@ def validate_structure(draft: StoryDraft, request: StoryInput) -> None:
 def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
     """Apply current acceptance checks only to newly planned content."""
     validate_structure(draft, request)
+    if re.search(r"[぀-ヿ㐀-鿿]", request.source_text) and any(
+        not re.search(r"[぀-ヿ㐀-鿿]", scene.narrative) for scene in draft.scenes
+    ):
+        raise ValueError("Write every narrative in Japanese, not English.")
+    visible = [character.appearance for character in draft.characters] + [
+        scene.visual_description for scene in draft.scenes
+    ]
+    if any(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text) for text in visible):
+        raise ValueError("Use English for appearance and visual_description.")
     descriptions = [" ".join(scene.visual_description.split()).casefold() for scene in draft.scenes]
     if len(set(descriptions)) != len(descriptions):
         raise ValueError("Every scene must depict a distinct visual moment.")

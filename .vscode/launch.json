@@ -64,6 +64,21 @@
       "subProcess": false
     },
     {
+      "name": "List Stories",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "stories",
+        "list"
+      ],
+      "subProcess": false
+    },
+    {
       "name": "Show Story",
       "type": "debugpy",
       "request": "launch",
@@ -92,8 +107,6 @@
         "stories",
         "plan",
         "${input:storyFile}",
-        "--images",
-        "${input:storyImages}",
         "--allow-real-llm",
         "--llm-profile",
         "lmstudio-4b"
@@ -113,8 +126,6 @@
         "stories",
         "generate",
         "${input:storyFile}",
-        "--images",
-        "${input:storyImages}",
         "--allow-real-llm",
         "--llm-profile",
         "lmstudio-4b"
@@ -315,22 +326,6 @@
       "id": "storyFile",
       "type": "promptString",
       "description": "Enter the UTF-8 story file path"
-    },
-    {
-      "id": "storyImages",
-      "type": "pickString",
-      "description": "Choose the number of scenes and main images",
-      "options": [
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8"
-      ],
-      "default": "4"
     },
     {
       "id": "storyId",

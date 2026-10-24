@@ -40,7 +40,7 @@ def test_fake_plans_are_coherent_and_immutable(project, count):
 
 
 @pytest.mark.parametrize(
-    "fault", ["json", "count", "character", "source", "blank", "coverage", "duplicate"]
+    "fault", ["json", "count", "character", "source", "blank", "coverage", "duplicate", "language"]
 )
 def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     repository = FileStoryRepository(project)
@@ -52,7 +52,9 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
         .read_text(encoding="utf-8")
     )
     broken = json.loads(valid)
-    if fault == "count":
+    if fault == "language":
+        broken["scenes"][0]["narrative"] = "Mio covers the kitten with her umbrella."
+    elif fault == "count":
         broken["scenes"].pop()
     elif fault == "character":
         broken["scenes"][0]["characters"] = ["unknown"]

@@ -152,6 +152,34 @@ def bind(
                 typer.echo(message("stories.invalid_data"), err=True)
                 raise typer.Exit(1) from None
 
+    @GROUP.command("list", help=message("stories.list_help"))
+    def list_command(
+        ctx: typer.Context,
+        json_output: Annotated[
+            bool, typer.Option("--json", help=message("stories.json_help"))
+        ] = False,
+    ) -> None:
+        with story_operation(ctx) as client:
+            listing = client.stories.list()
+            if json_output:
+                typer.echo(listing.model_dump_json())
+            else:
+                for row in listing.stories:
+                    typer.echo(
+                        message(
+                            "stories.catalog_row",
+                            story_id=row.story_id,
+                            title=row.title,
+                            state=row.state,
+                            saved=row.saved_images,
+                            total=row.image_count if row.image_count is not None else "?",
+                        )
+                    )
+                for identity in listing.unreadable_ids:
+                    typer.echo(message("stories.catalog_unreadable", story_id=identity), err=True)
+            if listing.unreadable_ids:
+                raise typer.Exit(1)
+
     @GROUP.command("plan", help=message("stories.plan_help"))
     def plan_command(
         ctx: typer.Context,

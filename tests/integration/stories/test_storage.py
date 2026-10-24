@@ -271,3 +271,56 @@ def test_concurrent_publication_cannot_replace_a_newer_snapshot_with_an_older_on
         ).read_bytes()
     )
     assert manifest["complete"] and manifest["scenes"][0]["state"] == "saved"
+
+
+def test_catalog_repair_after_confirmed_gpu_stop_retains_ownership(project, session, client):
+    from datetime import datetime
+
+    from komaquill.domain.models import RuntimeObservation, ShutdownResult
+    from komaquill.infrastructure.atomic import atomic_json
+
+    plan, render, originals = legacy_story(project, session, client)
+    owner = {
+        "runtime_id": str(session.runtime_id),
+        "endpoint_id": "endpoint",
+        "account_sha256": "a" * 64,
+    }
+    atomic_json(project.state / "colab.json", owner)
+    report = ShutdownResult(
+        force=False,
+        runtime_id=session.runtime_id,
+        gpu="stopped",
+        history="failed",
+        finished_at=datetime.now(UTC),
+        gpu_observation=RuntimeObservation(
+            state="stopped", endpoint_id="endpoint", account_sha256="a" * 64
+        ),
+    )
+    atomic_json(
+        project.logs / str(session.runtime_id) / "shutdown.json", report.model_dump(mode="json")
+    )
+    result = Client(project.root).migrate()
+    assert result.status == "complete" and (project.state / "colab.json").exists()
+    assert Client(project.root).stories.show(plan.request.story_id).complete
+    assert all(
+        project.artifacts_store.read(f"runs/{identity}/{name}") == value
+        for (identity, name), value in originals.items()
+    )
+    evaluation = {
+        "format_version": 1,
+        "evaluation_id": str(uuid4()),
+        "created_at": datetime.now(UTC).isoformat(),
+        "run_id": str(render.scenes[0].run_ids[0]),
+        "criterion": "clarity",
+        "reason": "Preserved scene.",
+        "decision": "accept",
+    }
+    from komaquill.api import Evaluation
+
+    api = Client(project.root)
+    api.evaluations.add([Evaluation.model_validate(evaluation)])
+    Locations(project).index_file.unlink()
+    api.migrate()
+    exported = api.evaluations.export()
+    assert exported["evaluations"][0]["run_id"] == evaluation["run_id"]
+    assert any(row["story_context"] for row in exported["runs"])

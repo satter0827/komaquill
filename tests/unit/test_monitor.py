@@ -397,3 +397,16 @@ def test_progress_transport_reads_the_file_published_by_the_gpu(project, tmp_pat
 
     monkeypatch.setattr(control, "provider_call", download)
     assert control.progress(receipt) == {"phase": "dependencies", "asset": None}
+
+
+def test_log_follow_does_not_reload_configuration(project, monkeypatch):
+    project.logs.mkdir(parents=True)
+    (project.logs / "cli.jsonl").write_text('{"operation":"first"}\n')
+    stream = supervisor.events(project, True)
+    assert next(stream)["operation"] == "first"
+    (project.root / "komaquill.toml").write_text("invalid [")
+    monkeypatch.setattr(
+        supervisor.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt())
+    )
+    with pytest.raises(KeyboardInterrupt):
+        next(stream)

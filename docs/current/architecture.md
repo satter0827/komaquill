@@ -2,10 +2,11 @@
 
 ## 処理の分担
 
-CLIが要求の記録とローカル保存を担当し、GPU側のComfyUIが画像を生成します。Colabの認証とランタイム操作には公式Colab CLI、接続にはOpenSSH、生成にはComfyUI標準APIを使用します。
+CLIと公開Python APIが同じアプリケーション処理を呼び、GPU側のComfyUIが画像を生成します。Colabの認証とランタイム操作には公式Colab CLI、接続にはOpenSSH、生成にはComfyUI標準APIを使用します。
 
 | 区分 | 責務 |
 |---|---|
+| api | 明示した作業場所で使う機能別サービスの組み立て |
 | domain | 要求、状態、設定スナップショット、エラーコード |
 | application | 生成、照合、回収、終了の判断 |
 | interfaces | CLI引数、入力、英語表示、終了コード |
@@ -16,7 +17,7 @@ CLIが要求の記録とローカル保存を担当し、GPU側のComfyUIが画�
 
 ## 設定の優先順位
 
-対応するCLI引数、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。設定は起動時に検証し、保存・回収・終了で同じ値を使用します。変更は次のstartから反映します。認証情報は設定へ含めません。
+CLI／Pythonの指定、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。ネストしたプロファイルは指定項目だけを上書きします。接続とGPU環境は起動時に検証し、保存・回収・終了で同じ値を使用します。ストーリー計画の設定は操作ごと、画像条件は生成試行ごとに確定します。再開では元の試行条件を使用します。認証情報は設定へ含めません。
 
 Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime/versions.toml、モデルと生成プリセットはresources/modelsとresources/presetsで固定します。
 
@@ -73,7 +74,7 @@ ComfyUI上の拡張は標準の書き込みと生成要求を観測し、一時�
 | gpu | 一時環境の準備とComfyUI起動 |
 | resources/settings | 運用上の既定値 |
 | resources/models | 共有するモデルの固定定義 |
-| resources/presets/ID | 生成セットの3ファイル |
+| resources/presets/ID | 生成セットの設定・標準グラフ・ローカル描画方針 |
 | resources/runtime | 固定バージョンとGPU依存ロック |
 
 具体的な依存方向はImport Linterで検査します。ComfyUI用インターフェースはGPUへ配布しますが、CLI・Colab制御・ローカル監視は配布しません。詳細な状態と失敗は[契約](contracts.md)を参照してください。
@@ -90,3 +91,6 @@ WorkspacePathsはローカルのdata・records・state・runtimeなどを分け�
 ## ストーリーとLLM
 
 物語の計画と画像生成の試行を分離します。LLMの具体型はinfrastructure/stories内に限定し、application/storiesは専用Protocolを使います。状態取得は保存済み計画と既存Runから導出し、CLIと将来の画面で共有します。LLMの指示・接続設定・追加依存はGPUへ転送しません。詳細は[ストーリーの契約](stories.md)を参照してください。
+
+
+公式CLIのコード実行はcolab_executionのアダプターで準備完了待ちと失敗時の接続終了を補います。固定SDKの非公開接続オブジェクトへの参照はこのアダプターに限定し、実行要求の再送は行いません。SSHの内部ブリッジはcolab_bridgeへ分離しています。

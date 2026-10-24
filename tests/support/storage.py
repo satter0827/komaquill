@@ -1,36 +1,39 @@
-"""Build stopped legacy workspaces from real generation and story records."""
+"""Build isolated legacy layouts from real generation and story records."""
 
 from komaquill.application.stories.rendering import create_render, render_story
-from komaquill.infrastructure.locations import Locations
+from komaquill.infrastructure.atomic import atomic_bytes
+from komaquill.infrastructure.configuration import initialize
+from komaquill.infrastructure.stories.storage import FileStoryRepository
 from tests.support.stories import planned
 
 
 def legacy_story(project, session, client, count=2):
-    repository, plan = planned(project, count)
-    active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "pony", seed=7)
-    render_story(repository, project, client, active, render.render_id)
-    locations = Locations(project)
+    # Construct source records separately; directory renames are not part of migration.
+    builder = initialize(project.root / "fixture-source").configured(project.settings())
+    repository, plan = planned(builder, count)
+    active = session.model_copy(update={"settings": builder.settings()})
+    render = create_render(repository, builder, active, plan.request.story_id, "pony", seed=7)
+    render_story(repository, builder, client, active, render.render_id)
+    render = repository.render(render.render_id)
     protected = {}
-    for run in project.repository.load():
-        old = project.runs / str(run.run_id)
-        old.parent.mkdir(parents=True, exist_ok=True)
-        source = locations.run(run.run_id)
-        assert source.resolve().is_relative_to(project.data.resolve())
-        assert old.resolve().is_relative_to(project.data.resolve())
-        source.replace(old)
+    for run in builder.repository.load():
+        target = project.runs / str(run.run_id)
+        source = builder.artifacts_store.path(f"runs/{run.run_id}/run.json").parent
+        for file in source.rglob("*"):
+            if file.is_file():
+                relative = file.relative_to(source)
+                content = file.read_bytes()
+                atomic_bytes(target / relative, content)
+                protected[(str(run.run_id), relative.as_posix())] = content
         for name in run.images:
-            physical = locations.artifact(f"runs/{run.run_id}/{name}")
-            target = old / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            physical.replace(target)
-        for path in old.rglob("*"):
-            if path.is_file():
-                protected[(str(run.run_id), path.relative_to(old).as_posix())] = path.read_bytes()
+            content = builder.artifacts_store.read(f"runs/{run.run_id}/{name}")
+            atomic_bytes(target / name, content)
+            protected[(str(run.run_id), name)] = content
     source = repository.folder(plan.request.story_id)
-    target = repository.root / str(plan.request.story_id)
-    assert source.resolve().is_relative_to(project.data.resolve())
-    assert target.resolve().is_relative_to(project.data.resolve())
-    source.replace(target)
-    locations.index_file.unlink()
+    target = FileStoryRepository(project).root / str(plan.request.story_id)
+    for file in source.rglob("*"):
+        if file.is_file() and not file.relative_to(source).as_posix().startswith("renders/"):
+            atomic_bytes(target / file.relative_to(source), file.read_bytes())
+    for file in source.glob("renders/*/render.json"):
+        atomic_bytes(target / file.relative_to(source), file.read_bytes())
     return plan, render, protected

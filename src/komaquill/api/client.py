@@ -4,8 +4,10 @@ from functools import cached_property
 from pathlib import Path
 from types import TracebackType
 
+from komaquill.api._errors import api_operation
 from komaquill.api.services import EvaluationService, ImageService, SessionService
 from komaquill.api.stories import StoryService
+from komaquill.domain.errors import ErrorCode, OperationStage
 from komaquill.domain.storage import MigrationReport
 from komaquill.infrastructure.configuration import find_project, initialize
 
@@ -14,13 +16,15 @@ class Client:
     """Share application services while keeping GPU ownership explicit."""
 
     def __init__(self, workspace: str | Path) -> None:
-        self._project = find_project(Path(workspace))
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            self._project = find_project(Path(workspace))
 
     @classmethod
     def initialize(cls, workspace: str | Path) -> "Client":
         """Create settings and storage without overwriting existing files."""
-        initialize(Path(workspace))
-        return cls(workspace)
+        with api_operation(OperationStage.PREPARATION, invalid=ErrorCode.INVALID_CONFIGURATION):
+            initialize(Path(workspace))
+            return cls(workspace)
 
     @property
     def workspace(self) -> Path:
@@ -58,7 +62,8 @@ class Client:
 
     def artifact_path(self, key: str) -> Path:
         """Resolve a portable key using the configured local storage adapter."""
-        return self._project.artifacts_store.path(key)
+        with api_operation(OperationStage.STORAGE):
+            return self._project.artifacts_store.path(key)
 
     def __enter__(self) -> "Client":
         return self

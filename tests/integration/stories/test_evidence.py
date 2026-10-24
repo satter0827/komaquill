@@ -1,7 +1,5 @@
-"""Keep local planning out of GPU execution and protect evidence boundaries."""
+"""Verify observations and story associations without rewriting source evidence."""
 
-import ast
-import inspect
 import json
 from datetime import datetime
 
@@ -9,32 +7,8 @@ import pytest
 
 from komaquill.application.stories.rendering import create_render, render_story
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import evaluations, provenance
-from komaquill.interfaces.cli import start
+from komaquill.infrastructure import evaluations
 from tests.support.stories import planned
-
-
-def test_story_resources_and_clients_are_local_only():
-    entries = dict(provenance.gpu_contents())
-    assert not any("/stories/" in name for name in entries)
-    for name, content in entries.items():
-        if not name.endswith(".py"):
-            continue
-        for node in ast.walk(ast.parse(content)):
-            names = (
-                [alias.name for alias in node.names]
-                if isinstance(node, ast.Import)
-                else [node.module or ""]
-                if isinstance(node, ast.ImportFrom)
-                else []
-            )
-            assert not any(
-                value.startswith(("langchain", "langsmith", "openai")) for value in names
-            )
-
-
-def test_start_only_opens_a_browser_when_explicitly_requested():
-    assert inspect.signature(start).parameters["open_browser"].default is False
 
 
 def test_export_has_observation_times_and_story_context(project, session, client):
@@ -74,3 +48,31 @@ def test_tampered_plan_is_not_used_for_association_export(project, session, clie
         from komaquill.application.stories.rendering import story_view
 
         story_view(repository, project, plan.request.story_id, render.render_id)
+
+
+def test_failed_fake_planning_remains_in_comparison_evidence(project):
+    import hashlib
+    from datetime import UTC
+    from uuid import UUID
+
+    from komaquill.api import Client
+    from tests.support.stories import source
+    from tests.support.story_evidence import planning_measurement
+
+    api = Client(project.root)
+    with pytest.raises(KomaquillError) as failure:
+        api.stories.plan(source() + " changed", llm_profile="fake")
+    identity = UUID(failure.value.details["story_id"])
+    result = planning_measurement(
+        api,
+        identity,
+        case_id="changed",
+        count="auto",
+        source_sha256=hashlib.sha256((source() + " changed").encode()).hexdigest(),
+        started_at=datetime.now(UTC).isoformat(),
+        elapsed_seconds=1,
+        failure=failure.value,
+    )
+    assert result["status"] == "failed" and result["calls"] == 1
+    assert result["total_tokens"] is None and result["actual_images"] is None
+    assert result["evidence"]["planning"]["attempts"][0]["failure"]["code"] == "fake_story_mismatch"

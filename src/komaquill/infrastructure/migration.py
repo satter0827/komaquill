@@ -12,6 +12,7 @@ from filelock import FileLock
 from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.models import ShutdownResult
 from komaquill.domain.workflow import digest
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
@@ -48,14 +49,41 @@ def checksum(path: Path) -> str:
 
 
 def stopped(project: Project) -> None:
-    """Reject migration without taking ownership of any provider resource."""
-    if alive(read_monitor(project)) or (project.state / "colab.json").exists():
+    """Allow catalog repair after confirmed shutdown without releasing ownership early."""
+    if alive(read_monitor(project)):
         raise KomaquillError(code="invalid_request", stage="storage", retryable=False)
+    ended = None
+    receipt = project.state / "colab.json"
+    if receipt.exists():
+        try:
+            owner = json.loads(receipt.read_bytes())
+            identity = UUID(owner["runtime_id"])
+            result = ShutdownResult.model_validate_json(
+                (project.logs / str(identity) / "shutdown.json").read_bytes()
+            )
+            observation = result.gpu_observation
+            if (
+                result.runtime_id != identity
+                or result.finished_at is None
+                or result.gpu != "stopped"
+                or result.connections != "ok"
+                or observation is None
+                or not observation.stopped
+                or observation.endpoint_id != owner.get("endpoint_id")
+                or observation.account_sha256 != owner.get("account_sha256")
+            ):
+                raise ValueError("Provider shutdown is not confirmed.")
+            ended = str(identity)
+        except (OSError, ValueError, KeyError, TypeError):
+            raise KomaquillError(code="invalid_request", stage="storage", retryable=False) from None
     paths = list(project.runs.glob("*/run.json")) + list(
         (project.data / "stories").glob("*/renders/*/runs/*/run.json")
     )
     for path in paths:
-        if json.loads(path.read_bytes())["state"] not in {"saved", "failed", "lost"}:
+        record = json.loads(path.read_bytes())
+        if record["state"] not in {"saved", "failed", "lost"} and not (
+            ended is not None and record.get("runtime_id") == ended
+        ):
             raise KomaquillError(code="invalid_request", stage="storage", retryable=False)
 
 

@@ -338,5 +338,11 @@
   "storage.migrate_preview": "Preview file moves without changing stored data.",
   "storage.migrate_result": "Storage {status}: {files} files, {logical_bytes} logical bytes.",
   "stories.refresh_help": "Rebuild readable story files from saved records.",
-  "error.publication_failed": "Readable files for story {story_id} could not be updated. Rebuild them with stories show {story_id} --refresh."
+  "error.publication_failed": "Readable files for story {story_id} could not be updated. Rebuild them with stories show {story_id} --refresh.",
+  "stories.catalog_heading": "# Stories",
+  "stories.plan_unavailable": "A completed plan is not available. Use stories export with the story ID to inspect planning evidence.",
+  "stories.list_help": "List saved works and their latest image results.",
+  "stories.catalog_row": "{story_id}  {title}  {state}  {saved}/{total}",
+  "stories.catalog_unreadable": "Story {story_id} could not be read. Inspect its records before retrying.",
+  "stories.planning_busy": "Another story plan is running in this workspace. Wait for it to finish and try again."
 }

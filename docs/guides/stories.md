@@ -10,7 +10,7 @@ UTF-8のストーリーファイルとLLM追加依存を使用します。ソー
 
 ```powershell
 komaquill start
-komaquill stories generate ./story.txt --images 4 --allow-real-llm
+komaquill stories generate ./story.txt --allow-real-llm
 ```
 
 既定は自動選択、初期対応は1〜8枚です。それぞれ異なる場面の主画像で、コマ枠や吹き出しは作りません。保存が完了した場面から、日本語の本文と画像の保存先を表示します。画像ビューアーやブラウザーは自動起動しません。
@@ -18,7 +18,7 @@ komaquill stories generate ./story.txt --images 4 --allow-real-llm
 generateは接続と画像用設定を事前確認し、利用できない場合はLLMを呼びません。GPUの起動前に計画を確認する場合は次の順で実行します。
 
 ```powershell
-komaquill stories plan ./story.txt --images 4 --allow-real-llm
+komaquill stories plan ./story.txt --allow-real-llm
 komaquill start
 komaquill stories render STORY_ID
 ```
@@ -35,13 +35,14 @@ komaquill stories resume RENDER_ID --retry-failed
 
 renderは計画を変えず、新しい生成試行を作ります。生成セット、場面ごとのseedと生成IDを保存します。別の生成セットを使う場合はstart時にも選択して準備してください。品質タグ、ネガティブプロンプト、画質設定は[生成セット](../current/presets.md)で管理し、LLMには生成させません。
 
-resumeは元の条件を維持し、保存済みの場面を再生成しません。受付不明の要求も自動再送しません。確定した失敗は通常は飛ばし、retry-failedを指定した場合だけ新しい要求として試します。起動済みセッションの生成セットが元と異なる場合は再開を拒否します。
+resumeは元の条件を維持し、保存済みの場面を再生成しません。受付不明の要求も自動再送しません。確定した失敗は通常は飛ばし、retry-failedを指定した場合だけ新しい要求として試します。必要なモデルと生成セットの互換性を確認し、再開では保存済みの条件を使用します。現在のステップ数など、無関係な既定値変更だけでは拒否しません。
 
 Ctrl+Cは次の場面の開始とCLIの待機を止め、終了コード130を返します。送信済みの1枚は監視が回収します。GPUの終了には別途stopを実行します。部分失敗は終了コード1を返して対象と再開方法を表示します。通信や保存の失敗では追加送信を止めます。
 
 ## 本文・画像・進捗を確認する
 
 ```powershell
+komaquill stories list
 komaquill stories show STORY_ID
 komaquill stories show STORY_ID --render-id RENDER_ID
 komaquill stories show STORY_ID --follow --json
@@ -79,9 +80,9 @@ require_model_match = true
 komaquill stories plan ./src/komaquill/resources/stories/examples/rainy-cat/source.md --llm-profile fake --images 4
 ```
 
-FakeListLLMはこのサンプルと対になった1〜8枚の応答を返します。任意ストーリーの理解結果には使えません。日常の品質ゲートはFakeと擬似ComfyUIで検証します。
+FakeListLLMはこのサンプルと対になった自動選択と固定1〜8枚の同梱応答を返します。任意ストーリーの理解結果には使えません。日常の品質ゲートはFakeと擬似ComfyUIで検証します。
 
-作品は.artifacts/data/stories/STORY_IDへ保存します。request.jsonが原文、planningが呼び出しごとのスキーマ・修正指示・可視出力、plan.jsonが不変の確定計画、rendersが生成試行です。原文と指示・出力は非公開の作品データとして保持します。
+作品は.artifacts/data/stories/作成日-元ファイル名-短縮IDへ保存します。request.jsonが原文、planningが呼び出しごとのスキーマ・修正指示・可視出力、plan.jsonが不変の確定計画、rendersが生成試行です。原文と指示・出力は非公開の作品データとして保持します。
 
 Fakeの用途はverificationです。実機検証でもKOMAQUILL_STORY_PURPOSE=verificationとKOMAQUILL_STORY_CASE_IDで用途を記録できます。[AI分析用出力](evaluations.md)には作品と生成の対応を含めます。
 
@@ -97,8 +98,11 @@ Fakeの用途はverificationです。実機検証でもKOMAQUILL_STORY_PURPOSE=v
 
 ## 作品フォルダーを開く
 
-保存先は`.artifacts/data/stories`です。作品フォルダーのREADMEから生成試行のstory.mdを開くと、本文と画像を場面順に確認できます。各試行のimagesには連番画像、runsには生成条件と履歴があります。再試行しても以前の画像を上書きしません。
+保存先は`.artifacts/data/stories`です。このフォルダーのREADMEに、計画未完了・計画済み・画像未完了・保存完了の作品を表示します。CLIでは`stories list`で同じ一覧を確認できます。作品フォルダーのREADMEから生成試行のstory.mdを開くと、本文と画像を場面順に確認できます。各試行のimagesには連番画像、runsには生成条件と履歴があります。再試行しても以前の画像を上書きしません。
 
 本文表示の再構築には`komaquill stories show STORY_ID --refresh`を使用します。画像や生成条件を再生成せず、保存済みの記録からMarkdownとmanifestを更新します。
 
 以前の配置から更新した作業場所では、セッションを停止して`komaquill migrate --dry-run`で移動対象を確認し、`komaquill migrate`を実行してください。中断した場合は同じコマンドで再開できます。作品・生成IDと画像・履歴の原本は保持します。
+
+
+原文、LLMによる本文の再構成、描画設定は別の情報です。外見と描く瞬間は画像のための提案であり、原文の事実として自動検証していません。exportのdata_rolesはこの区別を示します。supplementsはLLMが申告した補足なので、空でも「補足が存在しない」とは断定しません。内容を公開する前には原文と計画を確認してください。

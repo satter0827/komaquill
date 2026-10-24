@@ -39,3 +39,15 @@ Clientのコンテキストを終了してもGPUは停止しません。停止�
 操作失敗は`KomaquillError`のcode・stage・retryableで判断します。中断はKeyboardInterruptとして扱え、ストーリー操作では保存済みの作品・生成試行のIDを保持します。利用者への表示とプロセスの終了コードは呼び出し側で決めます。
 
 [CLIの操作](stories.md)と[保存の契約](../current/stories.md)も参照してください。
+
+
+## 一覧と分析用出力
+
+`client.stories.list()`は作品名・ID・枚数・保存状態を返し、読めない作品はunreadable_idsへ分けます。`client.stories.export(story_id)`は、原文、計画、呼び出し前の入力、成功・失敗の可視出力、使用量と生成との対応を返します。書き出しや外部AIへの送信は呼び出し側の明示操作で行います。
+
+`client.stories.refresh(story_id)`は保存済みの記録からREADME・story.md・manifestを再構築します。`client.migrate(dry_run=True)`は移動対象、`client.migrate()`は停止確認と検証を伴う移行・再開を行います。どちらもGPUを新規確保しません。
+
+公開型はkomaquill.apiから必要なものだけをimportします。内部実装のモジュールやファイル配置へ依存せず、画像には保存キーとartifact_pathを使用します。wheelにはpy.typedを含めているため、利用側の型チェックから型付き結果と逐次イベントを参照できます。
+
+
+比較対象は保存済み画像のある作品だけへ絞らず、一覧のunplannedも含めてexportします。計画がない場合はplanがNoneになり、成功・失敗の呼び出し記録はplanningへ残ります。使用量を集計するときは修正呼び出しと拒否した計画を含め、不明値をゼロへ置き換えません。

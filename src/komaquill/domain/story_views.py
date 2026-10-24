@@ -80,3 +80,23 @@ class StoryInterrupted(KeyboardInterrupt):
         super().__init__()
         self.story_id = story_id
         self.render_id = render_id
+
+
+class StorySummary(BaseModel):
+    """Describe a work without exposing its full source or provider configuration."""
+
+    story_id: UUID
+    title: str
+    created_at: datetime
+    requested_images: int | Literal["auto"]
+    image_count: int | None
+    render_id: UUID | None
+    saved_images: int
+    state: Literal["unplanned", "planned", "incomplete", "complete"]
+    purpose: str
+    case_id: str | None
+
+
+class StoryListing(BaseModel):
+    stories: list[StorySummary]
+    unreadable_ids: list[UUID]

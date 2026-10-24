@@ -4,7 +4,9 @@ import json
 from contextlib import contextmanager
 from uuid import uuid4
 
-from komaquill.api import Client, StorySnapshot, services, stories
+import pytest
+
+from komaquill.api import Client, Evaluation, StorySnapshot, services, stories
 from komaquill.infrastructure.diagnostics import operation_scope, record_event
 from tests.support.stories import source
 
@@ -59,6 +61,11 @@ def test_python_image_and_evaluation_services_use_common_records(
     assert run.state == "saved"
     assert api.images.collect(run.run_id).errors == ()
     assert api.evaluations.list() == []
+    record = Evaluation(
+        run_id=run.run_id, criterion="clarity", reason="One clear subject.", decision="accept"
+    )
+    assert api.evaluations.add([record]) == [record]
+    assert api.evaluations.list(run.run_id)[0].evaluation_id == record.evaluation_id
     assert api.evaluations.export(run.run_id)["runs"][0]["run"]["run_id"] == str(run.run_id)
 
 
@@ -116,3 +123,73 @@ def test_import_is_quiet_and_does_not_load_optional_clients(tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stdout == result.stderr == ""
     assert list(tmp_path.iterdir()) == []
+
+
+def test_child_operation_id_preserves_an_explicit_operation(project, monkeypatch):
+    child = uuid4()
+    monkeypatch.setenv("KOMAQUILL_OPERATION_ID", str(child))
+    record_event(project, "setup", "started")
+    with operation_scope() as current:
+        record_event(project, "story_planning", "started")
+    monkeypatch.setenv("KOMAQUILL_OPERATION_ID", "invalid-private-value")
+    record_event(project, "setup", "failed")
+    events = [json.loads(row) for row in (project.logs / "cli.jsonl").read_text().splitlines()]
+    assert [row["operation_id"] for row in events] == [str(child), str(current), None]
+
+
+def test_public_reads_and_invalid_configuration_use_typed_safe_failures(project):
+    from komaquill.api import ErrorCode, KomaquillError
+
+    api = Client(project.root)
+    with pytest.raises(KomaquillError) as missing:
+        api.stories.show(uuid4())
+    assert missing.value.code == ErrorCode.REQUEST_NOT_FOUND
+    assert missing.value.retryable is False
+    (project.root / "komaquill.toml").write_text("invalid [")
+    with pytest.raises(KomaquillError) as invalid:
+        api.stories.plan("private source", llm_profile="fake")
+    assert invalid.value.code == ErrorCode.INVALID_CONFIGURATION
+    assert "private source" not in str(invalid.value)
+
+
+def test_story_follow_does_not_reload_configuration(project, session, client, monkeypatch):
+    active = session.model_copy(update={"settings": project.settings()})
+
+    @contextmanager
+    def connect(_):
+        yield client, active
+
+    monkeypatch.setattr(stories, "connected", connect)
+    intervals = []
+    monkeypatch.setattr(stories.time, "sleep", intervals.append)
+    api = Client(project.root)
+    plan = api.stories.plan(source(), images=1, llm_profile="fake")
+    following = api.stories.follow(plan.request.story_id)
+    assert next(following).complete is False
+    assert list(api.stories.render(plan.request.story_id))[-1].snapshot.complete
+    (project.root / "komaquill.toml").write_text("invalid [")
+    assert next(following).complete
+    with pytest.raises(StopIteration):
+        next(following)
+    assert intervals == [0.001]
+
+
+def test_parallel_planning_reports_busy_before_calling_a_model(project, monkeypatch):
+    from komaquill.api import KomaquillError
+    from komaquill.infrastructure.stories.llm import serialized_planning
+
+    (project.root / "komaquill.toml").write_text("[story]\nrequest_timeout=0.01\n")
+    api = Client(project.root)
+    original = stories.planner
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("A busy workspace must not call the model")
+
+    monkeypatch.setattr(stories, "planner", forbidden)
+    with serialized_planning(project, 1), pytest.raises(KomaquillError) as error:
+        api.stories.plan(source(), llm_profile="fake")
+    assert error.value.code == "operation_failed" and error.value.retryable
+    assert error.value.details["reason"] == "planning_busy"
+    assert not list((project.data / "stories").glob("*/request.json"))
+    monkeypatch.setattr(stories, "planner", original)
+    assert api.stories.plan(source(), llm_profile="fake").scenes

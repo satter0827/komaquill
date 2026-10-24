@@ -14,6 +14,7 @@ import pytest
 from PIL import Image
 from typer.testing import CliRunner
 
+from komaquill.api import services
 from komaquill.application.generation import collect, generate, generation_times, new_run
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import ShutdownResult
@@ -262,7 +263,9 @@ def test_status_uses_saved_settings_even_if_configuration_is_invalid(project, se
     atomic_json(project.session_file, session.model_dump(mode="json"))
     (project.root / "komaquill.toml").write_text("invalid [")
     monkeypatch.setattr(
-        cli.inspection, "connected", lambda _: (_ for _ in ()).throw(KomaquillError("disconnected"))
+        services.inspection,
+        "connected",
+        lambda _: (_ for _ in ()).throw(KomaquillError("disconnected")),
     )
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0, result.output

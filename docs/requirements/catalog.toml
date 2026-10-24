@@ -40,7 +40,7 @@ summary = "ストーリーから自動または指定枚数の場面を計画し
 status = "implemented"
 acceptance = ["1〜8場面の計画全体を検証する", "本文・原文参照・補足と画像を関連付ける", "計画と試行を分けて再生成・再開する", "実LLMを明示許可し日常ゲートではFakeを使う", "保存済み場面を重複生成せず部分失敗を報告する"]
 sources = ["src/komaquill/domain/stories.py", "src/komaquill/application/stories/planning.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/infrastructure/stories/llm.py", "src/komaquill/infrastructure/stories/storage.py", "src/komaquill/interfaces/stories.py"]
-tests = ["tests/unit/test_story_automatic.py", "tests/unit/test_story_planning.py", "tests/unit/test_story_rendering.py", "tests/integration/test_story_cli.py", "tests/integration/test_story_llm.py", "tests/unit/test_story_structure.py"]
+tests = ["tests/unit/stories/test_automatic.py", "tests/unit/stories/test_planning.py", "tests/unit/stories/test_rendering.py", "tests/integration/stories/test_cli.py", "tests/integration/stories/test_llm.py", "tests/structure/test_stories.py"]
 
 [requirements.REQ-SESSION]
 summary = "端末終了後も一つの監視で接続と回収を維持する"
@@ -96,4 +96,4 @@ summary = "作品内で本文と画像を順番に閲覧し既存データを保
 status = "implemented"
 acceptance = ["画像の正本を作品内へ集約する", "移行中断後に再開し原本を照合する", "配置表を記録から再構築する", "閲覧用出力の失敗を画像保存と分ける"]
 sources = ["src/komaquill/infrastructure/locations.py", "src/komaquill/infrastructure/migration.py", "src/komaquill/infrastructure/stories/publication.py"]
-tests = ["tests/integration/test_story_storage.py"]
+tests = ["tests/integration/stories/test_storage.py"]

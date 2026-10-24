@@ -80,6 +80,7 @@ class ImageMetadata(BaseModel):
 class Run(BaseModel):
     """Retain generation conditions for collection after reconnecting."""
 
+    format_version: int = 2
     run_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     runtime_id: UUID
@@ -93,6 +94,7 @@ class Run(BaseModel):
     comfy_revision: str | None
     frontend_version: str | None
     model_sha256: str | None
+    input_sha256: dict[str, str] = Field(default_factory=dict)
     asset_sha256: dict[str, str] = Field(default_factory=dict)
     workflow_sha256: str
     images: list[str] = Field(default_factory=list)
@@ -133,6 +135,9 @@ class ShutdownResult(BaseModel):
     finished_at: datetime | None = None
     force: bool
     collection: str = "skipped"
+    materials: str = "skipped"
+    pending_materials: list[str] = Field(default_factory=list)
+    lost_materials: list[str] = Field(default_factory=list)
     logs: str = "skipped"
     gpu: str = "unknown"
     gpu_observation: RuntimeObservation | None = None

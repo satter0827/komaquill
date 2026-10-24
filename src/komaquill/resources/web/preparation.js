@@ -1,7 +1,10 @@
 // Keep preparation state handling independent of ComfyUI and the DOM.
 export const terminal = new Set(["ready", "failed", "cancelled"]);
+const capacity = new Intl.NumberFormat("en-US", {
+  style: "unit", unit: "byte", unitDisplay: "long", maximumFractionDigits: 0
+});
 export function assetRows(job, unknown) {
-  return job.assets.map((asset) => [asset.filename, asset.size_bytes ?? unknown,
+  return job.assets.map((asset) => [asset.filename, asset.size_bytes == null ? unknown : capacity.format(asset.size_bytes),
     asset.url || asset.repo_id, job.reused.includes(`${asset.sha256}/${asset.filename}`)].join(" | "));
 }
 export async function prepareWorkflow({request, workflow, confirm, status, text, sleep}) {
@@ -25,4 +28,15 @@ export async function prepareWorkflow({request, workflow, confirm, status, text,
     if (!next) throw new Error("request_not_found");
     job = next;
   }
+}
+
+export async function applyPreparedModels(app, job) {
+  await app.refreshComboInNodes();
+  for (const node of app.graph._nodes) {
+    const references = job.node_models?.[String(node.id)] || {};
+    for (const widget of node.widgets || []) {
+      if (Object.hasOwn(references, widget.value)) widget.value = references[widget.value];
+    }
+  }
+  if (app.refreshMissingModels) await app.refreshMissingModels({silent: true, reloadDefs: false});
 }

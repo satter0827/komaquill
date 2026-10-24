@@ -15,6 +15,7 @@ import httpx
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
+from komaquill.domain.presets import MODEL_ROLES
 from komaquill.gpu.progress import progress
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.downloads import fetch_model
@@ -54,14 +55,12 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
         "import os\nfrom pathlib import Path\n"
         "from server import PromptServer\n"
         "from komaquill.gpu.extension import register\n"
-        "NODE_CLASS_MAPPINGS = {}\nWEB_DIRECTORY = './web'\n"
+        "from importlib.resources import files\n"
+        "NODE_CLASS_MAPPINGS = {}\n"
+        "WEB_DIRECTORY = str(files('komaquill').joinpath('resources/web'))\n"
         "register(PromptServer.instance, Path(os.environ['KOMAQUILL_ARTIFACTS']), "
         "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']))\n"
     )
-    web = extension / "web"
-    web.mkdir(exist_ok=True)
-    for name in ("extension.js", "preparation.mjs"):
-        (web / name).write_bytes(files("komaquill").joinpath("resources/web", name).read_bytes())
     os.environ["KOMAQUILL_ARTIFACTS"] = str(project.artifacts)
     os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
     settings = project.settings()
@@ -76,21 +75,7 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     paths = {
         "managed": {
             "base_path": str(project.artifacts / "models"),
-            **{
-                role: role
-                for role in (
-                    "checkpoints",
-                    "loras",
-                    "upscale_models",
-                    "diffusion_models",
-                    "text_encoders",
-                    "vae",
-                    "controlnet",
-                    "clip_vision",
-                    "embeddings",
-                    "style_models",
-                )
-            },
+            **{role: role for role in MODEL_ROLES},
         }
     }
     for asset in assets(settings):

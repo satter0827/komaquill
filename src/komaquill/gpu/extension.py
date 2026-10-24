@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import hmac
+import importlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -13,6 +14,8 @@ from filelock import FileLock
 
 from komaquill.domain.assets import PREPARATION_TERMINAL, PROTOCOL_VERSION, Preparation
 from komaquill.domain.errors import KomaquillError, failure_info
+from komaquill.domain.presets import MODEL_ROLES
+from komaquill.gpu.preservation import Preservation
 from komaquill.infrastructure.asset_download import download_asset
 from komaquill.infrastructure.asset_store import (
     model_path,
@@ -35,6 +38,8 @@ class Extension:
         self.accepting = True
         self.workspace_id: UUID | None = None
         self.control_token: str | None = None
+        self.preservation: Preservation | None = None
+        self.ui_clients: set[str] = set()
 
     def path(self, identity: str | UUID) -> Path:
         """Constrain externally supplied identifiers before filesystem access."""
@@ -128,6 +133,9 @@ class Extension:
         return web.json_response(self.read(job.request_id).model_dump(mode="json"))
 
     async def capabilities(self, request: web.Request) -> web.Response:
+        client_id = request.query.get("client_id")
+        if client_id and len(client_id) <= 128:
+            self.ui_clients.add(client_id)
         return web.json_response(
             {
                 "protocol_version": PROTOCOL_VERSION,
@@ -176,6 +184,7 @@ class Extension:
                 identity,
                 phase="confirmation",
                 assets=data["assets"],
+                node_models=data.get("node_models", {}),
                 reused=data["reused"],
                 unsupported=data["unsupported"],
             )
@@ -206,6 +215,9 @@ class Extension:
             for path in self.folder.glob("*.json"):
                 if self.read(path.stem).phase not in PREPARATION_TERMINAL:
                     self.update(path.stem, phase="cancelled")
+        if not self.accepting and self.preservation is not None:
+            async with self.preservation.lock:
+                pass
         return web.json_response({"workspace_id": str(identity)})
 
     def authorized(self, request: web.Request) -> bool:
@@ -244,7 +256,14 @@ class Extension:
 def register(server: Any, root: Path, timeout: float) -> Extension:
     """Install on PromptServer before it freezes its routes."""
     extension = Extension(root, root, timeout)
+    folders = importlib.import_module("folder_paths")
+    for role in MODEL_ROLES:
+        destination = root / "models" / role
+        destination.mkdir(parents=True, exist_ok=True)
+        folders.add_model_folder_path(role, str(destination))
     for route in extension.routes():
         if isinstance(route, web.RouteDef):
             server.routes.route(route.method, route.path)(route.handler)
+    extension.preservation = Preservation(server, extension, Path(folders.get_input_directory()))
+    extension.preservation.install()
     return extension

@@ -47,6 +47,14 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                 content = json.dumps(history).encode()
             elif route == "/queue":
                 content = b'{"queue_running":[],"queue_pending":[]}'
+            elif route == "/object_info":
+                content = json.dumps(
+                    {
+                        "CheckpointLoaderSimple": {
+                            "input": {"required": {"ckpt_name": [["v6.safetensors"]]}}
+                        }
+                    }
+                ).encode()
             elif route == "/system_stats":
                 content = b'{"devices":[{"type":"cuda"}]}'
             else:

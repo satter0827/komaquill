@@ -27,6 +27,7 @@ class Preparation(BaseModel):
     ] = "requested"
     workflow: dict[str, Any]
     assets: list[ModelPreset] = Field(default_factory=list)
+    node_models: dict[str, dict[str, str]] = Field(default_factory=dict)
     unsupported: list[str] = Field(default_factory=list)
     reused: list[str] = Field(default_factory=list)
     current_asset: str | None = None
@@ -45,5 +46,5 @@ def workflow_models(workflow: dict[str, Any]) -> list[dict[str, Any]]:
         values = node.get("widgets_values", [])
         for model in node.get("properties", {}).get("models", []):
             if isinstance(model, dict) and model.get("name") in values:
-                result.append(model)
+                result.append({**model, "node_id": str(node.get("id", ""))})
     return result

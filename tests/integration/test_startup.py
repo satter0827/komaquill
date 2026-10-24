@@ -19,7 +19,15 @@ from tests.support.provider import stopped as confirmed_stop
 
 @pytest.mark.parametrize(
     "case",
-    ["new", "existing", "retry", "startup_failure", "allocation_failure", "diagnostics_failure"],
+    [
+        "new",
+        "existing",
+        "retry",
+        "startup_failure",
+        "allocation_failure",
+        "diagnostics_failure",
+        "simultaneous_failure",
+    ],
 )
 def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     project, session, client, monkeypatch, case
@@ -79,9 +87,20 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         return True
 
     monkeypatch.setattr(runtime, "watch", watch)
-    if case == "diagnostics_failure":
+    if case == "simultaneous_failure":
+
+        def fail_progress(_):
+            raise PermissionError("private-path")
+
+        monkeypatch.setattr(runtime, "PROGRESS_POLL_SECONDS", 0)
+        monkeypatch.setattr(control, "progress", fail_progress)
+        monkeypatch.setattr(control, "recover_diagnostics", lambda _: ("comfy.log",))
+    elif case == "diagnostics_failure":
         monkeypatch.setattr(runtime, "record_event", lambda *args, **kwargs: False)
-    if case in {"startup_failure", "allocation_failure", "diagnostics_failure"}:
+    if case == "simultaneous_failure":
+        with pytest.raises(PermissionError):
+            runtime.start_colab(project, lambda _: None)
+    elif case in {"startup_failure", "allocation_failure", "diagnostics_failure"}:
         with pytest.raises(KomaquillError):
             runtime.start_colab(project, lambda _: None)
     else:
@@ -219,3 +238,28 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
     result = CliRunner().invoke(cli.app, arguments)
     assert result.exit_code == 0, result.output
     assert calls == ["connected"]
+
+
+@pytest.mark.parametrize("primary", [False, True])
+def test_external_cleanup_reports_failure_without_replacing_an_existing_error(
+    project, client, monkeypatch, primary
+):
+    monkeypatch.setattr(runtime, "ComfyClient", lambda *a, **k: client)
+    monkeypatch.setattr(client, "close", lambda: None)
+    calls = []
+
+    def supervise(*args):
+        if primary:
+            raise KomaquillError(code="storage_failed")
+        return True
+
+    def finish(*args):
+        calls.append("finish")
+        raise KomaquillError(code="collection_failed")
+
+    monkeypatch.setattr(runtime, "supervise", supervise)
+    monkeypatch.setattr(runtime, "finish_external", finish)
+    with pytest.raises(KomaquillError) as error:
+        runtime.start_external(project, "http://127.0.0.1:18188", None, None, lambda _: None)
+    assert error.value.code == ("storage_failed" if primary else "collection_failed")
+    assert calls == ["finish"]

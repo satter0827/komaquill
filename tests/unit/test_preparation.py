@@ -154,7 +154,7 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
     workflow.write_text('{"nodes":[]}')
     client = Client()
     job = client.job
-    job.assets = [asset()]
+    job.assets = [asset().model_copy(update={"size_bytes": 5})]
     job.phase = "confirmation"
     job.unsupported = ["unknown"] if case == "unsupported" else []
     monkeypatch.setattr(module, "capabilities", lambda _: case != "no_extension")
@@ -179,7 +179,9 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
 
     monkeypatch.setattr(module.time, "sleep", sleep)
     if case == "ready":
-        module.prepare_workflow(project, client, workflow, lambda _: None, lambda _: True)
+        output = []
+        module.prepare_workflow(project, client, workflow, output.append, lambda _: True)
+        assert any("5 bytes" in line for line in output)
     else:
         with pytest.raises((KomaquillError, KeyboardInterrupt)):
             module.prepare_workflow(
@@ -209,3 +211,51 @@ def test_managed_start_requires_a_functioning_extension(monkeypatch, available):
         with pytest.raises(KomaquillError) as error:
             module.verify_extension(None)
         assert error.value.code == "extension_unavailable" and not error.value.retryable
+
+
+def test_registered_model_plan_uses_verified_local_capacity(coordinator, monkeypatch):
+    from komaquill.infrastructure.asset_store import model_path, register
+
+    control, client = coordinator
+    model = asset()
+    target = model_path(control.project.artifacts, model)
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"model")
+    register(control.project.artifacts, model, target)
+    monkeypatch.setattr(module, "requirements", lambda *a: ([], [model.reference]))
+    control.plan(client.job)
+    plan = client.calls[-1][1]
+    assert plan["assets"][0]["size_bytes"] == 5
+    assert plan["reused"] == [model.reference]
+
+
+@pytest.mark.parametrize("same_node", [False, True])
+def test_same_filenames_bind_to_each_nodes_confirmed_source(coordinator, monkeypatch, same_node):
+    control, client = coordinator
+    hints = [
+        {"node_id": "1", "name": "model.safetensors", "directory": "checkpoints", "url": "first"},
+        {
+            "node_id": "1" if same_node else "2",
+            "name": "model.safetensors",
+            "directory": "checkpoints",
+            "url": "second",
+        },
+    ]
+    monkeypatch.setattr(module, "requirements", lambda *a: (hints, []))
+    first, second = asset(b"first"), asset(b"second")
+    monkeypatch.setattr(
+        module,
+        "resolve_model",
+        lambda name, role, url, timeout: first if url == "first" else second,
+    )
+    control.plan(client.job)
+    plan = client.calls[-1][1]
+    assert len(plan["assets"]) == 2
+    if same_node:
+        assert plan["unsupported"] == ["model.safetensors"]
+    else:
+        assert not plan["unsupported"]
+        assert plan["node_models"] == {
+            "1": {"model.safetensors": first.reference},
+            "2": {"model.safetensors": second.reference},
+        }

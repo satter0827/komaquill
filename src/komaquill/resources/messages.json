@@ -231,7 +231,7 @@
   "monitor.foreground_help": "Keep the monitor in this terminal for troubleshooting.",
   "monitor.logs_help": "Display session state changes and safe failure details.",
   "monitor.follow_help": "Continue displaying new log events.",
-  "monitor.log": "{at} {operation}: {result} {identity}",
+  "monitor.log": "{at} {operation}: {result} {identity} {failure}",
   "monitor.status": "Monitor phase: {phase} / Last observed: {observed}",
   "error.unsupported_asset": "This model cannot be prepared automatically. Use a public Hugging Face or Civitai safetensors file with a verified SHA256 and installed standard nodes.",
   "error.extension_unavailable": "Workflow preparation requires the Komaquill extension on the connected ComfyUI server. Standard generation and collection remain available.",
@@ -252,5 +252,11 @@
   "ui.generated": "Generation complete",
   "ui.retry": "Collection required",
   "ui.unavailable": "Local monitor is unavailable. Run start to resume preservation.",
-  "ui.cancel": "Cancel Preparation"
+  "ui.cancel": "Cancel Preparation",
+  "materials.lost": "Materials could not be preserved before the runtime ended: {identities}. Restore them from their source files before retrying.",
+  "materials.status": "Unpreserved materials: {count}",
+  "assets.status": "Model preparations awaiting completion: {count}",
+  "materials.shutdown": "Materials: {result}",
+  "quality.source_changed": "Source files changed during verification. Run the checks again before using this result.",
+  "assets.capacity": "{size_bytes:,} bytes"
 }

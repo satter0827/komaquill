@@ -24,6 +24,8 @@ class ShutdownActions:
     release: Callable[[], None]
     display: Callable[[ShutdownResult], None]
     forced: Callable[[], bool]
+    preserve: Callable[[], tuple[str, ...] | None] = lambda: None
+    finalize_materials: Callable[[], tuple[str, ...]] = lambda: ()
 
 
 def shutdown(
@@ -53,6 +55,16 @@ def shutdown(
     except (Exception, KeyboardInterrupt) as error:
         result.collection = "failed"
         failed("collection", error)
+    try:
+        pending_materials = actions.preserve()
+        if pending_materials is not None:
+            result.pending_materials = list(pending_materials)
+            result.materials = "incomplete" if pending_materials else "ok"
+            if pending_materials:
+                failed("storage", KomaquillError(code="collection_failed"), fatal=False)
+    except (Exception, KeyboardInterrupt) as error:
+        result.materials = "failed"
+        failed("storage", error, fatal=False)
     try:
         missing = actions.logs()
         result.logs = "failed" if missing else "ok"
@@ -84,6 +96,7 @@ def shutdown(
     if result.gpu == "stopped":
         try:
             result.lost_ids = list(actions.finalize())
+            result.lost_materials = list(actions.finalize_materials())
             result.history = "ok"
             if result.lost_ids:
                 result.collection = "incomplete"

@@ -39,6 +39,8 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
             assert (
                 await client.post("/komaquill/v1/requests", json={"workflow": {}})
             ).status == 409
+            await client.get("/komaquill/v1/capabilities?client_id=ui")
+            assert extension.ui_clients == {"ui"}
             workspace = str(uuid4())
             token = {"X-Komaquill-Control": "a" * 40}
             assert (
@@ -132,10 +134,22 @@ def test_preparation_terminal_states_are_monotonic(project, monkeypatch, case):
     asyncio.run(scenario())
 
 
-def test_register_uses_existing_promptserver_routes(project):
-    server = SimpleNamespace(routes=web.RouteTableDef())
+def test_register_uses_existing_promptserver_routes(project, monkeypatch):
+    monkeypatch.setattr(
+        module.importlib,
+        "import_module",
+        lambda _: SimpleNamespace(
+            add_model_folder_path=lambda *a: None,
+            get_input_directory=lambda: str(project.artifacts / "input"),
+        ),
+    )
+    server = SimpleNamespace(
+        routes=web.RouteTableDef(),
+        app=web.Application(),
+        add_on_prompt_handler=lambda handler: None,
+    )
     module.register(server, project.artifacts, 1)
-    assert len(server.routes) == 6
+    assert len(server.routes) == 10
 
 
 @pytest.mark.parametrize(

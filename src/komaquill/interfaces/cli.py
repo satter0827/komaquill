@@ -4,7 +4,7 @@ import secrets
 import subprocess
 import tomllib
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated, Literal
@@ -16,7 +16,9 @@ from filelock import Timeout
 from pydantic import ValidationError
 
 from komaquill.application.generation import Collection, collect, generate, verify_runtime
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.assets import Preparation
+from komaquill.domain.errors import FailureInfo, KomaquillError
+from komaquill.domain.materials import Material
 from komaquill.domain.models import Session
 from komaquill.infrastructure import runtime as runtime
 from komaquill.infrastructure import supervisor
@@ -24,7 +26,9 @@ from komaquill.infrastructure.colab import Colab
 from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.monitor_state import alive, read_monitor
+from komaquill.infrastructure.preparation import capabilities
 from komaquill.infrastructure.runtime import connected
 from komaquill.infrastructure.storage import load_runs, load_session, run_dir
 from komaquill.infrastructure.views import open_view
@@ -243,7 +247,17 @@ def collect_command(
 ) -> None:
     """Collect completed images and generation conditions."""
     with operation(ctx) as project, connected(project) as (client, session):
-        report(collect(project, client, session, run_id))
+        result = collect(project, client, session, run_id)
+        if capabilities(client):
+            material_errors = MaterialCollector(project, client).collect()
+            result = Collection(
+                result.saved,
+                result.pending,
+                result.failed,
+                (*result.errors, *material_errors),
+                result.pending_ids,
+            )
+        report(result)
 
 
 @app.command("open", help=message("text.open_a_comfyui_view_in_the_browser"))
@@ -373,6 +387,17 @@ def status(ctx: typer.Context) -> None:
                     observed=monitor.observed_at.isoformat(),
                 )
             )
+        preparation_count = sum(
+            Preparation.model_validate_json(path.read_bytes()).phase
+            not in {"ready", "cancelled", "failed"}
+            for path in (project.state / "preparation").glob("*.json")
+        )
+        material_count = sum(
+            Material.model_validate_json(path.read_bytes()).state == "pending"
+            for path in (project.state / "preservation").glob("*.json")
+        )
+        typer.echo(message("assets.status", count=preparation_count))
+        typer.echo(message("materials.status", count=material_count))
         pending = [str(run.run_id) for run in load_runs(project) if run.pending]
         typer.echo(message("text.pending_pending_count", pending_count=len(pending)))
         lost = [str(run.run_id) for run in load_runs(project) if run.state == "lost"]
@@ -403,6 +428,10 @@ def logs_command(
     with operation(ctx) as project:
         try:
             for event in supervisor.events(project, follow):
+                failure = None
+                if isinstance(event.get("failure"), dict):
+                    with suppress(ValidationError):
+                        failure = FailureInfo.model_validate(event["failure"])
                 typer.echo(
                     message(
                         "monitor.log",
@@ -410,6 +439,7 @@ def logs_command(
                         operation=event.get("operation", "-"),
                         result=event.get("result", "-"),
                         identity=event.get("run_id") or event.get("asset") or "",
+                        failure=f"{failure.code}/{failure.stage}" if failure else "",
                     )
                 )
         except KeyboardInterrupt:

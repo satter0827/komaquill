@@ -285,3 +285,34 @@ def test_cached_state_cannot_redirect_or_block_owned_provider_shutdown(
     assert control.stop().stopped
     assert calls == ["expected"]
     assert control.receipt_file.exists()
+
+
+@pytest.mark.parametrize("remote_missing", [True, False])
+def test_download_distinguishes_sdk_remote_404_from_local_missing_directory(
+    provider, monkeypatch, remote_missing
+):
+    import errno
+
+    _, _, _, receipt = provider
+    missing = (
+        FileNotFoundError("private-remote-path")
+        if remote_missing
+        else FileNotFoundError(errno.ENOENT, "private-message", "private-local-path")
+    )
+
+    def download(*args):
+        raise missing
+
+    monkeypatch.setattr(bridge, "session_state", lambda *a: object())
+    monkeypatch.setattr(
+        bridge.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(
+            ContentsClient=lambda state: SimpleNamespace(download=download)
+        ),
+    )
+    with pytest.raises(KomaquillError if remote_missing else FileNotFoundError) as error:
+        bridge.execute("download", receipt, "remote", "local")
+    if remote_missing:
+        assert error.value.code == "request_not_found" and error.value.http_status == 404
+        assert "private-" not in str(error.value)

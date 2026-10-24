@@ -21,6 +21,7 @@ from komaquill.infrastructure.asset_store import inventory, model_path, verified
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.model_sources import resolve_model
 from komaquill.infrastructure.storage import atomic_json, load_session
 from komaquill.messages import message
@@ -65,6 +66,7 @@ class Coordinator:
             token = secrets.token_urlsafe(32)
             keyring.set_password("komaquill-extension", key, token)
         self.headers = {"X-Komaquill-Control": token}
+        self.materials = MaterialCollector(project, client, self.headers)
         self.client.request(
             "POST",
             PREFIX + "/monitor",
@@ -83,12 +85,19 @@ class Coordinator:
 
     def plan(self, job: Preparation) -> None:
         hints, unsupported = requirements(job.workflow, self.client.json("/object_info"))
+        registered = inventory(self.project.artifacts)
         assets = []
+        node_models: dict[str, dict[str, str]] = {}
+        for reference in list(unsupported):
+            matches = [m for m in registered if m.reference == reference]
+            if len(matches) == 1:
+                assets.append(matches[0])
+                unsupported.remove(reference)
         for hint in hints:
             try:
                 candidates = [
                     m
-                    for m in inventory(self.project.artifacts)
+                    for m in registered
                     if m.filename == hint["name"] and m.role == hint["directory"]
                 ]
                 asset = (
@@ -101,14 +110,28 @@ class Coordinator:
                         self.project.settings().request_timeout,
                     )
                 )
+                bindings = node_models.setdefault(str(hint.get("node_id", "")), {})
+                previous = bindings.get(hint["name"])
+                if previous is not None and previous != asset.reference:
+                    unsupported.append(hint["name"])
+                bindings[hint["name"]] = asset.reference
                 if asset not in assets:
                     assets.append(asset)
             except (KomaquillError, KeyError):
                 unsupported.append(str(hint.get("name", "unknown")))
+        assets = [
+            model.model_copy(
+                update={"size_bytes": model_path(self.project.artifacts, model).stat().st_size}
+            )
+            if model.size_bytes is None and verified_cache(self.project.artifacts, model)
+            else model
+            for model in assets
+        ]
         self.update(
             job,
             "plan",
             assets=[a.model_dump(mode="json") for a in assets],
+            node_models=node_models,
             unsupported=sorted(set(unsupported)),
             reused=[a.reference for a in assets if verified_cache(self.project.artifacts, a)],
         )
@@ -248,7 +271,7 @@ def prepare_workflow(
                         message(
                             "assets.row",
                             name=asset.filename,
-                            size=str(asset.size_bytes)
+                            size=message("assets.capacity", size_bytes=asset.size_bytes)
                             if asset.size_bytes is not None
                             else message("ui.unknown_size"),
                             source=asset.url or asset.repo_id,

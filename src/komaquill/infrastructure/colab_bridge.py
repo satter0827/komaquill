@@ -103,7 +103,15 @@ def execute(action: str, receipt: dict[str, Any], *arguments: str) -> RuntimeObs
             raise KomaquillError(code="connection_failed")
     elif action == "download":
         contents = importlib.import_module("colab_cli.contents").ContentsClient(state)
-        contents.download(arguments[0], arguments[1])
+        try:
+            contents.download(arguments[0], arguments[1])
+        except FileNotFoundError as error:
+            # CLI 0.7.5 translates remote 404 into an exception without OS file metadata.
+            if error.errno is None and error.filename is None:
+                raise KomaquillError(
+                    code="request_not_found", stage="log_download", http_status=404
+                ) from None
+            raise
     else:
         raise KomaquillError(code="invalid_request")
     return observation

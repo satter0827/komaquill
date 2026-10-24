@@ -25,7 +25,7 @@ RESOURCE_NAMES = (
     "workflow-api.json",
     "pylock.worker.toml",
     "web/extension.js",
-    "web/preparation.mjs",
+    "web/preparation.js",
 )
 
 
@@ -80,6 +80,8 @@ GPU_MODULES = frozenset(
         "gpu/progress.py",
         "gpu/extension.py",
         "domain/assets.py",
+        "domain/materials.py",
+        "gpu/preservation.py",
         "infrastructure/asset_download.py",
         "infrastructure/asset_store.py",
         "gpu/worker.py",

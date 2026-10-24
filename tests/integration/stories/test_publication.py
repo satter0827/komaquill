@@ -1,5 +1,6 @@
 """Verify selective publication, external writers and restart reconstruction."""
 
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -134,3 +135,47 @@ def test_only_changed_story_is_published(project, session, client, monkeypatch):
     tracker.tick(collect(project, client, first[3]).observed_versions)
     assert calls == [(first[1].request.story_id, first[2].render_id)]
     assert second[2].render_id not in [call[1] for call in calls]
+
+
+def test_association_failure_and_recovery_keep_request_identity(project, monkeypatch):
+    tracker = publication.PublicationTracker(project)
+    run_id = uuid4()
+    monkeypatch.setattr(
+        tracker.repository,
+        "render_for_run",
+        lambda identity: (_ for _ in ()).throw(OSError("private-association-error")),
+    )
+    assert tracker.tick(((run_id, "revision"),)) == (run_id,)
+    assert tracker.tick(((run_id, "revision"),)) == (run_id,)
+    monkeypatch.setattr(tracker.repository, "render_for_run", lambda identity: None)
+    assert tracker.tick(()) == ()
+    before = (project.logs / "cli.jsonl").read_bytes()
+    assert tracker.tick(()) == ()
+    assert (project.logs / "cli.jsonl").read_bytes() == before
+    events = [json.loads(line) for line in before.splitlines()]
+    assert [event["result"] for event in events] == ["failed", "recovered"]
+    assert all(event["run_id"] == str(run_id) and event["story_id"] is None for event in events)
+    assert "private-association-error" not in before.decode()
+
+
+def test_successful_render_does_not_clear_another_render_failure(project, monkeypatch):
+    tracker = publication.PublicationTracker(project)
+    story_id, failed_render, saved_render = uuid4(), uuid4(), uuid4()
+    tracker.pending.update({(story_id, failed_render), (story_id, saved_render)})
+
+    def publish(repository, workspace, identity, render_id):
+        if render_id == failed_render:
+            raise OSError("private-render-error")
+
+    monkeypatch.setattr(publication, "publish_story", publish)
+    monkeypatch.setattr(publication, "publish_catalog", lambda *args: None)
+    assert tracker.tick(()) == (story_id,)
+    before = (project.logs / "cli.jsonl").read_bytes()
+    assert tracker.tick(()) == (story_id,)
+    assert (project.logs / "cli.jsonl").read_bytes() == before
+    monkeypatch.setattr(publication, "publish_story", lambda *args: None)
+    assert tracker.tick(()) == ()
+    events = [json.loads(line) for line in (project.logs / "cli.jsonl").read_bytes().splitlines()]
+    assert [event["result"] for event in events] == ["failed", "recovered"]
+    assert all(event["story_id"] == str(story_id) for event in events)
+    assert all(event["render_id"] == str(failed_render) for event in events)

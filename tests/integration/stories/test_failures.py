@@ -100,3 +100,70 @@ def test_diagnostics_preserve_origin_stage_and_use_context_only_as_default():
     explicit = KomaquillError(code="image_invalid", stage="image_validation")
     assert failure_info(explicit, "collection").stage == "image_validation"
     assert failure_info(KomaquillError(), "collection").stage == "collection"
+
+
+def test_missing_recorded_history_cannot_trigger_a_second_request(
+    project, session, client, stub, monkeypatch
+):
+    active = session.model_copy(update={"settings": project.settings()})
+
+    @contextmanager
+    def connection(_):
+        yield client, active
+
+    monkeypatch.setattr(stories, "connected", connection)
+    api = Client(project.root)
+    snapshot = list(api.stories.generate(source(), images=1, llm_profile="fake"))[-1].snapshot
+    path = api.artifact_path(f"runs/{snapshot.scenes[0].run_id}/run.json")
+    path.unlink()
+    with pytest.raises(KomaquillError) as error:
+        list(api.stories.resume(snapshot.render_id))
+    assert error.value.code == "storage_failed"
+    assert stub.submissions == 1
+
+
+def test_keyring_adapter_never_constructs_a_model_after_credential_failure(project, monkeypatch):
+    from komaquill.infrastructure.stories import llm
+    from komaquill.infrastructure.stories.configuration import settings
+
+    options = settings(project)
+    profile = options.llm_profiles[options.llm_profile].model_copy(
+        update={"key_env": None, "credential_ref": "test"}
+    )
+    options = options.model_copy(update={"llm_profiles": {options.llm_profile: profile}})
+    monkeypatch.setattr(
+        llm.keyring,
+        "get_password",
+        lambda *a: (_ for _ in ()).throw(KeyringError("private-sentinel")),
+    )
+    with pytest.raises(KomaquillError) as result:
+        llm.planner(project, options, allow_real_llm=True)
+    assert result.value.code == "authentication_failed"
+    assert "private-sentinel" not in str(result.value)
+
+
+def test_finished_event_and_saved_log_are_not_repeated_on_resume(
+    project, session, client, monkeypatch
+):
+    import json
+
+    active = session.model_copy(update={"settings": project.settings()})
+
+    @contextmanager
+    def connection(_):
+        yield client, active
+
+    monkeypatch.setattr(stories, "connected", connection)
+    api = Client(project.root)
+    events = list(api.stories.generate(source(), images=1, llm_profile="fake"))
+    assert sum(event.kind == "finished" for event in events) == 1
+    render_id = events[-1].snapshot.render_id
+    assert len(list(api.stories.resume(render_id))) == 1
+    saved = [
+        json.loads(line)
+        for path in project.logs.rglob("*.jsonl")
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if json.loads(line).get("operation") == "generation"
+        and json.loads(line).get("result") == "saved"
+    ]
+    assert len(saved) == 1

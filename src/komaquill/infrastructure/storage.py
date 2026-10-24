@@ -21,7 +21,11 @@ from komaquill.infrastructure.paths import WorkspacePaths
 
 def run_dir(project: WorkspacePaths, run_id: UUID) -> Path:
     """Use a local UUID rather than a remote filename for directories."""
-    return Locations(project).register_run(run_id)
+    locations = Locations(project)
+    try:
+        return locations.run(run_id)
+    except FileNotFoundError:
+        return locations.register_run(run_id)
 
 
 def save_run(project: WorkspacePaths, run: Run) -> None:
@@ -136,17 +140,39 @@ class FileRunRepository:
     def __init__(self, project: WorkspacePaths) -> None:
         self.project = project
 
-    def lock(self) -> FileLock:
+    @contextmanager
+    def lock(self) -> Iterator[None]:
         self.project.state.mkdir(parents=True, exist_ok=True)
-        return FileLock(str(self.project.state / ".collection.lock"))
+        with (
+            FileLock(str(self.project.state / ".collection.lock")),
+            Locations(self.project).snapshot(fresh=True),
+        ):
+            yield
 
     def load(self, unreadable: list[UUID | str] | None = None) -> list[Run]:
         return load_runs(self.project, unreadable=unreadable)
 
     def read(self, run_id: UUID) -> Run:
-        run = Run.model_validate_json(
-            (Locations(self.project).run(run_id) / "run.json").read_bytes()
-        )
+        locations = Locations(self.project)
+        try:
+            run = Run.model_validate_json((locations.run(run_id) / "run.json").read_bytes())
+        except FileNotFoundError:
+            placement = locations.read().runs.get(run_id)
+            if placement is not None and placement.recorded:
+                raise KomaquillError(
+                    code="storage_failed",
+                    stage="storage",
+                    retryable=False,
+                    details={"run_id": str(run_id)},
+                ) from None
+            raise
+        except ValueError:
+            raise KomaquillError(
+                code="storage_failed",
+                stage="storage",
+                retryable=False,
+                details={"run_id": str(run_id)},
+            ) from None
         if run.run_id != run_id:
             raise KomaquillError(code="identity_mismatch", stage="storage")
         return run

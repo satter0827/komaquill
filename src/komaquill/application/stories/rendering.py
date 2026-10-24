@@ -10,7 +10,7 @@ from komaquill.application.generation import submit_generation, wait_generation
 from komaquill.application.ports import GenerationBackend, Workspace
 from komaquill.application.stories.ports import StoryRepository
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.models import JsonObject, Run, Session
+from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject, Run, Session
 from komaquill.domain.stories import SceneAttempts, StoryPlan, StoryRender, image_prompt
 from komaquill.domain.workflow import digest
 
@@ -153,8 +153,7 @@ def story_view(
         "image_profile": render.image_profile if render else None,
         "updated_at": max(updated).isoformat(),
         "complete": counts.get("saved", 0) == len(plan.scenes),
-        "finished": sum(counts.get(state, 0) for state in ("saved", "failed", "lost"))
-        == len(plan.scenes),
+        "finished": sum(counts.get(state, 0) for state in TERMINAL_RUN_STATES) == len(plan.scenes),
         "counts": counts,
         "scenes": scenes,
     }

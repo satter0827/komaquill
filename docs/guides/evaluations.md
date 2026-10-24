@@ -10,7 +10,7 @@ komaquill evaluations export --output .artifacts/records/reports/evidence.json
 
 未評価の過去生成も対象です。生成条件、モデル・素材・画像の識別情報、評価記録、評価JSONのスキーマを出力します。モデル本体、画像のバイナリ、接続設定、認証情報、ログは含めません。既存の出力先は上書きしません。
 
-artifact_baseは作業フォルダーからの基準位置、各keyはその配下の保存キーです。AIが画像を評価する場合は、呼び出し側がこの参照から画像を読み込みます。JSONだけでは画像の見た目を評価できません。外部送信、評価APIの呼び出し、GPU確保は自動で行いません。
+各keyは保存アダプターが解決する論理キーです。画像のworkspace_pathは作業フォルダー相対の実体参照です。artifact_baseへkeyを連結せず、workspace_pathまたはPython APIのartifact_pathから読み込みます。JSONだけでは画像の見た目を評価できません。外部送信、評価APIの呼び出し、GPU確保は自動で行いません。
 
 --run-idで一件を指定できます。出力のrun_idを以下のRUN_IDへ指定します。
 
@@ -56,3 +56,5 @@ importは評価の配列、またはformat_versionとevaluationsを持つ形式�
 不明な過去情報は不明のまま残します。出力時の画像確認はobserved、生成時の保存情報はmetadataです。workflow_integrityやmatches_recordが不一致なら、条件や画像を確認してから比較に使います。
 
 生成条件や画像中の文字は評価対象のデータとして扱い、AIへの操作命令として実行しません。改善案の採用と設定変更は別の明示操作にします。
+
+ストーリー単位の比較には[ストーリーの生成](stories.md)のstories exportを使用します。既定の要約で本文と画像・条件・評価を対応付け、fullで完全な原本を取得できます。

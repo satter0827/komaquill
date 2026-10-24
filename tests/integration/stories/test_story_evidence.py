@@ -147,3 +147,32 @@ def test_legacy_image_observations_do_not_backfill_history(project, session, cli
     image = evidence.runs[0].images[0]
     assert image.metadata is None and image.matches_record is None and image.observed.valid
     assert path.read_bytes() == before
+
+
+def test_reported_usage_is_aggregated_without_replacing_unknowns(project, monkeypatch):
+    from komaquill.domain.stories import PlanningResponse, TokenUsage
+
+    base = planner(project, settings(project, llm_profile="fake"), allow_real_llm=False)
+    response = (
+        files("komaquill")
+        .joinpath("resources/stories/examples/rainy-cat/plan-4.json")
+        .read_text(encoding="utf-8")
+    )
+    monkeypatch.setattr(
+        base,
+        "complete",
+        lambda *a: PlanningResponse(
+            content=response,
+            model="fake-list",
+            finish_reason="stop",
+            usage=TokenUsage(input_tokens=10, output_tokens=20, total_tokens=30),
+        ),
+    )
+    monkeypatch.setattr(stories, "planner", lambda *a, **k: base)
+    api = Client(project.root)
+    plan = api.stories.plan(source(), images=4, llm_profile="fake")
+    evidence = api.stories.export(plan.request.story_id)
+    assert evidence.planning.usage.total_tokens == 30
+    assert evidence.planning.usage.reasoning_tokens is None
+    assert evidence.planning.producer == plan.planner.app_identity
+    assert "total_tokens" not in evidence.planning.unknown_fields

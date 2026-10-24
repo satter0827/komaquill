@@ -190,6 +190,7 @@ class StoryService:
     def _events(
         self, backend: ComfyClient, session: Session, render_id: UUID, retry_failed: bool
     ) -> Iterator[StoryEvent]:
+        previous = None
         try:
             for value in render_events(
                 self._repository,
@@ -199,9 +200,12 @@ class StoryService:
                 render_id,
                 retry_failed=retry_failed,
             ):
+                snapshot = StorySnapshot.model_validate(value)
+                if snapshot == previous:
+                    continue
+                previous = snapshot
                 publish_story(self._repository, self._project, UUID(value["story_id"]), render_id)
                 publish_catalog(self._repository, self._project)
-                snapshot = StorySnapshot.model_validate(value)
                 yield StoryEvent(
                     kind="finished" if snapshot.finished else "progress", snapshot=snapshot
                 )

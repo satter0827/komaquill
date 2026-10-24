@@ -195,6 +195,8 @@ class Locations:
         return self.path(row.folder)
 
     def recorded(self, identity: UUID) -> None:
+        if self.read().runs[identity].recorded:
+            return
         with self.lock():
             index = self.read()
             row = index.runs[identity]

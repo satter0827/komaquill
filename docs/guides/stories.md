@@ -106,3 +106,26 @@ Fakeの用途はverificationです。実機検証でもKOMAQUILL_STORY_PURPOSE=v
 
 
 原文、LLMによる本文の再構成、描画設定は別の情報です。外見と描く瞬間は画像のための提案であり、原文の事実として自動検証していません。exportのdata_rolesはこの区別を示します。supplementsはLLMが申告した補足なので、空でも「補足が存在しない」とは断定しません。内容を公開する前には原文と計画を確認してください。
+
+## 比較用の要約と完全な記録
+
+```powershell
+komaquill stories export STORY_ID
+komaquill stories export STORY_ID --detail full
+komaquill stories export STORY_ID --render-id RENDER_ID --detail summary
+```
+
+既定のsummaryは原文、本文と画像の対応、生成条件、評価、使用量、失敗をJSONへまとめます。fullは指示・スキーマ・全応答・実行グラフをハッシュで参照する完全な記録を加えます。画像バイナリは含めません。ファイルへの保存は呼び出し側で標準出力を保存してください。
+
+画像と原本のworkspace_pathは作業フォルダー相対です。論理キーを物理パスへ連結しません。JSONだけで画像を見たことにはならないため、画質評価では参照先の画像も確認します。
+
+## 失敗した場面を確認する
+
+```powershell
+komaquill stories show STORY_ID --follow --json
+komaquill stories resume RENDER_ID --retry-failed
+```
+
+followは失敗・回収不能を含む終端でも終了します。失敗した要求IDと再開方法を表示し、非ゼロ終了します。受付不明や未開始は終端と扱いません。Ctrl+Cで追跡を中断できます。
+
+閲覧用ファイルだけの修復にはshowの--refreshを使用します。画像と履歴の保存成功は維持されます。破損した履歴を未送信と推測して再送しません。

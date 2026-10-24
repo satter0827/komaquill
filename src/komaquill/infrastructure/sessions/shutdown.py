@@ -72,6 +72,11 @@ def finish_colab(
             raise errors[0]
 
     def display(result: ShutdownResult) -> None:
+        echo(message("stories.publication_status", status=result.publications))
+        if result.unpublished_ids:
+            echo(
+                message("stories.publication_pending", identities=", ".join(result.unpublished_ids))
+            )
         echo(message("materials.shutdown", result=result.materials))
         if result.lost_materials:
             echo(message("materials.lost", identities=", ".join(result.lost_materials)))
@@ -165,6 +170,9 @@ def finish_external(
         result.errors.append(
             failure_info(KomaquillError(code="publication_failed", stage="finalize"), "finalize")
         )
+    echo(message("stories.publication_status", status=result.publications))
+    if result.unpublished_ids:
+        echo(message("stories.publication_pending", identities=", ".join(result.unpublished_ids)))
     result.finished_at = datetime.now(UTC)
     atomic_json(
         project.logs / str(session.runtime_id) / "shutdown.json",

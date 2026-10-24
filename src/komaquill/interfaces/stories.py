@@ -102,7 +102,10 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
             if scene.failure:
                 typer.echo(
                     message(
-                        "stories.scene_failure", position=scene.position, code=scene.failure.code
+                        "stories.scene_failure",
+                        position=scene.position,
+                        code=scene.failure.code,
+                        run_id=scene.run_id,
                     ),
                     err=True,
                 )
@@ -344,6 +347,7 @@ def bind(
                                 "stories.scene_failure",
                                 position=scene.position,
                                 code=scene.failure.code if scene.failure else scene.state,
+                                run_id=scene.run_id,
                             ),
                             err=True,
                         )

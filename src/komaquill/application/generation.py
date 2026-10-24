@@ -260,7 +260,7 @@ def collect(
                 with collection_lock(project):
                     try:
                         current = project.repository.read(identity)
-                    except (OSError, ValueError):
+                    except (OSError, ValueError, KomaquillError):
                         continue
                     if not current.pending or not project.accepts_results(session):
                         continue

@@ -140,21 +140,49 @@ class PublicationTracker:
         self.observed: dict[UUID, str] = {}
         self.unresolved: set[UUID] = set()
         self.pending: set[tuple[UUID, UUID]] = set()
-        self.failures: dict[str, FailureInfo] = {}
+        self.failures: dict[tuple[UUID | str, UUID | None], FailureInfo] = {}
         self.catalog_pending = False
 
-    def _failed(self, identity: UUID | str, error: BaseException) -> None:
+    def _failed(
+        self,
+        identity: UUID | str,
+        error: BaseException,
+        *,
+        run_id: UUID | None = None,
+        render_id: UUID | None = None,
+    ) -> None:
         failure = failure_info(error, "finalize")
-        key = str(identity)
+        key = (identity, render_id)
         if self.failures.get(key) != failure:
             record_event(
                 self.project,
                 "story_publication",
                 "failed",
-                story_id=identity if isinstance(identity, UUID) else None,
+                story_id=identity if isinstance(identity, UUID) and run_id is None else None,
+                run_id=run_id,
+                render_id=render_id,
+                asset=identity if isinstance(identity, str) else None,
                 failure=failure,
             )
         self.failures[key] = failure
+
+    def _recovered(
+        self,
+        identity: UUID | str,
+        *,
+        run_id: UUID | None = None,
+        render_id: UUID | None = None,
+    ) -> None:
+        if self.failures.pop((identity, render_id), None) is not None:
+            record_event(
+                self.project,
+                "story_publication",
+                "recovered",
+                story_id=identity if isinstance(identity, UUID) and run_id is None else None,
+                run_id=run_id,
+                render_id=render_id,
+                asset=identity if isinstance(identity, str) else None,
+            )
 
     def reconcile(self) -> tuple[UUID | str, ...]:
         try:
@@ -171,10 +199,12 @@ class PublicationTracker:
                 try:
                     if (self.repository.folder(identity) / "plan.json").is_file():
                         self.repository.read(identity)
-                        self.failures.pop(str(identity), None)
                         renders = self.repository.renders(identity)
                         if not renders:
                             publish_story(self.repository, self.project, identity)
+                            self._recovered(identity)
+                        if renders:
+                            self._recovered(identity)
                         self.pending.update((identity, render.render_id) for render in renders)
                 except (OSError, ValueError, KomaquillError) as error:
                     self._failed(identity, error)
@@ -182,9 +212,9 @@ class PublicationTracker:
 
     def tick(self, versions: tuple[tuple[UUID, str], ...]) -> tuple[UUID | str, ...]:
         try:
-            self.failures.pop("index", None)
             result = self._tick(versions)
-            return result
+            self._recovered("index")
+            return tuple(value for value in result if value != "index")
         except (OSError, ValueError, KomaquillError) as error:
             self._failed("index", error)
             return ("index",)
@@ -201,28 +231,25 @@ class PublicationTracker:
                     if render is not None:
                         self.pending.add((render.story_id, render.render_id))
                     self.unresolved.remove(identity)
-                    self.failures.pop(str(identity), None)
+                    self._recovered(identity, run_id=identity)
                 except (OSError, ValueError, KomaquillError) as error:
-                    self._failed(identity, error)
+                    self._failed(identity, error, run_id=identity)
         for story_id, render_id in sorted(self.pending):
             try:
                 publish_story(self.repository, self.project, story_id, render_id)
                 self.pending.remove((story_id, render_id))
-                self.failures.pop(str(story_id), None)
+                self._recovered(story_id, render_id=render_id)
                 self.catalog_pending = True
             except (OSError, ValueError, KomaquillError) as error:
-                self._failed(story_id, error)
+                self._failed(story_id, error, render_id=render_id)
         if self.catalog_pending:
             try:
                 publish_catalog(self.repository, self.project)
                 self.catalog_pending = False
-                self.failures.pop("catalog", None)
+                self._recovered("catalog")
             except (OSError, ValueError, KomaquillError) as error:
                 self._failed("catalog", error)
-        return tuple(
-            UUID(key) if key != "catalog" and key != "index" else key
-            for key in sorted(self.failures)
-        )
+        return tuple(sorted({identity for identity, _ in self.failures}, key=str))
 
 
 def refresh_saved_stories(project: Project) -> tuple[UUID | str, ...]:

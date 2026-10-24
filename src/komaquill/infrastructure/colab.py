@@ -23,12 +23,12 @@ from pydantic import BaseModel
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.paths import GpuPaths
 from komaquill.infrastructure.provenance import source_revision
-from komaquill.infrastructure.storage import atomic_json
 
 COLAB_CLI_VERSION = "0.7.5"
 PROCESS_EXIT_GRACE = 3.0

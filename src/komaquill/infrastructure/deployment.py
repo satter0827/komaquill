@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.provenance import code_sha256, gpu_contents, source_revision
-from komaquill.infrastructure.storage import atomic_json
 
 
 @dataclass(frozen=True)

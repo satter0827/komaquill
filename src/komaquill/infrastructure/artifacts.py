@@ -8,8 +8,9 @@ from PIL import Image, UnidentifiedImageError
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ImageMetadata, ImageRef
+from komaquill.infrastructure.atomic import atomic_bytes
+from komaquill.infrastructure.locations import Locations
 from komaquill.infrastructure.paths import WorkspacePaths
-from komaquill.infrastructure.storage import atomic_bytes
 
 
 def file_digest(path: Path) -> str:
@@ -22,28 +23,23 @@ class LocalArtifactStore:
     """Keep provider-neutral artifact keys separate from filesystem paths."""
 
     def __init__(self, project: WorkspacePaths) -> None:
+        self.project = project
         self.root = project.data
 
     def path(self, key: str) -> Path:
         """Reject traversal and symlinks escaping the configured data root."""
-        relative = PurePosixPath(key)
-        target = self.root.joinpath(*relative.parts)
-        if (
-            not key
-            or relative.is_absolute()
-            or ".." in relative.parts
-            or "\\" in key
-            or ":" in key
-            or not target.resolve().is_relative_to(self.root.resolve())
-        ):
-            raise KomaquillError(code="invalid_request", stage="storage")
-        return target
+        return Locations(self.project).artifact(key)
 
     def read(self, key: str) -> bytes:
         return self.path(key).read_bytes()
 
     def write(self, key: str, content: bytes) -> None:
         """Commit a blob atomically without changing identical existing content."""
+        parts = PurePosixPath(key).parts
+        if len(parts) >= 3 and parts[0] == "runs":
+            from uuid import UUID
+
+            Locations(self.project).register_run(UUID(parts[1]))
         target = self.path(key)
         if not target.is_file() or target.read_bytes() != content:
             atomic_bytes(target, content)

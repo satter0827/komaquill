@@ -13,9 +13,9 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ModelPreset
 from komaquill.infrastructure.asset_store import cached_path, register
 from komaquill.infrastructure.asset_store import file_digest as file_digest
+from komaquill.infrastructure.atomic import discard_temporary
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
-from komaquill.infrastructure.storage import discard_temporary
 
 
 def fetch_model(project: Project, model: ModelPreset) -> Path:

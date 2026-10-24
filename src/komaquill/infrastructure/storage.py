@@ -1,97 +1,42 @@
 """Persist generation requests and collection results atomically."""
 
 import json
-import os
-import sys
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from filelock import FileLock, Timeout
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject, Run, Session
 from komaquill.domain.workflow import digest
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.locations import Locations
 from komaquill.infrastructure.paths import WorkspacePaths
-from komaquill.messages import message
-
-WINDOWS_REPLACE_ERRORS = frozenset({5, 32, 33})
-REPLACE_TIMEOUT_SECONDS = 1.0
-REPLACE_RETRY_SECONDS = 0.05
-
-
-def discard_temporary(path: Path, primary: BaseException | None) -> None:
-    """Preserve a primary failure when a temporary file cannot be removed."""
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        if primary is None:
-            raise
-        print(message("storage.cleanup_failed"), file=sys.stderr)
-
-
-def atomic_bytes(path: Path, content: bytes) -> None:
-    """Replace a file using a temporary file in the same directory."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-    committed = False
-    primary: BaseException | None = None
-    try:
-        with temporary.open("xb") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        deadline = None
-        while True:
-            try:
-                temporary.replace(path)
-                committed = True
-                break
-            except PermissionError as error:
-                if (
-                    sys.platform != "win32"
-                    or getattr(error, "winerror", None) not in WINDOWS_REPLACE_ERRORS
-                ):
-                    raise
-                now = time.monotonic()
-                if deadline is None:
-                    deadline = now + REPLACE_TIMEOUT_SECONDS
-                elif now >= deadline:
-                    raise
-                time.sleep(REPLACE_RETRY_SECONDS)
-    except BaseException as error:
-        primary = error
-        raise
-    finally:
-        if not committed:
-            discard_temporary(temporary, primary)
-
-
-def atomic_json(path: Path, data: JsonObject) -> None:
-    """Write UTF-8 JSON atomically."""
-    atomic_bytes(path, json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
 
 
 def run_dir(project: WorkspacePaths, run_id: UUID) -> Path:
     """Use a local UUID rather than a remote filename for directories."""
-    return project.runs / str(run_id)
+    return Locations(project).register_run(run_id)
 
 
 def save_run(project: WorkspacePaths, run: Run) -> None:
     """Persist changed request state and emit state transitions."""
     path = run_dir(project, run.run_id) / "run.json"
     previous = Run.model_validate_json(path.read_bytes()) if path.is_file() else None
+    if previous is not None and previous.run_id != run.run_id:
+        raise KomaquillError(code="identity_mismatch", stage="storage")
     if previous == run:
         return
     run.updated_at = datetime.now(UTC)
     if run.state == "saved" and run.saved_at is None:
         run.saved_at = run.updated_at
     atomic_json(path, run.model_dump(mode="json"))
+    Locations(project).recorded(run.run_id)
     if previous is None or previous.state != run.state or previous.failure != run.failure:
         record_event(
             project,
@@ -106,22 +51,29 @@ def save_run(project: WorkspacePaths, run: Run) -> None:
 def load_runs(project: WorkspacePaths, *, unreadable: list[UUID | str] | None = None) -> list[Run]:
     """Read histories, optionally reporting unreadable identities while continuing."""
     runs: list[Run] = []
+    locations = Locations(project)
+    placements = locations.read().runs
+    candidates = [
+        (identity, locations.path(row.folder) / "run.json", row.recorded)
+        for identity, row in placements.items()
+    ]
     for path in project.runs.glob("*/run.json"):
-        try:
-            identity = UUID(path.parent.name)
-        except ValueError:
+        if path.parent.name not in {str(value) for value in placements}:
             if unreadable is None:
-                raise KomaquillError(display_key="text.the_run_directory_name_is_invalid") from None
-            unreadable.append(f"runs/{path.parent.name!r}")
+                raise KomaquillError(code="storage_failed", stage="history_validation")
+            unreadable.append(f"runs/{path.parent.name}")
+    for identity, path, recorded in candidates:
+        if not path.exists() and not recorded:
             continue
         try:
             run = Run.model_validate_json(path.read_bytes())
             if run.run_id != identity:
-                raise ValueError(message("text.the_run_id_differs_from_its_directory_name"))
+                raise ValueError("The run ID differs from its placement record.")
         except (OSError, ValueError):
             if unreadable is None:
                 raise KomaquillError(
-                    display_key="text.cannot_read_run_history_check_the_file_and",
+                    code="storage_failed",
+                    stage="history_validation",
                     details={"identity": str(identity)},
                 ) from None
             unreadable.append(identity)
@@ -185,14 +137,19 @@ class FileRunRepository:
         self.project = project
 
     def lock(self) -> FileLock:
-        self.project.runs.mkdir(parents=True, exist_ok=True)
-        return FileLock(str(self.project.runs / ".collection.lock"))
+        self.project.state.mkdir(parents=True, exist_ok=True)
+        return FileLock(str(self.project.state / ".collection.lock"))
 
     def load(self, unreadable: list[UUID | str] | None = None) -> list[Run]:
         return load_runs(self.project, unreadable=unreadable)
 
     def read(self, run_id: UUID) -> Run:
-        return Run.model_validate_json((run_dir(self.project, run_id) / "run.json").read_bytes())
+        run = Run.model_validate_json(
+            (Locations(self.project).run(run_id) / "run.json").read_bytes()
+        )
+        if run.run_id != run_id:
+            raise KomaquillError(code="identity_mismatch", stage="storage")
+        return run
 
     def save(self, run: Run) -> None:
         save_run(self.project, run)

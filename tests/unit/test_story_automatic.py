@@ -23,9 +23,9 @@ def test_auto_or_fixed_count_and_pre_call_evidence(project, count):
     model = planner(project, options, allow_real_llm=False)
     result = plan_story(repo, model, value, max_images=options.max_images)
     assert len(result.scenes) == (4 if count == "auto" else count)
-    assert (repo.root / str(value.story_id) / "provenance.json").is_file()
+    assert (repo.folder(value.story_id) / "provenance.json").is_file()
     before = json.loads(
-        (repo.root / str(value.story_id) / "planning/inputs/attempt-01.json").read_bytes()
+        (repo.folder(value.story_id) / "planning/inputs/attempt-01.json").read_bytes()
     )
     assert before["input"]["image_count"] == count
     assert "schema" not in before["input"] and "scene_guide" not in before["input"]
@@ -48,12 +48,12 @@ def test_repair_includes_specific_errors_and_the_previous_visible_output(project
     value = request()
     plan_story(repo, LangChainPlanner(base.provenance, fake), value, max_images=8)
     second = json.loads(
-        (repo.root / str(value.story_id) / "planning/inputs/attempt-02.json").read_bytes()
+        (repo.folder(value.story_id) / "planning/inputs/attempt-02.json").read_bytes()
     )
     correction = json.loads(second["input"]["correction"])
     assert correction["previous_output"] == previous
     assert "repeated prose" in str(correction["validation_errors"])
-    assert len(list((repo.root / str(value.story_id) / "planning").glob("[0-9]*.json"))) == 2
+    assert len(list((repo.folder(value.story_id) / "planning").glob("[0-9]*.json"))) == 2
 
 
 def test_truncation_is_not_repaired_and_failed_input_is_preserved(project):
@@ -72,8 +72,8 @@ def test_truncation_is_not_repaired_and_failed_input_is_preserved(project):
     with pytest.raises(KomaquillError):
         plan_story(repo, Truncated(), value, max_images=8)
     assert len(calls) == 1
-    assert (repo.root / str(value.story_id) / "provenance.json").exists()
-    assert not (repo.root / str(value.story_id) / "plan.json").exists()
+    assert (repo.folder(value.story_id) / "provenance.json").exists()
+    assert not (repo.folder(value.story_id) / "plan.json").exists()
 
 
 def test_provider_counters_are_not_estimated_or_summed_when_missing():
@@ -123,7 +123,7 @@ def test_failed_plan_can_be_exported_without_guessing_a_successful_plan(project)
     path = next((project.data / "stories").glob("*/request.json"))
     from uuid import UUID
 
-    evidence = client.stories.export(UUID(path.parent.name))
+    evidence = client.stories.export(UUID(json.loads(path.read_bytes())["story_id"]))
     assert evidence["story"] is None and evidence["plan"] is None
     assert evidence["planning"]["provenance"]["provider"] == "fake"
     assert evidence["planning"]["attempts"][0]["failure"]["code"] == "fake_story_mismatch"

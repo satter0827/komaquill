@@ -100,6 +100,23 @@ class StoryService:
             story_view(self._repository, self._project, story_id, render_id)
         )
 
+    def refresh(self, story_id: UUID, *, render_id: UUID | None = None) -> StorySnapshot:
+        """Rebuild readable files without contacting a model or image backend."""
+        with operation_scope():
+            try:
+                self._repository.publish(story_id, render_id)
+            except KomaquillError as error:
+                record_event(
+                    self._project,
+                    "story_publication",
+                    "failed",
+                    story_id=story_id,
+                    render_id=render_id,
+                    failure=failure_info(error, "finalize"),
+                )
+                raise
+            return self.show(story_id, render_id=render_id)
+
     def follow(self, story_id: UUID, *, render_id: UUID | None = None) -> Iterator[StorySnapshot]:
         previous = None
         while True:
@@ -141,6 +158,10 @@ class StoryService:
                 render_id,
                 retry_failed=retry_failed,
             ):
+                self._repository.publish(
+                    UUID(value["story_id"]),
+                    render_id,
+                )
                 snapshot = StorySnapshot.model_validate(value)
                 for scene in snapshot.scenes:
                     identity = (scene.scene_id, scene.run_id, scene.state)

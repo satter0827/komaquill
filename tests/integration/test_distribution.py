@@ -127,6 +127,7 @@ def test_payload_allowlist_and_fixed_versions():
     assert len(names) == len(set(names))
     assert all(
         name.endswith(".py")
+        or name == "komaquill/py.typed"
         or name.startswith("komaquill/interfaces/comfyui/web/")
         or name.removeprefix("komaquill/resources/") in provenance.RESOURCE_NAMES
         for name in names

@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 from komaquill.application.cleanup import exclusion
 from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure import cleanup
-from komaquill.infrastructure.storage import atomic_json
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.interfaces.cli import app
 
 

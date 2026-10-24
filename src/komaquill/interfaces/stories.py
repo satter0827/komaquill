@@ -282,11 +282,14 @@ def bind(
             UUID | None, typer.Option(help=message("stories.render_id_help"))
         ] = None,
         follow: Annotated[bool, typer.Option(help=message("stories.follow_help"))] = False,
+        refresh: Annotated[bool, typer.Option(help=message("stories.refresh_help"))] = False,
         json_output: Annotated[
             bool, typer.Option("--json", help=message("stories.json_help"))
         ] = False,
     ) -> None:
         with story_operation(ctx) as client:
+            if refresh:
+                client.stories.refresh(story_id, render_id=render_id)
             values = (
                 client.stories.follow(story_id, render_id=render_id)
                 if follow

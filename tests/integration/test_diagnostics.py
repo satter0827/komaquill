@@ -18,10 +18,11 @@ from komaquill.application.generation import collect, generate, generation_times
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import ShutdownResult
 from komaquill.infrastructure import views
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.sessions import monitor, shutdown, startup
-from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, run_dir
+from komaquill.infrastructure.storage import load_runs, load_session, run_dir
 from komaquill.infrastructure.workflows import resource_json
 from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop

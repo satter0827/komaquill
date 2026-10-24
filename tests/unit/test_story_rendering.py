@@ -180,11 +180,7 @@ def test_wrong_story_reference_and_corrupted_render_are_not_hidden(project, sess
     with pytest.raises(KomaquillError):
         story_view(repository, project, other.request.story_id, render.render_id)
     file = (
-        repository.root
-        / str(plan.request.story_id)
-        / "renders"
-        / str(render.render_id)
-        / "render.json"
+        repository.folder(plan.request.story_id) / "renders" / str(render.render_id) / "render.json"
     )
     data = json.loads(file.read_bytes())
     data["render_id"] = str(uuid4())

@@ -11,9 +11,10 @@ from komaquill.application.generation import (
 )
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Session
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
-from komaquill.infrastructure.storage import atomic_json, load_session, stop_request
+from komaquill.infrastructure.storage import load_session, stop_request
 
 
 def session_project(project: Project) -> Project:

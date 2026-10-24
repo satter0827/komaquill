@@ -17,9 +17,9 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
 from komaquill.domain.presets import MODEL_ROLES
 from komaquill.gpu.progress import progress
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import GpuProject, Project
 from komaquill.infrastructure.downloads import fetch_model
-from komaquill.infrastructure.storage import atomic_json
 from komaquill.infrastructure.workflows import assets, prepare
 from komaquill.messages import error_message, message
 

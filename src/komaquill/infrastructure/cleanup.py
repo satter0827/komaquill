@@ -18,10 +18,10 @@ from filelock import FileLock, Timeout
 from komaquill.application.cleanup import exclusion
 from komaquill.domain.cleanup import CleanupItem
 from komaquill.domain.errors import KomaquillError, failure_info
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.monitor_state import alive, read_monitor
 from komaquill.infrastructure.provenance import code_sha256, source_revision
-from komaquill.infrastructure.storage import atomic_json
 
 
 def measured(path: Path) -> tuple[int, int, bool]:

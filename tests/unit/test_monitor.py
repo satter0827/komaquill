@@ -344,8 +344,8 @@ def test_corrupt_monitor_does_not_block_provider_shutdown(project):
 def test_progress_cleanup_failure_does_not_abort_startup(project, session, monkeypatch):
     from pathlib import Path
 
+    from komaquill.infrastructure.atomic import atomic_json
     from komaquill.infrastructure.colab import Colab, Receipt
-    from komaquill.infrastructure.storage import atomic_json
 
     control = Colab(project)
     receipt = Receipt(

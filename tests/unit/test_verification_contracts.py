@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from komaquill.infrastructure.storage import atomic_bytes
+from komaquill.infrastructure.atomic import atomic_bytes
 from scripts import check
 
 

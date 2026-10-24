@@ -18,12 +18,13 @@ from komaquill.domain.assets import PREPARATION_TERMINAL, Preparation
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.infrastructure.asset_download import download_asset
 from komaquill.infrastructure.asset_store import inventory, model_path, verified_cache
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.model_sources import resolve_model
-from komaquill.infrastructure.storage import atomic_json, load_session
+from komaquill.infrastructure.storage import load_session
 from komaquill.messages import message
 
 PREFIX = "/komaquill/v1"

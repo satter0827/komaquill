@@ -50,11 +50,7 @@ def test_export_has_observation_times_and_story_context(project, session, client
     assert row["story_context"][0]["planner_provider"] == "fake"
     assert datetime.fromisoformat(row["images"][0]["observed"]["observed_at"]).tzinfo is not None
     path = (
-        repository.root
-        / str(plan.request.story_id)
-        / "renders"
-        / str(render.render_id)
-        / "render.json"
+        repository.folder(plan.request.story_id) / "renders" / str(render.render_id) / "render.json"
     )
     path.write_text("{", encoding="utf-8")
     value = evaluations.export_evidence(project)
@@ -67,11 +63,7 @@ def test_tampered_plan_is_not_used_for_association_export(project, session, clie
     render = create_render(repository, project, active, plan.request.story_id, "pony")
     render_story(repository, project, client, active, render.render_id)
     path = (
-        repository.root
-        / str(plan.request.story_id)
-        / "renders"
-        / str(render.render_id)
-        / "render.json"
+        repository.folder(plan.request.story_id) / "renders" / str(render.render_id) / "render.json"
     )
     value = json.loads(path.read_bytes())
     value["plan_sha256"] = "0" * 64

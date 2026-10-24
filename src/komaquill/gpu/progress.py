@@ -3,8 +3,8 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.paths import GpuPaths
-from komaquill.infrastructure.storage import atomic_json
 
 
 def progress(root: Path, phase: str, asset: str | None = None) -> None:

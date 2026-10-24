@@ -13,7 +13,7 @@ from aiohttp import web
 
 from komaquill.domain.errors import failure_info
 from komaquill.domain.materials import Material
-from komaquill.infrastructure.storage import atomic_json
+from komaquill.infrastructure.atomic import atomic_json
 
 CHUNK_BYTES = 1024 * 1024
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"})

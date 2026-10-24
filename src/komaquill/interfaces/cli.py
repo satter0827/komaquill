@@ -14,7 +14,8 @@ import keyring
 import typer
 from pydantic import ValidationError
 
-from komaquill.application.generation import Collection, collect, generate, verify_runtime
+from komaquill.api import Client
+from komaquill.application.generation import Collection, generate, verify_runtime
 from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.models import Session
 from komaquill.infrastructure import inspection, supervisor
@@ -22,8 +23,6 @@ from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.diagnostics import operation_scope
 from komaquill.infrastructure.downloads import fetch_model
-from komaquill.infrastructure.materials import MaterialCollector
-from komaquill.infrastructure.preparation import capabilities
 from komaquill.infrastructure.sessions import connection, shutdown
 from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import run_dir
@@ -71,6 +70,27 @@ def init_command(
         )
         raise typer.Exit(1) from None
     typer.echo(message("text.workspace_initialized_root", root=project.root))
+
+
+@app.command("migrate", help=message("storage.migrate_help"))
+def migrate_command(
+    ctx: typer.Context,
+    dry_run: Annotated[bool, typer.Option(help=message("storage.migrate_preview"))] = False,
+    json_output: Annotated[bool, typer.Option("--json", help=message("stories.json_help"))] = False,
+) -> None:
+    with operation(ctx) as project:
+        result = Client(project.root).migrate(dry_run=dry_run)
+        if json_output:
+            typer.echo(result.model_dump_json())
+        else:
+            typer.echo(
+                message(
+                    "storage.migrate_result",
+                    files=result.files,
+                    logical_bytes=result.logical_bytes,
+                    status=result.status,
+                )
+            )
 
 
 @app.callback(help=APP_HELP)
@@ -247,18 +267,8 @@ def collect_command(
     ctx: typer.Context, run_id: Annotated[UUID | None, typer.Argument()] = None
 ) -> None:
     """Collect completed images and generation conditions."""
-    with operation(ctx) as project, connected(project) as (client, session):
-        result = collect(project, client, session, run_id)
-        if capabilities(client):
-            material_errors = MaterialCollector(project, client).collect()
-            result = Collection(
-                result.saved,
-                result.pending,
-                result.failed,
-                (*result.errors, *material_errors),
-                result.pending_ids,
-            )
-        report(result)
+    with operation(ctx) as project:
+        report(Client(project.root).images.collect(run_id))
 
 
 @app.command("open", help=message("text.open_a_comfyui_view_in_the_browser"))

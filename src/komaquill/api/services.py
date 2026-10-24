@@ -8,6 +8,7 @@ from uuid import UUID
 
 from komaquill.application.evaluations import register
 from komaquill.application.generation import Collection, collect, generate
+from komaquill.domain.errors import KomaquillError
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.models import JsonObject, Run
 from komaquill.domain.status import SessionStatus
@@ -15,8 +16,11 @@ from komaquill.infrastructure import inspection, supervisor
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import operation_scope
 from komaquill.infrastructure.evaluations import FileEvaluationRepository, export_evidence, select
+from komaquill.infrastructure.materials import MaterialCollector
+from komaquill.infrastructure.preparation import capabilities
 from komaquill.infrastructure.sessions import shutdown
 from komaquill.infrastructure.sessions.connection import connected
+from komaquill.infrastructure.stories.storage import refresh_saved_stories
 
 
 class ImageService:
@@ -43,8 +47,26 @@ class ImageService:
             )
 
     def collect(self, run_id: UUID | None = None) -> Collection:
-        with operation_scope(), connected(self._project) as (backend, session):
-            return collect(self._project, backend, session, run_id)
+        with operation_scope():
+            with connected(self._project) as (backend, session):
+                result = collect(self._project, backend, session, run_id)
+                if capabilities(backend):
+                    material_errors = MaterialCollector(self._project, backend).collect()
+                    result = Collection(
+                        result.saved,
+                        result.pending,
+                        result.failed,
+                        (*result.errors, *material_errors),
+                        result.pending_ids,
+                    )
+            publications = refresh_saved_stories(self._project)
+            if publications:
+                raise KomaquillError(
+                    code="publication_failed",
+                    stage="finalize",
+                    details={"story_id": str(publications[0])},
+                )
+            return result
 
 
 class SessionService:

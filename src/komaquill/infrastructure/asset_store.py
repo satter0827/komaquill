@@ -5,7 +5,7 @@ from pathlib import Path
 
 from komaquill.domain.presets import ModelPreset
 from komaquill.infrastructure.artifacts import file_digest as file_digest
-from komaquill.infrastructure.storage import atomic_json
+from komaquill.infrastructure.atomic import atomic_json
 
 
 def model_path(models: Path, model: ModelPreset) -> Path:

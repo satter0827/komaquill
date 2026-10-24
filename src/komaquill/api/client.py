@@ -6,6 +6,7 @@ from types import TracebackType
 
 from komaquill.api.services import EvaluationService, ImageService, SessionService
 from komaquill.api.stories import StoryService
+from komaquill.domain.storage import MigrationReport
 from komaquill.infrastructure.configuration import find_project, initialize
 
 
@@ -40,6 +41,20 @@ class Client:
     @cached_property
     def evaluations(self) -> EvaluationService:
         return EvaluationService(self._project)
+
+    def migrate(self, *, dry_run: bool = False) -> MigrationReport:
+        """Migrate or rebuild local storage only when the session is stopped."""
+        from filelock import Timeout
+
+        from komaquill.domain.errors import KomaquillError
+        from komaquill.infrastructure.migration import migrate
+
+        try:
+            return MigrationReport.model_validate(migrate(self._project, dry_run=dry_run))
+        except Timeout:
+            raise KomaquillError(code="invalid_request", stage="storage") from None
+        except (OSError, ValueError):
+            raise KomaquillError(code="storage_failed", stage="storage") from None
 
     def artifact_path(self, key: str) -> Path:
         """Resolve a portable key using the configured local storage adapter."""

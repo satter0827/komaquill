@@ -11,7 +11,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from komaquill.domain.assets import Preparation
 from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure.asset_store import model_path, register
-from komaquill.infrastructure.storage import atomic_json
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.interfaces.comfyui import api as module
 from tests.unit.test_assets import asset
 

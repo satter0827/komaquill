@@ -90,3 +90,10 @@ status = "implemented"
 acceptance = ["明示した作業場所で計画・生成・取得・再開を行う", "importで通信やファイル作成を行わない", "公開型と追加依存の境界を検証する"]
 sources = ["src/komaquill/api/client.py", "src/komaquill/api/stories.py", "src/komaquill/api/services.py"]
 tests = ["tests/integration/test_public_api.py"]
+
+[requirements.REQ-STORY-STORAGE]
+summary = "作品内で本文と画像を順番に閲覧し既存データを保全して移行する"
+status = "implemented"
+acceptance = ["画像の正本を作品内へ集約する", "移行中断後に再開し原本を照合する", "配置表を記録から再構築する", "閲覧用出力の失敗を画像保存と分ける"]
+sources = ["src/komaquill/infrastructure/locations.py", "src/komaquill/infrastructure/migration.py", "src/komaquill/infrastructure/stories/publication.py"]
+tests = ["tests/integration/test_story_storage.py"]

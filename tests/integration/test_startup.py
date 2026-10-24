@@ -9,9 +9,10 @@ from typer.testing import CliRunner
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ShutdownResult
 from komaquill.infrastructure import views
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.sessions import connection, startup
-from komaquill.infrastructure.storage import atomic_json, load_session
+from komaquill.infrastructure.storage import load_session
 from komaquill.infrastructure.workflows import preset, resource_json
 from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop

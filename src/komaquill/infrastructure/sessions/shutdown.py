@@ -16,6 +16,7 @@ from komaquill.application.generation import (
 from komaquill.application.lifecycle import ShutdownActions, shutdown
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import Session, ShutdownResult
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt, check_port, terminate
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
@@ -31,7 +32,7 @@ from komaquill.infrastructure.sessions.connection import (
     session_project,
 )
 from komaquill.infrastructure.sessions.monitor import drain, preserve
-from komaquill.infrastructure.storage import atomic_json, load_session, stop_request
+from komaquill.infrastructure.storage import load_session, stop_request
 from komaquill.messages import message
 
 

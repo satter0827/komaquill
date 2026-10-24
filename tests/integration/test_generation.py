@@ -192,7 +192,7 @@ def test_lost_runs_never_return_to_pending(project, client, session, stub):
 
 
 def test_shutdown_request_prevents_new_submission(project, client, session, stub):
-    from komaquill.infrastructure.storage import atomic_json
+    from komaquill.infrastructure.atomic import atomic_json
 
     atomic_json(project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True})
     with pytest.raises(KomaquillError):
@@ -225,7 +225,7 @@ def test_local_save_failure_does_not_block_other_runs_or_store_exception_text(
 
     client.submit(resource_json("presets/pony/workflow-api.json"), {}, "first-browser")
     client.submit(resource_json("presets/pony/workflow-api.json"), {}, "second-browser")
-    from komaquill.infrastructure import storage
+    from komaquill.infrastructure import atomic as storage
 
     original = storage.atomic_bytes
     calls = []

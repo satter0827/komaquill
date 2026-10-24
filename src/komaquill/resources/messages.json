@@ -331,5 +331,12 @@
   "error.image_backend_unavailable": "An image GPU is not available. Start a prepared image session before generating a story. Planning alone does not need an image GPU.",
   "stories.planning_started": "Planning story.",
   "stories.operation_interrupted": "Story operation interrupted. Use stories show to inspect saved progress.",
-  "stories.export_help": "Export story, planning evidence and image references as JSON."
+  "stories.export_help": "Export story, planning evidence and image references as JSON.",
+  "error.migration_required": "Workspace storage requires migration. Stop the session and run komaquill migrate.",
+  "stories.document_state": "Status: {state}",
+  "storage.migrate_help": "Migrate or rebuild story storage while the session is stopped.",
+  "storage.migrate_preview": "Preview file moves without changing stored data.",
+  "storage.migrate_result": "Storage {status}: {files} files, {logical_bytes} logical bytes.",
+  "stories.refresh_help": "Rebuild readable story files from saved records.",
+  "error.publication_failed": "Readable files for story {story_id} could not be updated. Rebuild them with stories show {story_id} --refresh."
 }

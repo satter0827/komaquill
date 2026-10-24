@@ -261,6 +261,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         monitor.terminate()
                         monitor.wait(timeout=10)
             runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
+            runs.extend((workspace / ".artifacts/data/stories").glob("*/renders/*/runs/*/run.json"))
             assert len(runs) == 5
             runs = sorted(runs, key=lambda path: json.loads(path.read_bytes())["created_at"])
             run = json.loads(runs[0].read_bytes())

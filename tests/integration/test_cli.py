@@ -65,7 +65,9 @@ def test_collect_reports_partial_save_and_returns_failure(
     record = next(iter(stub.history.values()))
     record["outputs"]["9"]["images"][0]["filename"] = "broken.png"
     stub.invalid_images.add("broken.png")
-    monkeypatch.setattr(cli, "connected", connection)
+    from komaquill.api import services
+
+    monkeypatch.setattr(services, "connected", connection)
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "collect"])
     assert result.exit_code == 1
     assert "Saved: 1" in result.output and "collect" in result.output
@@ -76,7 +78,8 @@ def test_status_separates_lost_requests_from_pending(project, session):
     from uuid import uuid4
 
     from komaquill.application.generation import mark_lost, new_run
-    from komaquill.infrastructure.storage import atomic_json, save_run
+    from komaquill.infrastructure.atomic import atomic_json
+    from komaquill.infrastructure.storage import save_run
 
     save_run(project, new_run(project, session, uuid4(), {}))
     mark_lost(project, session.runtime_id)
@@ -90,8 +93,8 @@ def test_status_separates_lost_requests_from_pending(project, session):
 def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
     from uuid import uuid4
 
+    from komaquill.infrastructure.atomic import atomic_json
     from komaquill.infrastructure.colab import Colab, Receipt
-    from komaquill.infrastructure.storage import atomic_json
 
     colab = Colab(project)
     receipt = Receipt(name="starting", runtime_id=uuid4(), source_revision="a" * 40)
@@ -110,8 +113,8 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
 def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypatch):
     from uuid import uuid4
 
+    from komaquill.infrastructure.atomic import atomic_json
     from komaquill.infrastructure.colab import Colab, Receipt
-    from komaquill.infrastructure.storage import atomic_json
 
     colab = Colab(project)
     receipt = Receipt(name="uncertain", runtime_id=uuid4(), source_revision="a" * 40)

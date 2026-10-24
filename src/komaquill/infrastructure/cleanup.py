@@ -17,7 +17,7 @@ from filelock import FileLock, Timeout
 
 from komaquill.application.cleanup import exclusion
 from komaquill.domain.cleanup import CleanupItem
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.monitor_state import alive, read_monitor
 from komaquill.infrastructure.provenance import code_sha256, source_revision
@@ -134,7 +134,7 @@ def execute(project: Project, dry_run: bool) -> tuple[tuple[CleanupItem, ...], P
             "results": [],
         }
         atomic_json(report, record)
-        outcomes = []
+        outcomes: list[dict[str, object]] = []
         updated = []
         failed = False
         for item in items:
@@ -148,7 +148,10 @@ def execute(project: Project, dry_run: bool) -> tuple[tuple[CleanupItem, ...], P
                     raise KomaquillError(code="invalid_request")
                 assert_stopped(project)
                 if item.category == "cache" and path.name == "uv":
-                    uv = os.environ.get("KOMAQUILL_UV") or shutil.which("uv")
+                    bundled = project.runtime / "uv" / ("uv.exe" if os.name == "nt" else "uv")
+                    uv = os.environ.get("KOMAQUILL_UV") or (
+                        str(bundled) if bundled.is_file() else shutil.which("uv")
+                    )
                     if not uv:
                         raise KomaquillError(code="invalid_configuration")
                     subprocess.run(
@@ -168,6 +171,7 @@ def execute(project: Project, dry_run: bool) -> tuple[tuple[CleanupItem, ...], P
                         "path": item.relative_path,
                         "result": "failed",
                         "exception_type": type(error).__name__,
+                        "failure": failure_info(error, "cleanup").model_dump(mode="json"),
                     }
                 )
         record.update(

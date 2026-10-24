@@ -11,7 +11,7 @@
 | 接続・保存を調査する | [障害対応](operations/diagnostics.md) | [保存と整理](operations/artifacts.md) |
 | 設計判断を確認する | [設計判断](decisions/0001-native-interfaces.md) | [契約](current/contracts.md) |
 | 受入検証を行う | [検証戦略](verification/strategy.md) | [検証記録](verification/README.md) |
-| 今後の機能を検討する | [今後の候補](plans/future.md) | [再構築計画](plans/repository-rebuild.md) |
+| 今後の機能を検討する | [今後の候補](plans/future.md) | [保存の設計判断](decisions/0002-preservation-and-cleanup.md) |
 
 ## 文書の状態と正本
 

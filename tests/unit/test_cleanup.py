@@ -125,3 +125,32 @@ def test_cleanup_cli_and_busy_cache(project, monkeypatch):
     items = cleanup.plan(project)
     assert any(row.reason == "unknown" for row in items)
     assert cleanup.measured(project.cache / "ruff/file") == (1, 14, False)
+
+
+@pytest.mark.parametrize("source", ["environment", "bundled", "path"])
+def test_cleanup_locates_uv_without_shell_activation(project, monkeypatch, source):
+    import json
+    import os
+
+    (project.cache / "uv").mkdir(parents=True)
+    monkeypatch.delenv("KOMAQUILL_UV", raising=False)
+    monkeypatch.setattr(cleanup.shutil, "which", lambda _: "path-uv")
+    bundled = project.runtime / "uv" / ("uv.exe" if os.name == "nt" else "uv")
+    if source != "path":
+        bundled.parent.mkdir(parents=True)
+        bundled.write_bytes(b"test executable")
+    if source == "environment":
+        monkeypatch.setenv("KOMAQUILL_UV", "configured-uv")
+    monkeypatch.setattr(cleanup, "source_revision", lambda: None)
+    calls = []
+    monkeypatch.setattr(cleanup.subprocess, "run", lambda args, **kw: calls.append(args))
+    items, report, failed = cleanup.execute(project, False)
+    assert not failed
+    assert calls[0][0] == (
+        "configured-uv"
+        if source == "environment"
+        else str(bundled)
+        if source == "bundled"
+        else "path-uv"
+    )
+    assert json.loads(report.read_bytes())["status"] == "completed"

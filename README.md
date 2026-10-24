@@ -42,9 +42,9 @@ komaquill --version
 komaquill start
 ```
 
-初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。接続後はApp Modeが開きます。例のプロンプトが入力されているので、そのままRunで生成できます。端末は自動回収のため開いたままにします。ブラウザーを開かない場合は`start --no-open`を使います。
+初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。接続後はApp Modeが開きます。例のプロンプトが入力されているので、そのままRunで生成できます。接続と自動回収はバックグラウンドで続くため、端末やVS Codeを閉じられます。終了する場合は`komaquill stop`を実行します。ブラウザーを開かない場合は`start --no-open`を使います。
 
-別の端末で同じ作業フォルダーを開き、次を実行します。ソースから導入した場合は、その端末でもbootstrap/activate.ps1を読み込みます。
+同じ作業フォルダーで次を実行します。ソースから導入した場合は、その端末でもbootstrap/activate.ps1を読み込みます。
 
 ```powershell
 komaquill doctor
@@ -94,7 +94,7 @@ komaquill collect
 komaquill stop
 ```
 
-stopは生成と回収を待ち、所有するColabを終了します。startの端末のCtrl+Cも同じ動作です。生成を待たずに終了する場合はstop --force、または2回目のCtrl+Cを使います。未回収要求は回収不能として件数と履歴を残します。電源断によるGPU終了は保証できないため、次回のstatusとstopで確認してください。
+stopは生成と回収を待ち、所有するColabを終了します。起動待ち中と`start --foreground`のCtrl+Cも同じ動作です。生成を待たずに終了する場合はstop --force、または2回目のCtrl+Cを使います。未回収要求は回収不能として件数と履歴を残します。電源断によるGPU終了は保証できないため、次回のstatusとstopで確認してください。
 
 ## 起動済みのComfyUIへ接続する
 

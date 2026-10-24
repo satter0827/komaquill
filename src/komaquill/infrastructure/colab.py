@@ -21,7 +21,7 @@ from filelock import FileLock, ReadWriteLock
 from pydantic import BaseModel
 
 from komaquill.domain.configuration import RuntimeSettings
-from komaquill.domain.errors import AllocationRefused, KomaquillError, failure_info
+from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
@@ -172,9 +172,17 @@ class Colab:
                 self.provider_command(action, *arguments),
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
-                check=True,
+                check=False,
                 timeout=timeout or self.settings.control_timeout,
             )
+            if result.returncode:
+                failure = FailureInfo.model_validate(json.loads(result.stderr)["failure"])
+                raise KomaquillError(
+                    code=failure.code,
+                    stage=failure.stage,
+                    http_status=failure.http_status,
+                    retryable=failure.retryable,
+                )
             return RuntimeObservation.model_validate_json(result.stdout)
         except (OSError, ValueError, subprocess.SubprocessError):
             raise KomaquillError(code="colab_failed", stage="colab_control") from None
@@ -347,12 +355,42 @@ class Colab:
                     "-f",
                     str(script),
                     "--timeout",
-                    str(self.settings.execution_timeout),
+                    str(self.settings.worker_execution_timeout),
                 ),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+    def progress(self, receipt: Receipt) -> dict[str, str | None]:
+        """Read bounded structured progress from an existing runtime only."""
+        target = self.project.artifacts / "tmp" / f"progress-{receipt.runtime_id}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.provider_call(
+                "download",
+                f"content/komaquill-{receipt.runtime_id}/.artifacts/logs/progress.json",
+                str(target),
+                timeout=self.settings.request_timeout,
+            )
+            data = json.loads(target.read_bytes())
+            allowed = {
+                "environment",
+                "dependencies",
+                "comfyui",
+                "model_preparation",
+                "server",
+                "ready",
+            }
+            phase = data.get("phase")
+            asset = data.get("asset")
+            if phase not in allowed or (asset is not None and not isinstance(asset, str)):
+                raise ValueError
+            return {"phase": phase, "asset": asset}
+        except (KomaquillError, OSError, ValueError):
+            return {}
+        finally:
+            target.unlink(missing_ok=True)
 
     def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
         """Download independent snapshots and preserve the last successful capture."""
@@ -400,6 +438,13 @@ class Colab:
                 item.update(result="saved", last_success_at=datetime.now(UTC).isoformat())
             except (KomaquillError, OSError) as error:
                 failed.append(name)
+                if isinstance(error, KomaquillError):
+                    if error.code == "request_not_found":
+                        item["result"] = (
+                            "missing" if prior.get("last_success_at") else "not_created"
+                        )
+                    elif error.code == "runtime_ended":
+                        item["result"] = "unavailable"
                 item["failure"] = failure_info(error, "log_collection").model_dump(mode="json")
             finally:
                 try:

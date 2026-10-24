@@ -122,3 +122,8 @@ def test_artifacts_are_ignored_without_creating_a_directory():
         text=True,
     )
     assert result.returncode == 0
+
+
+def test_root_workspace_settings_are_valid():
+    """Include the shipped workspace configuration in the startup contract."""
+    assert find_project(ROOT).settings().worker_execution_timeout > 0

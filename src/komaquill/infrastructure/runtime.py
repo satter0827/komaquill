@@ -27,9 +27,17 @@ from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import create_payload
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.monitor_state import (
+    cancel_requested,
+    check_cancel,
+    read_monitor,
+    update_monitor,
+)
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, stop_request
 from komaquill.infrastructure.workflows import assets
 from komaquill.messages import message
+
+PROGRESS_POLL_SECONDS = 10.0
 
 
 def session_project(project: Project) -> Project:
@@ -109,6 +117,9 @@ def drain(
     previous_errors: tuple[UUID | str, ...] = ()
     while True:
         try:
+            if cancel_requested(project) is True:
+                force = True
+                request_stop(project, session, True)
             try:
                 result = collect(project, client, session)
                 saved += result.saved
@@ -162,6 +173,10 @@ def watch(
     previous_errors: tuple[UUID | str, ...] = ()
     try:
         while stop_request(project, session) is None:
+            if (cancel := cancel_requested(project)) is not None:
+                request_stop(project, session, cancel)
+                break
+            update_monitor(project)
             try:
                 if reconnect is not None:
                     reconnect()
@@ -213,6 +228,7 @@ def finish_colab(
     def collect_available() -> Collection | None:
         if client is None or session is None:
             return None
+        update_monitor(project, phase="stopping")
         request_stop(project, session, force)
         return drain(project, client, session, force, echo)
 
@@ -390,10 +406,17 @@ def start_colab(
     tunnel: subprocess.Popen[bytes] | None = None
     client: ComfyClient | None = None
     session: Session | None = None
-    operation_id = uuid4()
+    monitor = read_monitor(project)
+    operation_id = monitor.operation_id if monitor is not None else uuid4()
     started_at = time.monotonic()
 
-    def phase(name: str, runtime_id: UUID | None = None) -> None:
+    def phase(name: str, runtime_id: UUID | None = None, asset: str | None = None) -> None:
+        update_monitor(
+            project,
+            phase="connected" if name == "ready" else name,
+            runtime_id=runtime_id,
+            asset=asset,
+        )
         record_event(
             project,
             "startup",
@@ -413,13 +436,18 @@ def start_colab(
                 display_key="text.cannot_initialize_diagnostics_check_the_log_directory",
                 code="diagnostics_failed",
             )
-        echo(message("text.downloading_and_verifying_the_model"))
-        for asset in assets(project.settings()):
-            fetch_model(project.artifacts, asset)
+        check_cancel(project)
+        if saved is None:
+            echo(message("text.downloading_and_verifying_the_model"))
+            for asset in assets(project.settings()):
+                phase("model_preparation", asset=asset.name)
+                fetch_model(project.artifacts, asset)
+                check_cancel(project)
         phase("model_verified")
         payload = create_payload(project)
         phase("payload_ready")
         cleanup_owned = colab.receipt() is None
+        check_cancel(project)
         receipt, created = colab.acquire(payload.code_sha256)
         phase("runtime_owned", receipt.runtime_id)
         cleanup_owned = True
@@ -451,7 +479,30 @@ def start_colab(
         )
         client = ComfyClient(session.endpoint, timeout=project.settings().request_timeout)
         deadline = time.monotonic() + project.settings().preparation_timeout
+        next_progress = time.monotonic() + PROGRESS_POLL_SECONDS
+        previous_progress: dict[str, str | None] = {}
         while True:
+            check_cancel(project)
+            if time.monotonic() >= next_progress:
+                current_progress = colab.progress(receipt)
+                if current_progress and current_progress != previous_progress:
+                    update_monitor(
+                        project,
+                        phase="connected"
+                        if current_progress["phase"] == "ready"
+                        else current_progress["phase"],
+                        asset=current_progress.get("asset"),
+                    )
+                    record_event(
+                        project,
+                        "preparation",
+                        str(current_progress["phase"]),
+                        runtime_id=receipt.runtime_id,
+                        operation_id=operation_id,
+                        asset=current_progress.get("asset"),
+                    )
+                    previous_progress = current_progress
+                next_progress = time.monotonic() + PROGRESS_POLL_SECONDS
             try:
                 metadata = client.runtime()
                 session = Session.model_validate(
@@ -500,6 +551,8 @@ def start_colab(
             on_ready(session)
         force = watch(project, client, session, echo, reconnect)
     except (Exception, KeyboardInterrupt) as error:
+        if isinstance(error, KomaquillError) and error.code == "stopping":
+            force = cancel_requested(project) is True
         if not ready:
             record_event(
                 project,

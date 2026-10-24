@@ -38,7 +38,7 @@ def test_open_returns_after_opening_the_selected_view(project, client, session, 
     assert result.exit_code == 0, result.output
     assert "template=pony_graph" in opened[0]
     assert "source=komaquill" in opened[0]
-    assert "start" in result.output
+    assert "monitor" in result.output
 
 
 def test_status_without_a_session_never_creates_gpu(project, monkeypatch):

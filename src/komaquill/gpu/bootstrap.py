@@ -8,12 +8,14 @@ import tomllib
 import urllib.request
 from pathlib import Path
 
+from komaquill.gpu.progress import progress
 from komaquill.messages import message
 
 
 def main() -> None:
     """Start an isolated environment without modifying system Python."""
     root = Path(__file__).resolve().parents[2]
+    progress(root, "environment")
     artifacts = root / ".artifacts"
     tools = artifacts / "runtime/tools"
     tools.mkdir(parents=True, exist_ok=True)
@@ -61,6 +63,7 @@ def main() -> None:
         env=env,
         check=True,
     )
+    progress(root, "dependencies")
     # Pylock records exact artifact URLs and hashes, preserving package source affinity.
     subprocess.run(
         [
@@ -76,6 +79,7 @@ def main() -> None:
         env=env,
         check=True,
     )
+    progress(root, "comfyui")
     print(message("text.preparing_comfyui_and_the_model"), flush=True)
     subprocess.run(
         [str(python), "-u", "-m", "komaquill.gpu.worker", str(root)],

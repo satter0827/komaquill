@@ -145,6 +145,7 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                         assert time.monotonic() < deadline
                         time.sleep(0.05)
                     assert session.is_file(), output.read_text(encoding="utf-8")
+                    assert monitor.wait(timeout=30) == 0
                     command("generate", "--prompt", "a quiet blue lake", "--seed", "5")
                     command("collect")
                     command("status")

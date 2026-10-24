@@ -16,7 +16,7 @@ class RuntimeSettings(BaseModel):
     generation_timeout: float = Field(gt=0)
     preparation_timeout: float = Field(gt=0)
     shutdown_timeout: float = Field(gt=0)
-    execution_timeout: float = Field(gt=0)
+    worker_execution_timeout: float = Field(gt=0)
     control_timeout: float = Field(gt=0)
     local_port: int = Field(ge=1024, le=65535)
     remote_port: int = Field(ge=1024, le=65535)

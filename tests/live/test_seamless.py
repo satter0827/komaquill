@@ -15,7 +15,7 @@ from PIL import Image
 
 from komaquill.infrastructure.configuration import find_project
 from komaquill.infrastructure.materials import blob, records
-from komaquill.infrastructure.runtime import connected
+from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import load_runs
 from komaquill.infrastructure.workflows import prepare
 
@@ -107,8 +107,21 @@ def test_native_upload_workflow_save_and_immutable_generation():
         )
         run = next(run for run in load_runs(project) if run.prompt_id == prompt_id)
         assert sha in run.input_sha256.values()
-        wait_for(lambda: any(row.name == path for row in records(project, "workflows")))
-        saved = next(row for row in records(project, "workflows") if row.name == path)
+        wait_for(
+            lambda: any(
+                row.name == path
+                and row.runtime_id == session.runtime_id
+                and row.input_sha256 == {name: sha}
+                for row in records(project, "workflows")
+            )
+        )
+        saved = next(
+            row
+            for row in records(project, "workflows")
+            if row.name == path
+            and row.runtime_id == session.runtime_id
+            and row.input_sha256 == {name: sha}
+        )
         assert saved.input_sha256 == {name: sha}
         assert (
             json.loads(blob(project, saved).read_bytes())["nodes"][0]["widgets_values"][0] == name
@@ -193,14 +206,13 @@ def test_cold_start_restores_saved_workflows_with_their_original_inputs():
     from urllib.parse import quote
 
     project = find_project(Path(os.environ["KOMAQUILL_PROJECT_DIR"]))
-    saved = next(
-        row
-        for row in reversed(records(project, "workflows"))
-        if row.name == "workflows/seamless-input.json"
-    )
-    assert saved.input_sha256
     with connected(project) as (client, session):
-        assert saved.runtime_id != session.runtime_id
+        saved = next(
+            row
+            for row in reversed(records(project, "workflows"))
+            if row.name == "workflows/seamless-input.json" and row.runtime_id != session.runtime_id
+        )
+        assert saved.input_sha256
         remote = "workflows/komaquill/" + saved.sha256 + ".json"
         graph = client.json("/userdata/" + quote(remote, safe=""))
         reference = graph["nodes"][0]["widgets_values"][0]
@@ -314,7 +326,8 @@ def test_monitor_and_ssh_recovery_reuses_the_owned_runtime():
     assert alive(current_monitor) and current_monitor.operation_id != monitor.operation_id
     with connected(project) as (client, session):
         assert str(session.runtime_id) == client.runtime()["runtime_id"]
-    output = project.artifacts / "reports/live-seamless/reconnection-session-3.json"
+    output = project.reports / "live-rebuild" / f"reconnection-{session.runtime_id}.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         json.dumps(
             {

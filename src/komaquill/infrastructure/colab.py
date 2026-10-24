@@ -26,6 +26,7 @@ from komaquill.domain.models import RuntimeObservation
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.paths import GpuPaths
 from komaquill.infrastructure.provenance import source_revision
 from komaquill.infrastructure.storage import atomic_json
 
@@ -338,8 +339,12 @@ class Colab:
             "os.environ['KOMAQUILL_SOURCE_REVISION'] = manifest.get('source_revision') or ''\n"
             "os.environ['KOMAQUILL_CODE_SHA256'] = manifest['code_sha256']\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
-            "os.makedirs(root + '/.artifacts/logs', exist_ok=True)\n"
-            "with open(root + '/.artifacts/logs/bootstrap.log', 'ab') as log:\n"
+            "sys.path.insert(0, root)\n"
+            "from komaquill.infrastructure.paths import GpuPaths\n"
+            "from pathlib import Path\n"
+            "logs = GpuPaths(Path(root)).logs\n"
+            "logs.mkdir(parents=True, exist_ok=True)\n"
+            "with (logs / 'bootstrap.log').open('ab') as log:\n"
             "    subprocess.run([sys.executable, '-m', 'komaquill.gpu.bootstrap'],\n"
             "                   cwd=root, stdout=log, stderr=subprocess.STDOUT, check=True)\n",
             encoding="utf-8",
@@ -369,7 +374,9 @@ class Colab:
         try:
             self.provider_call(
                 "download",
-                f"content/komaquill-{receipt.runtime_id}/.artifacts/logs/progress.json",
+                (
+                    GpuPaths(Path(f"content/komaquill-{receipt.runtime_id}")).logs / "progress.json"
+                ).as_posix(),
                 str(target),
                 timeout=self.settings.request_timeout,
             )
@@ -403,9 +410,9 @@ class Colab:
 
     def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
         """Download independent snapshots and preserve the last successful capture."""
-        folder = self.project.artifacts / "logs" / str(receipt.runtime_id)
+        folder = self.project.logs / str(receipt.runtime_id)
         folder.mkdir(parents=True, exist_ok=True)
-        remote = f"content/komaquill-{receipt.runtime_id}/.artifacts"
+        remote = GpuPaths(Path(f"content/komaquill-{receipt.runtime_id}"))
         failed: list[str] = []
         capture = folder / "capture.json"
         try:
@@ -417,10 +424,10 @@ class Colab:
         started = datetime.now(UTC).isoformat()
         deadline = time.monotonic() + self.settings.control_timeout
         for source, name in [
-            ("logs/bootstrap.log", "bootstrap.log"),
-            ("logs/comfy.log", "comfy.log"),
-            ("logs/cli.jsonl", "worker-events.jsonl"),
-            ("runtime/environment.txt", "environment.txt"),
+            (remote.logs / "bootstrap.log", "bootstrap.log"),
+            (remote.logs / "comfy.log", "comfy.log"),
+            (remote.logs / "cli.jsonl", "worker-events.jsonl"),
+            (remote.runtime / "environment.txt", "environment.txt"),
         ]:
             temporary = folder / f".{name}.{uuid4().hex}.tmp"
             prior = files.get(name)
@@ -439,7 +446,7 @@ class Colab:
                 with self.lock:
                     self.provider_call(
                         "download",
-                        f"{remote}/{source}",
+                        source.as_posix(),
                         str(temporary),
                         timeout=remaining,
                     )
@@ -461,10 +468,10 @@ class Colab:
                 except OSError as error:
                     if name not in failed:
                         failed.append(name)
-                    item.update(
-                        result="failed",
-                        failure=failure_info(error, "log_cleanup").model_dump(mode="json"),
+                    item["cleanup_failure"] = failure_info(error, "log_cleanup").model_dump(
+                        mode="json"
                     )
+                    item["result"] = "failed"
             if (folder / name).is_file():
                 item["size_bytes"] = (folder / name).stat().st_size
             files[name] = item

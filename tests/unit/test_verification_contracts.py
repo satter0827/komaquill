@@ -24,7 +24,7 @@ def test_incomplete_gate_preserves_previous_success(tmp_path, monkeypatch, error
     monkeypatch.setattr(check, "__file__", str(tmp_path / "scripts/check.py"))
     monkeypatch.setenv("KOMAQUILL_UV", "uv-test")
     monkeypatch.setattr(check, "source_revision", lambda: "fixture")
-    pointer = tmp_path / ".artifacts/reports/quality/latest-quality.json"
+    pointer = tmp_path / ".artifacts/records/reports/quality/latest-quality.json"
     pointer.parent.mkdir(parents=True)
     pointer.write_text('{"report":"previous"}')
     calls = 0

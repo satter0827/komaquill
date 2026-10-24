@@ -13,15 +13,21 @@ from komaquill.domain.presets import GenerationPreset
 
 def resource_json(name: str) -> JsonObject:
     """Read a packaged workflow without exposing arbitrary filesystem paths."""
-    if "/" in name or "\\" in name or not name.endswith(".json"):
+    from pathlib import PurePosixPath
+
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts or "\\" in name or not name.endswith(".json"):
         raise KomaquillError(code="invalid_configuration")
-    return cast(JsonObject, json.loads(files("komaquill").joinpath("resources", name).read_text()))
+    return cast(
+        JsonObject, json.loads(files("komaquill").joinpath("resources", *path.parts).read_text())
+    )
 
 
 def preset(name: str = "pony") -> ModelPreset:
     """Read one pinned asset from the packaged catalog."""
-    data = tomllib.loads(files("komaquill").joinpath("resources/presets.toml").read_text())
-    return ModelPreset.model_validate(data["assets"][name])
+    from komaquill.infrastructure.preset_catalog import catalog
+
+    return ModelPreset.model_validate(catalog()["assets"][name])
 
 
 def select(settings: RuntimeSettings, name: str | None = None) -> tuple[str, GenerationPreset]:
@@ -56,59 +62,32 @@ def prepare(
 ) -> tuple[JsonObject, JsonObject]:
     """Apply identical conditions to API and native editable browser workflows."""
     if settings is None:
-        defaults = tomllib.loads(files("komaquill").joinpath("resources/defaults.toml").read_text())
-        catalog = tomllib.loads(files("komaquill").joinpath("resources/presets.toml").read_text())
-        settings = RuntimeSettings.model_validate({**defaults, **catalog})
+        defaults = tomllib.loads(
+            files("komaquill").joinpath("resources/settings/defaults.toml").read_text()
+        )
+        from komaquill.infrastructure.preset_catalog import catalog
+
+        settings = RuntimeSettings.model_validate({**defaults, **catalog()})
     _, profile = select(settings, profile_name)
-    api = resource_json(profile.workflow + "-api.json")
-    ui = resource_json(profile.workflow + ".json")
-    # Node identities belong to the bundled workflow contract, not user configuration.
-    values: dict[str, JsonObject] = {
-        "3": {
-            "seed": seed,
-            "steps": profile.steps,
-            "cfg": profile.cfg,
-            "sampler_name": profile.sampler,
-            "scheduler": profile.scheduler,
-        },
-        "4": {"ckpt_name": settings.assets[profile.checkpoint].reference},
-        "5": {"width": profile.width, "height": profile.height},
-        "7": {"text": profile.negative if negative is None else negative},
-        "9": {"filename_prefix": f"komaquill/{run_id}"},
-    }
-    if "10" in api:
-        values["10"] = {"string_a": profile.positive_prefix, "string_b": prompt}
-        values["11"] = {"stop_at_clip_layer": profile.clip_skip}
-    else:
-        values["6"] = {"text": prompt}
-    if profile.lora:
-        values["12"] = {
-            "lora_name": settings.assets[profile.lora].reference,
-            "strength_model": profile.lora_strength,
-        }
-    if profile.upscaler:
-        values["13"] = {"model_name": settings.assets[profile.upscaler].reference}
-        values["15"] = {"width": profile.upscale_width, "height": profile.upscale_height}
-        values["16"] = {"filename_prefix": f"komaquill/{run_id}-upscaled"}
-    widgets: dict[str, list[str | None]] = {
-        "3": ["seed", None, "steps", "cfg", "sampler_name", "scheduler", "denoise"],
-        "4": ["ckpt_name"],
-        "5": ["width", "height", "batch_size"],
-        "6": ["text"],
-        "7": ["text"],
-        "9": ["filename_prefix"],
-        "10": ["string_a", "string_b", "delimiter"],
-        "11": ["stop_at_clip_layer"],
-        "12": ["lora_name", "strength_model"],
-        "13": ["model_name"],
-        "15": ["upscale_method", "width", "height", "crop"],
-        "16": ["filename_prefix"],
-    }
-    for key, changes in values.items():
-        api[key]["inputs"].update(changes)
-    for node in ui["nodes"]:
-        key = str(node["id"])
-        for index, name in enumerate(widgets.get(key, [])):
-            if name in values.get(key, {}):
-                node["widgets_values"][index] = values[key][name]
+    from copy import deepcopy
+
+    api = deepcopy(profile.api)
+    ui = deepcopy(profile.ui)
+    values = profile.model_dump()
+    values.update(
+        prompt=prompt,
+        negative=profile.negative if negative is None else negative,
+        seed=seed,
+        output_prefix=f"komaquill/{run_id}",
+        upscaled_output_prefix=f"komaquill/{run_id}-upscaled",
+    )
+    for name in ("checkpoint", "lora", "upscaler"):
+        asset = getattr(profile, name)
+        if asset is not None:
+            values[name] = settings.assets[asset].reference
+    nodes = {row["id"]: row for row in ui["nodes"]}
+    for binding in profile.bindings:
+        value = values[binding.source]
+        api[binding.api_node]["inputs"][binding.api_input] = value
+        nodes[binding.ui_node]["widgets_values"][binding.ui_widget] = value
     return api, ui

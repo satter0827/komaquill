@@ -53,7 +53,9 @@ def test_doctor_rejects_a_malformed_node_response_safely(project, client, sessio
         yield client, session
 
     original = client.json
-    nodes = {row["class_type"]: {} for row in resource_json("workflow-api.json").values()}
+    nodes = {
+        row["class_type"]: {} for row in resource_json("presets/pony/workflow-api.json").values()
+    }
     monkeypatch.setattr(cli, "connected", connected)
     monkeypatch.setattr(
         client, "json", lambda route: nodes if route == "/object_info" else original(route)

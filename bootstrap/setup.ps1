@@ -39,7 +39,8 @@ $editorEnvironment = Join-Path $toolRoot 'vscode.env'
     "TEMP=$env:TEMP"
 ) | Set-Content -LiteralPath $editorEnvironment -Encoding utf8
 if ($InstallExtensions) {
-    foreach ($extension in @('ms-python.python', 'ms-python.debugpy', 'charliermarsh.ruff')) {
+    $recommendations = Get-Content -LiteralPath (Join-Path $KomaquillRoot '.vscode/extensions.json') -Raw | ConvertFrom-Json
+    foreach ($extension in $recommendations.recommendations) {
         & code --install-extension $extension
         if ($LASTEXITCODE -ne 0) { throw (Get-KomaquillMessage 'bootstrap.extensions') }
     }

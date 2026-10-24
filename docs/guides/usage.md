@@ -2,7 +2,7 @@
 
 ## 起動と接続
 
-[導入手順](../README.md#ソースから導入する)で環境を有効にし、`komaquill start` を実行します。初回のGoogle認証は公式Colab CLIの案内に従います。
+[導入手順](../../README.md#ソースから導入する)で環境を有効にし、`komaquill start` を実行します。初回のGoogle認証は公式Colab CLIの案内に従います。
 
 設定はstart時に確定します。起動中に設定ファイルを変更しても反映されません。stop後のstartで新しい設定を使用します。
 
@@ -29,7 +29,7 @@ komaquill collect
 komaquill collect 実行ID
 ```
 
-`.artifacts/runs/実行ID/`にrun.json、workflow-api.json、画像を保存します。画面用のworkflow.jsonは取得できる場合に保存します。
+`.artifacts/data/runs/実行ID/`にrun.json、workflow-api.json、画像を保存します。画面用のworkflow.jsonは取得できる場合に保存します。
 CLIの要求は送信前、画面の要求は監視で確認した時点で記録します。受付不明の要求は自動再送せず、キューと履歴を照合します。
 
 1件の取得失敗があっても、ほかの正常な画像の保存を続けます。今回の回収失敗がある場合、collectは対象IDを表示して終了コード1を返します。
@@ -75,7 +75,7 @@ Colabの終了確認後、未回収要求はlostになります。外部接続�
 
 1. statusでColab、自動回収、未回収の状態を確認します。
 2. 接続可能ならcollectで結果を回収します。
-3. `.artifacts/logs/ランタイムID/`の準備ログ・実行ログ・capture.jsonを確認します。shutdown.jsonで画像回収・ログ取得・GPU終了の結果を確認します。
+3. `.artifacts/records/logs/ランタイムID/`の準備ログ・実行ログ・capture.jsonを確認します。shutdown.jsonで画像回収・ログ取得・GPU終了の結果を確認します。
 4. 起動または終了に失敗した場合はstopを再実行し、所有するColabの終了を確認します。
 
 操作の経緯はevents.jsonl、ログの取得日時と最終成功日時はcapture.jsonへ保存します。
@@ -109,9 +109,11 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 ## VS Codeから実行する
 
-Run and DebugのStart Sessionで起動し、接続後にGenerate Imageでプロンプトを入力します。Open GeneratorではApp ModeまたはNode Graph、Stop SessionではWait for ResultsまたはStop Without Waitingを選びます。Run CLI with Argumentsにはgenerate --prompt "a small cabin"などの引数を入力できます。引数欄へパスワードや認証コードを入力しないでください。
+Setup Environmentで導入し、Python: Select Interpreterで.artifacts/runtime/venvを選びます。Run and DebugのStart SessionがCLIのstartを呼び出します。Open GeneratorはApp ModeまたはNode Graphを選択でき、Generate Imageはプロンプトを入力します。
 
-TaskのSetup Environmentは導入、Check Projectは品質・秘密情報検査、Build Packageはビルド・配布物検査を行います。通常の操作はターミナルから同じCLIを直接実行できます。
+Prepare WorkflowはJSONのパス、Stop Sessionは通常・強制、Clean Generated Filesはプレビュー・整理を選びます。整理の既定はプレビューです。Show Status、Check Connection、Collect Results、Show Logsも同じCLIを使います。Run CLI with Argumentsでは任意の引数、Debug Sessionでは前面監視を実行します。画面だけを閉じてもGPUは終了しないため、Stop Sessionを実行してください。
+
+品質検査はCheck Project、配布物作成はBuild Packageを使います。これらはCLIの別実装を持たず、選択したPythonと既存スクリプトを呼び出します。
 
 ## グラフを編集する
 

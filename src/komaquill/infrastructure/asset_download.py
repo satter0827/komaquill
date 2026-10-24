@@ -10,15 +10,14 @@ from filelock import FileLock
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.presets import ModelPreset
-from komaquill.infrastructure.asset_store import model_path, register, verified_cache
-from komaquill.infrastructure.downloads import file_digest
+from komaquill.infrastructure.asset_store import cached_path, file_digest, model_path, register
 
 CHUNK_BYTES = 1024 * 1024
 DISK_RESERVE_BYTES = 64 * 1024 * 1024
 
 
 def download_asset(
-    artifacts: Path,
+    models: Path,
     asset: ModelPreset,
     timeout: float,
     cancelled: Callable[[], bool],
@@ -26,14 +25,11 @@ def download_asset(
     """Keep incomplete bytes for retry, publishing only a verified final file."""
     import shutil
 
-    target = model_path(artifacts, asset)
+    target = model_path(models, asset)
     target.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(target.parent / ".download.lock")):
-        if verified_cache(artifacts, asset):
-            return target
-        if target.is_file() and file_digest(target) == asset.sha256:
-            register(artifacts, asset, target)
-            return target
+        if (existing := cached_path(models, asset)) is not None:
+            return existing
         if asset.local_only:
             raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
         partial = target.with_suffix(target.suffix + ".part")
@@ -84,5 +80,5 @@ def download_asset(
             partial.unlink(missing_ok=True)
             raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
         partial.replace(target)
-        register(artifacts, asset, target)
+        register(models, asset, target)
         return target

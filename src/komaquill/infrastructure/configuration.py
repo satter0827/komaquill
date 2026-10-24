@@ -22,7 +22,8 @@ from pydantic_settings import (
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.paths import WorkspacePaths
+from komaquill.infrastructure.paths import GpuPaths, WorkspacePaths
+from komaquill.infrastructure.preset_catalog import catalog
 
 
 class Settings(RuntimeSettings, BaseSettings):
@@ -42,14 +43,14 @@ class Settings(RuntimeSettings, BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Use typed packaged defaults without loading dotenv or secret files."""
-        with as_file(files("komaquill").joinpath("resources/defaults.toml")) as path:
+        with as_file(files("komaquill").joinpath("resources/settings/defaults.toml")) as path:
             defaults = TomlConfigSettingsSource(settings_cls, toml_file=path)
-        catalog = tomllib.loads(files("komaquill").joinpath("resources/presets.toml").read_text())
+        definitions = catalog()
         return (
             init_settings,
             env_settings,
             defaults,
-            InitSettingsSource(settings_cls, init_kwargs=catalog),
+            InitSettingsSource(settings_cls, init_kwargs=definitions),
         )
 
 
@@ -61,7 +62,7 @@ class Project(WorkspacePaths):
 
     def configured(self, settings: RuntimeSettings | None = None) -> "Project":
         """Bind a validated snapshot without changing the source configuration."""
-        return Project(self.root, settings or self.settings())
+        return type(self)(self.root, settings or self.settings())
 
     def settings(self) -> RuntimeSettings:
         """Read workspace overrides and environment variables."""
@@ -69,11 +70,21 @@ class Project(WorkspacePaths):
             return self.effective_settings
         with (self.root / "komaquill.toml").open("rb") as handle:
             defaults = tomllib.load(handle)
-        # Environment overrides workspace TOML; secrets are excluded from settings.
+        definitions = catalog(self.root)
+        for section in ("assets", "presets"):
+            for name, changes in defaults.pop(section, {}).items():
+                definitions[section][name] = {**definitions[section].get(name, {}), **changes}
+        import json
+
         for name in list(defaults):
             if f"KOMAQUILL_{name.upper()}" in os.environ:
                 del defaults[name]
-        return RuntimeSettings.model_validate(Settings(**defaults).model_dump())
+        for section in ("assets", "presets"):
+            raw = os.environ.get(f"KOMAQUILL_{section.upper()}")
+            if raw is not None:
+                for name, changes in json.loads(raw).items():
+                    definitions[section][name] = {**definitions[section].get(name, {}), **changes}
+        return RuntimeSettings.model_validate(Settings(**definitions, **defaults).model_dump())
 
     @property
     def repository(self) -> "FileRunRepository":
@@ -134,7 +145,21 @@ def find_project(explicit: Path | None = None) -> Project:
     candidates = [start] if explicit else [start, *start.parents]
     for candidate in candidates:
         if (candidate / "komaquill.toml").is_file():
-            return Project(candidate)
+            project = Project(candidate)
+            migration = project.state / "storage-migration.json"
+            if migration.is_file():
+                import json
+
+                if json.loads(migration.read_bytes()).get("status") != "complete":
+                    raise KomaquillError(
+                        display_key="cleanup.migration", code="invalid_configuration"
+                    )
+            if any(
+                (project.artifacts / name).exists()
+                for name in ("runs", "models", "inputs", "workflows", "logs", "reports")
+            ):
+                raise KomaquillError(display_key="cleanup.migration", code="invalid_configuration")
+            return project
     raise KomaquillError(display_key="text.workspace_not_found_specify_project")
 
 
@@ -159,5 +184,25 @@ def initialize(directory: Path) -> Project:
                 handle.write(("" if rules.endswith("\n") else "\n") + "/.artifacts/\n")
     project = Project(root)
     project.artifacts.mkdir(exist_ok=True)
+    for folder in (project.data, project.records, project.state):
+        folder.mkdir(exist_ok=True)
+    guide = project.artifacts / "README.md"
+    if not guide.exists():
+        guide.write_text(
+            files("komaquill").joinpath("resources/artifacts.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     project.settings()
     return project
+
+
+class GpuProject(Project):
+    """Use transient server paths independently of the local data layout."""
+
+    @property
+    def data(self) -> Path:
+        return GpuPaths(self.root).data
+
+    @property
+    def records(self) -> Path:
+        return GpuPaths(self.root).records

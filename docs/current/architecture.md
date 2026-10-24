@@ -18,7 +18,7 @@ CLIが要求の記録とローカル保存を担当し、GPU側のComfyUIが画�
 
 対応するCLI引数、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。設定は起動時に検証し、保存・回収・終了で同じ値を使用します。変更は次のstartから反映します。認証情報は設定へ含めません。
 
-Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime.toml、モデルと生成プリセットはpresets.tomlで固定します。
+Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime/versions.toml、モデルと生成プリセットはresources/modelsとresources/presetsで固定します。
 
 ## GPUへの転送
 
@@ -40,7 +40,7 @@ Google認証と公式CLIの管理ファイルは標準のユーザーフォル�
 
 ## 資源とGPUの所有
 
-モデル、LoRA、アップスケーラーの定義はpresets.toml、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
+モデル、LoRA、アップスケーラーの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
 
 Colabの確保・実行・初回転送は公式CLIを使います。状態確認と対象指定の終了には同じ固定パッケージのClientを使い、公式CLIのローカルキャッシュを生存確認の根拠にしません。SSHは固定した公式実装の`_run_proxy_bridge`へ、プロバイダーで照合した一時SessionStateを渡します。この内部関数への依存は一つのアダプターに限定します。公式CLIのSSHコマンドには記録欠損時の自動確保があるため、再接続には使用しません。
 
@@ -59,3 +59,25 @@ worker_execution_timeoutは公式Colab CLIがコード実行を待つ時間で�
 ComfyUI上の拡張は標準の書き込みと生成要求を観測し、一時領域に不変の版を作ります。ローカル監視は画像回収とは別に素材を回収し、内容と参照記録を保存してから確認を返します。停止時は新しい要求を抑止し、処理中の標準書き込みが完了してから最終回収へ進みます。
 
 新しいrun.jsonの形式バージョンは2、素材・準備要求・モデル台帳は1です。既存の画像・履歴・取得済みログは書き換えません。DBや別の画面へ拡張する場合も、生成・保存の契約と実行環境の制御を分離します。
+
+## ソースの配置
+
+| 配置 | 責務 |
+|---|---|
+| domain | 状態・設定・モデル・失敗の契約 |
+| application | 生成・回収・終了・準備・整理の判断と必要な境界 |
+| infrastructure/sessions | 接続、起動、監視、終了の具体的な調整 |
+| infrastructure/inspection.py | GPUとローカル記録の独立した状態取得 |
+| interfaces/cli.py | CLIの入力と表示 |
+| interfaces/comfyui | 標準HTTP拡張、素材観測、配信するJavaScript |
+| gpu | 一時環境の準備とComfyUI起動 |
+| resources/settings | 運用上の既定値 |
+| resources/models | 共有するモデルの固定定義 |
+| resources/presets/ID | 生成セットの3ファイル |
+| resources/runtime | 固定バージョンとGPU依存ロック |
+
+具体的な依存方向はImport Linterで検査します。ComfyUI用インターフェースはGPUへ配布しますが、CLI・Colab制御・ローカル監視は配布しません。詳細な状態と失敗は[契約](contracts.md)を参照してください。
+
+## ローカルとGPUの保存先
+
+WorkspacePathsはローカルのdata・records・state・runtimeなどを分けます。GpuPathsは一時ランタイムの配置を定義し、GpuProjectと起動前の進捗発行・取得で共有します。ローカルの保全分類をGPU側の進捗・ログへ無条件に適用しません。両者のファイル対応は発行と取得を結ぶテストで確認します。

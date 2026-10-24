@@ -95,10 +95,10 @@ omit = ["*/tests/*"]
 relative_files = true
 patch = ["subprocess"]
 branch = true
-data_file = ".artifacts/reports/quality/.coverage"
+data_file = ".artifacts/records/reports/quality/.coverage"
 
 [tool.coverage.html]
-directory = ".artifacts/reports/quality/coverage"
+directory = ".artifacts/records/reports/quality/coverage"
 
 [tool.komaquill.coverage]
 line_minimum = 90
@@ -123,7 +123,7 @@ forbidden_modules = ["komaquill.infrastructure", "komaquill.interfaces", "komaqu
 name = "GPU code does not import local interfaces or control"
 type = "forbidden"
 source_modules = ["komaquill.gpu"]
-forbidden_modules = ["komaquill.interfaces", "komaquill.infrastructure.colab", "komaquill.infrastructure.runtime", "komaquill.infrastructure.colab_entry"]
+forbidden_modules = ["komaquill.interfaces.cli", "komaquill.interfaces.session_worker", "komaquill.infrastructure.colab", "komaquill.infrastructure.sessions", "komaquill.infrastructure.colab_entry"]
 
 [[tool.importlinter.contracts]]
 name = "Product code does not import development dependencies"

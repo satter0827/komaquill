@@ -8,13 +8,14 @@ from typer.testing import CliRunner
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ShutdownResult
-from komaquill.infrastructure import runtime as runtime
 from komaquill.infrastructure import views
 from komaquill.infrastructure.colab import Colab, Receipt
+from komaquill.infrastructure.sessions import connection, startup
 from komaquill.infrastructure.storage import atomic_json, load_session
 from komaquill.infrastructure.workflows import preset, resource_json
 from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop
+from tests.support.session_controls import patch_session
 
 
 @pytest.mark.parametrize(
@@ -43,13 +44,13 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     calls = []
     if case == "existing":
         atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
-    monkeypatch.setattr(runtime, "Colab", lambda _: control)
+    patch_session(monkeypatch, "Colab", lambda _: control)
 
-    monkeypatch.setattr(runtime, "fetch_model", lambda *args: None)
-    monkeypatch.setattr(runtime, "check_port", lambda _: None)
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    patch_session(monkeypatch, "fetch_model", lambda *args: None)
+    patch_session(monkeypatch, "check_port", lambda _: None)
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
-    monkeypatch.setattr(runtime, "verify_extension", lambda _: None)
+    patch_session(monkeypatch, "verify_extension", lambda _: None)
 
     def acquire(revision):
         calls.append("acquire")
@@ -66,8 +67,8 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     monkeypatch.setattr(control, "recover_diagnostics", lambda _: calls.append("logs") or ())
     monkeypatch.setattr(control, "stop", lambda: calls.append("stop") or confirmed_stop())
     monkeypatch.setattr(control, "cleanup_processes", lambda _: calls.append("cleanup"))
-    monkeypatch.setattr(runtime, "terminate", lambda *args: calls.append("close"))
-    monkeypatch.setattr(runtime.time, "sleep", lambda _: None)
+    patch_session(monkeypatch, "terminate", lambda *args: calls.append("close"))
+    monkeypatch.setattr(startup.time, "sleep", lambda _: None)
     original = client.runtime
     reads = []
 
@@ -86,28 +87,28 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         reconnect()
         return True
 
-    monkeypatch.setattr(runtime, "watch", watch)
+    patch_session(monkeypatch, "watch", watch)
     if case == "simultaneous_failure":
 
         def fail_progress(_):
             raise PermissionError("private-path")
 
-        monkeypatch.setattr(runtime, "PROGRESS_POLL_SECONDS", 0)
+        patch_session(monkeypatch, "PROGRESS_POLL_SECONDS", 0)
         monkeypatch.setattr(control, "progress", fail_progress)
         monkeypatch.setattr(control, "recover_diagnostics", lambda _: ("comfy.log",))
     elif case == "diagnostics_failure":
-        monkeypatch.setattr(runtime, "record_event", lambda *args, **kwargs: False)
+        patch_session(monkeypatch, "record_event", lambda *args, **kwargs: False)
     if case == "simultaneous_failure":
         with pytest.raises(PermissionError):
-            runtime.start_colab(project, lambda _: None)
+            startup.start_colab(project, lambda _: None)
     elif case in {"startup_failure", "allocation_failure", "diagnostics_failure"}:
         with pytest.raises(KomaquillError):
-            runtime.start_colab(project, lambda _: None)
+            startup.start_colab(project, lambda _: None)
     else:
-        runtime.start_colab(project, lambda _: None)
+        startup.start_colab(project, lambda _: None)
         assert load_session(project).settings == receipt.settings
         summary = ShutdownResult.model_validate_json(
-            (project.artifacts / "logs" / str(receipt.runtime_id) / "shutdown.json").read_bytes()
+            (project.logs / str(receipt.runtime_id) / "shutdown.json").read_bytes()
         )
         assert summary.gpu == "stopped" and summary.history == "ok"
     assert not control.receipt_file.exists()
@@ -123,13 +124,13 @@ def test_credentials_are_loaded_only_for_the_saved_connection(
     session.username = "user"
     session.settings = project.settings()
     atomic_json(project.session_file, session.model_dump(mode="json"))
-    monkeypatch.setattr(runtime.keyring, "get_password", lambda *args: None)
-    with pytest.raises(KomaquillError), runtime.connected(project):
+    monkeypatch.setattr(connection.keyring, "get_password", lambda *args: None)
+    with pytest.raises(KomaquillError), connection.connected(project):
         pass
     seen = []
-    monkeypatch.setattr(runtime.keyring, "get_password", lambda *args: "private-password")
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: seen.append(args) or client)
-    with runtime.connected(project) as (_, saved):
+    monkeypatch.setattr(connection.keyring, "get_password", lambda *args: "private-password")
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: seen.append(args) or client)
+    with connection.connected(project) as (_, saved):
         assert saved.username == "user"
     assert seen[0][1] == "private-password"
     assert "private-password" not in project.session_file.read_text()
@@ -148,7 +149,9 @@ def cli_connection(project, session, client, monkeypatch):
 @pytest.mark.parametrize("case", ["ready", "nodes", "model", "cpu"])
 def test_doctor_reports_actual_generation_requirements(cli_connection, client, monkeypatch, case):
     original = client.json
-    nodes = {row["class_type"]: {} for row in resource_json("workflow-api.json").values()}
+    nodes = {
+        row["class_type"]: {} for row in resource_json("presets/pony/workflow-api.json").values()
+    }
     nodes["CheckpointLoaderSimple"] = {"input": {"required": {"ckpt_name": [[preset().reference]]}}}
     if case == "nodes":
         nodes.pop("KSampler")
@@ -181,7 +184,7 @@ def test_generate_cli_prompts_and_returns_saved_path(cli_connection, monkeypatch
 def test_cli_delegates_operations_without_editor_dependencies(project, monkeypatch, command):
     calls = []
     monkeypatch.setattr(cli.supervisor, "start", lambda *args: calls.append(args))
-    monkeypatch.setattr(cli.runtime, "stop", lambda *args: calls.append(args))
+    monkeypatch.setattr(cli.shutdown, "stop", lambda *args: calls.append(args))
     monkeypatch.setattr(
         cli, "fetch_model", lambda *args: calls.append(args) or project.artifacts / "model"
     )
@@ -244,7 +247,7 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
 def test_external_cleanup_reports_failure_without_replacing_an_existing_error(
     project, client, monkeypatch, primary
 ):
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *a, **k: client)
+    patch_session(monkeypatch, "ComfyClient", lambda *a, **k: client)
     monkeypatch.setattr(client, "close", lambda: None)
     calls = []
 
@@ -257,9 +260,9 @@ def test_external_cleanup_reports_failure_without_replacing_an_existing_error(
         calls.append("finish")
         raise KomaquillError(code="collection_failed")
 
-    monkeypatch.setattr(runtime, "supervise", supervise)
-    monkeypatch.setattr(runtime, "finish_external", finish)
+    patch_session(monkeypatch, "supervise", supervise)
+    patch_session(monkeypatch, "finish_external", finish)
     with pytest.raises(KomaquillError) as error:
-        runtime.start_external(project, "http://127.0.0.1:18188", None, None, lambda _: None)
+        startup.start_external(project, "http://127.0.0.1:18188", None, None, lambda _: None)
     assert error.value.code == ("storage_failed" if primary else "collection_failed")
     assert calls == ["finish"]

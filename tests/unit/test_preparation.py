@@ -218,10 +218,10 @@ def test_registered_model_plan_uses_verified_local_capacity(coordinator, monkeyp
 
     control, client = coordinator
     model = asset()
-    target = model_path(control.project.artifacts, model)
+    target = model_path(control.project.models, model)
     target.parent.mkdir(parents=True)
     target.write_bytes(b"model")
-    register(control.project.artifacts, model, target)
+    register(control.project.models, model, target)
     monkeypatch.setattr(module, "requirements", lambda *a: ([], [model.reference]))
     control.plan(client.job)
     plan = client.calls[-1][1]

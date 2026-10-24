@@ -1,7 +1,7 @@
 """Define pinned assets and generation presets independently of transport."""
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -86,11 +86,24 @@ class ModelPreset(BaseModel):
         return self
 
 
+class WorkflowBinding(BaseModel):
+    """Bind one named scalar to matching standard API and UI inputs."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    source: str
+    api_node: str
+    api_input: str
+    ui_node: int
+    ui_widget: int = Field(ge=0)
+
+
 class GenerationPreset(BaseModel):
     """Bind standard workflow files to explicit model and sampling settings."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
-    workflow: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    api: dict[str, Any]
+    ui: dict[str, Any]
+    bindings: tuple[WorkflowBinding, ...]
     checkpoint: str
     lora: str | None = None
     upscaler: str | None = None
@@ -112,3 +125,31 @@ class GenerationPreset(BaseModel):
     def asset_ids(self) -> tuple[str, ...]:
         """Return only assets needed for this profile."""
         return tuple(value for value in (self.checkpoint, self.lora, self.upscaler) if value)
+
+    @model_validator(mode="after")
+    def validate_bindings(self) -> "GenerationPreset":
+        """Reject incomplete or mismatched exports before GPU allocation."""
+        nodes = {row.get("id"): row for row in self.ui.get("nodes", []) if isinstance(row, dict)}
+        allowed = set(type(self).model_fields) - {"api", "ui", "bindings"}
+        allowed.update({"prompt", "seed", "output_prefix", "upscaled_output_prefix"})
+        required = {"prompt", "negative", "seed", "checkpoint", "output_prefix"}
+        if not required.issubset({row.source for row in self.bindings}):
+            raise ValueError("The preset is missing required input bindings.")
+        targets = set()
+        for binding in self.bindings:
+            node = self.api.get(binding.api_node, {})
+            widget = nodes.get(binding.ui_node, {})
+            inputs = node.get("inputs", {})
+            values = widget.get("widgets_values", [])
+            target = (binding.api_node, binding.api_input)
+            if (
+                binding.source not in allowed
+                or target in targets
+                or binding.api_input not in inputs
+                or isinstance(inputs[binding.api_input], (dict, list))
+                or node.get("class_type") != widget.get("type")
+                or binding.ui_widget >= len(values)
+            ):
+                raise ValueError("A preset input does not match its standard workflow exports.")
+            targets.add(target)
+        return self

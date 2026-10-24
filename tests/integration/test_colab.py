@@ -175,7 +175,7 @@ def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypa
         colab_entry.main()
     assert error.value.code == 1
     output = capsys.readouterr()
-    diagnostic = (project.artifacts / "logs/cli.jsonl").read_text(encoding="utf-8")
+    diagnostic = (project.logs / "cli.jsonl").read_text(encoding="utf-8")
     assert "should-stay-private" not in output.out + output.err + diagnostic
     assert json.loads(diagnostic)["failure"]["exception_type"] == "RuntimeError"
 
@@ -266,7 +266,7 @@ def test_release_never_removes_a_replacement_receipt(project, monkeypatch):
 def test_log_failure_preserves_existing_file_and_downloads_remaining_logs(project, monkeypatch):
     colab, _ = controller(project, monkeypatch)
     receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="a" * 40)
-    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    folder = project.logs / str(receipt.runtime_id)
     folder.mkdir(parents=True)
     (folder / "bootstrap.log").write_text("previous-complete-log")
     monkeypatch.setattr(colab, "entry", lambda receipt: {"endpoint": "expected"})

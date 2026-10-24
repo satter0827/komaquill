@@ -10,23 +10,23 @@ from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
 
-RESOURCE_NAMES = (
-    "messages.json",
-    "defaults.toml",
-    "presets.toml",
-    "sd15.json",
-    "sd15-api.json",
-    "pony-preview.json",
-    "pony-preview-api.json",
-    "pony-upscale.json",
-    "pony-upscale-api.json",
-    "runtime.toml",
-    "workflow.json",
-    "workflow-api.json",
-    "pylock.worker.toml",
-    "web/extension.js",
-    "web/preparation.js",
-)
+
+def resource_names() -> tuple[str, ...]:
+    """Discover packaged resources as complete bundles instead of a manual filename list."""
+    anchor = files("komaquill").joinpath("resources")
+
+    def walk(folder: Traversable, prefix: str = "") -> Iterator[str]:
+        for item in sorted(folder.iterdir(), key=lambda row: row.name):
+            name = prefix + item.name
+            if item.is_dir() and not item.name.startswith("."):
+                yield from walk(item, name + "/")
+            elif item.is_file() and not item.name.startswith(".") and not name.endswith(".pyc"):
+                yield name
+
+    return tuple(walk(anchor))
+
+
+RESOURCE_NAMES = resource_names()
 
 
 def package_contents() -> Iterator[tuple[str, bytes]]:
@@ -42,6 +42,11 @@ def package_contents() -> Iterator[tuple[str, bytes]]:
                 yield "komaquill/" + relative, item.read_bytes()
 
     yield from modules(anchor)
+    for item in sorted(
+        anchor.joinpath("interfaces/comfyui/web").iterdir(), key=lambda row: row.name
+    ):
+        if item.is_file() and item.name.endswith(".js"):
+            yield "komaquill/interfaces/comfyui/web/" + item.name, item.read_bytes()
     for name in RESOURCE_NAMES:
         yield "komaquill/resources/" + name, anchor.joinpath("resources", name).read_bytes()
 
@@ -78,10 +83,12 @@ GPU_MODULES = frozenset(
         "gpu/__init__.py",
         "gpu/bootstrap.py",
         "gpu/progress.py",
-        "gpu/extension.py",
+        "interfaces/__init__.py",
+        "interfaces/comfyui/__init__.py",
+        "interfaces/comfyui/api.py",
+        "interfaces/comfyui/preservation.py",
         "domain/assets.py",
         "domain/materials.py",
-        "gpu/preservation.py",
         "infrastructure/asset_download.py",
         "infrastructure/asset_store.py",
         "gpu/worker.py",
@@ -92,6 +99,7 @@ GPU_MODULES = frozenset(
         "infrastructure/diagnostics.py",
         "infrastructure/downloads.py",
         "infrastructure/workflows.py",
+        "infrastructure/preset_catalog.py",
         "infrastructure/provenance.py",
     }
 )
@@ -103,7 +111,11 @@ def gpu_contents() -> Iterator[tuple[str, bytes]]:
         (name, content)
         for name, content in package_contents()
         if name.removeprefix("komaquill/") in GPU_MODULES
-        or (name.startswith("komaquill/resources/") and not name.endswith("messages.json"))
+        or name.startswith("komaquill/interfaces/comfyui/web/")
+        or (
+            name.startswith("komaquill/resources/")
+            and not name.endswith(("messages.json", "artifacts.md"))
+        )
     ]
     anchor = files("komaquill")
     all_text = json.loads(anchor.joinpath("resources/messages.json").read_text(encoding="utf-8"))

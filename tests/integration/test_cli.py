@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from typer.testing import CliRunner
 
-from komaquill.infrastructure import views
+from komaquill.infrastructure import inspection, views
 from komaquill.interfaces import cli as cli
 
 
@@ -45,7 +45,7 @@ def test_status_without_a_session_never_creates_gpu(project, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("確認でGPUを確保してはいけない")
 
-    monkeypatch.setattr(cli.Colab, "acquire", forbidden)
+    monkeypatch.setattr(inspection.Colab, "acquire", forbidden)
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0, result.output
     assert "Pending: 0" in result.output
@@ -60,8 +60,8 @@ def test_collect_reports_partial_save_and_returns_failure(
     def connection(_project):
         yield client, session
 
-    client.submit(resource_json("workflow-api.json"), {}, "broken-browser")
-    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "broken-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "healthy-browser")
     record = next(iter(stub.history.values()))
     record["outputs"]["9"]["images"][0]["filename"] = "broken.png"
     stub.invalid_images.add("broken.png")
@@ -96,7 +96,7 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
     colab = Colab(project)
     receipt = Receipt(name="starting", runtime_id=uuid4(), source_revision="a" * 40)
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
-    monkeypatch.setattr(cli, "Colab", lambda project: colab)
+    monkeypatch.setattr(inspection, "Colab", lambda project: colab)
     # Use a different lock instance to avoid reentrant locking.
     from filelock import FileLock
 
@@ -117,7 +117,7 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
     receipt = Receipt(name="uncertain", runtime_id=uuid4(), source_revision="a" * 40)
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     monkeypatch.setattr(colab, "refresh", lambda receipt: False)
-    monkeypatch.setattr(cli, "Colab", lambda project: colab)
+    monkeypatch.setattr(inspection, "Colab", lambda project: colab)
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0
     assert "allocation unconfirmed" in result.output
@@ -129,7 +129,7 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
 def test_logs_display_safe_categories_without_exception_payloads(project):
     import json
 
-    folder = project.artifacts / "logs"
+    folder = project.logs
     folder.mkdir(parents=True)
     row = {
         "created_at": "time",
@@ -147,3 +147,13 @@ def test_logs_display_safe_categories_without_exception_payloads(project):
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "logs"])
     assert result.exit_code == 0 and "storage_failed/storage" in result.output
     assert "private-response" not in result.output
+
+
+def test_status_reports_corrupt_records_without_hiding_other_counts(project):
+    folder = project.state / "preparation"
+    folder.mkdir(parents=True)
+    (folder / "broken.json").write_text("{")
+    result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
+    assert result.exit_code == 1
+    assert "unknown" in result.output and "broken.json" in result.output
+    assert "Pending: 0" in result.output and "Traceback" not in result.output

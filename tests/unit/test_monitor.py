@@ -214,8 +214,8 @@ def test_stop_and_log_reader_handle_absent_and_active_sessions(project, monkeypa
     monkeypatch.setattr(supervisor, "alive", lambda _: True)
     monkeypatch.setattr(supervisor, "wait_stopped", lambda *args: None)
     assert supervisor.stop(project, True, lambda _: None)
-    folder = project.artifacts / "logs"
-    folder.mkdir(exist_ok=True)
+    folder = project.logs
+    folder.mkdir(parents=True, exist_ok=True)
     (folder / "cli.jsonl").write_text('{"operation":"test"}\ninvalid\n[]\n')
     (folder / "ignored.jsonl").write_text('{"operation":"private"}')
     assert list(supervisor.events(project, False)) == [{"operation": "test"}]
@@ -252,7 +252,7 @@ def test_worker_freezes_settings_and_saves_terminal_state(project, monkeypatch, 
             raise KomaquillError(code="stopping" if case == "cancel" else "connection_failed")
         ready(SimpleNamespace(runtime_id=uuid4()))
 
-    monkeypatch.setattr(session_worker.runtime, "start", run)
+    monkeypatch.setattr(session_worker.startup, "start", run)
     assert session_worker.main(project.root) == (
         1 if case in {"failure", "credentials_missing", "absent"} else 0
     )
@@ -370,5 +370,30 @@ def test_progress_cleanup_failure_does_not_abort_startup(project, session, monke
     with monkeypatch.context() as patch:
         patch.setattr(Path, "unlink", remove)
         assert control.progress(receipt) == {"phase": "dependencies", "asset": None}
-    event = (project.artifacts / "logs" / str(session.runtime_id) / "events.jsonl").read_text()
+    event = (project.logs / str(session.runtime_id) / "events.jsonl").read_text()
     assert "progress_cleanup" in event and "private-path" not in event
+
+
+def test_progress_transport_reads_the_file_published_by_the_gpu(project, tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from komaquill.gpu.progress import progress
+    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.infrastructure.configuration import GpuProject
+    from komaquill.infrastructure.paths import GpuPaths
+
+    receipt = Receipt(name="owned", runtime_id=uuid4())
+    server = tmp_path / "server"
+    remote = server / "content" / f"komaquill-{receipt.runtime_id}"
+    progress(remote, "dependencies")
+    expected = GpuPaths(remote).logs / "progress.json"
+    assert expected.is_file() and expected.parent == GpuProject(remote).logs
+    assert expected.parent != project.logs
+    control = Colab(project)
+
+    def download(action, source, target, **kwargs):
+        assert action == "download"
+        Path(target).write_bytes((server / source).read_bytes())
+
+    monkeypatch.setattr(control, "provider_call", download)
+    assert control.progress(receipt) == {"phase": "dependencies", "asset": None}

@@ -26,11 +26,18 @@ def record_event(
     asset: str | None = None,
 ) -> bool:
     """Append an event; return false if diagnostics storage is unavailable."""
-    folder = project.artifacts / "logs"
+    folder = project.logs
     if runtime_id is not None:
         folder /= str(runtime_id)
     path = folder / ("events.jsonl" if runtime_id is not None else "cli.jsonl")
+    session_operation_id = None
+    with suppress(OSError, ValueError, KeyError):
+        session_operation_id = json.loads((project.state / "monitor.json").read_bytes())[
+            "operation_id"
+        ]
     data = {
+        "format_version": 2,
+        "session_operation_id": session_operation_id,
         "created_at": datetime.now(UTC).isoformat(),
         "operation": operation,
         "asset": asset,

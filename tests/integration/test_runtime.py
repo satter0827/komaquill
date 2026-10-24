@@ -6,10 +6,11 @@ import pytest
 
 from komaquill.application.generation import new_run
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import runtime as runtime
+from komaquill.infrastructure.sessions import connection, monitor, shutdown, startup
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, save_run
 from komaquill.infrastructure.workflows import resource_json
 from tests.support.provider import stopped as confirmed_stop
+from tests.support.session_controls import patch_session
 
 
 def test_second_start_is_rejected_before_allocation(project, monkeypatch):
@@ -17,27 +18,27 @@ def test_second_start_is_rejected_before_allocation(project, monkeypatch):
         def __init__(self, project):
             pytest.fail("二重起動でColabを操作してはいけない")
 
-    monkeypatch.setattr(runtime, "Colab", ForbiddenColab)
+    patch_session(monkeypatch, "Colab", ForbiddenColab)
     # Use a separate instance to test contention instead of reentrancy.
-    with runtime.monitor_lock(project), pytest.raises(KomaquillError):
-        runtime.start(project, "colab", None, None, None, lambda message: None)
+    with connection.monitor_lock(project), pytest.raises(KomaquillError):
+        startup.start(project, "colab", None, None, None, lambda message: None)
 
 
 def test_external_uses_only_standard_api_and_saves_new_browser_job(project, client, monkeypatch):
-    original_watch = runtime.watch
-    old_id = client.submit(resource_json("workflow-api.json"), {}, "old-browser")
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    original_watch = monitor.watch
+    old_id = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "old-browser")
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
 
     def watch(project, client, session, echo):
         assert old_id in session.excluded_prompt_ids
-        client.submit(resource_json("workflow-api.json"), {}, "new-browser")
+        client.submit(resource_json("presets/pony/workflow-api.json"), {}, "new-browser")
         atomic_json(
             project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
         )
         return original_watch(project, client, session, echo)
 
-    monkeypatch.setattr(runtime, "watch", watch)
-    runtime.start_external(project, "http://127.0.0.1:8188", None, None, lambda message: None)
+    patch_session(monkeypatch, "watch", watch)
+    startup.start_external(project, "http://127.0.0.1:8188", None, None, lambda message: None)
     assert len(load_runs(project)) == 1
     assert load_runs(project)[0].state == "saved"
     session = load_session(project)
@@ -48,13 +49,13 @@ def test_external_uses_only_standard_api_and_saves_new_browser_job(project, clie
 def test_force_shutdown_collects_completed_results_without_waiting(
     project, client, session, monkeypatch
 ):
-    client.submit(resource_json("workflow-api.json"), {}, "browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
 
     def no_wait(seconds):
         pytest.fail("強制終了で生成完了を待ってはいけない")
 
-    monkeypatch.setattr(runtime.time, "sleep", no_wait)
-    runtime.drain(project, client, session, True, lambda message: None)
+    monkeypatch.setattr(startup.time, "sleep", no_wait)
+    monitor.drain(project, client, session, True, lambda message: None)
     assert load_runs(project)[0].state == "saved"
 
 
@@ -63,16 +64,16 @@ def test_shutdown_timeout_reports_unresolved_run(project, client, session, monke
     run.state = "unknown"
     save_run(project, run)
     clock = iter([0, 601])
-    monkeypatch.setattr(runtime.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(startup.time, "monotonic", lambda: next(clock))
     messages = []
-    runtime.drain(project, client, session, False, messages.append)
+    monitor.drain(project, client, session, False, messages.append)
     assert str(run.run_id) in messages[-1]
     assert load_runs(project)[0].state == "unknown"
 
 
 def test_stale_stop_request_does_not_stop_new_runtime(project, session):
     atomic_json(project.state / "stop.json", {"runtime_id": str(uuid4()), "force": True})
-    assert runtime.stop_request(project, session) is None
+    assert connection.stop_request(project, session) is None
 
 
 def owned_colab(project, session, client, monkeypatch):
@@ -86,8 +87,8 @@ def owned_colab(project, session, client, monkeypatch):
         endpoint_id="expected",
     )
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
-    monkeypatch.setattr(runtime, "Colab", lambda project: colab)
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    patch_session(monkeypatch, "Colab", lambda project: colab)
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(colab, "refresh", lambda receipt: True)
     monkeypatch.setattr(colab, "recover_diagnostics", lambda receipt: ())
     monkeypatch.setattr(colab, "cleanup_processes", lambda receipt: None)
@@ -98,7 +99,7 @@ def owned_colab(project, session, client, monkeypatch):
 def test_stop_after_monitor_crash_collects_and_recovers_logs_before_stopping(
     project, client, session, monkeypatch
 ):
-    client.submit(resource_json("workflow-api.json"), {}, "browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
     atomic_json(project.session_file, session.model_dump(mode="json"))
     colab, receipt = owned_colab(project, session, client, monkeypatch)
     steps = []
@@ -115,15 +116,15 @@ def test_stop_after_monitor_crash_collects_and_recovers_logs_before_stopping(
 
     monkeypatch.setattr(colab, "recover_diagnostics", logs)
     monkeypatch.setattr(colab, "stop", stop)
-    runtime.stop(project, True, lambda message: None)
+    shutdown.stop(project, True, lambda message: None)
     assert steps == ["logs", "stop"]
     assert colab.receipt() is None
 
 
 def test_force_stop_request_is_never_downgraded(project, session):
-    runtime.request_stop(project, session, True)
-    runtime.request_stop(project, session, False)
-    assert runtime.stop_request(project, session) is True
+    connection.request_stop(project, session, True)
+    connection.request_stop(project, session, False)
+    assert connection.stop_request(project, session) is True
 
 
 def test_stop_does_not_end_replacement_runtime(project, session, monkeypatch):
@@ -157,10 +158,10 @@ def test_stop_does_not_end_replacement_runtime(project, session, monkeypatch):
         def stop(self):
             pytest.fail("停止要求後に置き換わった環境を終了してはいけない")
 
-    monkeypatch.setattr(runtime, "monitor_lock", lambda project: ReplacedLock())
-    monkeypatch.setattr(runtime, "Colab", ReplacedColab)
+    patch_session(monkeypatch, "monitor_lock", lambda project: ReplacedLock())
+    patch_session(monkeypatch, "Colab", ReplacedColab)
     with pytest.raises(KomaquillError):
-        runtime.stop(project, True, lambda message: None)
+        shutdown.stop(project, True, lambda message: None)
 
 
 def test_external_restart_excludes_offline_jobs_but_recovers_recorded_jobs(
@@ -168,15 +169,15 @@ def test_external_restart_excludes_offline_jobs_but_recovers_recorded_jobs(
 ):
     from komaquill.application.generation import collect
 
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
-    monkeypatch.setattr(runtime, "watch", lambda *args: True)
-    runtime.start_external(project, session.endpoint, None, None, lambda message: None)
-    client.submit(resource_json("workflow-api.json"), {}, "offline-browser")
-    runtime.start_external(project, session.endpoint, None, None, lambda message: None)
+    patch_session(monkeypatch, "watch", lambda *args: True)
+    startup.start_external(project, session.endpoint, None, None, lambda message: None)
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "offline-browser")
+    startup.start_external(project, session.endpoint, None, None, lambda message: None)
     assert load_runs(project) == []
     current = load_session(project)
-    client.submit(resource_json("workflow-api.json"), {}, "online-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "online-browser")
     assert collect(project, client, current).saved == 1
 
 
@@ -212,14 +213,14 @@ def test_shutdown_failures_do_not_skip_gpu_stop_or_drop_ownership(
     monkeypatch.setattr(colab, "cleanup_processes", cleanup)
     if failure == "logs":
         with pytest.raises(KomaquillError):
-            runtime.finish_colab(
+            shutdown.finish_colab(
                 project, colab, receipt, client, session, True, lambda message: None, []
             )
         assert colab.receipt() is None
         assert load_runs(project)[0].state == "lost"
     else:
         with pytest.raises(KomaquillError):
-            runtime.finish_colab(
+            shutdown.finish_colab(
                 project, colab, receipt, client, session, True, lambda message: None, []
             )
         assert colab.receipt() is not None
@@ -236,13 +237,13 @@ def test_stop_restores_missing_ssh_without_acquiring_gpu(project, client, sessio
     def disconnected(*args):
         raise KomaquillError("切断中")
 
-    monkeypatch.setattr(runtime, "verify_runtime", disconnected)
-    monkeypatch.setattr(runtime, "check_port", lambda port: None)
+    patch_session(monkeypatch, "verify_runtime", disconnected)
+    patch_session(monkeypatch, "check_port", lambda port: None)
     monkeypatch.setattr(
         colab, "tunnel", lambda receipt: steps.append("ssh") or types.SimpleNamespace()
     )
-    monkeypatch.setattr(runtime, "terminate", lambda process, timeout: steps.append("close"))
-    runtime.stop(project, True, lambda message: None)
+    patch_session(monkeypatch, "terminate", lambda process, timeout: steps.append("close"))
+    shutdown.stop(project, True, lambda message: None)
     assert steps == ["ssh", "close"]
     assert colab.receipt() is None
 
@@ -257,7 +258,7 @@ def test_interrupt_during_log_recovery_still_stops_gpu(project, client, session,
     monkeypatch.setattr(colab, "recover_diagnostics", interrupted)
     monkeypatch.setattr(colab, "stop", lambda: stopped.append(True) or confirmed_stop())
     with pytest.raises(KomaquillError):
-        runtime.finish_colab(
+        shutdown.finish_colab(
             project, colab, receipt, client, session, True, lambda message: None, []
         )
     assert stopped == [True]
@@ -273,8 +274,8 @@ def test_shutdown_freezes_new_submissions_before_collection(project, client, ses
         with pytest.raises(KomaquillError):
             generate(project, client, session, "a cabin", "", 1)
 
-    monkeypatch.setattr(runtime, "drain", drain)
-    runtime.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
+    patch_session(monkeypatch, "drain", drain)
+    shutdown.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
     assert colab.receipt() is None
 
 
@@ -290,16 +291,16 @@ def test_unexpected_shutdown_error_still_stops_gpu_and_retains_receipt(
         raise ValueError("private-response-sentinel")
 
     if phase == "drain":
-        monkeypatch.setattr(runtime, "drain", broken)
+        patch_session(monkeypatch, "drain", broken)
     elif phase == "logs":
         monkeypatch.setattr(colab, "recover_diagnostics", broken)
     else:
         monkeypatch.setattr(colab, "cleanup_processes", broken)
     with pytest.raises(KomaquillError) as error:
-        runtime.finish_colab(project, colab, receipt, client, session, True, lambda _: None, [])
+        shutdown.finish_colab(project, colab, receipt, client, session, True, lambda _: None, [])
     assert stopped == [True]
     assert colab.receipt() is not None
-    diagnostic = project.artifacts / "logs" / str(receipt.runtime_id) / "shutdown.json"
+    diagnostic = project.logs / str(receipt.runtime_id) / "shutdown.json"
     assert "private-response-sentinel" not in str(error.value) + diagnostic.read_text()
     assert "ValueError" in diagnostic.read_text()
 
@@ -311,14 +312,14 @@ def test_external_stop_without_monitor_blocks_new_submissions(
 
     session.backend = "external"
     atomic_json(project.session_file, session.model_dump(mode="json"))
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
 
     def drain(*args):
         with pytest.raises(KomaquillError):
             generate(project, client, session, "a cabin", "", 1)
 
-    monkeypatch.setattr(runtime, "drain", drain)
-    runtime.stop(project, True, lambda _: None)
+    patch_session(monkeypatch, "drain", drain)
+    shutdown.stop(project, True, lambda _: None)
 
 
 def test_failed_shutdown_output_does_not_skip_gpu_stop(project, client, session, monkeypatch):
@@ -331,10 +332,10 @@ def test_failed_shutdown_output_does_not_skip_gpu_stop(project, client, session,
     def closed_terminal(message):
         raise BrokenPipeError("closed")
 
-    monkeypatch.setattr(runtime, "drain", unavailable)
+    patch_session(monkeypatch, "drain", unavailable)
     monkeypatch.setattr(colab, "stop", lambda: stopped.append(True) or confirmed_stop())
     with pytest.raises(KomaquillError):
-        runtime.finish_colab(project, colab, receipt, client, session, True, closed_terminal, [])
+        shutdown.finish_colab(project, colab, receipt, client, session, True, closed_terminal, [])
     assert stopped == [True]
     assert colab.receipt() is not None
 
@@ -356,10 +357,10 @@ def test_stop_after_monitor_crash_attempts_gpu_stop_when_reconnect_fails(
         def unavailable(*args):
             raise FileNotFoundError("ssh")
 
-        monkeypatch.setattr(runtime, "verify_runtime", disconnected)
-        monkeypatch.setattr(runtime, "check_port", lambda port: None)
+        patch_session(monkeypatch, "verify_runtime", disconnected)
+        patch_session(monkeypatch, "check_port", lambda port: None)
         monkeypatch.setattr(colab, "tunnel", unavailable)
-    runtime.stop(project, True, lambda _: None)
+    shutdown.stop(project, True, lambda _: None)
     assert stopped == [True]
     assert colab.receipt() is None
 
@@ -370,7 +371,7 @@ def test_sidecar_failure_never_prevents_image_collection(
 ):
     from types import SimpleNamespace
 
-    client.submit(resource_json("workflow-api.json"), {}, "new-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "new-browser")
     calls = []
 
     def fail():
@@ -387,6 +388,6 @@ def test_sidecar_failure_never_prevents_image_collection(
             collect=fail if stage == "preservation" else lambda: [], notify_runs=lambda: None
         ),
     )
-    monkeypatch.setattr(runtime.time, "sleep", pause)
-    runtime.watch(project, client, session, calls.append, coordinator=coordinator)
+    monkeypatch.setattr(startup.time, "sleep", pause)
+    monitor.watch(project, client, session, calls.append, coordinator=coordinator)
     assert load_runs(project)[0].state == "saved"

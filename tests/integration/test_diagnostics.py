@@ -15,18 +15,19 @@ from typer.testing import CliRunner
 from komaquill.application.generation import collect, generate, generation_times, new_run
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import ShutdownResult
-from komaquill.infrastructure import runtime as runtime
 from komaquill.infrastructure import views
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.sessions import monitor, shutdown, startup
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, run_dir
 from komaquill.infrastructure.workflows import resource_json
 from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop
+from tests.support.session_controls import patch_session
 
 
 def test_saved_images_record_integrity_and_server_times(project, client, session, stub):
-    prompt_id = client.submit(resource_json("workflow-api.json"), {}, "browser")
+    prompt_id = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
     stub.history[prompt_id]["status"]["messages"] = [
         ["execution_start", {"timestamp": 1000}],
         ["execution_success", {"timestamp": 2500}],
@@ -47,7 +48,7 @@ def test_saved_images_record_integrity_and_server_times(project, client, session
 
 
 def test_partial_images_are_reused_and_tampered_images_are_repaired(project, client, session, stub):
-    prompt = client.submit(resource_json("workflow-api.json"), {}, "browser")
+    prompt = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
     record = stub.history[prompt]
     record["outputs"]["9"]["images"].append({"filename": "broken.png"})
     stub.invalid_images.add("broken.png")
@@ -68,7 +69,7 @@ def test_partial_images_are_reused_and_tampered_images_are_repaired(project, cli
 
 
 def test_parallel_collectors_commit_each_image_once(project, client, session, stub):
-    client.submit(resource_json("workflow-api.json"), {}, "browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
     with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(lambda _: collect(project, client, session), range(3)))
     assert sum(result.saved for result in results) == 1
@@ -111,7 +112,7 @@ def test_event_log_appends_safe_failures_and_survives_parallel_processes(project
         assert child.wait(timeout=20) == 0
     failure = failure_info(RuntimeError("private-value-must-not-appear"), "connection")
     assert record_event(project, "connect", "failed", failure=failure)
-    text = (project.artifacts / "logs/cli.jsonl").read_text(encoding="utf-8")
+    text = (project.logs / "cli.jsonl").read_text(encoding="utf-8")
     events = [json.loads(line) for line in text.splitlines()]
     assert len(events) == 11 and "private-value-must-not-appear" not in text
     assert events[-1]["failure"]["exception_type"] == "RuntimeError"
@@ -131,7 +132,7 @@ def test_log_write_failure_reports_without_raising_private_error(project, monkey
 
 
 def test_external_start_freezes_settings_and_keeps_unfinished_work(project, client, monkeypatch):
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
     observed = []
 
@@ -143,25 +144,25 @@ def test_external_start_freezes_settings_and_keeps_unfinished_work(project, clie
         assert bound.settings() is session.settings
         return True
 
-    monkeypatch.setattr(runtime, "watch", watch)
-    runtime.start_external(project, "http://127.0.0.1:8188", None, None, lambda _: None)
+    patch_session(monkeypatch, "watch", watch)
+    startup.start_external(project, "http://127.0.0.1:8188", None, None, lambda _: None)
     session = load_session(project)
     assert observed == [0.001] and session.settings.poll_interval == 0.001
     summary = ShutdownResult.model_validate_json(
-        (project.artifacts / "logs" / str(session.runtime_id) / "shutdown.json").read_bytes()
+        (project.logs / str(session.runtime_id) / "shutdown.json").read_bytes()
     )
     assert summary.gpu == "not_managed" and summary.history == "ok"
 
 
 def test_configuration_refreshes_only_on_the_next_start(project, client, monkeypatch):
-    monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
+    patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
-    monkeypatch.setattr(runtime, "watch", lambda *args: True)
-    runtime.start_external(project, "http://127.0.0.1:8188", None, None, lambda _: None)
+    patch_session(monkeypatch, "watch", lambda *args: True)
+    startup.start_external(project, "http://127.0.0.1:8188", None, None, lambda _: None)
     before = load_session(project)
     (project.root / "komaquill.toml").write_text("poll_interval = 0.25")
     assert before.settings.poll_interval == 0.001
-    runtime.start_external(project, "http://127.0.0.1:8188", None, None, lambda _: None)
+    startup.start_external(project, "http://127.0.0.1:8188", None, None, lambda _: None)
     after = load_session(project)
     assert after.runtime_id == before.runtime_id and after.settings.poll_interval == 0.25
 
@@ -180,8 +181,8 @@ def test_watch_stops_retrying_a_confirmed_ended_runtime(project, client, session
     def ended():
         raise RuntimeEnded("ended")
 
-    assert runtime.watch(project, client, session, lambda _: None, ended) is True
-    text = (project.artifacts / "logs" / str(session.runtime_id) / "events.jsonl").read_text()
+    assert monitor.watch(project, client, session, lambda _: None, ended) is True
+    text = (project.logs / str(session.runtime_id) / "events.jsonl").read_text()
     assert "runtime_ended" in text
 
 
@@ -211,7 +212,7 @@ def test_capture_records_freshness_without_destroying_last_success(project, monk
         colab, "provider_call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"complete")
     )
     assert not colab.recover_diagnostics(receipt)
-    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    folder = project.logs / str(receipt.runtime_id)
     before = json.loads((folder / "capture.json").read_bytes())
 
     def fail(*args, **kwargs):
@@ -232,7 +233,7 @@ def test_status_uses_saved_settings_even_if_configuration_is_invalid(project, se
     atomic_json(project.session_file, session.model_dump(mode="json"))
     (project.root / "komaquill.toml").write_text("invalid [")
     monkeypatch.setattr(
-        cli, "connected", lambda _: (_ for _ in ()).throw(KomaquillError("disconnected"))
+        cli.inspection, "connected", lambda _: (_ for _ in ()).throw(KomaquillError("disconnected"))
     )
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0, result.output
@@ -280,9 +281,9 @@ def test_log_temporary_cleanup_failure_does_not_skip_other_files(project, monkey
         colab, "provider_call", lambda *args, **kwargs: Path(args[-1]).write_bytes(b"log")
     )
     assert colab.recover_diagnostics(receipt) == ("bootstrap.log",)
-    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    folder = project.logs / str(receipt.runtime_id)
     report = json.loads((folder / "capture.json").read_bytes())
-    assert report["files"]["bootstrap.log"]["failure"]["stage"] == "log_cleanup"
+    assert report["files"]["bootstrap.log"]["cleanup_failure"]["stage"] == "log_cleanup"
     assert report["files"]["comfy.log"]["result"] == "saved"
     assert "private filesystem information" not in json.dumps(report)
 
@@ -302,9 +303,9 @@ def test_forced_shutdown_reports_lost_count_without_claiming_full_collection(
     monkeypatch.setattr(colab, "stop", confirmed_stop)
     monkeypatch.setattr(colab, "cleanup_processes", lambda _: None)
     messages = []
-    runtime.finish_colab(project, colab, receipt, client, session, True, messages.append, [])
+    shutdown.finish_colab(project, colab, receipt, client, session, True, messages.append, [])
     result = ShutdownResult.model_validate_json(
-        (project.artifacts / "logs" / str(session.runtime_id) / "shutdown.json").read_bytes()
+        (project.logs / str(session.runtime_id) / "shutdown.json").read_bytes()
     )
     assert result.collection == "incomplete" and result.lost_ids == [run.run_id]
     assert not result.errors and not colab.receipt_file.exists()

@@ -29,7 +29,7 @@
         "isDefault": true
       },
       "type": "process",
-      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+      "command": "${command:python.interpreterPath}",
       "args": [
         "${workspaceFolder}/scripts/check.py"
       ]
@@ -48,29 +48,9 @@
       }
     },
     {
-      "label": "Check Quality",
-      "type": "process",
-      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
-      "args": [
-        "${workspaceFolder}/scripts/check.py"
-      ],
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Check Secrets",
-      "type": "process",
-      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
-      "args": [
-        "${workspaceFolder}/scripts/security.py"
-      ],
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
       "label": "Check Distributions",
       "type": "process",
-      "command": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
+      "command": "${command:python.interpreterPath}",
       "args": [
         "${workspaceFolder}/scripts/check_package.py"
       ],

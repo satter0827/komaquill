@@ -40,8 +40,9 @@ def stub(session):
 
 def pytest_configure(config):
     if config.option.basetemp is None:
+        (config.rootpath / ".artifacts/tmp").mkdir(parents=True, exist_ok=True)
         config.option.basetemp = config.rootpath / ".artifacts/tmp" / f"pytest-{os.getpid()}"
-    (config.rootpath / ".artifacts/reports/quality").mkdir(parents=True, exist_ok=True)
+    (config.rootpath / ".artifacts/records/reports/quality").mkdir(parents=True, exist_ok=True)
 
 
 @pytest.fixture

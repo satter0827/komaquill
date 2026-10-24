@@ -53,7 +53,9 @@ def main(report_dir: Path | None = None) -> None:
                     {"file": secret.filename, "line": secret.line_number, "type": secret.type}
                     for secret in scan_diff(diff)
                 )
-    report = (report_dir or root / ".artifacts/reports/quality" / uuid4().hex) / "security.json"
+    report = (
+        report_dir or root / ".artifacts/records/reports/quality" / uuid4().hex
+    ) / "security.json"
     atomic_json(
         report,
         {

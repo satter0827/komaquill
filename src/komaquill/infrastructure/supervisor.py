@@ -55,7 +55,7 @@ def spawn(project: Project) -> subprocess.Popen[bytes]:
     """Detach standard streams and the console without installing a service."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("DEBUGPY_", "PYDEVD_"))}
     env.update(PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1", KOMAQUILL_PROJECT_DIR=str(project.root))
-    log = project.artifacts / "logs/monitor.log"
+    log = project.logs / "monitor.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     options: dict[str, Any] = {}
     if sys.platform == "win32":
@@ -216,7 +216,7 @@ def events(project: Project, follow: bool) -> Iterator[dict[str, object]]:
     """Read new JSON events without printing unknown keys or exception payloads."""
     offsets: dict[Path, int] = {}
     while True:
-        for path in sorted((project.artifacts / "logs").glob("**/*.jsonl")):
+        for path in sorted((project.logs).glob("**/*.jsonl")):
             if path.name not in {"cli.jsonl", "events.jsonl", "worker-events.jsonl"}:
                 continue
             with path.open("r", encoding="utf-8") as handle:

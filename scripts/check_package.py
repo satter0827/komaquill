@@ -37,12 +37,10 @@ def main(dist_dir: Path | None = None) -> None:
         metadata = Parser().parsestr(wheel.read(metadata_name).decode())
         if metadata["Version"] != expected:
             raise SystemExit(message("quality.the_wheel_version_does_not_match_the_declaration"))
-        from komaquill.infrastructure.provenance import RESOURCE_NAMES
+        from komaquill.infrastructure.provenance import package_contents
 
-        required = set(RESOURCE_NAMES)
-        if "komaquill/gpu/bootstrap.py" not in names or not all(
-            f"komaquill/resources/{name}" in names for name in required
-        ):
+        required = {name for name, _ in package_contents()}
+        if not required.issubset(names):
             raise SystemExit(
                 message("quality.required_workflow_configuration_or_startup_resources_are_missing")
             )

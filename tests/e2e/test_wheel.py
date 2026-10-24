@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
@@ -124,7 +125,17 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                 return result
 
             command("init")
-            (workspace / "komaquill.toml").write_text("poll_interval=0.01\nshutdown_timeout=2\n")
+            bundle = workspace / "presets/custom"
+            bundle.mkdir(parents=True)
+            with zipfile.ZipFile(wheel) as archive:
+                for name in ("preset.toml", "workflow.json", "workflow-api.json"):
+                    (bundle / name).write_bytes(
+                        archive.read("komaquill/resources/presets/pony/" + name)
+                    )
+            (workspace / "komaquill.toml").write_text(
+                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom"]\n'
+                "[presets.custom]\nsteps=27\n"
+            )
             command("--help")
             output = root / "monitor.txt"
             with output.open("w", encoding="utf-8") as handle:
@@ -178,11 +189,15 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                     if monitor.poll() is None:
                         monitor.terminate()
                         monitor.wait(timeout=10)
-            runs = list((workspace / ".artifacts/runs").glob("*/run.json"))
+            runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
             assert len(runs) == 1
             run = json.loads(runs[0].read_bytes())
             assert run["state"] == "saved" and run["source_revision"] is None
             assert run["image_metadata"] and run["code_sha256"]
+            graph = json.loads((runs[0].parent / "workflow-api.json").read_bytes())
+            assert graph["3"]["inputs"]["steps"] == 27
+            command("clean", "--dry-run")
+            assert runs[0].is_file()
             script = "\n".join(
                 [
                     "import pathlib, tarfile, subprocess, sys",

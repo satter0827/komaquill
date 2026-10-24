@@ -79,7 +79,8 @@ class SessionService:
         self._project = project
 
     def status(self) -> SessionStatus:
-        return inspection.inspect(self._project)
+        with api_operation(OperationStage.CHECK):
+            return inspection.inspect(self._project)
 
     def start(
         self,

@@ -4,9 +4,11 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Literal
 from uuid import UUID
 
 from filelock import FileLock, Timeout
+from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.application.stories.ports import planner_input
 from komaquill.domain.errors import KomaquillError
@@ -21,6 +23,15 @@ from komaquill.domain.workflow import digest
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.locations import Locations, RunPlacement
+
+
+class StoredPlan(BaseModel):
+    """Validate the storage envelope before inspecting its original plan payload."""
+
+    model_config = ConfigDict(extra="forbid")
+    format_version: Literal[1]
+    plan: dict[str, Any]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class FileStoryRepository:
@@ -87,13 +98,23 @@ class FileStoryRepository:
         self.publish(plan.request.story_id)
 
     def read(self, story_id: UUID) -> StoryPlan:
-        value = json.loads((self.folder(story_id) / "plan.json").read_bytes())
-        if value.get("format_version") != 1 or digest(value["plan"]) != value["sha256"]:
-            raise KomaquillError(code="storage_failed", stage="story_planning")
-        plan = StoryPlan.model_validate(value["plan"])
-        if plan.request.story_id != story_id:
-            raise KomaquillError(code="storage_failed", stage="story_planning")
-        return plan
+        try:
+            value = StoredPlan.model_validate_json(
+                (self.folder(story_id) / "plan.json").read_bytes()
+            )
+            if digest(value.plan) != value.sha256:
+                raise ValueError("The stored plan checksum does not match.")
+            plan = StoryPlan.model_validate(value.plan)
+            if plan.request.story_id != story_id:
+                raise ValueError("The stored plan identity does not match.")
+            return plan
+        except ValueError:
+            raise KomaquillError(
+                code="storage_failed",
+                stage="storage",
+                retryable=False,
+                details={"story_id": str(story_id)},
+            ) from None
 
     def planning_evidence(self, story_id: UUID) -> dict[str, object]:
         """Expose immutable inputs and outcomes, including failed planning attempts."""

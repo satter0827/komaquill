@@ -46,7 +46,7 @@ class StorySnapshot(BaseModel):
     """Describe one rendering using IDs and portable artifact keys."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    format_version: Literal[1] = 1
+    format_version: Literal[2] = 2
     story_id: UUID
     render_id: UUID | None
     title: str
@@ -62,6 +62,7 @@ class StorySnapshot(BaseModel):
     image_profile: str | None
     updated_at: datetime
     complete: bool
+    finished: bool
     counts: dict[str, int]
     scenes: list[SceneView]
 
@@ -69,7 +70,7 @@ class StorySnapshot(BaseModel):
 class StoryEvent(BaseModel):
     """Expose progress with the same snapshot used for explicit reads."""
 
-    kind: Literal["progress", "complete"]
+    kind: Literal["progress", "finished"]
     snapshot: StorySnapshot
 
 

@@ -118,7 +118,8 @@ class StoryService:
 
     def refresh(self, story_id: UUID, *, render_id: UUID | None = None) -> StorySnapshot:
         """Rebuild readable files without contacting a model or image backend."""
-        with operation_scope():
+        with operation_scope(), api_operation(OperationStage.FINALIZE):
+            self._repository.read(story_id)
             try:
                 self._repository.publish(story_id, render_id)
             except KomaquillError as error:
@@ -142,7 +143,7 @@ class StoryService:
             if snapshot != previous:
                 yield snapshot
                 previous = snapshot
-            if snapshot.complete:
+            if snapshot.finished:
                 return
             time.sleep(interval)
 
@@ -205,7 +206,7 @@ class StoryService:
                         )
                         seen.add(identity)
                 yield StoryEvent(
-                    kind="complete" if snapshot.complete else "progress", snapshot=snapshot
+                    kind="finished" if snapshot.finished else "progress", snapshot=snapshot
                 )
         except KeyboardInterrupt:
             raise StoryInterrupted(render_id=render_id) from None

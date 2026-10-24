@@ -323,8 +323,23 @@ def bind(
                 if follow
                 else iter([client.stories.show(story_id, render_id=render_id)])
             )
+            last = None
             for value in values:
+                last = value
                 if json_output:
                     typer.echo(value.model_dump_json())
                 else:
                     display(client, value.model_dump(mode="json"))
+            if follow and last is not None and last.finished and not last.complete:
+                typer.echo(message("stories.incomplete", render_id=last.render_id), err=True)
+                for scene in last.scenes:
+                    if scene.state in {"failed", "lost"}:
+                        typer.echo(
+                            message(
+                                "stories.scene_failure",
+                                position=scene.position,
+                                code=scene.failure.code if scene.failure else scene.state,
+                            ),
+                            err=True,
+                        )
+                raise typer.Exit(1)

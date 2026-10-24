@@ -70,7 +70,7 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     result = plan_story(repository, actual, value, max_images=8)
     attempts = list((repository.root / str(value.story_id) / "planning").glob("*.json"))
     assert result.request == value and len(attempts) == 2
-    first = json.loads(attempts[0].read_bytes())
+    first = json.loads((repository.root / str(value.story_id) / "planning/01.json").read_bytes())
     assert first["failure"]["code"] == "story_plan_invalid"
     with pytest.raises(KomaquillError):
         from komaquill.domain.stories import PlanningAttempt

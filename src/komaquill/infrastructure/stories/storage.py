@@ -3,6 +3,7 @@
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from uuid import UUID
 
 from filelock import FileLock, Timeout
@@ -54,18 +55,22 @@ class FileStoryRepository:
         paths = list(self.root.glob(f"*/renders/{render_id}/render.json"))
         if len(paths) != 1:
             raise KomaquillError(code="request_not_found", stage="story_rendering")
-        render = StoryRender.model_validate_json(paths[0].read_bytes())
-        if render.render_id != render_id or paths[0].parents[2].name != str(render.story_id):
+        return self._read_render(paths[0])
+
+    @staticmethod
+    def _read_render(path: Path) -> StoryRender:
+        render = StoryRender.model_validate_json(path.read_bytes())
+        if path.parent.name != str(render.render_id) or path.parents[2].name != str(
+            render.story_id
+        ):
             raise KomaquillError(code="storage_failed", stage="story_rendering")
         return render
 
     def renders(self, story_id: UUID) -> list[StoryRender]:
         values = [
-            StoryRender.model_validate_json(path.read_bytes())
+            self._read_render(path)
             for path in (self.root / str(story_id) / "renders").glob("*/render.json")
         ]
-        if any(value.story_id != story_id for value in values):
-            raise KomaquillError(code="storage_failed", stage="story_rendering")
         return sorted(values, key=lambda value: (value.created_at, str(value.render_id)))
 
     @contextmanager

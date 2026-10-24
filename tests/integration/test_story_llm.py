@@ -3,6 +3,8 @@
 import builtins
 import json
 import threading
+import time
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 
@@ -64,11 +66,13 @@ def model_server():
             if state["status"] != 200:
                 value = {"error": {"message": "private-body-must-not-leak", "type": "test_error"}}
             content = json.dumps(value, ensure_ascii=False).encode()
+            time.sleep(state.get("delay", 0))
             self.send_response(state["status"])
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
-            self.wfile.write(content)
+            with suppress(BrokenPipeError, ConnectionResetError):
+                self.wfile.write(content)
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -245,3 +249,21 @@ def test_explicit_keyring_reference_is_used_without_recording_secret(
     value.complete(request(), {}, None)
     assert seen == [("komaquill.llm", "story-local")]
     assert state["requests"][0]["authorization"] == "Bearer not-a-real-key"
+
+
+def test_model_timeout_is_recorded_without_sdk_retries(project, model_server):
+    url, state = model_server
+    state["delay"] = 0.3
+    selected = options(project, url).model_copy(update={"request_timeout": 0.05})
+    repository = FileStoryRepository(project)
+    with pytest.raises(KomaquillError) as error:
+        plan_story(
+            repository,
+            planner(project, selected, allow_real_llm=True),
+            request(),
+            allow_real_llm=True,
+            max_images=8,
+        )
+    assert error.value.code == "llm_unavailable" and len(state["requests"]) == 1
+    attempt = json.loads(next(repository.root.rglob("01.json")).read_bytes())
+    assert attempt["failure"]["code"] == "llm_unavailable"

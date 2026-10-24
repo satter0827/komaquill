@@ -97,3 +97,6 @@ def test_real_story_saved_images():
         assert image and scene["narrative"]
         with project.artifacts_store.path(image["key"]).open("rb") as handle:
             assert hashlib.file_digest(handle, "sha256").hexdigest() == image["metadata"]["sha256"]
+
+    runs = [project.repository.read(UUID(scene["run_id"])) for scene in view["scenes"]]
+    assert runs[0].saved_at < runs[-1].created_at

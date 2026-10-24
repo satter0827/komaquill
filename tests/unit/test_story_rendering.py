@@ -173,3 +173,16 @@ def test_wrong_story_reference_and_corrupted_render_are_not_hidden(project, sess
     file.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(KomaquillError):
         repository.render(render.render_id)
+    with pytest.raises(KomaquillError):
+        story_view(repository, project, plan.request.story_id)
+
+
+def test_session_stop_prevents_new_scene_submission(project, session, client, stub, monkeypatch):
+    repository, plan = planned(project)
+    active = bound(project, session)
+    render = create_render(repository, project, active, plan.request.story_id, "pony")
+    monkeypatch.setattr(type(project), "stop_requested", lambda *args: False)
+    with pytest.raises(KomaquillError) as error:
+        render_story(repository, project, client, active, render.render_id)
+    assert error.value.code == "stopping" and stub.submissions == 0
+    assert not any(scene.run_ids for scene in repository.render(render.render_id).scenes)

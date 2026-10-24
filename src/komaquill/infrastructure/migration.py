@@ -300,6 +300,7 @@ def migrate(project: Project, *, dry_run: bool = False) -> dict[str, Any]:
             / f"story-storage-{datetime.now(UTC):%Y%m%dT%H%M%S}-{uuid4().hex}.json"
         )
         atomic_json(report, state)
+    from komaquill.infrastructure.stories.publication import publish_catalog, publish_story
     from komaquill.infrastructure.stories.storage import FileStoryRepository
 
     repository = FileStoryRepository(project)
@@ -311,9 +312,10 @@ def migrate(project: Project, *, dry_run: bool = False) -> dict[str, Any]:
         if not (folder / "source.txt").exists():
             atomic_bytes(folder / "source.txt", request["source_text"].encode("utf-8"))
         if (folder / "plan.json").exists():
-            repository.publish(identity)
+            publish_story(repository, project, identity)
             for render in repository.renders(identity):
-                repository.publish(identity, render.render_id)
+                publish_story(repository, project, identity, render.render_id)
+    publish_catalog(repository, project)
     from komaquill.infrastructure.evaluations import image_evidence
 
     observations = []

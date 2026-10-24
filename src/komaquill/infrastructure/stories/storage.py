@@ -4,15 +4,18 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Literal
 from uuid import UUID
 
 from filelock import FileLock, Timeout
+from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.application.stories.ports import planner_input
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.stories import (
     PlannerProvenance,
     PlanningAttempt,
+    PlanningOutcome,
     StoryInput,
     StoryPlan,
     StoryRender,
@@ -21,6 +24,15 @@ from komaquill.domain.workflow import digest
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.locations import Locations, RunPlacement
+
+
+class StoredPlan(BaseModel):
+    """Validate the storage envelope before inspecting its original plan payload."""
+
+    model_config = ConfigDict(extra="forbid")
+    format_version: Literal[1]
+    plan: dict[str, Any]
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class FileStoryRepository:
@@ -46,10 +58,6 @@ class FileStoryRepository:
         from komaquill.infrastructure.atomic import atomic_bytes
 
         atomic_bytes(folder / "source.txt", request.source_text.encode("utf-8"))
-        from komaquill.infrastructure.stories.publication import publish_listing
-
-        with FileLock(str(self.project.state / ".story-listing.lock")):
-            publish_listing(self, self.project)
 
     def prepare_attempt(
         self,
@@ -78,28 +86,46 @@ class FileStoryRepository:
             raise KomaquillError(code="invalid_request", stage="story_planning")
         atomic_json(path, attempt.model_dump(mode="json"))
 
+    def finish_planning(self, story_id: UUID, outcome: PlanningOutcome) -> None:
+        path = self.folder(story_id) / "planning-result.json"
+        if path.exists():
+            raise KomaquillError(code="invalid_request", stage="story_planning")
+        atomic_json(path, outcome.model_dump(mode="json"))
+
     def complete(self, plan: StoryPlan) -> None:
         path = self.folder(plan.request.story_id) / "plan.json"
         if path.exists():
             raise KomaquillError(code="invalid_request", stage="story_planning")
         value = plan.model_dump(mode="json")
         atomic_json(path, {"format_version": 1, "plan": value, "sha256": digest(value)})
-        self.publish(plan.request.story_id)
 
     def read(self, story_id: UUID) -> StoryPlan:
-        value = json.loads((self.folder(story_id) / "plan.json").read_bytes())
-        if value.get("format_version") != 1 or digest(value["plan"]) != value["sha256"]:
-            raise KomaquillError(code="storage_failed", stage="story_planning")
-        plan = StoryPlan.model_validate(value["plan"])
-        if plan.request.story_id != story_id:
-            raise KomaquillError(code="storage_failed", stage="story_planning")
-        return plan
+        try:
+            value = StoredPlan.model_validate_json(
+                (self.folder(story_id) / "plan.json").read_bytes()
+            )
+            if digest(value.plan) != value.sha256:
+                raise ValueError("The stored plan checksum does not match.")
+            plan = StoryPlan.model_validate(value.plan)
+            if plan.request.story_id != story_id:
+                raise ValueError("The stored plan identity does not match.")
+            return plan
+        except ValueError:
+            raise KomaquillError(
+                code="storage_failed",
+                stage="storage",
+                retryable=False,
+                details={"story_id": str(story_id)},
+            ) from None
 
     def planning_evidence(self, story_id: UUID) -> dict[str, object]:
         """Expose immutable inputs and outcomes, including failed planning attempts."""
         folder = self.folder(story_id)
         return {
             "request": json.loads((folder / "request.json").read_bytes()),
+            "outcome": json.loads((folder / "planning-result.json").read_bytes())
+            if (folder / "planning-result.json").is_file()
+            else None,
             "provenance": json.loads((folder / "provenance.json").read_bytes())
             if (folder / "provenance.json").is_file()
             else None,
@@ -129,7 +155,6 @@ class FileStoryRepository:
                     ),
                 )
         atomic_json(path, render.model_dump(mode="json"))
-        self.publish(render.story_id, render.render_id)
 
     def render(self, render_id: UUID) -> StoryRender:
         paths = list(self.root.glob(f"*/renders/{render_id}/render.json"))
@@ -152,20 +177,21 @@ class FileStoryRepository:
         ]
         return sorted(values, key=lambda value: (value.created_at, str(value.render_id)))
 
-    def publish(self, story_id: UUID, render_id: UUID | None = None) -> None:
-        from komaquill.infrastructure.stories.publication import publish_story
+    def render_for_run(self, run_id: UUID) -> StoryRender | None:
+        """Resolve story ownership at the storage boundary."""
+        locations = Locations(self.project)
+        placement = locations.read().runs.get(run_id)
+        if placement is None or placement.images is None:
+            return None
+        render = self._read_render(locations.path(placement.folder).parents[1] / "render.json")
+        if not any(run_id in scene.run_ids for scene in render.scenes):
+            raise KomaquillError(code="identity_mismatch", stage="storage")
+        return render
 
-        try:
-            publish_story(self, self.project, story_id, render_id)
-        except (OSError, ValueError):
-            raise KomaquillError(
-                code="publication_failed",
-                stage="finalize",
-                details={
-                    "story_id": str(story_id),
-                    **({"render_id": str(render_id)} if render_id else {}),
-                },
-            ) from None
+    @contextmanager
+    def snapshot(self) -> Iterator[None]:
+        with Locations(self.project).snapshot():
+            yield
 
     @contextmanager
     def claim(self, render_id: UUID) -> Iterator[bool]:
@@ -181,27 +207,3 @@ class FileStoryRepository:
             yield True
         finally:
             lock.release()
-
-
-def refresh_saved_stories(project: Project) -> tuple[UUID, ...]:
-    """Retry local projections independently of collection and GPU shutdown."""
-    from komaquill.domain.errors import failure_info
-    from komaquill.infrastructure.diagnostics import record_event
-
-    failed = []
-    repository = FileStoryRepository(project)
-    for identity in Locations(project).read().stories:
-        try:
-            if (repository.folder(identity) / "plan.json").is_file():
-                for render in repository.renders(identity):
-                    repository.publish(identity, render.render_id)
-        except (OSError, ValueError, KomaquillError) as error:
-            failed.append(identity)
-            record_event(
-                project,
-                "story_publication",
-                "failed",
-                story_id=identity,
-                failure=failure_info(error, "finalize"),
-            )
-    return tuple(failed)

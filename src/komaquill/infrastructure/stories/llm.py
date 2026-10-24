@@ -166,7 +166,12 @@ def planner(project: Project, options: StorySettings, *, allow_real_llm: bool) -
         raise KomaquillError(code="llm_dependencies_missing", stage="story_planning") from None
     key = os.environ.get(profile.key_env) if profile.key_env else None
     if key is None and profile.credential_ref is not None:
-        key = keyring.get_password("komaquill.llm", profile.credential_ref)
+        try:
+            key = keyring.get_password("komaquill.llm", profile.credential_ref)
+        except keyring.errors.KeyringError:
+            raise KomaquillError(
+                code="authentication_failed", stage="story_planning", retryable=False
+            ) from None
     local = urlsplit(profile.base_url or "").hostname in {"localhost", "127.0.0.1", "::1"}
     if key is None:
         if not local:

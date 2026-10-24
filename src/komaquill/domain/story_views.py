@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from komaquill.domain.errors import FailureInfo
-from komaquill.domain.models import ImageMetadata
+from komaquill.domain.models import ImageMetadata, RunState
 from komaquill.domain.stories import Character, Scene
 
 
@@ -17,18 +17,7 @@ class ArtifactView(BaseModel):
 
 
 class SceneView(Scene):
-    state: Literal[
-        "unstarted",
-        "prepared",
-        "submitting",
-        "submitted",
-        "queued",
-        "running",
-        "saved",
-        "failed",
-        "lost",
-        "unknown",
-    ]
+    state: Literal["unstarted"] | RunState
     run_id: UUID | None
     attempt_ids: list[UUID]
     primary_image: ArtifactView | None
@@ -46,7 +35,7 @@ class StorySnapshot(BaseModel):
     """Describe one rendering using IDs and portable artifact keys."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    format_version: Literal[1] = 1
+    format_version: Literal[2] = 2
     story_id: UUID
     render_id: UUID | None
     title: str
@@ -62,6 +51,7 @@ class StorySnapshot(BaseModel):
     image_profile: str | None
     updated_at: datetime
     complete: bool
+    finished: bool
     counts: dict[str, int]
     scenes: list[SceneView]
 
@@ -69,7 +59,7 @@ class StorySnapshot(BaseModel):
 class StoryEvent(BaseModel):
     """Expose progress with the same snapshot used for explicit reads."""
 
-    kind: Literal["progress", "complete"]
+    kind: Literal["progress", "finished"]
     snapshot: StorySnapshot
 
 

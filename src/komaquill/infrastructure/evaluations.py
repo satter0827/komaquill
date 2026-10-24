@@ -71,14 +71,21 @@ def select(project: Project, run_id: UUID | None = None) -> list[Evaluation]:
     return [row for row in rows if run_id is None or run_id in {row.run_id, row.comparison_run_id}]
 
 
-def export_evidence(project: Project, run_id: UUID | None = None) -> JsonObject:
+def export_evidence(
+    project: Project, run_id: UUID | None = None, *, run_ids: set[UUID] | None = None
+) -> JsonObject:
     """Expose saved conditions and artifact keys without logs or credentials."""
     rows = select(project, run_id)
-    story_links, unreadable_stories = story_associations(project)
+    if run_ids is not None:
+        rows = [row for row in rows if row.run_id in run_ids or row.comparison_run_id in run_ids]
+    story_links: dict[str, list[JsonObject]] = {}
+    unreadable_stories: list[str] = []
     identities = {row.run_id for row in rows} | {
         row.comparison_run_id for row in rows if row.comparison_run_id is not None
     }
-    if run_id is not None:
+    if run_ids is not None:
+        identities.update(run_ids)
+    elif run_id is not None:
         identities.add(run_id)
     else:
         identities.update(run.run_id for run in project.repository.load() if not run.pending)
@@ -135,7 +142,12 @@ def export_evidence(project: Project, run_id: UUID | None = None) -> JsonObject:
         "unreadable_story_renders": unreadable_stories,
         "assets": assets,
         "evaluation_schema": Evaluation.model_json_schema(),
-        "artifact_base": {"relative_to": "workspace", "key": ".artifacts/data"},
+        "artifact_base": {
+            "relative_to": "workspace",
+            "key": ".artifacts/data",
+            "key_type": "logical",
+            "resolution": "workspace_path",
+        },
         "evaluations": [row.model_dump(mode="json") for row in rows],
         "runs": exported,
     }
@@ -165,51 +177,11 @@ def image_evidence(project: Project, key: str, metadata: object) -> JsonObject:
             observed["valid"] = False
     return {
         "key": key,
+        "workspace_path": project.artifacts_store.path(key).relative_to(project.root).as_posix(),
         "metadata": stored.model_dump(mode="json") if stored else None,
         "observed": observed,
         "matches_record": observed["sha256"] == stored.sha256 if stored and observed else None,
     }
-
-
-def story_associations(project: Project) -> tuple[dict[str, list[JsonObject]], list[str]]:
-    """Keep corrupt optional story records from hiding valid image evidence."""
-    from komaquill.infrastructure.stories.storage import FileStoryRepository
-
-    repository = FileStoryRepository(project)
-    result: dict[str, list[JsonObject]] = {}
-    unreadable = []
-    for path in repository.root.glob("*/renders/*/render.json"):
-        try:
-            render = repository.render(UUID(path.parent.name))
-            plan = repository.read(render.story_id)
-            if render.plan_sha256 != digest(plan.model_dump(mode="json", exclude_unset=True)):
-                raise ValueError("The plan changed after rendering.")
-            scenes = {scene.scene_id: scene for scene in plan.scenes}
-            pending: dict[str, JsonObject] = {}
-            for link in render.scenes:
-                scene = scenes[link.scene_id]
-                context = {
-                    "story_id": str(render.story_id),
-                    "render_id": str(render.render_id),
-                    "scene_id": str(scene.scene_id),
-                    "position": scene.position,
-                    "title": scene.title,
-                    "narrative": scene.narrative,
-                    "source_sha256": plan.request.source_sha256,
-                    "source_refs": scene.source_refs,
-                    "plan_sha256": render.plan_sha256,
-                    "purpose": plan.request.purpose,
-                    "case_id": plan.request.case_id,
-                    "planner_provider": plan.planner.provider,
-                    "planner_model": plan.planner.configured_model,
-                }
-                pending.update({str(identity): context for identity in link.run_ids})
-        except (OSError, ValueError, KeyError, KomaquillError):
-            unreadable.append(path.parent.name)
-            continue
-        for identity, context in pending.items():
-            result.setdefault(identity, []).append(context)
-    return result, unreadable
 
 
 def write_export(output: Path, payload: JsonObject) -> None:

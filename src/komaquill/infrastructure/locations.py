@@ -3,6 +3,9 @@
 import json
 import re
 import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
@@ -38,6 +41,11 @@ class StorageIndex(BaseModel):
     format_version: Literal[1] = 1
     stories: dict[UUID, str] = Field(default_factory=dict)
     runs: dict[UUID, RunPlacement] = Field(default_factory=dict)
+
+
+_SNAPSHOTS: ContextVar[dict[Path, StorageIndex] | None] = ContextVar(
+    "storage_snapshots", default=None
+)
 
 
 def story_folder(source_name: str, created_at: datetime, identity: UUID) -> str:
@@ -81,6 +89,9 @@ class Locations:
         return next((self.root / "stories").glob("*/request.json"), None) is not None
 
     def read(self, *, migrating: bool = False) -> StorageIndex:
+        snapshots = _SNAPSHOTS.get()
+        if not migrating and snapshots is not None and self.root in snapshots:
+            return snapshots[self.root].model_copy(deep=True)
         if not migrating and self.migration_file.is_file():
             state = json.loads(self.migration_file.read_bytes())
             if state.get("status") != "complete":
@@ -93,14 +104,42 @@ class Locations:
                 self.path(row.folder)
                 if row.images:
                     self.path(row.images)
+            if not migrating and snapshots is not None:
+                snapshots[self.root] = value.model_copy(deep=True)
             return value
         if not migrating and self.legacy_exists():
             raise KomaquillError(code="migration_required", stage="storage")
         return StorageIndex()
 
-    def lock(self) -> FileLock:
+    @contextmanager
+    def snapshot(self, *, fresh: bool = False) -> Iterator[None]:
+        """Share one validated index within a bounded read operation."""
+        previous = _SNAPSHOTS.get()
+        if previous is not None and self.root in previous and not fresh:
+            yield
+            return
+        snapshots = dict(previous or {})
+        snapshots.pop(self.root, None)
+        token = _SNAPSHOTS.set(snapshots)
+        try:
+            self.read()
+            yield
+        finally:
+            _SNAPSHOTS.reset(token)
+
+    @contextmanager
+    def lock(self) -> Iterator[None]:
+        """Invalidate read snapshots after acquiring the mutation lock."""
         self.project.state.mkdir(parents=True, exist_ok=True)
-        return FileLock(str(self.project.state / ".locations.lock"))
+        with FileLock(str(self.project.state / ".locations.lock")):
+            snapshots = _SNAPSHOTS.get()
+            if snapshots is not None:
+                snapshots.pop(self.root, None)
+            try:
+                yield
+            finally:
+                if snapshots is not None:
+                    snapshots.pop(self.root, None)
 
     def save(self, index: StorageIndex) -> None:
         atomic_json(self.index_file, index.model_dump(mode="json"))
@@ -156,6 +195,8 @@ class Locations:
         return self.path(row.folder)
 
     def recorded(self, identity: UUID) -> None:
+        if self.read().runs[identity].recorded:
+            return
         with self.lock():
             index = self.read()
             row = index.runs[identity]

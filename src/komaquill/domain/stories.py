@@ -126,6 +126,29 @@ class PlanningResponse(BaseModel):
     system_fingerprint: str | None = None
 
 
+class PlanningIssue(StoryRecord):
+    code: str
+    path: tuple[str | int, ...] = ()
+
+
+class PlanningValidationError(ValueError):
+    """Carry stable acceptance categories without quoting model output."""
+
+    def __init__(self, code: str, explanation: str) -> None:
+        super().__init__(explanation)
+        self.issue = PlanningIssue(code=code)
+
+
+class PlanningOutcome(StoryRecord):
+    format_version: Literal[1] = 1
+    status: Literal["succeeded", "rejected", "failed", "interrupted"]
+    started_at: datetime
+    finished_at: datetime
+    attempts: int = Field(ge=0)
+    repair_limit: int = Field(ge=0, le=1)
+    failure: FailureInfo | None = None
+
+
 class PlanningAttempt(StoryRecord):
     format_version: Literal[1] = 1
     attempt: int = Field(ge=1)
@@ -135,6 +158,7 @@ class PlanningAttempt(StoryRecord):
     failure: FailureInfo | None = None
     correction: str | None = None
     output_schema: dict[str, Any] = Field(default_factory=dict)
+    validation_issues: list[PlanningIssue] | None = None
 
 
 class PlannerProvenance(StoryRecord):
@@ -241,20 +265,30 @@ def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
     if re.search(r"[぀-ヿ㐀-鿿]", request.source_text) and any(
         not re.search(r"[぀-ヿ㐀-鿿]", scene.narrative) for scene in draft.scenes
     ):
-        raise ValueError("Write every narrative in Japanese, not English.")
+        raise PlanningValidationError(
+            "narrative_language", "Write every narrative in Japanese, not English."
+        )
     visible = [character.appearance for character in draft.characters] + [
         scene.visual_description for scene in draft.scenes
     ]
     if any(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text) for text in visible):
-        raise ValueError("Use English for appearance and visual_description.")
+        raise PlanningValidationError(
+            "visual_language", "Use English for appearance and visual_description."
+        )
     descriptions = [" ".join(scene.visual_description.split()).casefold() for scene in draft.scenes]
     if len(set(descriptions)) != len(descriptions):
-        raise ValueError("Every scene must depict a distinct visual moment.")
+        raise PlanningValidationError(
+            "duplicate_visual", "Every scene must depict a distinct visual moment."
+        )
     narratives = [" ".join(scene.narrative.split()) for scene in draft.scenes]
     if len(set(narratives)) != len(narratives):
-        raise ValueError("Each scene must advance the narrative without repeated prose.")
+        raise PlanningValidationError(
+            "duplicate_narrative", "Each scene must advance the narrative without repeated prose."
+        )
     if {ref for scene in draft.scenes for ref in scene.source_refs} != set(request.paragraphs):
-        raise ValueError("Every source paragraph must be represented by the plan.")
+        raise PlanningValidationError(
+            "source_coverage", "Every source paragraph must be represented by the plan."
+        )
 
 
 def image_prompt(plan: StoryPlan, scene: Scene) -> str:

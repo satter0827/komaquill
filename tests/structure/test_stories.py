@@ -28,3 +28,16 @@ def test_story_resources_and_clients_are_local_only():
 
 def test_start_only_opens_a_browser_when_explicitly_requested():
     assert inspect.signature(start).parameters["open_browser"].default is False
+
+
+def test_history_repositories_do_not_depend_on_readable_publication():
+    from komaquill.infrastructure import storage
+    from komaquill.infrastructure.stories import storage as story_storage
+
+    for module in (storage, story_storage):
+        imports = [
+            node.module or ""
+            for node in ast.walk(ast.parse(inspect.getsource(module)))
+            if isinstance(node, ast.ImportFrom)
+        ]
+        assert "komaquill.infrastructure.stories.publication" not in imports

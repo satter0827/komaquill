@@ -62,7 +62,7 @@ def test_migration_keeps_original_records_and_rebuilds_the_index(project, sessio
     Locations(project).index_file.unlink()
     api.migrate()
     assert Locations(project).read() == before
-    assert api.stories.export(plan.request.story_id)["story"]["render_id"] == str(render.render_id)
+    assert str(api.stories.export(plan.request.story_id).story.render_id) == str(render.render_id)
 
 
 def test_copy_interruption_leaves_sources_and_can_resume(project, session, client, monkeypatch):
@@ -257,9 +257,13 @@ def test_concurrent_publication_cannot_replace_a_newer_snapshot_with_an_older_on
 
     monkeypatch.setattr(publication, "story_view", read)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(repository.publish, plan.request.story_id, render.render_id)
+        first = pool.submit(
+            publication.publish_story, repository, project, plan.request.story_id, render.render_id
+        )
         assert first_read.wait(2)
-        second = pool.submit(repository.publish, plan.request.story_id, render.render_id)
+        second = pool.submit(
+            publication.publish_story, repository, project, plan.request.story_id, render.render_id
+        )
         first.result()
         second.result()
     manifest = json.loads(

@@ -26,6 +26,7 @@ class ShutdownActions:
     forced: Callable[[], bool]
     preserve: Callable[[], tuple[str, ...] | None] = lambda: None
     finalize_materials: Callable[[], tuple[str, ...]] = lambda: ()
+    publish: Callable[[], tuple[UUID | str, ...]] = lambda: ()
 
 
 def shutdown(
@@ -109,6 +110,16 @@ def shutdown(
         except (Exception, KeyboardInterrupt) as error:
             result.history = "failed"
             failed("finalize", error)
+    try:
+        result.unpublished_ids = list(map(str, actions.publish()))
+        result.publications = "failed" if result.unpublished_ids else "ok"
+        if result.unpublished_ids:
+            failed(
+                "finalize", KomaquillError(code="publication_failed", stage="finalize"), fatal=False
+            )
+    except (Exception, KeyboardInterrupt) as error:
+        result.publications = "failed"
+        failed("finalize", error, fatal=False)
     result.finished_at = datetime.now(UTC)
     try:
         actions.display(result)

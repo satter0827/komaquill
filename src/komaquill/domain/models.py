@@ -12,6 +12,8 @@ from komaquill.domain.errors import FailureInfo
 from komaquill.domain.presets import ModelPreset as ModelPreset
 
 JsonObject = dict[str, Any]
+RunState = Literal["prepared", "unknown", "queued", "saved", "failed", "lost"]
+TERMINAL_RUN_STATES = frozenset({"saved", "failed", "lost"})
 
 
 class Session(BaseModel):
@@ -85,7 +87,7 @@ class Run(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     runtime_id: UUID
     prompt_id: str | None = None
-    state: Literal["prepared", "unknown", "queued", "saved", "failed", "lost"] = "prepared"
+    state: RunState = "prepared"
     app_version: str
     source_revision: str | None
     code_sha256: str | None = None
@@ -109,7 +111,7 @@ class Run(BaseModel):
     @property
     def pending(self) -> bool:
         """Return whether the request still needs a terminal outcome."""
-        return self.state not in {"saved", "failed", "lost"}
+        return self.state not in TERMINAL_RUN_STATES
 
 
 class RuntimeObservation(BaseModel):
@@ -135,6 +137,8 @@ class ShutdownResult(BaseModel):
     finished_at: datetime | None = None
     force: bool
     collection: str = "skipped"
+    publications: str = "skipped"
+    unpublished_ids: list[str] = Field(default_factory=list)
     materials: str = "skipped"
     pending_materials: list[str] = Field(default_factory=list)
     lost_materials: list[str] = Field(default_factory=list)

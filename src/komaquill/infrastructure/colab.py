@@ -475,15 +475,17 @@ class Colab:
             if (folder / name).is_file():
                 item["size_bytes"] = (folder / name).stat().st_size
             files[name] = item
-        atomic_json(
-            capture,
-            {
-                "captured_at": datetime.now(UTC).isoformat(),
-                "runtime_id": str(receipt.runtime_id),
-                "files": files,
-                "failed": failed,
-            },
-        )
+        snapshot = {
+            "captured_at": datetime.now(UTC).isoformat(),
+            "runtime_id": str(receipt.runtime_id),
+            "files": files,
+            "failed": failed,
+        }
+        with FileLock(str(folder / ".capture.lock")):
+            atomic_json(capture, snapshot)
+            with (folder / "captures.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"capture_id": uuid4().hex, **snapshot}) + "\n")
+                handle.flush()
         record_event(
             self.project,
             "log_collection",

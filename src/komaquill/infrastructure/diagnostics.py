@@ -2,15 +2,30 @@
 
 import json
 import sys
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from filelock import FileLock
 
 from komaquill.domain.errors import FailureInfo
 from komaquill.infrastructure.paths import WorkspacePaths
 from komaquill.messages import message
+
+_OPERATION: ContextVar[UUID | None] = ContextVar("komaquill_operation", default=None)
+
+
+@contextmanager
+def operation_scope(operation_id: UUID | None = None) -> Iterator[UUID]:
+    """Correlate nested operations without coupling them to a GPU session."""
+    identity = operation_id or _OPERATION.get() or uuid4()
+    token = _OPERATION.set(identity)
+    try:
+        yield identity
+    finally:
+        _OPERATION.reset(token)
 
 
 def record_event(
@@ -27,6 +42,10 @@ def record_event(
     story_id: UUID | None = None,
     render_id: UUID | None = None,
     scene_id: UUID | None = None,
+    phase: str | None = None,
+    exit_code: int | None = None,
+    sdk_version: str | None = None,
+    function: str | None = None,
 ) -> bool:
     """Append an event; return false if diagnostics storage is unavailable."""
     folder = project.logs
@@ -34,10 +53,15 @@ def record_event(
         folder /= str(runtime_id)
     path = folder / ("events.jsonl" if runtime_id is not None else "cli.jsonl")
     session_operation_id = None
-    with suppress(OSError, ValueError, KeyError):
-        session_operation_id = json.loads((project.state / "monitor.json").read_bytes())[
-            "operation_id"
-        ]
+    with suppress(OSError, ValueError, KeyError, TypeError):
+        monitor = json.loads((project.state / "monitor.json").read_bytes())
+        if (
+            runtime_id is not None
+            and monitor.get("runtime_id") == str(runtime_id)
+            and monitor.get("phase") not in {"stopped", "failed"}
+        ):
+            session_operation_id = monitor["operation_id"]
+    operation_id = operation_id or _OPERATION.get()
     data = {
         "format_version": 2,
         "session_operation_id": session_operation_id,
@@ -53,6 +77,10 @@ def record_event(
         "render_id": str(render_id) if render_id else None,
         "scene_id": str(scene_id) if scene_id else None,
         "failure": failure.model_dump(mode="json") if failure else None,
+        "phase": phase,
+        "exit_code": exit_code,
+        "sdk_version": sdk_version,
+        "function": function,
     }
     try:
         folder.mkdir(parents=True, exist_ok=True)

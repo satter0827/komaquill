@@ -2,7 +2,7 @@
 
 import secrets
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -158,7 +158,7 @@ def story_view(
     }
 
 
-def render_story(
+def render_events(
     repository: StoryRepository,
     workspace: Workspace,
     client: GenerationBackend,
@@ -166,8 +166,7 @@ def render_story(
     render_id: UUID,
     *,
     retry_failed: bool = False,
-    notify: Callable[[JsonObject], None] | None = None,
-) -> JsonObject:
+) -> Iterator[JsonObject]:
     """Keep one in-flight scene and preserve links before any submission."""
     with repository.claim(render_id) as acquired:
         if not acquired:
@@ -208,17 +207,34 @@ def render_story(
                         render.image_profile,
                         run_id=link.run_ids[-1],
                     )
-                if notify:
-                    notify(story_view(repository, bound, render.story_id, render_id))
+                yield story_view(repository, bound, render.story_id, render_id)
                 if run.state != "saved":
                     wait_generation(bound, client, bound_session, run.run_id)
             except KomaquillError:
                 current = latest_run(bound, link)
-                if notify:
-                    notify(story_view(repository, bound, render.story_id, render_id))
+                yield story_view(repository, bound, render.story_id, render_id)
                 if current is None or current.state != "failed":
                     raise
             else:
-                if notify:
-                    notify(story_view(repository, bound, render.story_id, render_id))
-        return story_view(repository, bound, render.story_id, render_id)
+                yield story_view(repository, bound, render.story_id, render_id)
+        yield story_view(repository, bound, render.story_id, render_id)
+
+
+def render_story(
+    repository: StoryRepository,
+    workspace: Workspace,
+    client: GenerationBackend,
+    session: Session,
+    render_id: UUID,
+    *,
+    retry_failed: bool = False,
+    notify: Callable[[JsonObject], None] | None = None,
+) -> JsonObject:
+    """Consume the shared iterator for callers that need a final snapshot."""
+    result: JsonObject = {}
+    for result in render_events(
+        repository, workspace, client, session, render_id, retry_failed=retry_failed
+    ):
+        if notify:
+            notify(result)
+    return result

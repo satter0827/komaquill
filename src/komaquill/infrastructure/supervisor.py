@@ -117,6 +117,8 @@ def start(
     open_browser: bool,
     echo: Callable[[str], None],
     foreground: Callable[[Path], int] | None = None,
+    *,
+    interactive_auth: bool = True,
 ) -> None:
     """Reuse an identical active supervisor or start exactly one new worker."""
     project = project.configured()
@@ -139,7 +141,10 @@ def start(
             if prior is not None and prior.phase not in TERMINAL_PHASES:
                 record_event(project, "monitor", "lost", runtime_id=prior.runtime_id)
             if backend == "colab":
-                authenticate(project)
+                if interactive_auth:
+                    authenticate(project)
+                else:
+                    Colab(project).provider_call("identity")
             state = MonitorState(
                 operation_id=uuid4(),
                 backend=backend,

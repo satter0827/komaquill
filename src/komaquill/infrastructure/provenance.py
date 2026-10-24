@@ -42,6 +42,7 @@ def package_contents() -> Iterator[tuple[str, bytes]]:
                 yield "komaquill/" + relative, item.read_bytes()
 
     yield from modules(anchor)
+    yield "komaquill/py.typed", anchor.joinpath("py.typed").read_bytes()
     for item in sorted(
         anchor.joinpath("interfaces/comfyui/web").iterdir(), key=lambda row: row.name
     ):

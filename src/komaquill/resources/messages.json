@@ -328,5 +328,7 @@
   "error.story_plan_invalid": "The model did not return a valid complete story plan. Inspect the saved planning attempts and revise the input or model settings.",
   "error.fake_story_mismatch": "The fake profile only supports the packaged rainy-cat sample and supported image counts. Use that sample or explicitly enable a real model.",
   "error.invalid_story_count": "Image count is outside the configured range. Check --images and story.max_images.",
-  "error.image_backend_unavailable": "An image GPU is not available. Start a prepared image session before generating a story. Planning alone does not need an image GPU."
+  "error.image_backend_unavailable": "An image GPU is not available. Start a prepared image session before generating a story. Planning alone does not need an image GPU.",
+  "stories.planning_started": "Planning story.",
+  "stories.operation_interrupted": "Story operation interrupted. Use stories show to inspect saved progress."
 }

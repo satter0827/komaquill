@@ -20,6 +20,7 @@ from komaquill.domain.models import Session
 from komaquill.infrastructure import inspection, supervisor
 from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
+from komaquill.infrastructure.diagnostics import operation_scope
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.preparation import capabilities
@@ -97,7 +98,8 @@ def main(
 def operation(ctx: typer.Context) -> Iterator[Project]:
     """Report safe operational errors without credential-bearing tracebacks."""
     try:
-        yield find_project(ctx.obj)
+        with operation_scope():
+            yield find_project(ctx.obj)
     except (
         KomaquillError,
         ValidationError,

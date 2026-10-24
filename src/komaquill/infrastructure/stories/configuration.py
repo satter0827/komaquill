@@ -1,6 +1,5 @@
 """Read local planning configuration independently of GPU session settings."""
 
-import os
 import tomllib
 from importlib.resources import files
 from pathlib import Path
@@ -8,7 +7,7 @@ from typing import Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure.configuration import Project
@@ -85,12 +84,23 @@ def settings(project: Project, **overrides: object) -> StorySettings:
     data["llm_profiles"] = {name: dict(value) for name, value in defaults["llm_profiles"].items()}
     for name, value in workspace.get("llm_profiles", {}).items():
         data["llm_profiles"][name] = {**data["llm_profiles"].get(name, {}), **value}
-    for name in StorySettings.model_fields:
-        prefix = f"KOMAQUILL_STORY_{name.upper()}"
-        if prefix in os.environ or any(key.startswith(prefix + "__") for key in os.environ):
-            data.pop(name, None)
-    data.update({key: value for key, value in overrides.items() if value is not None})
-    return StorySettings(**data)
+
+    def merge(base: dict[str, object], changes: dict[str, object]) -> dict[str, object]:
+        result = dict(base)
+        for key, value in changes.items():
+            prior = result.get(key)
+            result[key] = (
+                merge(prior, value)
+                if isinstance(prior, dict) and isinstance(value, dict)
+                else value
+            )
+        return result
+
+    combined = merge(data, EnvSettingsSource(StorySettings)())
+    combined = merge(
+        combined, {key: value for key, value in overrides.items() if value is not None}
+    )
+    return StorySettings.model_validate(combined)
 
 
 def instructions(project: Project, settings: StorySettings) -> str:

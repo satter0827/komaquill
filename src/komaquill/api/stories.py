@@ -22,6 +22,7 @@ from komaquill.infrastructure.diagnostics import operation_scope, record_event
 from komaquill.infrastructure.sessions.connection import connected, session_project
 from komaquill.infrastructure.stories.configuration import StorySettings, settings
 from komaquill.infrastructure.stories.llm import planner, serialized_planning
+from komaquill.infrastructure.stories.publication import publish_catalog, publish_story
 from komaquill.infrastructure.stories.storage import FileStoryRepository
 
 
@@ -67,6 +68,16 @@ class StoryService:
             except KeyboardInterrupt:
                 raise StoryInterrupted(story_id=request.story_id) from None
             except Exception as error:
+                try:
+                    publish_catalog(self._repository, self._project)
+                except (OSError, ValueError, KomaquillError) as publication_error:
+                    record_event(
+                        self._project,
+                        "story_publication",
+                        "failed",
+                        story_id=request.story_id,
+                        failure=failure_info(publication_error, "finalize"),
+                    )
                 record_event(
                     self._project,
                     "story_planning",
@@ -85,6 +96,8 @@ class StoryService:
                 story_id=request.story_id,
                 elapsed_seconds=time.monotonic() - started,
             )
+            publish_story(self._repository, self._project, request.story_id)
+            publish_catalog(self._repository, self._project)
             return result
 
     def plan(
@@ -107,11 +120,11 @@ class StoryService:
             return self._plan(text, source_name, options, allow_real_llm)
 
     def list(self) -> StoryListing:
-        with api_operation(OperationStage.STORAGE):
+        with api_operation(OperationStage.STORAGE), self._repository.snapshot():
             return list_stories(self._repository, self._project)
 
     def show(self, story_id: UUID, *, render_id: UUID | None = None) -> StorySnapshot:
-        with api_operation(OperationStage.STORAGE):
+        with api_operation(OperationStage.STORAGE), self._repository.snapshot():
             return StorySnapshot.model_validate(
                 story_view(self._repository, self._project, story_id, render_id)
             )
@@ -121,7 +134,8 @@ class StoryService:
         with operation_scope(), api_operation(OperationStage.FINALIZE):
             self._repository.read(story_id)
             try:
-                self._repository.publish(story_id, render_id)
+                publish_story(self._repository, self._project, story_id, render_id)
+                publish_catalog(self._repository, self._project)
             except KomaquillError as error:
                 record_event(
                     self._project,
@@ -148,7 +162,7 @@ class StoryService:
             time.sleep(interval)
 
     def export(self, story_id: UUID, *, render_id: UUID | None = None) -> JsonObject:
-        with api_operation(OperationStage.STORAGE):
+        with api_operation(OperationStage.STORAGE), self._repository.snapshot():
             evidence = self._repository.planning_evidence(story_id)
             try:
                 plan = self._repository.read(story_id)
@@ -176,7 +190,6 @@ class StoryService:
     def _events(
         self, backend: ComfyClient, session: Session, render_id: UUID, retry_failed: bool
     ) -> Iterator[StoryEvent]:
-        seen: set[tuple[UUID, UUID | None, str]] = set()
         try:
             for value in render_events(
                 self._repository,
@@ -186,25 +199,9 @@ class StoryService:
                 render_id,
                 retry_failed=retry_failed,
             ):
-                self._repository.publish(
-                    UUID(value["story_id"]),
-                    render_id,
-                )
+                publish_story(self._repository, self._project, UUID(value["story_id"]), render_id)
+                publish_catalog(self._repository, self._project)
                 snapshot = StorySnapshot.model_validate(value)
-                for scene in snapshot.scenes:
-                    identity = (scene.scene_id, scene.run_id, scene.state)
-                    if identity not in seen and scene.state != "unstarted":
-                        record_event(
-                            self._project,
-                            "story_rendering",
-                            scene.state,
-                            runtime_id=session.runtime_id,
-                            story_id=snapshot.story_id,
-                            render_id=render_id,
-                            scene_id=scene.scene_id,
-                            run_id=scene.run_id,
-                        )
-                        seen.add(identity)
                 yield StoryEvent(
                     kind="finished" if snapshot.finished else "progress", snapshot=snapshot
                 )

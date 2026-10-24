@@ -21,7 +21,7 @@ from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.preparation import capabilities
 from komaquill.infrastructure.sessions import shutdown
 from komaquill.infrastructure.sessions.connection import connected
-from komaquill.infrastructure.stories.storage import refresh_saved_stories
+from komaquill.infrastructure.stories.publication import refresh_saved_stories
 
 
 class ImageService:
@@ -63,6 +63,7 @@ class ImageService:
                         result.failed,
                         (*result.errors, *material_errors),
                         result.pending_ids,
+                        observed_versions=result.observed_versions,
                     )
             publications = refresh_saved_stories(self._project)
             if publications:

@@ -257,9 +257,13 @@ def test_concurrent_publication_cannot_replace_a_newer_snapshot_with_an_older_on
 
     monkeypatch.setattr(publication, "story_view", read)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(repository.publish, plan.request.story_id, render.render_id)
+        first = pool.submit(
+            publication.publish_story, repository, project, plan.request.story_id, render.render_id
+        )
         assert first_read.wait(2)
-        second = pool.submit(repository.publish, plan.request.story_id, render.render_id)
+        second = pool.submit(
+            publication.publish_story, repository, project, plan.request.story_id, render.render_id
+        )
         first.result()
         second.result()
     manifest = json.loads(

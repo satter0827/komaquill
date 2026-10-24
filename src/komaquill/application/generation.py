@@ -25,6 +25,7 @@ class Collection:
     errors: tuple[UUID | str, ...] = ()
     pending_ids: tuple[UUID, ...] = ()
     failure: FailureInfo | None = None
+    observed_versions: tuple[tuple[UUID, str], ...] = ()
 
 
 def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObject) -> Run:
@@ -288,6 +289,9 @@ def collect(
         failed=sum(run.state == "failed" for run in selected),
         errors=tuple(errors),
         pending_ids=pending,
+        observed_versions=tuple(
+            (run.run_id, digest(run.model_dump(mode="json"))) for run in selected
+        ),
     )
 
 

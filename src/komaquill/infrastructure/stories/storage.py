@@ -57,10 +57,6 @@ class FileStoryRepository:
         from komaquill.infrastructure.atomic import atomic_bytes
 
         atomic_bytes(folder / "source.txt", request.source_text.encode("utf-8"))
-        from komaquill.infrastructure.stories.publication import publish_listing
-
-        with FileLock(str(self.project.state / ".story-listing.lock")):
-            publish_listing(self, self.project)
 
     def prepare_attempt(
         self,
@@ -95,7 +91,6 @@ class FileStoryRepository:
             raise KomaquillError(code="invalid_request", stage="story_planning")
         value = plan.model_dump(mode="json")
         atomic_json(path, {"format_version": 1, "plan": value, "sha256": digest(value)})
-        self.publish(plan.request.story_id)
 
     def read(self, story_id: UUID) -> StoryPlan:
         try:
@@ -150,7 +145,6 @@ class FileStoryRepository:
                     ),
                 )
         atomic_json(path, render.model_dump(mode="json"))
-        self.publish(render.story_id, render.render_id)
 
     def render(self, render_id: UUID) -> StoryRender:
         paths = list(self.root.glob(f"*/renders/{render_id}/render.json"))
@@ -173,20 +167,21 @@ class FileStoryRepository:
         ]
         return sorted(values, key=lambda value: (value.created_at, str(value.render_id)))
 
-    def publish(self, story_id: UUID, render_id: UUID | None = None) -> None:
-        from komaquill.infrastructure.stories.publication import publish_story
+    def render_for_run(self, run_id: UUID) -> StoryRender | None:
+        """Resolve story ownership at the storage boundary."""
+        locations = Locations(self.project)
+        placement = locations.read().runs.get(run_id)
+        if placement is None or placement.images is None:
+            return None
+        render = self._read_render(locations.path(placement.folder).parents[1] / "render.json")
+        if not any(run_id in scene.run_ids for scene in render.scenes):
+            raise KomaquillError(code="identity_mismatch", stage="storage")
+        return render
 
-        try:
-            publish_story(self, self.project, story_id, render_id)
-        except (OSError, ValueError):
-            raise KomaquillError(
-                code="publication_failed",
-                stage="finalize",
-                details={
-                    "story_id": str(story_id),
-                    **({"render_id": str(render_id)} if render_id else {}),
-                },
-            ) from None
+    @contextmanager
+    def snapshot(self) -> Iterator[None]:
+        with Locations(self.project).snapshot():
+            yield
 
     @contextmanager
     def claim(self, render_id: UUID) -> Iterator[bool]:
@@ -202,27 +197,3 @@ class FileStoryRepository:
             yield True
         finally:
             lock.release()
-
-
-def refresh_saved_stories(project: Project) -> tuple[UUID, ...]:
-    """Retry local projections independently of collection and GPU shutdown."""
-    from komaquill.domain.errors import failure_info
-    from komaquill.infrastructure.diagnostics import record_event
-
-    failed = []
-    repository = FileStoryRepository(project)
-    for identity in Locations(project).read().stories:
-        try:
-            if (repository.folder(identity) / "plan.json").is_file():
-                for render in repository.renders(identity):
-                    repository.publish(identity, render.render_id)
-        except (OSError, ValueError, KomaquillError) as error:
-            failed.append(identity)
-            record_event(
-                project,
-                "story_publication",
-                "failed",
-                story_id=identity,
-                failure=failure_info(error, "finalize"),
-            )
-    return tuple(failed)

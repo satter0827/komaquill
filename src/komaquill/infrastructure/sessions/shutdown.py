@@ -33,6 +33,7 @@ from komaquill.infrastructure.sessions.connection import (
 )
 from komaquill.infrastructure.sessions.monitor import drain, preserve
 from komaquill.infrastructure.storage import load_session, stop_request
+from komaquill.infrastructure.stories.publication import refresh_saved_stories
 from komaquill.messages import message
 
 
@@ -111,6 +112,7 @@ def finish_colab(
         forced=lambda: session is not None and stop_request(project, session) is True,
         preserve=lambda: preserve(project, client),
         finalize_materials=lambda: finalize_materials(project, receipt.runtime_id),
+        publish=lambda: refresh_saved_stories(project),
     )
     result, released = shutdown(receipt.runtime_id, force, actions)
     for failure in result.errors:
@@ -157,6 +159,12 @@ def finish_external(
     except (Exception, KeyboardInterrupt) as error:
         result.collection = "failed"
         result.errors.append(failure_info(error, "collection"))
+    result.unpublished_ids = list(map(str, refresh_saved_stories(project)))
+    result.publications = "failed" if result.unpublished_ids else "ok"
+    if result.unpublished_ids:
+        result.errors.append(
+            failure_info(KomaquillError(code="publication_failed", stage="finalize"), "finalize")
+        )
     result.finished_at = datetime.now(UTC)
     atomic_json(
         project.logs / str(session.runtime_id) / "shutdown.json",

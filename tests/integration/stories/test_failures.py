@@ -8,7 +8,7 @@ from keyring.errors import KeyringError
 
 from komaquill.api import Client, KomaquillError, services, stories
 from komaquill.domain.errors import failure_info
-from komaquill.infrastructure.stories.storage import refresh_saved_stories
+from komaquill.infrastructure.stories.publication import refresh_saved_stories
 from tests.support.stories import source
 
 

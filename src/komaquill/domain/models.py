@@ -135,6 +135,8 @@ class ShutdownResult(BaseModel):
     finished_at: datetime | None = None
     force: bool
     collection: str = "skipped"
+    publications: str = "skipped"
+    unpublished_ids: list[str] = Field(default_factory=list)
     materials: str = "skipped"
     pending_materials: list[str] = Field(default_factory=list)
     lost_materials: list[str] = Field(default_factory=list)

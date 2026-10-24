@@ -3,13 +3,11 @@
 import secrets
 import subprocess
 import tomllib
-import webbrowser
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated, Literal
-from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
 import keyring
@@ -18,15 +16,23 @@ from filelock import Timeout
 from pydantic import ValidationError
 
 from komaquill.application.generation import Collection, collect, generate, verify_runtime
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.assets import Preparation
+from komaquill.domain.errors import FailureInfo, KomaquillError
+from komaquill.domain.materials import Material
 from komaquill.domain.models import Session
 from komaquill.infrastructure import runtime as runtime
+from komaquill.infrastructure import supervisor
 from komaquill.infrastructure.colab import Colab
+from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.materials import MaterialCollector
+from komaquill.infrastructure.monitor_state import alive, read_monitor
+from komaquill.infrastructure.preparation import capabilities
 from komaquill.infrastructure.runtime import connected
-from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, run_dir
-from komaquill.infrastructure.workflows import preset, resource_json
+from komaquill.infrastructure.storage import load_runs, load_session, run_dir
+from komaquill.infrastructure.views import open_view
+from komaquill.infrastructure.workflows import assets, prepare, select
 from komaquill.messages import error_message, message
 
 APP_HELP = message("text.generate_images_with_comfyui_and_save_them_locally")
@@ -134,11 +140,19 @@ def report(result: Collection) -> None:
 
 
 @models_app.command("fetch", help=message("text.download_and_verify_the_selected_model"))
-def models_fetch(ctx: typer.Context) -> None:
+def models_fetch(
+    ctx: typer.Context,
+    profile: Annotated[list[str] | None, typer.Option(help=message("profile.start_help"))] = None,
+) -> None:
     """Fetch and verify the selected model."""
     with operation(ctx) as project:
         typer.echo(message("text.downloading_and_verifying_the_model"))
-        typer.echo(str(fetch_model(project.artifacts, preset())))
+        settings = project.settings()
+        if profile:
+            settings = settings.model_copy(update={"profiles": tuple(profile)})
+            settings = type(settings).model_validate(settings.model_dump())
+        for asset in assets(settings):
+            typer.echo(str(fetch_model(project.artifacts, asset)))
 
 
 @app.command(help=message("text.start_comfyui_and_collect_results_automatically_press_ctrl"))
@@ -157,15 +171,40 @@ def start(
             help=message("text.username_for_optional_basic_authentication_on_an_external")
         ),
     ] = None,
+    profile: Annotated[list[str] | None, typer.Option(help=message("profile.start_help"))] = None,
+    foreground: Annotated[bool, typer.Option(help=message("monitor.foreground_help"))] = False,
+    open_browser: Annotated[
+        bool, typer.Option("--open/--no-open", help=message("profile.open_help"))
+    ] = True,
 ) -> None:
     """Maintain the connection and automatic collection until interrupted."""
     with operation(ctx) as project:
+        settings = project.settings()
+        if profile:
+            settings = type(settings).model_validate({**settings.model_dump(), "profiles": profile})
+        project = project.configured(settings)
         password = None
         if backend == "external" and endpoint is not None:
             Session(endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username)
             if username is not None:
                 password = typer.prompt(message("auth.prompt"), hide_input=True)
-        runtime.start(project, backend, endpoint, username, password, typer.echo)
+
+        if password is not None and endpoint is not None:
+            temporary = Session(
+                endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username
+            )
+            keyring.set_password("komaquill", runtime.credential_key(project, temporary), password)
+        from komaquill.interfaces.session_worker import main as session_main
+
+        supervisor.start(
+            project,
+            backend,
+            endpoint,
+            username,
+            open_browser,
+            typer.echo,
+            session_main if foreground else None,
+        )
 
 
 @app.command("generate", help=message("text.generate_and_save_an_image"))
@@ -174,12 +213,11 @@ def generate_command(
     prompt: Annotated[
         str | None, typer.Option(help=message("text.description_of_the_image_to_generate"))
     ] = None,
-    negative: Annotated[
-        str, typer.Option(help=message("text.content_to_avoid"))
-    ] = "text, watermark",
+    negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
     seed: Annotated[
         int | None, typer.Option(min=0, max=2**64 - 1, help=message("text.random_seed"))
     ] = None,
+    profile: Annotated[str | None, typer.Option(help=message("profile.select_help"))] = None,
 ) -> None:
     """Generate an image and save its conditions."""
     with operation(ctx) as project, connected(project) as (client, session):
@@ -198,6 +236,7 @@ def generate_command(
             text,
             negative,
             seed if seed is not None else secrets.randbits(63),
+            profile,
         )
         typer.echo(message("text.saved_directory", directory=run_dir(project, run.run_id)))
 
@@ -208,39 +247,30 @@ def collect_command(
 ) -> None:
     """Collect completed images and generation conditions."""
     with operation(ctx) as project, connected(project) as (client, session):
-        report(collect(project, client, session, run_id))
+        result = collect(project, client, session, run_id)
+        if capabilities(client):
+            material_errors = MaterialCollector(project, client).collect()
+            result = Collection(
+                result.saved,
+                result.pending,
+                result.failed,
+                (*result.errors, *material_errors),
+                result.pending_ids,
+            )
+        report(result)
 
 
 @app.command("open", help=message("text.open_a_comfyui_view_in_the_browser"))
 def open_command(
     ctx: typer.Context,
     view: Annotated[Literal["app", "graph"], typer.Option(help=message("cli.view_help"))] = "app",
+    profile: Annotated[str | None, typer.Option(help=message("profile.select_help"))] = None,
 ) -> None:
     """Open the selected ComfyUI view."""
     with operation(ctx) as project, connected(project) as (client, session):
         client.json("/system_stats")
         verify_runtime(client, session)
-        if session.backend == "colab":
-            url = (
-                session.endpoint
-                + "/?"
-                + urlencode({"template": f"sd15_{view}", "source": "komaquill"})
-            )
-        else:
-            workflow = resource_json("workflow.json")
-            workflow["extra"]["linearMode"] = view == "app"
-            path = project.runtime / "workflows" / f"sd15_{view}.json"
-            atomic_json(path, workflow)
-            typer.echo(message("text.load_this_workflow_in_comfyui_path", path=path))
-            url = session.endpoint + "/"
-        if not webbrowser.open(url):
-            raise KomaquillError(
-                display_key="text.cannot_open_the_browser_open_this_url_url",
-                details={"url": str(url)},
-                code="browser_failed",
-                retryable=False,
-            )
-        typer.echo(message("text.browser_opened_keep_start_running_to_save_results"))
+        open_view(project, session, view, profile, typer.echo)
 
 
 @app.command(help=message("text.check_the_connection_gpu_model_and_required_nodes"))
@@ -250,16 +280,31 @@ def doctor(ctx: typer.Context) -> None:
         verify_runtime(client, session)
         stats = client.json("/system_stats")
         nodes = client.json("/object_info")
-        missing = {
-            n["class_type"] for n in resource_json("workflow-api.json").values()
-        } - nodes.keys()
+        settings = session.settings or project.settings()
+        required: set[str] = set()
+        for name in settings.profiles:
+            _, profile = select(settings, name)
+            graph, _ = prepare(
+                profile.sample_prompt, None, 1, name, settings=settings, profile_name=name
+            )
+            required.update(n["class_type"] for n in graph.values())
+        missing = required - nodes.keys()
         if missing:
             raise KomaquillError(
                 display_key="text.required_standard_nodes_are_missing_check_the_comfyui"
             )
-        checkpoint = client.checkpoints()
-        if preset().filename not in checkpoint:
-            raise KomaquillError(display_key="text.the_selected_model_is_missing_check_the_comfyui")
+        loaders = {
+            "checkpoints": ("CheckpointLoaderSimple", "ckpt_name"),
+            "loras": ("LoraLoaderModelOnly", "lora_name"),
+            "upscale_models": ("UpscaleModelLoader", "model_name"),
+        }
+        for asset in assets(settings):
+            loader, field = loaders[asset.role]
+            choices = input_choices(nodes, loader, field)
+            if asset.reference not in choices:
+                raise KomaquillError(
+                    display_key="text.the_selected_model_is_missing_check_the_comfyui"
+                )
         if not any(device.get("type") == "cuda" for device in stats.get("devices", [])):
             raise KomaquillError(display_key="text.no_cuda_device_was_found_check_the_server")
         typer.echo(
@@ -294,6 +339,8 @@ def status(ctx: typer.Context) -> None:
                     )
             except Timeout:
                 typer.echo(message("text.colab_starting_or_stopping"))
+            except KomaquillError:
+                typer.echo(message("profile.colab_unknown"))
         else:
             typer.echo(message("text.colab_no_owned_runtime"))
         lock = runtime.monitor_lock(project)
@@ -329,6 +376,28 @@ def status(ctx: typer.Context) -> None:
                 typer.echo(message("text.comfyui_connected"))
             except KomaquillError:
                 typer.echo(message("text.comfyui_disconnected_check_the_start_process"))
+        monitor = read_monitor(project)
+        if monitor is not None:
+            typer.echo(
+                message(
+                    "monitor.status",
+                    phase=monitor.phase
+                    if alive(monitor) or monitor.phase in {"stopped", "failed"}
+                    else "unknown",
+                    observed=monitor.observed_at.isoformat(),
+                )
+            )
+        preparation_count = sum(
+            Preparation.model_validate_json(path.read_bytes()).phase
+            not in {"ready", "cancelled", "failed"}
+            for path in (project.state / "preparation").glob("*.json")
+        )
+        material_count = sum(
+            Material.model_validate_json(path.read_bytes()).state == "pending"
+            for path in (project.state / "preservation").glob("*.json")
+        )
+        typer.echo(message("assets.status", count=preparation_count))
+        typer.echo(message("materials.status", count=material_count))
         pending = [str(run.run_id) for run in load_runs(project) if run.pending]
         typer.echo(message("text.pending_pending_count", pending_count=len(pending)))
         lost = [str(run.run_id) for run in load_runs(project) if run.state == "lost"]
@@ -346,4 +415,48 @@ def stop(
 ) -> None:
     """Stop the owned runtime after collecting available results."""
     with operation(ctx) as project:
-        runtime.stop(project, force, typer.echo)
+        if not supervisor.stop(project, force, typer.echo):
+            runtime.stop(project, force, typer.echo)
+
+
+@app.command("logs", help=message("monitor.logs_help"))
+def logs_command(
+    ctx: typer.Context,
+    follow: Annotated[bool, typer.Option(help=message("monitor.follow_help"))] = False,
+) -> None:
+    """Render allowlisted event fields from retained JSON Lines."""
+    with operation(ctx) as project:
+        try:
+            for event in supervisor.events(project, follow):
+                failure = None
+                if isinstance(event.get("failure"), dict):
+                    with suppress(ValidationError):
+                        failure = FailureInfo.model_validate(event["failure"])
+                typer.echo(
+                    message(
+                        "monitor.log",
+                        at=event.get("created_at", "-"),
+                        operation=event.get("operation", "-"),
+                        result=event.get("result", "-"),
+                        identity=event.get("run_id") or event.get("asset") or "",
+                        failure=f"{failure.code}/{failure.stage}" if failure else "",
+                    )
+                )
+        except KeyboardInterrupt:
+            return
+
+
+@app.command("prepare", help=message("assets.prepare_help"))
+def prepare_command(
+    ctx: typer.Context,
+    workflow: Annotated[
+        Path, typer.Argument(help=message("assets.workflow_help"), exists=True, dir_okay=False)
+    ],
+) -> None:
+    """Prepare explicitly confirmed public models on the current connection."""
+    from komaquill.infrastructure.preparation import prepare_workflow
+
+    with operation(ctx) as project, connected(project) as (client, session):
+        prepare_workflow(
+            project.configured(session.settings), client, workflow, typer.echo, typer.confirm
+        )

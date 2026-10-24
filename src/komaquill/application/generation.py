@@ -29,6 +29,35 @@ class Collection:
 
 def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObject) -> Run:
     """Create a history record containing reproducible generation conditions."""
+    settings = session.settings
+    enabled = (
+        {asset for name in settings.profiles for asset in settings.presets[name].asset_ids}
+        if settings
+        else set()
+    )
+    known = (
+        {name: asset for name, asset in settings.assets.items() if name in enabled}
+        if settings and session.backend == "colab"
+        else {}
+    )
+    known.update(project.prepared_assets(session))
+    filenames: set[str] = set()
+    for node in graph.values():
+        inputs = node.get("inputs") if isinstance(node, dict) else None
+        if isinstance(inputs, dict):
+            filenames.update(
+                value
+                for key, value in inputs.items()
+                if key.endswith(("_name", "_name1", "_name2", "_name3")) and isinstance(value, str)
+            )
+    used = {
+        asset.reference: asset.sha256 for asset in known.values() if asset.reference in filenames
+    }
+    checkpoints = [
+        asset.sha256
+        for asset in known.values()
+        if asset.role == "checkpoints" and asset.reference in filenames
+    ]
     return Run(
         run_id=run_id,
         runtime_id=session.runtime_id,
@@ -37,7 +66,8 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
         remote_source_revision=session.source_revision,
         comfy_revision=session.comfy_revision,
         frontend_version=session.frontend_version,
-        model_sha256=session.model_sha256,
+        model_sha256=checkpoints[0] if len(checkpoints) == 1 else None,
+        asset_sha256=used,
         workflow_sha256=digest(graph),
     )
 
@@ -214,14 +244,17 @@ def generate(
     client: GenerationBackend,
     session: Session,
     prompt: str,
-    negative: str,
+    negative: str | None,
     seed: int,
+    profile_name: str | None = None,
 ) -> Run:
     """Record before submission and wait until local persistence completes."""
     project = project.configured(session.settings)
     verify_runtime(client, session)
     run_id = uuid4()
-    graph, ui = project.prepare(prompt, negative, seed, str(run_id))
+    graph, ui = project.prepare(prompt, negative, seed, str(run_id), profile_name)
+    if session.backend == "external":
+        graph, ui = client.resolve_models(graph, ui)
     run = new_run(project, session, run_id, graph)
     run.state = "unknown"
     with collection_lock(project):

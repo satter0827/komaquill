@@ -1,0 +1,96 @@
+# Enable profiles with profiles = ["pony", "pony-preview", "pony-upscale"].
+[assets.pony]
+name = "pony"
+repo_id = "AstraliteHeart/pony-diffusion-v6"
+revision = "5ec9c05863255568f1b59753e3838107befaa712" # pragma: allowlist secret Public revision.
+filename = "v6.safetensors"
+sha256 = "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3" # pragma: allowlist secret Public model digest.
+license = "Fair AI Public License with author conditions; see model page"
+license_url = "https://civitai.com/models/257749/pony-diffusion-v6-xl"
+
+[assets.hyper-sdxl]
+name = "hyper-sdxl"
+role = "loras"
+repo_id = "ByteDance/Hyper-SD"
+revision = "bc08d970a87c74c71209491d64e3525845698863" # pragma: allowlist secret Public revision.
+filename = "Hyper-SDXL-8steps-CFG-lora.safetensors"
+sha256 = "55b51334c85061afff5eff7c550b61963c8b8607a5868bbe4f26db49374719b1" # pragma: allowlist secret Public model digest.
+license = "CreativeML Open RAIL++-M (SDXL section)"
+license_url = "https://huggingface.co/ByteDance/Hyper-SD/blob/main/LICENSE.md"
+
+[assets.realesrgan-anime]
+name = "realesrgan-anime"
+role = "upscale_models"
+url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
+filename = "RealESRGAN_x4plus_anime_6B.pth"
+sha256 = "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da" # pragma: allowlist secret Public model digest.
+license = "BSD-3-Clause"
+license_url = "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE"
+
+[assets.sd15]
+name = "sd15"
+repo_id = "Comfy-Org/stable-diffusion-v1-5-archive"
+revision = "82ddc01b8d77adc5b4a7c6b5e8f2ddf1a6fe0c08" # pragma: allowlist secret Public revision.
+filename = "v1-5-pruned-emaonly-fp16.safetensors"
+sha256 = "e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916" # pragma: allowlist secret Public model digest.
+license = "CreativeML Open RAIL-M"
+license_url = "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive"
+
+[presets.pony]
+workflow = "workflow"
+checkpoint = "pony"
+width = 1024
+height = 1024
+steps = 25
+cfg = 7.0
+sampler = "euler_ancestral"
+scheduler = "normal"
+clip_skip = -2
+positive_prefix = "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up"
+negative = ""
+sample_prompt = "a small cabin in a sunny forest, illustration, warm light"
+
+[presets.pony-preview]
+workflow = "pony-preview"
+checkpoint = "pony"
+lora = "hyper-sdxl"
+width = 1024
+height = 1024
+steps = 8
+cfg = 5.0
+sampler = "ddim"
+scheduler = "sgm_uniform"
+clip_skip = -2
+positive_prefix = "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up"
+negative = ""
+sample_prompt = "a small cabin in a sunny forest, illustration, warm light"
+lora_strength = 1.0
+
+[presets.pony-upscale]
+workflow = "pony-upscale"
+checkpoint = "pony"
+upscaler = "realesrgan-anime"
+width = 1024
+height = 1024
+steps = 25
+cfg = 7.0
+sampler = "euler_ancestral"
+scheduler = "normal"
+clip_skip = -2
+positive_prefix = "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up"
+negative = ""
+sample_prompt = "a small cabin in a sunny forest, illustration, warm light"
+upscale_width = 2048
+upscale_height = 2048
+
+[presets.sd15]
+workflow = "sd15"
+checkpoint = "sd15"
+width = 512
+height = 512
+steps = 20
+cfg = 7.0
+sampler = "euler"
+scheduler = "normal"
+negative = "text, watermark"
+sample_prompt = "a small cabin in a sunny forest, illustration"

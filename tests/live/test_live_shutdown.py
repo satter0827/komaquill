@@ -31,7 +31,7 @@ def test_live_owned_shutdown(mode):
         graph, ui = prepare(
             "a cabin in a mountain valley, watercolor", "text, watermark", 834, str(uuid4())
         )
-        steps = 200 if mode == "normal" else 10000
+        steps = 25 if mode == "normal" else 10000
         graph["3"]["inputs"]["steps"] = steps
         next(node for node in ui["nodes"] if node["id"] == 3)["widgets_values"][2] = steps
         identity = client.submit(graph, ui, str(uuid4()))
@@ -40,21 +40,13 @@ def test_live_owned_shutdown(mode):
             while not any(run.prompt_id == identity for run in load_runs(project)):
                 assert time.monotonic() < deadline
                 time.sleep(0.1)
-            monitors = []
-            for process in psutil.process_iter(["exe", "cmdline"]):
-                args = process.info["cmdline"] or []
-                executable = Path(process.info["exe"] or ".")
-                if executable.is_relative_to(project.runtime) and args[-3:] == [
-                    "-m",
-                    "komaquill",
-                    "start",
-                ]:
-                    monitors.append(process)
-            assert monitors, "The explicitly started project monitor was not found"
-            for process in monitors:
-                process.terminate()
-            _, alive = psutil.wait_procs(monitors, timeout=10)
-            assert not alive
+            from komaquill.infrastructure.monitor_state import alive, read_monitor
+
+            monitor = read_monitor(project)
+            assert monitor is not None and alive(monitor)
+            process = psutil.Process(monitor.pid)
+            process.terminate()
+            process.wait(timeout=10)
             control.cleanup_processes(receipt)
             assert control.refresh(receipt), "The remote runtime must survive local disconnection"
     args = [sys.executable, "-B", "-m", "komaquill", "stop"]

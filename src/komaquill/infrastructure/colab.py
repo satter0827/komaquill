@@ -21,7 +21,8 @@ from filelock import FileLock, ReadWriteLock
 from pydantic import BaseModel
 
 from komaquill.domain.configuration import RuntimeSettings
-from komaquill.domain.errors import AllocationRefused, KomaquillError, failure_info
+from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
+from komaquill.domain.models import RuntimeObservation
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
 from komaquill.infrastructure.diagnostics import record_event
@@ -41,6 +42,7 @@ class Receipt(BaseModel):
     code_sha256: str | None = None
     payload_sha256: str | None = None
     endpoint_id: str | None = None
+    account_sha256: str | None = None
     settings: RuntimeSettings | None = None
 
 
@@ -139,11 +141,64 @@ class Colab:
             )
         return entry
 
+    def provider_command(self, action: str, *arguments: str) -> list[str]:
+        """Use the pinned adapter with public identities, never tokens, in arguments."""
+        self.command("version")
+        if action == "identity":
+            return [
+                sys.executable,
+                "-m",
+                "komaquill.infrastructure.colab_bridge",
+                action,
+                "--request-timeout",
+                str(self.settings.request_timeout),
+            ]
+        return [
+            sys.executable,
+            "-m",
+            "komaquill.infrastructure.colab_bridge",
+            action,
+            "--receipt",
+            str(self.receipt_file),
+            *arguments,
+        ]
+
+    def provider_call(
+        self, action: str, *arguments: str, timeout: float | None = None
+    ) -> RuntimeObservation:
+        """Bound provider calls even if an upstream helper has no request timeout."""
+        try:
+            result = subprocess.run(
+                self.provider_command(action, *arguments),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                check=False,
+                timeout=timeout or self.settings.control_timeout,
+            )
+            if result.returncode:
+                failure = FailureInfo.model_validate(json.loads(result.stderr)["failure"])
+                raise KomaquillError(
+                    code=failure.code,
+                    stage=failure.stage,
+                    http_status=failure.http_status,
+                    retryable=failure.retryable,
+                )
+            return RuntimeObservation.model_validate_json(result.stdout)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise KomaquillError(code="colab_failed", stage="colab_control") from None
+
     def refresh(self, receipt: Receipt) -> bool:
-        """Refresh existing state without allocating; the caller holds the lock."""
-        self.entry(receipt)
-        self.call("status", "-s", receipt.name)
-        return self.entry(receipt) is not None
+        """Observe provider allocation; missing CLI cache is never shutdown evidence."""
+        observation = self.provider_call("observe")
+        if (
+            observation.state == "unknown"
+            or not receipt.endpoint_id
+            or not receipt.account_sha256
+            or observation.endpoint_id != receipt.endpoint_id
+            or observation.account_sha256 != receipt.account_sha256
+        ):
+            raise KomaquillError(code="identity_mismatch", stage="colab_control")
+        return observation.state == "running"
 
     def acquire(self, revision: str) -> tuple[Receipt, bool]:
         """Allocate only from explicit startup, or reconnect to the owned runtime."""
@@ -170,6 +225,10 @@ class Colab:
             # Authenticate and initialize official locking before allocation.
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
             self.call("status", "-s", receipt.name, interactive=not authenticated)
+            identity = self.provider_call("identity")
+            if not identity.account_sha256:
+                raise KomaquillError(code="authentication_failed")
+            receipt.account_sha256 = identity.account_sha256
             atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
             # Delegate initial authentication and credentials to the official CLI.
             authenticated = (Path.home() / ".config/colab-cli/token.json").is_file()
@@ -194,25 +253,26 @@ class Colab:
             atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
             return receipt, True
 
-    def stop(self) -> None:
-        """Confirm shutdown of the owned identity through the official CLI."""
+    def stop(self) -> RuntimeObservation:
+        """Terminate and confirm the owned endpoint under the recorded account."""
         self.project.state.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()
             if receipt is None:
-                return
-            active = self.refresh(receipt)
-            entry = self.entry(receipt)
-            if receipt.endpoint_id is None and entry is None:
-                raise KomaquillError(
-                    display_key="text.allocation_is_unconfirmed_check_active_colab_runtimes_ownership"
-                )
-            if active:
-                self.call("stop", "-s", receipt.name)
-                if self.refresh(receipt):
-                    raise KomaquillError(
-                        display_key="text.shutdown_is_unconfirmed_ownership_records_were_retained_run"
-                    )
+                raise KomaquillError(code="identity_mismatch")
+            if receipt.endpoint_id is None:
+                entry = self.entry(receipt)
+                if entry is not None:
+                    receipt.endpoint_id = str(entry["endpoint"])
+                    atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
+            observation = self.provider_call("terminate")
+            if (
+                not observation.stopped
+                or observation.endpoint_id != receipt.endpoint_id
+                or observation.account_sha256 != receipt.account_sha256
+            ):
+                raise KomaquillError(code="identity_mismatch", stage="gpu_stop")
+            return observation
 
     def release(self, receipt: Receipt) -> None:
         """Release ownership after persistence and cleanup have completed."""
@@ -231,9 +291,14 @@ class Colab:
                 arguments = process.info["cmdline"] or []
                 if "-m" not in arguments:
                     continue
-                if arguments[arguments.index("-m") + 1 :][:1] != [
-                    "komaquill.infrastructure.colab_entry"
-                ]:
+                module = arguments[arguments.index("-m") + 1 :][:1]
+                if module == ["komaquill.infrastructure.colab_bridge"]:
+                    if "--receipt" in arguments and arguments[arguments.index("--receipt") + 1 :][
+                        :1
+                    ] == [str(self.receipt_file)]:
+                        terminate_tree(process, self.settings.control_timeout)
+                    continue
+                if module != ["komaquill.infrastructure.colab_entry"]:
                     continue
                 if "--config" not in arguments or "-s" not in arguments:
                     continue
@@ -290,12 +355,51 @@ class Colab:
                     "-f",
                     str(script),
                     "--timeout",
-                    str(self.settings.execution_timeout),
+                    str(self.settings.worker_execution_timeout),
                 ),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+    def progress(self, receipt: Receipt) -> dict[str, str | None]:
+        """Read bounded structured progress from an existing runtime only."""
+        target = self.project.artifacts / "tmp" / f"progress-{receipt.runtime_id}.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.provider_call(
+                "download",
+                f"content/komaquill-{receipt.runtime_id}/.artifacts/logs/progress.json",
+                str(target),
+                timeout=self.settings.request_timeout,
+            )
+            data = json.loads(target.read_bytes())
+            allowed = {
+                "environment",
+                "dependencies",
+                "comfyui",
+                "model_preparation",
+                "server",
+                "ready",
+            }
+            phase = data.get("phase")
+            asset = data.get("asset")
+            if phase not in allowed or (asset is not None and not isinstance(asset, str)):
+                raise ValueError
+            return {"phase": phase, "asset": asset}
+        except (KomaquillError, OSError, ValueError):
+            return {}
+        finally:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError as error:
+                record_event(
+                    self.project,
+                    "progress_cleanup",
+                    "failed",
+                    runtime_id=receipt.runtime_id,
+                    failure=failure_info(error, "preparation"),
+                )
 
     def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
         """Download independent snapshots and preserve the last successful capture."""
@@ -315,6 +419,7 @@ class Colab:
         for source, name in [
             ("logs/bootstrap.log", "bootstrap.log"),
             ("logs/comfy.log", "comfy.log"),
+            ("logs/cli.jsonl", "worker-events.jsonl"),
             ("runtime/environment.txt", "environment.txt"),
         ]:
             temporary = folder / f".{name}.{uuid4().hex}.tmp"
@@ -332,14 +437,8 @@ class Colab:
                         display_key="text.log_collection_timed_out", code="log_timeout"
                     )
                 with self.lock:
-                    if self.entry(receipt) is None:
-                        raise KomaquillError(
-                            display_key="text.the_runtime_is_unavailable", code="runtime_ended"
-                        )
-                    self.call(
+                    self.provider_call(
                         "download",
-                        "-s",
-                        receipt.name,
                         f"{remote}/{source}",
                         str(temporary),
                         timeout=remaining,
@@ -348,6 +447,13 @@ class Colab:
                 item.update(result="saved", last_success_at=datetime.now(UTC).isoformat())
             except (KomaquillError, OSError) as error:
                 failed.append(name)
+                if isinstance(error, KomaquillError):
+                    if error.code == "request_not_found":
+                        item["result"] = (
+                            "missing" if prior.get("last_success_at") else "not_created"
+                        )
+                    elif error.code == "runtime_ended":
+                        item["result"] = "unavailable"
                 item["failure"] = failure_info(error, "log_collection").model_dump(mode="json")
             finally:
                 try:
@@ -395,14 +501,12 @@ class Colab:
                 capture_output=True,
             )
         with self.lock:
-            # The SSH command may allocate, so verify the existing name and identity first.
-            if self.entry(receipt) is None or receipt.endpoint_id is None:
+            # Provider evidence replaces optional local CLI cache for reconnection.
+            if receipt.endpoint_id is None or receipt.account_sha256 is None:
                 raise KomaquillError(
                     display_key="text.the_runtime_is_unavailable_ssh_was_not_started"
                 )
-            proxy_arguments = self.command(
-                "ssh", "--proxy-mode", "-s", receipt.name, "--identity", str(key)
-            )
+            proxy_arguments = self.provider_command("proxy", str(key))
             proxy = (
                 subprocess.list2cmdline(proxy_arguments)
                 if os.name == "nt"

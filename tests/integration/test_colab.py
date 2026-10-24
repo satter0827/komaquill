@@ -15,6 +15,21 @@ def controller(project, monkeypatch):
     colab = Colab(project)
     colab.config = project.runtime / "official-sessions.json"
     calls = []
+
+    def provider_call(action, *args, **kwargs):
+        calls.append((action, *args))
+        saved = colab.receipt()
+        from komaquill.domain.models import RuntimeObservation
+
+        if saved is None or saved.endpoint_id is None:
+            raise KomaquillError(code="identity_mismatch")
+        return RuntimeObservation(
+            state="running" if colab.entry(saved) is not None else "stopped",
+            endpoint_id=saved.endpoint_id,
+            account_sha256=saved.account_sha256,
+        )
+
+    monkeypatch.setattr(colab, "provider_call", provider_call)
     monkeypatch.setattr(colab, "call", lambda *args, **kwargs: calls.append(args))
     return colab, calls
 
@@ -27,15 +42,19 @@ def test_missing_session_never_calls_ssh_or_allocates(project, monkeypatch):
     assert not calls
 
 
-def test_runtime_id_mismatch_prevents_stop(project, monkeypatch):
+def test_cached_identity_mismatch_is_rejected_before_cli_operations(project, monkeypatch):
     colab, calls = controller(project, monkeypatch)
     receipt = Receipt(
-        name="owned", runtime_id=uuid4(), source_revision="a" * 40, endpoint_id="expected"
+        name="owned",
+        runtime_id=uuid4(),
+        source_revision="a" * 40,
+        endpoint_id="expected",
+        account_sha256="a" * 64,
     )
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     atomic_json(colab.config, {"owned": {"endpoint": "other-runtime"}})
     with pytest.raises(KomaquillError):
-        colab.stop()
+        colab.entry(receipt)
     assert not calls
     assert colab.receipt_file.is_file()
 
@@ -43,13 +62,17 @@ def test_runtime_id_mismatch_prevents_stop(project, monkeypatch):
 def test_failed_stop_keeps_receipt(project, monkeypatch):
     colab, calls = controller(project, monkeypatch)
     receipt = Receipt(
-        name="owned", runtime_id=uuid4(), source_revision="a" * 40, endpoint_id="expected"
+        name="owned",
+        runtime_id=uuid4(),
+        source_revision="a" * 40,
+        endpoint_id="expected",
+        account_sha256="a" * 64,
     )
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     atomic_json(colab.config, {"owned": {"endpoint": "expected"}})
     with pytest.raises(KomaquillError):
         colab.stop()
-    assert ("stop", "-s", "owned") in calls
+    assert ("terminate",) in calls
     assert colab.receipt_file.is_file()
     assert not any(args[0] == "new" for args in calls)
 
@@ -57,17 +80,24 @@ def test_failed_stop_keeps_receipt(project, monkeypatch):
 def test_stop_keeps_receipt_until_finalization_acknowledges_absence(project, monkeypatch):
     colab, calls = controller(project, monkeypatch)
     receipt = Receipt(
-        name="owned", runtime_id=uuid4(), source_revision="a" * 40, endpoint_id="expected"
+        name="owned",
+        runtime_id=uuid4(),
+        source_revision="a" * 40,
+        endpoint_id="expected",
+        account_sha256="a" * 64,
     )
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
     atomic_json(colab.config, {"owned": {"endpoint": "expected"}})
 
     def call(*args, **kwargs):
         calls.append(args)
-        if args[0] == "stop":
-            colab.config.write_text(json.dumps({}))
+        from tests.support.provider import stopped
 
-    monkeypatch.setattr(colab, "call", call)
+        if args[0] == "terminate":
+            colab.config.write_text(json.dumps({}))
+        return stopped()
+
+    monkeypatch.setattr(colab, "provider_call", call)
     colab.stop()
     assert colab.receipt_file.exists()
     colab.release(receipt)
@@ -135,7 +165,12 @@ def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypa
 
     fake = types.SimpleNamespace(app=FailingApp())
     monkeypatch.setenv("KOMAQUILL_PROJECT_DIR", str(project.root))
-    monkeypatch.setattr(colab_entry.importlib, "import_module", lambda name: fake)
+    original_import = colab_entry.importlib.import_module
+    monkeypatch.setattr(
+        colab_entry.importlib,
+        "import_module",
+        lambda name: fake if name == "colab_cli.cli" else original_import(name),
+    )
     with pytest.raises(SystemExit) as error:
         colab_entry.main()
     assert error.value.code == 1
@@ -244,7 +279,7 @@ def test_log_failure_preserves_existing_file_and_downloads_remaining_logs(projec
         if "bootstrap.log" in args[-2]:
             raise KomaquillError("取得に失敗しました")
 
-    monkeypatch.setattr(colab, "call", download)
+    monkeypatch.setattr(colab, "provider_call", download)
     assert colab.recover_diagnostics(receipt) == ("bootstrap.log",)
     assert (folder / "bootstrap.log").read_text() == "previous-complete-log"
     assert (folder / "comfy.log").read_text() == "downloaded"

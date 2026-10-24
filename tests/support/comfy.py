@@ -61,6 +61,8 @@ class ComfyStub:
                 if self.corrupt_image or request.url.params.get("filename") in self.invalid_images
                 else output.getvalue(),
             )
+        if path == "/object_info":
+            return httpx.Response(200, json={})
         if path == "/system_stats":
             return httpx.Response(200, json={"devices": [{"type": "cuda"}]})
         return httpx.Response(404)

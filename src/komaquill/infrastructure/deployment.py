@@ -31,12 +31,17 @@ def create_payload(project: Project) -> Payload:
     revision = source_revision()
     entries = dict(contents)
     entries["komaquill.toml"] = (
-        "\n".join(f"{key} = {json.dumps(value)}" for key, value in settings.model_dump().items())
+        "\n".join(
+            f"{key} = {json.dumps(value)}"
+            for key, value in settings.model_dump().items()
+            if key not in {"presets", "assets"}
+        )
         + "\n"
     ).encode()
     entries["manifest.json"] = json.dumps(
         {
             "app_version": version("komaquill"),
+            "settings": settings.model_dump(mode="json"),
             "source_revision": revision,
             "code_sha256": fingerprint,
         },

@@ -6,7 +6,7 @@
 
 設定はstart時に確定します。起動中に設定ファイルを変更しても反映されません。stop後のstartで新しい設定を使用します。
 
-`start`は同じ端末でSSH接続と自動回収を維持します。別の端末から生成や画面の起動を行ってください。
+`start`は監視プロセスをバックグラウンドで起動します。準備が完了するとApp Modeを開いて端末へ戻ります。端末を閉じてもSSH接続と自動回収を維持します。同じ設定で再実行すると既存の監視を再利用します。設定が異なる場合は停止を案内します。`--no-open`を指定すると画面を開きません。
 GPUを新しく確保する操作はstartだけです。status、doctor、collect、stopはGPUを作成しません。
 
 GPUへは実行中のパッケージから転送物を作成します。コードや起動設定が残存ランタイムと異なる場合は、stop後に起動し直します。
@@ -19,7 +19,7 @@ komaquill open --view app
 komaquill open --view graph
 ```
 
-プロンプトを省略すると入力を求めます。SD 1.5への画像説明は英語が適しています。入力画面とノード画面はComfyUIの標準機能です。
+プロンプトを省略すると入力を求めます。Ponyへの画像説明には英語のタグや短文を使用します。品質タグは標準ノードで自動付加します。入力画面とノード画面はComfyUIの標準機能です。
 外部ComfyUIでは、画面を開いた後に表示されたワークフローJSONを読み込みます。
 
 ## 結果を回収する
@@ -66,7 +66,7 @@ komaquill stop --force
 ```
 
 通常終了は生成と回収を既定10分まで待ちます。強制終了は生成完了を待たず、回収可能な結果を保存します。ログ取得と終了確認には別途通信時間がかかります。回収やログ取得が失敗した場合は終了コード1を返します。GPUの終了結果は個別に表示するため、エラーがあってもGPUが終了している場合があります。
-startの端末では、Ctrl+Cが通常終了、2回目のCtrl+Cが強制終了に対応します。
+起動待ち中、または`start --foreground`の端末では、Ctrl+Cが通常終了、2回目のCtrl+Cが強制終了に対応します。バックグラウンドの監視は`stop`で終了します。
 
 監視が停止した場合も、stopは所有するランタイムを確認して終了します。SSH接続だけが失われていれば、既存ランタイムへの接続を復旧します。
 Colabの終了確認後、未回収要求はlostになります。外部接続の終了は監視だけを停止し、外部サーバーやキューは変更しません。
@@ -89,8 +89,12 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 ## ログを読む
 
+`komaquill logs --follow`で状態変化と失敗を表示します。表示のCtrl+Cは監視を停止しません。調査時は`komaquill start --foreground`で同じ監視を端末で実行できます。
+
+
 | ファイル | 内容 |
 |---|---|
+| logs/monitor.log | バックグラウンド監視の標準出力とエラー |
 | logs/cli.jsonl | ランタイム確保前を含むCLIの状態変化と失敗 |
 | logs/ランタイムID/events.jsonl | 接続、要求状態、回収・終了の状態変化と失敗 |
 | logs/ランタイムID/bootstrap.log | GPU側の導入と起動 |
@@ -105,6 +109,20 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 ## VS Codeから実行する
 
-Run and DebugのStart ComfyUI (Colab)で起動し、接続後にGenerate Imageでプロンプトを入力します。Open ComfyUIではApp ModeまたはNode Graph、Stop ComfyUIではWait for ResultsまたはStop Without Waitingを選びます。Run CLI with Argumentsにはgenerate --prompt "a small cabin"などの引数を入力できます。引数欄へパスワードや認証コードを入力しないでください。
+Run and DebugのStart Sessionで起動し、接続後にGenerate Imageでプロンプトを入力します。Open GeneratorではApp ModeまたはNode Graph、Stop SessionではWait for ResultsまたはStop Without Waitingを選びます。Run CLI with Argumentsにはgenerate --prompt "a small cabin"などの引数を入力できます。引数欄へパスワードや認証コードを入力しないでください。
 
 TaskのSetup Environmentは導入、Check Projectは品質・秘密情報検査、Build Packageはビルド・配布物検査を行います。通常の操作はターミナルから同じCLIを直接実行できます。
+
+## グラフを編集する
+
+`open --view graph`は標準のNode Graphを開きます。App Modeと別のGPUを確保しません。ノードの追加・接続、サンプラー、モデル、LoRA、ネガティブプロンプトなどを編集できます。標準ノード以外を使う場合は、そのノードと対応資源をGPU側へ導入する必要があります。
+
+実行したグラフは生成条件として保存します。既定プリセットの値で上書きしません。残したい編集内容はComfyUIのSaveで保存してください。標準のSaveとアップロードは[素材保全](preservation.md)の対象です。Colabの一時領域だけに置いたファイルはランタイム終了時に失われます。
+
+## GPUの所有を確認する
+
+Googleの安定したアカウント識別子から作ったSHA256と、確保したエンドポイントIDを所有記録へ保存します。メールアドレスやアクセストークンは保存しません。終了は同じアカウントでプロバイダーの一覧を取得し、対象の不在を確認してから確定します。
+
+公式CLIのローカル記録がなくても、対象が動作していれば既存GPUへ接続して回収・終了を試みます。認証失敗、通信失敗、アカウント不一致は不明として扱い、所有記録を保持します。認証と接続を確認して`stop`を再実行してください。`status`、回収、再接続、終了が新しいGPUを確保することはありません。
+
+GPU側のモデル準備イベントは、取得したログのworker-events.jsonlへ保存します。bootstrap.logの依存導入時間と合わせて準備の所要時間を確認できます。画像の初回生成時間は履歴の生成開始・完了時刻から確認してください。

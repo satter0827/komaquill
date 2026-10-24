@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 from typer.testing import CliRunner
 
+from komaquill.infrastructure import views
 from komaquill.interfaces import cli as cli
 
 
@@ -26,14 +27,18 @@ def test_open_returns_after_opening_the_selected_view(project, client, session, 
 
     opened = []
     monkeypatch.setattr(cli, "connected", connection)
-    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url) or True)
+    monkeypatch.setattr(
+        views.webbrowser,
+        "open",
+        lambda url: opened.append(url) or True,
+    )
     result = CliRunner().invoke(
         cli.app, ["--project", str(project.root), "open", "--view", "graph"]
     )
     assert result.exit_code == 0, result.output
-    assert "template=sd15_graph" in opened[0]
+    assert "template=pony_graph" in opened[0]
     assert "source=komaquill" in opened[0]
-    assert "start" in result.output
+    assert "monitor" in result.output
 
 
 def test_status_without_a_session_never_creates_gpu(project, monkeypatch):
@@ -119,3 +124,26 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
     assert "ComfyUI: not started" in result.output
     assert "Colab: stopped" not in result.output
     assert colab.receipt_file.is_file()
+
+
+def test_logs_display_safe_categories_without_exception_payloads(project):
+    import json
+
+    folder = project.artifacts / "logs"
+    folder.mkdir(parents=True)
+    row = {
+        "created_at": "time",
+        "operation": "collection",
+        "result": "failed",
+        "response_body": "private-response",
+        "failure": {"code": "storage_failed", "stage": "storage", "exception_type": "OSError"},
+    }
+    (folder / "cli.jsonl").write_text(
+        json.dumps(row)
+        + "\n"
+        + json.dumps({"failure": {"code": "unknown", "exception_type": "private-response"}})
+        + "\n"
+    )
+    result = CliRunner().invoke(cli.app, ["--project", str(project.root), "logs"])
+    assert result.exit_code == 0 and "storage_failed/storage" in result.output
+    assert "private-response" not in result.output

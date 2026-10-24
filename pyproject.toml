@@ -19,7 +19,16 @@ komaquill = "komaquill.__main__:main"
 
 [project.optional-dependencies]
 colab-client = ["google-colab-cli==0.7.5"]
+
+[project.urls]
+Repository = "https://github.com/satter0827/komaquill"
+Issues = "https://github.com/satter0827/komaquill/issues"
+
+[dependency-groups]
 worker = [
+  "psutil>=7,<8",
+  "pydantic-settings>=2.11,<3", "httpx>=0.28,<1", "huggingface-hub>=0.35,<2",
+  "filelock>=3.20,<4", "pillow>=11,<13", "hf-xet>=1.7,<2",
   "torch==2.14.1; sys_platform == 'linux'", "torchvision==0.29.1; sys_platform == 'linux'",
   "comfyui-frontend-package==1.55.18; sys_platform == 'linux'",
   "comfyui-workflow-templates==0.11.89; sys_platform == 'linux'",
@@ -39,15 +48,11 @@ worker = [
   "websockets>=15,<17; sys_platform == 'linux'",
 ]
 
-[project.urls]
-Repository = "https://github.com/satter0827/komaquill"
-Issues = "https://github.com/satter0827/komaquill/issues"
-
-[dependency-groups]
 dev = [
   "ruff>=0.14,<1", "mypy>=1.18,<2", "pytest>=8.4,<10", "pytest-cov>=7,<8",
   "import-linter>=2.5,<3", "debugpy>=1.8,<2", "types-setuptools>=80",
   "websockets>=15,<17", "types-psutil>=7,<8",
+  "aiohttp>=3.11.8,<4",
   "detect-secrets>=1.5,<2", "unidiff>=0.7.5,<1",
 ]
 

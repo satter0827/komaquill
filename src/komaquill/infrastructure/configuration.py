@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from komaquill.domain.models import Session
+    from komaquill.domain.presets import ModelPreset
     from komaquill.infrastructure.storage import FileRunRepository
 from dataclasses import dataclass
 from importlib.resources import as_file, files
@@ -13,6 +14,7 @@ from pathlib import Path
 
 from pydantic_settings import (
     BaseSettings,
+    InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
@@ -42,7 +44,13 @@ class Settings(RuntimeSettings, BaseSettings):
         """Use typed packaged defaults without loading dotenv or secret files."""
         with as_file(files("komaquill").joinpath("resources/defaults.toml")) as path:
             defaults = TomlConfigSettingsSource(settings_cls, toml_file=path)
-        return init_settings, env_settings, defaults
+        catalog = tomllib.loads(files("komaquill").joinpath("resources/presets.toml").read_text())
+        return (
+            init_settings,
+            env_settings,
+            defaults,
+            InitSettingsSource(settings_cls, init_kwargs=catalog),
+        )
 
 
 @dataclass(frozen=True)
@@ -74,6 +82,20 @@ class Project(WorkspacePaths):
 
         return FileRunRepository(self)
 
+    def prepared_assets(self, session: "Session") -> dict[str, "ModelPreset"]:
+        """Read only bindings verified on the current remote runtime."""
+        import json
+
+        from komaquill.domain.presets import ModelPreset
+
+        path = self.state / "model-bindings.json"
+        if not path.is_file():
+            return {}
+        data = json.loads(path.read_bytes())
+        if data.get("runtime_id") != str(session.runtime_id):
+            return {}
+        return {name: ModelPreset.model_validate(asset) for name, asset in data["assets"].items()}
+
     def identity(self) -> dict[str, Any]:
         from importlib.metadata import version
 
@@ -86,11 +108,18 @@ class Project(WorkspacePaths):
         }
 
     def prepare(
-        self, prompt: str, negative: str, seed: int, run_id: str
+        self,
+        prompt: str,
+        negative: str | None,
+        seed: int,
+        run_id: str,
+        profile_name: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         from komaquill.infrastructure.workflows import prepare
 
-        return prepare(prompt, negative, seed, run_id)
+        return prepare(
+            prompt, negative, seed, run_id, settings=self.settings(), profile_name=profile_name
+        )
 
     def stop_requested(self, session: "Session") -> bool | None:
         from komaquill.infrastructure.storage import stop_request

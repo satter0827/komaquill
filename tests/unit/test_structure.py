@@ -20,6 +20,8 @@ def test_workflow_exports_have_identical_connections_and_parameters():
     for key, node in api.items():
         assert nodes[key]["type"] == node["class_type"]
         for socket in nodes[key].get("inputs", []):
+            if socket["link"] is None:
+                continue
             link = links[socket["link"]]
             assert node["inputs"][socket["name"]] == [str(link[1]), link[2]]
     widgets = {
@@ -32,16 +34,16 @@ def test_workflow_exports_have_identical_connections_and_parameters():
     }
     for key, names in widgets.items():
         for index, name in enumerate(names):
-            if name:
+            if name and not isinstance(api[key]["inputs"][name], list):
                 assert nodes[key]["widgets_values"][index] == api[key]["inputs"][name]
-    assert api["4"]["inputs"]["ckpt_name"] == preset().filename
+    assert api["4"]["inputs"]["ckpt_name"] == preset().reference
     assert ui["extra"]["linearData"]["outputs"] == ["9"]
 
 
 def test_prepared_workflow_records_the_same_requested_values():
     api, ui = prepare("a cabin", "watermark", 123, "test-id")
     nodes = {node["id"]: node for node in ui["nodes"]}
-    assert api["6"]["inputs"]["text"] == nodes[6]["widgets_values"][0] == "a cabin"
+    assert api["10"]["inputs"]["string_b"] == nodes[10]["widgets_values"][1] == "a cabin"
     assert api["3"]["inputs"]["seed"] == nodes[3]["widgets_values"][0] == 123
     assert api["9"]["inputs"]["filename_prefix"] == nodes[9]["widgets_values"][0]
     assert resource_json("workflow-api.json")["3"]["inputs"]["seed"] == 1
@@ -120,3 +122,20 @@ def test_artifacts_are_ignored_without_creating_a_directory():
         text=True,
     )
     assert result.returncode == 0
+
+
+def test_root_workspace_settings_are_valid():
+    """Include the shipped workspace configuration in the startup contract."""
+    assert find_project(ROOT).settings().worker_execution_timeout > 0
+
+
+def test_browser_modules_use_comfyuis_uncached_javascript_routes():
+    import re
+    from importlib.resources import files
+
+    web = files("komaquill").joinpath("resources/web")
+    modules = list(web.iterdir())
+    assert modules and all(module.name.endswith(".js") for module in modules)
+    for module in modules:
+        for relative in re.findall(r'from "(\./[^"]+)"', module.read_text(encoding="utf-8")):
+            assert web.joinpath(relative.removeprefix("./")).is_file()

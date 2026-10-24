@@ -14,10 +14,22 @@ from komaquill.infrastructure.storage import atomic_json
 
 
 @pytest.fixture
-def control(project):
+def control(project, monkeypatch):
     project.runtime.mkdir(parents=True)
     item = Colab(project)
     item.config = project.runtime / "official.json"
+    from komaquill.domain.models import RuntimeObservation
+
+    def provider_call(action, *args, **kwargs):
+        saved = item.receipt()
+        present = saved is not None and item.entry(saved) is not None
+        return RuntimeObservation(
+            state="running" if present else "stopped",
+            endpoint_id="expected",
+            account_sha256="a" * 64,
+        )
+
+    monkeypatch.setattr(item, "provider_call", provider_call)
     return item
 
 
@@ -131,7 +143,11 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
 @pytest.mark.parametrize("case", ["connected", "retry", "exit", "timeout", "missing_tools"])
 def test_ssh_binds_loopback_and_cleans_up_failed_connections(control, monkeypatch, case):
     receipt = Receipt(
-        name="owned", runtime_id=uuid4(), source_revision="revision", endpoint_id="expected"
+        name="owned",
+        runtime_id=uuid4(),
+        source_revision="revision",
+        endpoint_id="expected",
+        account_sha256="a" * 64,
     )
     monkeypatch.setattr(
         module.shutil, "which", lambda _: None if case == "missing_tools" else "tool"
@@ -185,3 +201,23 @@ def test_port_conflict_is_reported_before_allocation(monkeypatch):
     monkeypatch.setattr(module.socket, "socket", Socket)
     with pytest.raises(KomaquillError):
         module.check_port(18188)
+
+
+@pytest.mark.parametrize("case", ["failure", "missing_subject"])
+def test_account_preflight_creates_no_ownership_record(control, monkeypatch, case):
+    from komaquill.domain.models import RuntimeObservation
+
+    calls = []
+    monkeypatch.setattr(control, "call", lambda *args, **kw: calls.append(args))
+
+    def provider(*args):
+        assert not control.receipt_file.exists()
+        if case == "failure":
+            raise KomaquillError(code="authentication_failed")
+        return RuntimeObservation()
+
+    monkeypatch.setattr(control, "provider_call", provider)
+    with pytest.raises(KomaquillError):
+        control.acquire("revision")
+    assert not control.receipt_file.exists()
+    assert all(args[0] != "new" for args in calls)

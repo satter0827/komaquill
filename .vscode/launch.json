@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Start ComfyUI (Colab)",
+      "name": "Start Session",
       "type": "debugpy",
       "request": "launch",
       "module": "komaquill",
@@ -17,7 +17,7 @@
       "subProcess": false
     },
     {
-      "name": "Open ComfyUI",
+      "name": "Open Generator",
       "type": "debugpy",
       "request": "launch",
       "module": "komaquill",
@@ -81,7 +81,7 @@
       "subProcess": false
     },
     {
-      "name": "Check ComfyUI",
+      "name": "Check Connection",
       "type": "debugpy",
       "request": "launch",
       "module": "komaquill",
@@ -96,7 +96,7 @@
       "subProcess": false
     },
     {
-      "name": "Stop ComfyUI",
+      "name": "Stop Session",
       "type": "debugpy",
       "request": "launch",
       "module": "komaquill",
@@ -129,7 +129,7 @@
     {
       "id": "view",
       "type": "pickString",
-      "description": "Choose the ComfyUI view",
+      "description": "Choose App Mode or the full Node Graph editor",
       "options": [
         {
           "label": "App Mode",
@@ -150,7 +150,7 @@
     {
       "id": "stopMode",
       "type": "pickString",
-      "description": "Choose how to stop ComfyUI",
+      "description": "Choose how to stop the session",
       "options": [
         {
           "label": "Wait for Results",

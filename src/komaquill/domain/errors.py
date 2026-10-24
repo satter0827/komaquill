@@ -34,6 +34,8 @@ class ErrorCode(StrEnum):
     STOPPING = "stopping"
     STORAGE_FAILED = "storage_failed"
     SUBMISSION_UNKNOWN = "submission_unknown"
+    UNSUPPORTED_ASSET = "unsupported_asset"
+    EXTENSION_UNAVAILABLE = "extension_unavailable"
     UNSUPPORTED_IMAGE = "unsupported_image"
 
 

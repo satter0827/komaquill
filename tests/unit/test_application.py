@@ -4,7 +4,6 @@ from contextlib import nullcontext
 from uuid import uuid4
 
 from komaquill.application.generation import generate
-from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.models import Session
 
 
@@ -38,6 +37,9 @@ class MemoryRepository:
 
 
 class MemoryBackend:
+    def resolve_models(self, graph, ui):
+        return graph, ui
+
     def __init__(self):
         self.record = None
         self.submissions = 0
@@ -69,23 +71,28 @@ def test_generation_uses_only_replaceable_contracts():
             return self
 
         def settings(self):
-            return RuntimeSettings(
+            from komaquill.infrastructure.configuration import Settings
+
+            return Settings(
                 poll_interval=0.001,
                 request_timeout=1.0,
                 generation_timeout=1.0,
                 preparation_timeout=1.0,
                 shutdown_timeout=1.0,
-                execution_timeout=1.0,
+                worker_execution_timeout=1.0,
                 control_timeout=1.0,
                 local_port=18188,
                 remote_port=8188,
                 gpu="T4",
             )
 
+        def prepared_assets(self, session):
+            return {}
+
         def identity(self):
             return {"app_version": "test", "source_revision": None, "code_sha256": None}
 
-        def prepare(self, prompt, negative, seed, identity):
+        def prepare(self, prompt, negative, seed, identity, profile_name=None):
             return {"prompt": prompt, "seed": seed}, {}
 
         def stop_requested(self, session):

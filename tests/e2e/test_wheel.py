@@ -47,6 +47,14 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                 content = json.dumps(history).encode()
             elif route == "/queue":
                 content = b'{"queue_running":[],"queue_pending":[]}'
+            elif route == "/object_info":
+                content = json.dumps(
+                    {
+                        "CheckpointLoaderSimple": {
+                            "input": {"required": {"ckpt_name": [["v6.safetensors"]]}}
+                        }
+                    }
+                ).encode()
             elif route == "/system_stats":
                 content = b'{"devices":[{"type":"cuda"}]}'
             else:
@@ -127,6 +135,7 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                         "-m",
                         "komaquill",
                         "start",
+                        "--no-open",
                         "--backend",
                         "external",
                         "--endpoint",
@@ -144,6 +153,7 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                         assert time.monotonic() < deadline
                         time.sleep(0.05)
                     assert session.is_file(), output.read_text(encoding="utf-8")
+                    assert monitor.wait(timeout=30) == 0
                     command("generate", "--prompt", "a quiet blue lake", "--seed", "5")
                     command("collect")
                     command("status")

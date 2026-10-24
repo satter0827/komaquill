@@ -9,6 +9,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure import runtime as runtime
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, save_run
 from komaquill.infrastructure.workflows import resource_json
+from tests.support.provider import stopped as confirmed_stop
 
 
 def test_second_start_is_rejected_before_allocation(project, monkeypatch):
@@ -90,7 +91,7 @@ def owned_colab(project, session, client, monkeypatch):
     monkeypatch.setattr(colab, "refresh", lambda receipt: True)
     monkeypatch.setattr(colab, "recover_diagnostics", lambda receipt: ())
     monkeypatch.setattr(colab, "cleanup_processes", lambda receipt: None)
-    monkeypatch.setattr(colab, "stop", lambda: None)
+    monkeypatch.setattr(colab, "stop", confirmed_stop)
     return colab, receipt
 
 
@@ -110,6 +111,7 @@ def test_stop_after_monitor_crash_collects_and_recovers_logs_before_stopping(
     def stop():
         assert steps == ["logs"]
         steps.append("stop")
+        return confirmed_stop()
 
     monkeypatch.setattr(colab, "recover_diagnostics", logs)
     monkeypatch.setattr(colab, "stop", stop)
@@ -198,6 +200,7 @@ def test_shutdown_failures_do_not_skip_gpu_stop_or_drop_ownership(
         steps.append("stop")
         if failure == "stop":
             raise KomaquillError("終了の失敗")
+        return confirmed_stop()
 
     def cleanup(receipt):
         steps.append("cleanup")
@@ -252,7 +255,7 @@ def test_interrupt_during_log_recovery_still_stops_gpu(project, client, session,
         raise KeyboardInterrupt
 
     monkeypatch.setattr(colab, "recover_diagnostics", interrupted)
-    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True) or confirmed_stop())
     with pytest.raises(KomaquillError):
         runtime.finish_colab(
             project, colab, receipt, client, session, True, lambda message: None, []
@@ -281,7 +284,7 @@ def test_unexpected_shutdown_error_still_stops_gpu_and_retains_receipt(
 ):
     colab, receipt = owned_colab(project, session, client, monkeypatch)
     stopped = []
-    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True) or confirmed_stop())
 
     def broken(*args):
         raise ValueError("private-response-sentinel")
@@ -329,7 +332,7 @@ def test_failed_shutdown_output_does_not_skip_gpu_stop(project, client, session,
         raise BrokenPipeError("closed")
 
     monkeypatch.setattr(runtime, "drain", unavailable)
-    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True) or confirmed_stop())
     with pytest.raises(KomaquillError):
         runtime.finish_colab(project, colab, receipt, client, session, True, closed_terminal, [])
     assert stopped == [True]
@@ -342,7 +345,7 @@ def test_stop_after_monitor_crash_attempts_gpu_stop_when_reconnect_fails(
 ):
     colab, receipt = owned_colab(project, session, client, monkeypatch)
     stopped = []
-    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True))
+    monkeypatch.setattr(colab, "stop", lambda: stopped.append(True) or confirmed_stop())
     if failure == "session":
         project.session_file.write_bytes(b"invalid-json")
     else:
@@ -359,3 +362,31 @@ def test_stop_after_monitor_crash_attempts_gpu_stop_when_reconnect_fails(
     runtime.stop(project, True, lambda _: None)
     assert stopped == [True]
     assert colab.receipt() is None
+
+
+@pytest.mark.parametrize("stage", ["preparation", "preservation"])
+def test_sidecar_failure_never_prevents_image_collection(
+    project, client, session, monkeypatch, stage
+):
+    from types import SimpleNamespace
+
+    client.submit(resource_json("workflow-api.json"), {}, "new-browser")
+    calls = []
+
+    def fail():
+        raise KomaquillError(code="http_failed")
+
+    def pause(_):
+        atomic_json(
+            project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
+        )
+
+    coordinator = SimpleNamespace(
+        tick=fail if stage == "preparation" else lambda: None,
+        materials=SimpleNamespace(
+            collect=fail if stage == "preservation" else lambda: [], notify_runs=lambda: None
+        ),
+    )
+    monkeypatch.setattr(runtime.time, "sleep", pause)
+    runtime.watch(project, client, session, calls.append, coordinator=coordinator)
+    assert load_runs(project)[0].state == "saved"

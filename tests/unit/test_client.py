@@ -90,3 +90,62 @@ def test_non_unicode_json_response_raises_safe_error():
             client.json("/history")
     finally:
         client.close()
+
+
+@pytest.mark.parametrize(
+    "definition,expected",
+    [
+        ([["model.pth"]], ["model.pth"]),
+        (["COMBO", {"options": ["model.pth"]}], ["model.pth"]),
+        ([], []),
+        (["COMBO"], []),
+        (["COMBO", "invalid"], []),
+        (["OTHER"], []),
+    ],
+)
+def test_model_choices_support_both_standard_node_schemas(definition, expected):
+    from komaquill.infrastructure.comfyui import input_choices
+
+    nodes = {"Loader": {"input": {"required": {"model_name": definition}}}}
+    assert input_choices(nodes, "Loader", "model_name") == expected
+
+
+@pytest.mark.parametrize("case", ["plain", "exact", "external", "ambiguous"])
+def test_external_model_choices_preserve_actual_names_without_assuming_hashes(case):
+    reference = "a" * 64 + "/model.safetensors"
+    graph = {
+        "4": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": "plain.sft" if case == "plain" else reference},
+        }
+    }
+    ui = {"nodes": [{"id": 4, "widgets_values": [graph["4"]["inputs"]["ckpt_name"]]}]}
+    choices = (
+        [reference]
+        if case == "exact"
+        else ["first/model.safetensors", "second/model.safetensors"]
+        if case == "ambiguous"
+        else ["model.safetensors"]
+    )
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200, json={"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [choices]}}}}
+        )
+    )
+    with_close = ComfyClient("http://127.0.0.1:8188", transport=transport)
+    try:
+        if case == "ambiguous":
+            with pytest.raises(KomaquillError):
+                with_close.resolve_models(graph, ui)
+        else:
+            api, browser = with_close.resolve_models(graph, ui)
+            assert api["4"]["inputs"]["ckpt_name"] == browser["nodes"][0]["widgets_values"][0]
+            assert api["4"]["inputs"]["ckpt_name"] == (
+                "plain.sft"
+                if case == "plain"
+                else reference
+                if case == "exact"
+                else "model.safetensors"
+            )
+    finally:
+        with_close.close()

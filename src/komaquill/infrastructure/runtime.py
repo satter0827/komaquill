@@ -3,6 +3,7 @@
 import subprocess
 import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -27,9 +28,19 @@ from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import create_payload
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.materials import MaterialCollector, finalize_materials
+from komaquill.infrastructure.monitor_state import (
+    cancel_requested,
+    check_cancel,
+    read_monitor,
+    update_monitor,
+)
+from komaquill.infrastructure.preparation import Coordinator, capabilities, verify_extension
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, stop_request
-from komaquill.infrastructure.workflows import preset
+from komaquill.infrastructure.workflows import assets
 from komaquill.messages import message
+
+PROGRESS_POLL_SECONDS = 10.0
 
 
 def session_project(project: Project) -> Project:
@@ -109,8 +120,20 @@ def drain(
     previous_errors: tuple[UUID | str, ...] = ()
     while True:
         try:
+            if cancel_requested(project) is True:
+                force = True
+                request_stop(project, session, True)
             try:
                 result = collect(project, client, session)
+                material_errors = preserve(project, client) or ()
+                if material_errors:
+                    result = Collection(
+                        result.saved,
+                        result.pending,
+                        result.failed,
+                        (*result.errors, *material_errors),
+                        result.pending_ids,
+                    )
                 saved += result.saved
                 if result.saved:
                     echo(message("text.saved_saved", saved=result.saved))
@@ -136,7 +159,7 @@ def drain(
             if (
                 force
                 or stop_request(project, session) is True
-                or not result.pending_ids
+                or not (result.pending_ids or material_errors)
                 or time.monotonic() >= deadline
             ):
                 break
@@ -155,17 +178,54 @@ def watch(
     session: Session,
     echo: Callable[[str], None],
     reconnect: Callable[[], None] | None = None,
+    coordinator: Coordinator | None = None,
 ) -> bool:
     """Maintain the connection and collection until shutdown is requested."""
     project = project.configured(session.settings)
     disconnected = False
     previous_errors: tuple[UUID | str, ...] = ()
+    sidecar_failures: dict[str, object] = {}
     try:
         while stop_request(project, session) is None:
+            if (cancel := cancel_requested(project)) is not None:
+                request_stop(project, session, cancel)
+                break
+            update_monitor(project)
             try:
                 if reconnect is not None:
                     reconnect()
+                if coordinator is not None:
+                    try:
+                        coordinator.tick()
+                        sidecar_failures.pop("preparation", None)
+                    except (KomaquillError, OSError, ValueError) as error:
+                        failure = failure_info(error, "preparation")
+                        if sidecar_failures.get("preparation") != failure:
+                            record_event(
+                                project,
+                                "preparation",
+                                "failed",
+                                runtime_id=session.runtime_id,
+                                failure=failure,
+                            )
+                            sidecar_failures["preparation"] = failure
                 result = collect(project, client, session)
+                if coordinator is not None:
+                    try:
+                        coordinator.materials.collect()
+                        coordinator.materials.notify_runs()
+                        sidecar_failures.pop("preservation", None)
+                    except (KomaquillError, OSError, ValueError) as error:
+                        failure = failure_info(error, "storage")
+                        if sidecar_failures.get("preservation") != failure:
+                            record_event(
+                                project,
+                                "preservation",
+                                "failed",
+                                runtime_id=session.runtime_id,
+                                failure=failure,
+                            )
+                            sidecar_failures["preservation"] = failure
                 if disconnected:
                     echo(message("text.reconnected"))
                     record_event(project, "connection", "restored", runtime_id=session.runtime_id)
@@ -197,6 +257,51 @@ def watch(
         return False
 
 
+def supervise(
+    project: Project,
+    client: ComfyClient,
+    session: Session,
+    echo: Callable[[str], None],
+    on_ready: Callable[[Session], None] | None,
+    reconnect: Callable[[], None] | None = None,
+) -> bool:
+    """Restore preserved materials before opening a ready session."""
+    coordinator = Coordinator(project, client) if capabilities(client) else None
+    try:
+        if coordinator is not None:
+            coordinator.materials.restore()
+        if on_ready is not None:
+            on_ready(session)
+        if coordinator is None:
+            return (
+                watch(project, client, session, echo, reconnect)
+                if reconnect
+                else watch(project, client, session, echo)
+            )
+        return watch(project, client, session, echo, reconnect, coordinator)
+    finally:
+        if coordinator is not None:
+            try:
+                coordinator.close()
+            except KomaquillError as error:
+                record_event(
+                    project,
+                    "preparation",
+                    "stop_failed",
+                    runtime_id=session.runtime_id,
+                    failure=failure_info(error, "preparation"),
+                )
+
+
+def preserve(project: Project, client: ComfyClient | None) -> tuple[str, ...] | None:
+    """Retry material collection independently of generation and GPU termination."""
+    if client is None or not capabilities(client):
+        return None
+    collector = MaterialCollector(project, client)
+    failures = collector.collect()
+    return tuple(failures)
+
+
 def finish_colab(
     project: Project,
     colab: Colab,
@@ -213,6 +318,7 @@ def finish_colab(
     def collect_available() -> Collection | None:
         if client is None or session is None:
             return None
+        update_monitor(project, phase="stopping")
         request_stop(project, session, force)
         return drain(project, client, session, force, echo)
 
@@ -231,6 +337,9 @@ def finish_colab(
             raise errors[0]
 
     def display(result: ShutdownResult) -> None:
+        echo(message("materials.shutdown", result=result.materials))
+        if result.lost_materials:
+            echo(message("materials.lost", identities=", ".join(result.lost_materials)))
         if result.lost_ids:
             echo(
                 message("text.lost_lost_ids_count", lost_ids_count=len(result.lost_ids))
@@ -266,6 +375,8 @@ def finish_colab(
         release=lambda: colab.release(receipt),
         display=display,
         forced=lambda: session is not None and stop_request(project, session) is True,
+        preserve=lambda: preserve(project, client),
+        finalize_materials=lambda: finalize_materials(project, receipt.runtime_id),
     )
     result, released = shutdown(receipt.runtime_id, force, actions)
     for failure in result.errors:
@@ -330,6 +441,7 @@ def start_external(
     username: str | None,
     password: str | None,
     echo: Callable[[str], None],
+    on_ready: Callable[[Session], None] | None = None,
 ) -> None:
     """Monitor an already running ComfyUI server."""
     project = project.configured()
@@ -355,6 +467,7 @@ def start_external(
     )
     force = True
     ready = False
+    primary_error: BaseException | None = None
     try:
         client.json("/system_stats")
         session.excluded_prompt_ids = excluded_history(client)
@@ -364,16 +477,25 @@ def start_external(
         record_event(project, "connection", "ready", runtime_id=session.runtime_id)
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
-        force = watch(project, client, session, echo)
+        force = supervise(project, client, session, echo, on_ready)
+    except (Exception, KeyboardInterrupt) as error:
+        primary_error = error
+        raise
     finally:
         try:
             if ready:
-                finish_external(project, client, session, force, echo)
+                try:
+                    finish_external(project, client, session, force, echo)
+                except (Exception, KeyboardInterrupt):
+                    if primary_error is None:
+                        raise
         finally:
             client.close()
 
 
-def start_colab(project: Project, echo: Callable[[str], None]) -> None:
+def start_colab(
+    project: Project, echo: Callable[[str], None], on_ready: Callable[[Session], None] | None = None
+) -> None:
     """Own one runtime from allocation through confirmed shutdown."""
     requested = project.settings()
     colab = Colab(project)
@@ -385,10 +507,17 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
     tunnel: subprocess.Popen[bytes] | None = None
     client: ComfyClient | None = None
     session: Session | None = None
-    operation_id = uuid4()
+    monitor = read_monitor(project)
+    operation_id = monitor.operation_id if monitor is not None else uuid4()
     started_at = time.monotonic()
 
-    def phase(name: str, runtime_id: UUID | None = None) -> None:
+    def phase(name: str, runtime_id: UUID | None = None, asset: str | None = None) -> None:
+        update_monitor(
+            project,
+            phase="connected" if name == "ready" else name,
+            runtime_id=runtime_id,
+            asset=asset,
+        )
         record_event(
             project,
             "startup",
@@ -398,9 +527,12 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
             elapsed_seconds=time.monotonic() - started_at,
         )
 
+    local_models = ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-models")
+    local_preparation = []
     cleanup_owned = False
     ready = False
     force = True
+    primary_error: BaseException | None = None
     try:
         check_port(project.settings().local_port)
         if not record_event(project, "start", "preparing"):
@@ -408,12 +540,18 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
                 display_key="text.cannot_initialize_diagnostics_check_the_log_directory",
                 code="diagnostics_failed",
             )
-        echo(message("text.downloading_and_verifying_the_model"))
-        fetch_model(project.artifacts, preset())
-        phase("model_verified")
+        check_cancel(project)
+        if saved is None:
+            echo(message("text.downloading_and_verifying_the_model"))
+            for asset in assets(project.settings()):
+                phase("model_preparation", asset=asset.name)
+                local_preparation.append(local_models.submit(fetch_model, project.artifacts, asset))
+                check_cancel(project)
+        phase("models_scheduled" if saved is None else "models_reused")
         payload = create_payload(project)
         phase("payload_ready")
         cleanup_owned = colab.receipt() is None
+        check_cancel(project)
         receipt, created = colab.acquire(payload.code_sha256)
         phase("runtime_owned", receipt.runtime_id)
         cleanup_owned = True
@@ -445,7 +583,31 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
         )
         client = ComfyClient(session.endpoint, timeout=project.settings().request_timeout)
         deadline = time.monotonic() + project.settings().preparation_timeout
+        next_progress = time.monotonic() + PROGRESS_POLL_SECONDS
+        previous_progress: dict[str, str | None] = {}
         while True:
+            check_cancel(project)
+            update_monitor(project)
+            if time.monotonic() >= next_progress:
+                current_progress = colab.progress(receipt)
+                if current_progress and current_progress != previous_progress:
+                    update_monitor(
+                        project,
+                        phase="connected"
+                        if current_progress["phase"] == "ready"
+                        else current_progress["phase"],
+                        asset=current_progress.get("asset"),
+                    )
+                    record_event(
+                        project,
+                        "preparation",
+                        str(current_progress["phase"]),
+                        runtime_id=receipt.runtime_id,
+                        operation_id=operation_id,
+                        asset=current_progress.get("asset"),
+                    )
+                    previous_progress = current_progress
+                next_progress = time.monotonic() + PROGRESS_POLL_SECONDS
             try:
                 metadata = client.runtime()
                 session = Session.model_validate(
@@ -462,6 +624,7 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
                         retryable=False,
                     )
                 verify_runtime(client, session)
+                verify_extension(client)
                 break
             except KomaquillError as error:
                 if not error.retryable:
@@ -475,6 +638,10 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
                         display_key="text.comfyui_did_not_become_ready_check_the_preparation"
                     ) from None
                 time.sleep(project.settings().poll_interval)
+        for future in local_preparation:
+            future.result()
+        phase("model_verified", receipt.runtime_id)
+        check_cancel(project)
         atomic_json(project.session_file, session.model_dump(mode="json"))
         record_event(project, "connection", "ready", runtime_id=session.runtime_id)
         phase("ready", receipt.runtime_id)
@@ -490,8 +657,11 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
             )
         echo(message("text.connected_keep_this_terminal_open_and_run_generate"))
         ready = True
-        force = watch(project, client, session, echo, reconnect)
+        force = supervise(project, client, session, echo, on_ready, reconnect)
     except (Exception, KeyboardInterrupt) as error:
+        primary_error = error
+        if isinstance(error, KomaquillError) and error.code == "stopping":
+            force = cancel_requested(project) is True
         if not ready:
             record_event(
                 project,
@@ -506,17 +676,22 @@ def start_colab(project: Project, echo: Callable[[str], None]) -> None:
         try:
             final_receipt = colab.receipt() if cleanup_owned else None
             if final_receipt is not None:
-                finish_colab(
-                    project,
-                    colab,
-                    final_receipt,
-                    client if ready else None,
-                    session if ready else None,
-                    force,
-                    echo,
-                    processes,
-                )
+                try:
+                    finish_colab(
+                        project,
+                        colab,
+                        final_receipt,
+                        client if ready else None,
+                        session if ready else None,
+                        force,
+                        echo,
+                        processes,
+                    )
+                except (Exception, KeyboardInterrupt):
+                    if primary_error is None:
+                        raise
         finally:
+            local_models.shutdown(wait=True, cancel_futures=True)
             if client is not None:
                 client.close()
 
@@ -528,6 +703,7 @@ def start(
     username: str | None,
     password: str | None,
     echo: Callable[[str], None],
+    on_ready: Callable[[Session], None] | None = None,
 ) -> None:
     """Start the requested backend while preventing duplicate monitors."""
     try:
@@ -542,13 +718,13 @@ def start(
                     raise KomaquillError(
                         display_key="text.an_owned_colab_runtime_remains_run_stop_before"
                     )
-                start_external(project, endpoint, username, password, echo)
+                start_external(project, endpoint, username, password, echo, on_ready)
             else:
                 if endpoint is not None or username is not None:
                     raise KomaquillError(
                         display_key="text.endpoint_and_basic_authentication_options_apply_only_to"
                     )
-                start_colab(project, echo)
+                start_colab(project, echo, on_ready)
     except Timeout:
         raise KomaquillError(
             display_key="text.a_start_process_is_already_running_run_stop"

@@ -41,6 +41,7 @@ def main(group: str = "all") -> None:
                 [python, "-m", "ruff", "format", "--check", "."],
                 [python, "-m", "ruff", "check", "."],
                 [python, "-m", "mypy", "src", "scripts"],
+                ["node", "--test", "tests/js/*.test.mjs"],
                 [python, str(root / "scripts/check_worker_lock.py")],
                 [
                     python,
@@ -83,21 +84,50 @@ def main(group: str = "all") -> None:
     if group in {"all", "security"}:
         commands.append([python, str(root / "scripts/security.py")])
     results: list[dict[str, str | int]] = []
+    started_at = datetime.now(UTC).isoformat()
+    tested_code = code_sha256()
+    tested_revision = source_revision()
     try:
         for command in commands:
+            step_started = datetime.now(UTC).isoformat()
             result = subprocess.run(command, cwd=root, env=env, check=True)
-            results.append({"step": " ".join(command[1:3]), "exit_code": result.returncode})
+            results.append(
+                {
+                    "step": " ".join(command[1:4]),
+                    "exit_code": result.returncode,
+                    "started_at": step_started,
+                    "finished_at": datetime.now(UTC).isoformat(),
+                }
+            )
+        if code_sha256() != tested_code:
+            results.append(
+                {
+                    "step": "source_identity",
+                    "exit_code": 1,
+                    "started_at": started_at,
+                    "finished_at": datetime.now(UTC).isoformat(),
+                }
+            )
+            raise SystemExit(message("quality.source_changed"))
     except subprocess.CalledProcessError as error:
-        results.append({"step": " ".join(error.cmd[1:3]), "exit_code": error.returncode})
+        results.append(
+            {
+                "step": " ".join(error.cmd[1:4]),
+                "exit_code": error.returncode,
+                "started_at": step_started,
+                "finished_at": datetime.now(UTC).isoformat(),
+            }
+        )
         raise
     finally:
         (report / "gate.json").write_text(
             json.dumps(
                 {
+                    "started_at": started_at,
                     "finished_at": datetime.now(UTC).isoformat(),
                     "group": group,
-                    "source_revision": source_revision(),
-                    "code_sha256": code_sha256(),
+                    "source_revision": tested_revision,
+                    "code_sha256": tested_code,
                     "steps": results,
                 },
                 indent=2,
@@ -105,6 +135,17 @@ def main(group: str = "all") -> None:
             + "\n",
             encoding="utf-8",
         )
+        if results and all(row["exit_code"] == 0 for row in results):
+            from komaquill.infrastructure.storage import atomic_json
+
+            atomic_json(
+                root / ".artifacts/reports/quality" / f"latest-{group}.json",
+                {
+                    "report": report.name,
+                    "source_revision": tested_revision,
+                    "code_sha256": tested_code,
+                },
+            )
         print(message("quality.check_report", path=report))
 
 

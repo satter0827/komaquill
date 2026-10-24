@@ -2,6 +2,9 @@
 
 import hashlib
 
+import pytest
+
+from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.workflows import preset
 
@@ -11,7 +14,7 @@ def test_verified_model_is_reused_without_network(project, monkeypatch):
 
     content = b"verified test model"
     model = preset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
-    target = project.artifacts / "models" / model.name / model.filename
+    target = project.artifacts / "models" / model.role / model.sha256 / model.filename
     target.parent.mkdir(parents=True)
     target.write_bytes(content)
 
@@ -27,7 +30,7 @@ def test_corrupted_model_is_downloaded_again(project, monkeypatch):
 
     content = b"verified test model"
     model = preset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
-    target = project.artifacts / "models" / model.name / model.filename
+    target = project.artifacts / "models" / model.role / model.sha256 / model.filename
     target.parent.mkdir(parents=True)
     target.write_bytes(b"corrupted")
 
@@ -38,3 +41,70 @@ def test_corrupted_model_is_downloaded_again(project, monkeypatch):
 
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
     assert fetch_model(project.artifacts, model).read_bytes() == content
+
+
+@pytest.mark.parametrize("case", ["valid", "invalid"])
+def test_url_asset_is_verified_before_replacing_target(project, monkeypatch, case):
+    from contextlib import contextmanager
+
+    import httpx
+
+    from komaquill.infrastructure import downloads as module
+
+    content = b"verified upstream model"
+    model = preset().model_copy(
+        update={
+            "name": "upscaler",
+            "repo_id": "",
+            "revision": "",
+            "url": "https://example.test/model.pth",
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+    )
+
+    @contextmanager
+    def stream(*args, **kwargs):
+        yield httpx.Response(
+            200,
+            content=content if case == "valid" else b"corrupt",
+            request=httpx.Request("GET", model.url),
+        )
+
+    monkeypatch.setattr(module.httpx, "stream", stream)
+    if case == "valid":
+        assert fetch_model(project.artifacts, model).read_bytes() == content
+    else:
+        with pytest.raises(KomaquillError):
+            fetch_model(project.artifacts, model)
+        assert not (
+            project.artifacts / "models" / model.role / model.sha256 / model.filename
+        ).is_file()
+    assert not list((project.artifacts / "models/upscaler").glob("*.part"))
+
+
+def test_download_http_failure_has_safe_retryable_classification(project, monkeypatch):
+    from contextlib import contextmanager
+
+    import httpx
+
+    from komaquill.infrastructure import downloads as module
+
+    model = preset().model_copy(
+        update={
+            "name": "upscaler",
+            "repo_id": "",
+            "revision": "",
+            "url": "https://example.test/model.pth",
+        }
+    )
+
+    @contextmanager
+    def stream(*args, **kwargs):
+        raise httpx.ConnectError("private response")
+        yield
+
+    monkeypatch.setattr(module.httpx, "stream", stream)
+    with pytest.raises(KomaquillError) as error:
+        fetch_model(project.artifacts, model)
+    assert error.value.code == "http_failed" and error.value.stage == "preparation"
+    assert "private response" not in str(error.value)

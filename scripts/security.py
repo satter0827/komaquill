@@ -1,10 +1,12 @@
 """Inspect publishable files and history for secrets."""
 
+import argparse
 import os
 import subprocess
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
+from uuid import uuid4
 
 from detect_secrets.core.scan import scan_diff, scan_file
 from detect_secrets.settings import default_settings
@@ -20,7 +22,7 @@ def git_text(root: Path, *arguments: str) -> str:
     )
 
 
-def main() -> None:
+def main(report_dir: Path | None = None) -> None:
     """Inspect public files and history without persisting secret values."""
     root = Path(__file__).resolve().parents[1]
     os.chdir(root)
@@ -51,7 +53,7 @@ def main() -> None:
                     {"file": secret.filename, "line": secret.line_number, "type": secret.type}
                     for secret in scan_diff(diff)
                 )
-    report = root / ".artifacts/reports/quality/security.json"
+    report = (report_dir or root / ".artifacts/reports/quality" / uuid4().hex) / "security.json"
     atomic_json(
         report,
         {
@@ -78,4 +80,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=message("quality.inspect_security"))
+    parser.add_argument("--report-dir", type=Path)
+    main(parser.parse_args().report_dir)

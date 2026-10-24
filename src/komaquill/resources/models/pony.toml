@@ -1,0 +1,7 @@
+name = "pony"
+repo_id = "AstraliteHeart/pony-diffusion-v6"
+revision = "5ec9c05863255568f1b59753e3838107befaa712" # pragma: allowlist secret Public immutable asset identity.
+filename = "v6.safetensors"
+sha256 = "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3" # pragma: allowlist secret Public immutable asset identity.
+license = "Fair AI Public License with author conditions; see model page"
+license_url = "https://civitai.com/models/257749/pony-diffusion-v6-xl"

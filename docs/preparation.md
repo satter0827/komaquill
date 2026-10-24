@@ -35,6 +35,6 @@ GPU側は同じ固定配布元から直接取得します。ローカルにし�
 
 ## 別のComfyUIへ拡張を導入する
 
-ComfyUIと同じPython環境へKomaquillとaiohttpを導入し、custom_nodes/komaquill/__init__.pyでNODE_CLASS_MAPPINGSを空の辞書、WEB_DIRECTORYをパッケージのresources/webへ設定します。起動前に`komaquill.gpu.extension.register(PromptServer.instance, 保存用一時フォルダー, 通信待機秒数)`を呼び出します。registerは標準のモデル検索パスとAPIを登録します。Colabの操作やアカウント情報は不要です。保存用一時フォルダーには、そのComfyUIが書き込める専用パスを指定してください。
+ComfyUIと同じPython環境へKomaquillとaiohttpを導入し、custom_nodes/komaquill/__init__.pyでNODE_CLASS_MAPPINGSを空の辞書、WEB_DIRECTORYをパッケージのinterfaces/comfyui/webへ設定します。起動前に`komaquill.interfaces.comfyui.api.register(PromptServer.instance, 保存用一時フォルダー, 通信待機秒数)`を呼び出します。registerは標準のモデル検索パスとAPIを登録します。Colabの操作やアカウント情報は不要です。保存用一時フォルダーには、そのComfyUIが書き込める専用パスを指定してください。
 
 その後、PCで`start --backend external --endpoint URL`を実行します。1つのComfyUIへ同時に接続できる作業フォルダーは1つです。接続の制御情報はOSの資格情報ストアへ保存し、画面側から保存確認を偽装できないようにします。

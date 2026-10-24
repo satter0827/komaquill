@@ -54,10 +54,10 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     (extension / "__init__.py").write_text(
         "import os\nfrom pathlib import Path\n"
         "from server import PromptServer\n"
-        "from komaquill.gpu.extension import register\n"
+        "from komaquill.interfaces.comfyui.api import register\n"
         "from importlib.resources import files\n"
         "NODE_CLASS_MAPPINGS = {}\n"
-        "WEB_DIRECTORY = str(files('komaquill').joinpath('resources/web'))\n"
+        "WEB_DIRECTORY = str(files('komaquill').joinpath('interfaces/comfyui/web'))\n"
         "register(PromptServer.instance, Path(os.environ['KOMAQUILL_ARTIFACTS']), "
         "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']))\n"
     )
@@ -100,7 +100,9 @@ def main(root: Path) -> None:
         else None
     )
     project = GpuProject(root.resolve(), effective)
-    config = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
+    config = tomllib.loads(
+        files("komaquill").joinpath("resources/runtime/versions.toml").read_text()
+    )
     runtime = project.runtime
     runtime.mkdir(parents=True, exist_ok=True)
     user = runtime / "comfy-user"

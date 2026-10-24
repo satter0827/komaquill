@@ -39,7 +39,7 @@ def main(*, write: bool = False) -> None:
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        expected = root / "src/komaquill/resources/pylock.worker.toml"
+        expected = root / "src/komaquill/resources/runtime/pylock.worker.toml"
         content = "".join(
             line.rstrip("\n") + " # pragma: allowlist secret Public artifact SHA256 from uv.lock.\n"
             if "hashes = { sha256 =" in line

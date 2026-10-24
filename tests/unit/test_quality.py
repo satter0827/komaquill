@@ -127,12 +127,11 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
         )
         if case == "editor_settings":
             archive.writestr(".vscode/settings.json", "{}")
-        from komaquill.infrastructure.provenance import RESOURCE_NAMES
+        from komaquill.infrastructure.provenance import package_contents
 
-        for resource in RESOURCE_NAMES:
-            if case != "resources":
-                archive.writestr("komaquill/resources/" + resource, "data")
-        archive.writestr("komaquill/gpu/bootstrap.py", "pass")
+        for name, content in package_contents():
+            if case != "resources" or not name.endswith("/web/extension.js"):
+                archive.writestr(name, content)
         if case == "artifacts":
             archive.writestr(".artifacts/private.txt", "private")
     with tarfile.open(folder / f"komaquill-{expected}.tar.gz", "w:gz") as archive:
@@ -204,7 +203,7 @@ def test_security_git_invocation_preserves_argument_boundaries(tmp_path, monkeyp
 
 @pytest.mark.parametrize("case", ["matching", "different", "missing_uv"])
 def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, monkeypatch, case):
-    resource = tmp_path / "src/komaquill/resources/pylock.worker.toml"
+    resource = tmp_path / "src/komaquill/resources/runtime/pylock.worker.toml"
     resource.parent.mkdir(parents=True)
     resource.write_text("locked\n")
     monkeypatch.setattr(
@@ -231,7 +230,7 @@ def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, mo
 
 
 def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypatch):
-    resource = tmp_path / "src/komaquill/resources/pylock.worker.toml"
+    resource = tmp_path / "src/komaquill/resources/runtime/pylock.worker.toml"
     resource.parent.mkdir(parents=True)
     monkeypatch.setattr(
         check_worker_lock, "__file__", str(tmp_path / "scripts/check_worker_lock.py")

@@ -1,46 +1,34 @@
-# モデルとワークフローの管理
+# モデルと生成セット
 
-## 設定の場所
+## 定義の配置
 
-`src/komaquill/resources/presets.toml`は、配布する資源と生成プリセットの定義です。`assets`に配布元・固定リビジョン・SHA256・ファイル名・用途・ライセンスを、`presets`にワークフローと生成条件を記載します。用途は`checkpoints`、`loras`、`upscale_models`です。専用のダウンロード機構や計算ノードは追加しません。
+配布する生成セットはresources/presets/ID/に置きます。preset.tomlが生成条件・モデル参照・入力対応、workflow.jsonが標準画面、workflow-api.jsonが標準API用のグラフです。共有モデルの配布元・固定リビジョン・SHA256・用途・ライセンスはresources/models/に置きます。
 
-ワークフローの接続は同じresources内の標準JSONで管理します。API用の`*-api.json`と画面用JSONを対にします。生成条件は同じ適用処理を通し、CLIと画面の差を構造テストで確認します。LoRAには標準のLoraLoaderModelOnly、画像拡大にはUpscaleModelLoaderとImageUpscaleWithModelを使います。
+既定のPony、8ステッププレビュー、画像拡大、SD 1.5の4セットを同じ形式で管理します。モデルの重みはGitとwheelに含めません。
 
-## 作業フォルダーで変更する
+## 利用者のセット
 
-`komaquill.toml`には必要な差分だけを書きます。
+作業フォルダーのpresets/ID/に同じ3ファイルを置き、komaquill.tomlのprofilesへIDを追加します。同名のセットはフォルダー一式で置き換えます。不足ファイルを同梱版から補うことはありません。
 
 ```toml
-profiles = ["pony", "pony-preview"]
+profiles = ["pony", "custom"]
 
-[presets.pony]
+[presets.custom]
 steps = 30
 cfg = 6.0
-sample_prompt = "a quiet lake, illustration"
+negative = "text, watermark"
 ```
 
-優先順位は、対応するCLI引数、環境変数、作業設定、パッケージの既定値です。`KOMAQUILL_PROFILES`はJSON配列で指定します。設定はstartで確定し、生成・画面・回収・終了で同じ値を使います。変更はstop後のstartから反映します。
+対応するCLI引数、環境変数、作業設定、同梱の既定値の順に優先します。設定とグラフはstartで確定し、変更はstop後のstartから反映します。生成ごとの編集は確定済みのグラフを変更しません。
 
-`start --profile pony --profile pony-preview`は、その接続で使うプリセットの一覧を置き換えます。`open --profile`と`generate --profile`は、準備済みの中から選択します。未選択の資源を生成時に自動取得しません。
+## 入力対応
 
-## 資源を追加する
+preset.tomlのbindingsは、名前付きの生成条件をAPIのノード入力と画面のウィジェットへ適用する定義です。式や実行コードは扱いません。正負プロンプト、seed、checkpoint、保存先接頭辞は必須です。参照先と両グラフのノード種類・入力位置をGPU確保前に検証します。
 
-同じ構成のモデルへ替える場合は、新しいassets定義を追加し、プリセットのcheckpointを指定します。Hugging Faceは固定リビジョンと実ファイルのSHA256、GitHub ReleaseなどはHTTPSの固定URLとSHA256を使用します。モデルの重みはGitやwheelへ含めません。
+別の構成では標準ComfyUIで両JSONを作成し、その入力対応を記載します。CLIが扱う入力は現在の生成コマンドの範囲です。独立した複数プロンプトや任意の計算を表現する独自言語はありません。詳細な編集にはNode Graphを使用します。
 
-別の接続構成を使う場合は、標準JSONの対と、その入力に対応する適用処理を追加します。既存の接続を説明するだけの独自DSLや、汎用プラグイン機構は追加しません。追加した資源の形式、モデル系列、CLIP/VAE、LoRAの対応系列を確認し、GPUを使わない構造検査と実機生成を行ってください。
+## 保存と再利用
 
-## 配置と準備時間
+モデルは.artifacts/data/models/用途/SHA256/へ保存します。固定配布元と検証済みの台帳を使って再利用します。モデル準備と素材保存の範囲は[準備手順](preparation.md)と[素材保全](preservation.md)を参照してください。
 
-ローカル正本は`.artifacts/data/models/用途/SHA256/`です。`models fetch --profile pony-preview`で事前取得できます。同じPonyを使う複数のプリセットでも重みは重複取得しません。正常な既存ファイルはSHA256確認後に再利用します。
-
-Colabは固定した配布元から一時領域へ直接取得します。PCから毎回大きな重みを送信しません。Colab内の再接続では同じ一時キャッシュを使えますが、新しいランタイムでは取得し直します。Google Driveへコピーしません。
-
-準備ログのmodelイベントは、cache_verified、download_started、download_verifiedを区別します。elapsed_secondsはSHA256確認を含む所要時間です。API接続の準備完了と、初回生成時の重み読み込み完了は別です。準備完了後の最初の画像は、以後の画像より時間がかかることがあります。
-
-## 利用条件
-
-- [Pony V6 XLの配布ページ](https://civitai.com/models/257749/pony-diffusion-v6-xl)の作者条件を確認してください。取得元の[Hugging Face](https://huggingface.co/AstraliteHeart/pony-diffusion-v6)にあるライセンス表示だけで、商用サービスへの組込みが無条件に許可されるとは判断しません。
-- [Hyper-SD](https://huggingface.co/ByteDance/Hyper-SD)はSDXL用ファイルを固定しています。ライセンスはモデル系列ごとに異なるため、SDXLの項目を確認してください。
-- [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)は作者のReleaseからanime 6Bを取得します。
-
-プレビューは少ないステップで確認するための選択肢です。絵柄や構図の一致は保証しません。拡大は生成後の画素拡大で、細部を作り直す拡散処理とは別です。
+Pony、Hyper-SDXL、Real-ESRGANの利用条件は各モデル定義のlicenseとlicense_urlを確認してください。新しいモデル系列・LoRA・ワークフローは互換性と実機生成を確認してから登録します。

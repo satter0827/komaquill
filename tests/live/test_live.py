@@ -9,7 +9,8 @@ import pytest
 from websockets.sync.client import connect
 
 from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.runtime import connected, drain
+from komaquill.infrastructure.sessions.connection import connected
+from komaquill.infrastructure.sessions.monitor import drain
 from komaquill.infrastructure.storage import load_runs
 from komaquill.infrastructure.workflows import prepare
 

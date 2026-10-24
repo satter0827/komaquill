@@ -15,7 +15,6 @@ from filelock import FileLock
 from komaquill.domain.assets import PREPARATION_TERMINAL, PROTOCOL_VERSION, Preparation
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.presets import MODEL_ROLES
-from komaquill.gpu.preservation import Preservation
 from komaquill.infrastructure.asset_download import download_asset
 from komaquill.infrastructure.asset_store import (
     model_path,
@@ -25,6 +24,7 @@ from komaquill.infrastructure.asset_store import (
     register as register_model,
 )
 from komaquill.infrastructure.storage import atomic_json
+from komaquill.interfaces.comfyui.preservation import Preservation
 from komaquill.messages import catalog
 
 

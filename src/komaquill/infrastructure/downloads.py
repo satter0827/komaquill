@@ -1,6 +1,7 @@
 """Download models from their pinned upstream locations."""
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from komaquill.infrastructure.asset_store import cached_path, register
 from komaquill.infrastructure.asset_store import file_digest as file_digest
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.storage import discard_temporary
 
 
 def fetch_model(project: Project, model: ModelPreset) -> Path:
@@ -57,7 +59,8 @@ def fetch_model(project: Project, model: ModelPreset) -> Path:
                         raise KomaquillError(code="invalid_output")
                     temporary.replace(target)
                 finally:
-                    temporary.unlink(missing_ok=True)
+                    if temporary.exists():
+                        discard_temporary(temporary, sys.exception())
             else:
                 target = Path(
                     hf_hub_download(

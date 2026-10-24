@@ -15,7 +15,7 @@ from PIL import Image
 
 from komaquill.infrastructure.configuration import find_project
 from komaquill.infrastructure.materials import blob, records
-from komaquill.infrastructure.runtime import connected
+from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import load_runs
 from komaquill.infrastructure.workflows import prepare
 

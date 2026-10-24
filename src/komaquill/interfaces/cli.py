@@ -12,25 +12,20 @@ from uuid import UUID, uuid4
 
 import keyring
 import typer
-from filelock import Timeout
 from pydantic import ValidationError
 
 from komaquill.application.generation import Collection, collect, generate, verify_runtime
-from komaquill.domain.assets import Preparation
 from komaquill.domain.errors import FailureInfo, KomaquillError
-from komaquill.domain.materials import Material
 from komaquill.domain.models import Session
-from komaquill.infrastructure import runtime as runtime
-from komaquill.infrastructure import supervisor
-from komaquill.infrastructure.colab import Colab
+from komaquill.infrastructure import inspection, supervisor
 from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.materials import MaterialCollector
-from komaquill.infrastructure.monitor_state import alive, read_monitor
 from komaquill.infrastructure.preparation import capabilities
-from komaquill.infrastructure.runtime import connected
-from komaquill.infrastructure.storage import load_runs, load_session, run_dir
+from komaquill.infrastructure.sessions import connection, shutdown
+from komaquill.infrastructure.sessions.connection import connected
+from komaquill.infrastructure.storage import run_dir
 from komaquill.infrastructure.views import open_view
 from komaquill.infrastructure.workflows import assets, prepare, select
 from komaquill.messages import error_message, message
@@ -193,7 +188,9 @@ def start(
             temporary = Session(
                 endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username
             )
-            keyring.set_password("komaquill", runtime.credential_key(project, temporary), password)
+            keyring.set_password(
+                "komaquill", connection.credential_key(project, temporary), password
+            )
         from komaquill.interfaces.session_worker import main as session_main
 
         supervisor.start(
@@ -319,91 +316,62 @@ def doctor(ctx: typer.Context) -> None:
 def status(ctx: typer.Context) -> None:
     """Display runtime, monitor and collection state."""
     with operation(ctx) as project:
-        project = runtime.session_project(project)
-        colab = Colab(project)
-        receipt = colab.receipt()
-        active: bool | None = None
-        if receipt is not None:
-            try:
-                with colab.lock.acquire(timeout=0):
-                    active = colab.refresh(receipt)
-                if not active and receipt.endpoint_id is None:
-                    typer.echo(
-                        message("text.colab_allocation_unconfirmed_check_the_active_colab_runtimes")
-                    )
-                else:
-                    typer.echo(
-                        message("text.colab_active")
-                        if active
-                        else message("text.colab_stopped_run_stop_to_finalize_ownership_records")
-                    )
-            except Timeout:
-                typer.echo(message("text.colab_starting_or_stopping"))
-            except KomaquillError:
-                typer.echo(message("profile.colab_unknown"))
-        else:
-            typer.echo(message("text.colab_no_owned_runtime"))
-        lock = runtime.monitor_lock(project)
-        try:
-            lock.acquire(timeout=0)
-        except Timeout:
-            typer.echo(message("text.collector_running"))
-        else:
-            lock.release()
-            typer.echo(message("text.collector_stopped"))
-        if (
-            project.session_file.is_file()
-            and receipt is None
-            and load_session(project).backend == "colab"
-        ):
-            typer.echo(message("text.comfyui_stopped"))
-        elif receipt is not None and active is False:
-            typer.echo(
-                message("text.comfyui_not_started")
-                if receipt.endpoint_id is None
-                else message("text.comfyui_stopped")
+        state = inspection.inspect(project)
+        gpu_keys = {
+            "absent": "text.colab_no_owned_runtime",
+            "active": "text.colab_active",
+            "stopped": "text.colab_stopped_run_stop_to_finalize_ownership_records",
+            "unconfirmed": "text.colab_allocation_unconfirmed_check_the_active_colab_runtimes",
+            "busy": "text.colab_starting_or_stopping",
+            "unknown": "profile.colab_unknown",
+        }
+        connection_keys = {
+            "stopped": "text.comfyui_stopped",
+            "not_started": "text.comfyui_not_started",
+            "preparing": "text.comfyui_preparing",
+            "connected": "text.comfyui_connected",
+            "disconnected": "text.comfyui_disconnected_check_the_start_process",
+            "unknown": "status.connection_unknown",
+        }
+        typer.echo(message(gpu_keys[state.gpu]))
+        typer.echo(
+            message(
+                "text.collector_running" if state.collector_running else "text.collector_stopped"
             )
-        elif receipt is not None and (
-            not project.session_file.is_file()
-            or load_session(project).runtime_id != receipt.runtime_id
-        ):
-            typer.echo(message("text.comfyui_preparing"))
-        elif project.session_file.is_file():
-            try:
-                with connected(project) as (client, session):
-                    client.json("/system_stats")
-                    verify_runtime(client, session)
-                typer.echo(message("text.comfyui_connected"))
-            except KomaquillError:
-                typer.echo(message("text.comfyui_disconnected_check_the_start_process"))
-        monitor = read_monitor(project)
-        if monitor is not None:
+        )
+        if state.connection is not None:
+            typer.echo(message(connection_keys[state.connection]))
+        if state.monitor_phase is not None and state.observed_at is not None:
             typer.echo(
                 message(
                     "monitor.status",
-                    phase=monitor.phase
-                    if alive(monitor) or monitor.phase in {"stopped", "failed"}
-                    else "unknown",
-                    observed=monitor.observed_at.isoformat(),
+                    phase=state.monitor_phase,
+                    observed=state.observed_at.isoformat(),
                 )
             )
-        preparation_count = sum(
-            Preparation.model_validate_json(path.read_bytes()).phase
-            not in {"ready", "cancelled", "failed"}
-            for path in (project.state / "preparation").glob("*.json")
+        typer.echo(
+            message(
+                "assets.status",
+                count=(
+                    state.preparation_count if state.preparation_count is not None else "unknown"
+                ),
+            )
         )
-        material_count = sum(
-            Material.model_validate_json(path.read_bytes()).state == "pending"
-            for path in (project.state / "preservation").glob("*.json")
+        typer.echo(
+            message(
+                "materials.status",
+                count=(state.material_count if state.material_count is not None else "unknown"),
+            )
         )
-        typer.echo(message("assets.status", count=preparation_count))
-        typer.echo(message("materials.status", count=material_count))
-        pending = [str(run.run_id) for run in load_runs(project) if run.pending]
-        typer.echo(message("text.pending_pending_count", pending_count=len(pending)))
-        lost = [str(run.run_id) for run in load_runs(project) if run.state == "lost"]
-        typer.echo(message("text.lost_lost_count", lost_count=len(lost)))
-        if pending:
-            typer.echo("\n".join(pending))
+        typer.echo(message("text.pending_pending_count", pending_count=len(state.pending)))
+        typer.echo(message("text.lost_lost_count", lost_count=state.lost_count))
+        if state.pending:
+            typer.echo("\n".join(state.pending))
+        if state.unreadable:
+            typer.echo(
+                message("status.unreadable", identities=", ".join(state.unreadable)), err=True
+            )
+            raise typer.Exit(1)
 
 
 @app.command(help=message("text.wait_for_results_and_stop_the_owned_runtime"))
@@ -416,7 +384,7 @@ def stop(
     """Stop the owned runtime after collecting available results."""
     with operation(ctx) as project:
         if not supervisor.stop(project, force, typer.echo):
-            runtime.stop(project, force, typer.echo)
+            shutdown.stop(project, force, typer.echo)
 
 
 @app.command("logs", help=message("monitor.logs_help"))

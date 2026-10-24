@@ -29,6 +29,16 @@ REPLACE_TIMEOUT_SECONDS = 1.0
 REPLACE_RETRY_SECONDS = 0.05
 
 
+def discard_temporary(path: Path, primary: BaseException | None) -> None:
+    """Preserve a primary failure when a temporary file cannot be removed."""
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        if primary is None:
+            raise
+        print(message("storage.cleanup_failed"), file=sys.stderr)
+
+
 def atomic_bytes(path: Path, content: bytes) -> None:
     """Replace a file using a temporary file in the same directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,14 +73,7 @@ def atomic_bytes(path: Path, content: bytes) -> None:
         raise
     finally:
         if not committed:
-            try:
-                temporary.unlink(missing_ok=True)
-            except OSError:
-                if primary is None:
-                    raise
-                from komaquill.messages import message
-
-                print(message("storage.cleanup_failed"), file=sys.stderr)
+            discard_temporary(temporary, primary)
 
 
 def atomic_json(path: Path, data: JsonObject) -> None:

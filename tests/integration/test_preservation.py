@@ -10,8 +10,8 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from komaquill.gpu.extension import Extension
-from komaquill.gpu.preservation import Preservation
+from komaquill.interfaces.comfyui.api import Extension
+from komaquill.interfaces.comfyui.preservation import Preservation
 
 
 def harness(project):

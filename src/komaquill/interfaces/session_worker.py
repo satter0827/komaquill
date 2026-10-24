@@ -11,10 +11,10 @@ from filelock import FileLock
 
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import Session
-from komaquill.infrastructure import runtime
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.monitor_state import read_monitor, update_monitor, write_monitor
+from komaquill.infrastructure.sessions import connection, startup
 from komaquill.infrastructure.views import open_view
 from komaquill.messages import error_message
 
@@ -44,7 +44,9 @@ def main(root: Path) -> int:
                 runtime_id=state.operation_id,
                 username=state.username,
             )
-            password = keyring.get_password("komaquill", runtime.credential_key(project, session))
+            password = keyring.get_password(
+                "komaquill", connection.credential_key(project, session)
+            )
             if password is None:
                 raise KomaquillError(code="authentication_failed")
 
@@ -54,7 +56,7 @@ def main(root: Path) -> int:
                 project, phase="ready", runtime_id=session.runtime_id, browser_opened=opened
             )
 
-        runtime.start(
+        startup.start(
             project, state.backend, state.endpoint, state.username, password, print, ready
         )
     except (Exception, KeyboardInterrupt) as error:

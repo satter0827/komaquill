@@ -13,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_workflow_exports_have_identical_connections_and_parameters():
-    api = resource_json("workflow-api.json")
-    ui = resource_json("workflow.json")
+    api = resource_json("presets/pony/workflow-api.json")
+    ui = resource_json("presets/pony/workflow.json")
     nodes = {str(node["id"]): node for node in ui["nodes"]}
     links = {link[0]: link for link in ui["links"]}
     for key, node in api.items():
@@ -46,7 +46,7 @@ def test_prepared_workflow_records_the_same_requested_values():
     assert api["10"]["inputs"]["string_b"] == nodes[10]["widgets_values"][1] == "a cabin"
     assert api["3"]["inputs"]["seed"] == nodes[3]["widgets_values"][0] == 123
     assert api["9"]["inputs"]["filename_prefix"] == nodes[9]["widgets_values"][0]
-    assert resource_json("workflow-api.json")["3"]["inputs"]["seed"] == 1
+    assert resource_json("presets/pony/workflow-api.json")["3"]["inputs"]["seed"] == 1
 
 
 def test_import_has_no_filesystem_side_effects(tmp_path):
@@ -133,7 +133,7 @@ def test_browser_modules_use_comfyuis_uncached_javascript_routes():
     import re
     from importlib.resources import files
 
-    web = files("komaquill").joinpath("resources/web")
+    web = files("komaquill").joinpath("interfaces/comfyui/web")
     modules = list(web.iterdir())
     assert modules and all(module.name.endswith(".js") for module in modules)
     for module in modules:

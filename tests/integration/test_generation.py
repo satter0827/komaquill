@@ -50,7 +50,11 @@ def test_partial_download_can_be_resumed(project, client, session, stub, failure
 
 
 def test_ui_generation_is_imported_and_collected(project, client, session, stub):
-    client.submit(resource_json("workflow-api.json"), resource_json("workflow.json"), "ui-client")
+    client.submit(
+        resource_json("presets/pony/workflow-api.json"),
+        resource_json("presets/pony/workflow.json"),
+        "ui-client",
+    )
     assert collect(project, client, session).saved == 1
     run = load_runs(project)[0]
     assert run.state == "saved"
@@ -58,7 +62,7 @@ def test_ui_generation_is_imported_and_collected(project, client, session, stub)
 
 
 def test_remote_failure_remains_failed(project, client, session, stub):
-    client.submit(resource_json("workflow-api.json"), {}, "ui-client")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "ui-client")
     record = next(iter(stub.history.values()))
     record["status"] = {"status_str": "error", "completed": False}
     assert collect(project, client, session).failed == 1
@@ -94,10 +98,10 @@ def stub_images(project):
 
 def test_external_does_not_require_metadata_and_excludes_old_history(project, client, session):
     session.backend = "external"
-    old_id = client.submit(resource_json("workflow-api.json"), {}, "old-browser")
+    old_id = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "old-browser")
     session.excluded_prompt_ids = {old_id}
     assert collect(project, client, session).saved == 0
-    client.submit(resource_json("workflow-api.json"), {}, "new-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "new-browser")
     assert collect(project, client, session).saved == 1
     assert len(load_runs(project)) == 1
 
@@ -141,8 +145,8 @@ def test_external_recovers_own_pending_request_after_connection_identity_changes
 
 
 def test_one_corrupt_result_does_not_block_healthy_results(project, client, session, stub):
-    client.submit(resource_json("workflow-api.json"), {}, "broken-browser")
-    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "broken-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "healthy-browser")
     first = next(iter(stub.history.values()))
     first["outputs"]["9"]["images"][0]["filename"] = "broken.png"
     stub.invalid_images.add("broken.png")
@@ -161,8 +165,8 @@ def test_browser_queue_is_recorded_before_completion(project, client, session, s
     prompt = [
         0,
         prompt_id,
-        resource_json("workflow-api.json"),
-        {"extra_pnginfo": {"workflow": resource_json("workflow.json")}},
+        resource_json("presets/pony/workflow-api.json"),
+        {"extra_pnginfo": {"workflow": resource_json("presets/pony/workflow.json")}},
         ["9"],
     ]
     stub.queue["queue_running"] = [prompt]
@@ -219,8 +223,8 @@ def test_local_save_failure_does_not_block_other_runs_or_store_exception_text(
     project, client, session, monkeypatch
 ):
 
-    client.submit(resource_json("workflow-api.json"), {}, "first-browser")
-    client.submit(resource_json("workflow-api.json"), {}, "second-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "first-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "second-browser")
     from komaquill.infrastructure import storage
 
     original = storage.atomic_bytes
@@ -243,7 +247,7 @@ def test_malformed_history_entry_does_not_block_other_jobs(project, client, sess
     from uuid import uuid4
 
     stub.history[str(uuid4())] = record
-    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "healthy-browser")
     result = collect(project, client, session)
     assert result.saved == 1
     assert len(result.errors) == 1
@@ -259,7 +263,7 @@ def test_unreadable_local_run_does_not_block_other_jobs(project, client, session
     folder.mkdir(parents=True)
     damaged = b"invalid-json-private-sentinel"
     (folder / "run.json").write_bytes(damaged)
-    client.submit(resource_json("workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "healthy-browser")
     result = collect(project, client, session)
     assert result.saved == 1
     assert result.errors == (broken_id,)
@@ -272,8 +276,8 @@ def test_malformed_known_job_reports_its_original_run_id(project, client, sessio
     from komaquill.application.generation import new_run
     from komaquill.infrastructure.storage import save_run
 
-    prompt_id = client.submit(resource_json("workflow-api.json"), {}, "browser")
-    run = new_run(project, session, uuid4(), resource_json("workflow-api.json"))
+    prompt_id = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    run = new_run(project, session, uuid4(), resource_json("presets/pony/workflow-api.json"))
     run.prompt_id = prompt_id
     run.state = "queued"
     save_run(project, run)
@@ -285,7 +289,7 @@ def test_malformed_known_job_reports_its_original_run_id(project, client, sessio
 def test_retry_after_malformed_history_preserves_workflow_digest(project, client, session, stub):
     from komaquill.domain.workflow import digest
 
-    prompt_id = client.submit(resource_json("workflow-api.json"), {}, "browser")
+    prompt_id = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
     complete = stub.history[prompt_id]
     stub.history[prompt_id] = None
     assert len(collect(project, client, session).errors) == 1
@@ -298,7 +302,7 @@ def test_corrupt_record_is_not_overwritten_by_remote_history(project, client, se
     from uuid import uuid4
 
     identity = uuid4()
-    client.submit(resource_json("workflow-api.json"), {}, str(identity))
+    client.submit(resource_json("presets/pony/workflow-api.json"), {}, str(identity))
     folder = run_dir(project, identity)
     folder.mkdir(parents=True)
     original = b"original-damaged-record"

@@ -23,7 +23,7 @@ python scripts/check_worker_lock.py --write
 python scripts/check.py
 ```
 
-公開配布物のURL・バージョン・ハッシュを保存し、GPUではハッシュ検証付きで導入します。書き出し時は公開SHA256の行だけに検査除外の理由を付け、ファイル全体は秘密情報検査の対象に残します。Pythonの版を変更する場合は.python-versionとresources/runtime.tomlを揃えます。公式CLIやComfyUI、接続・保存・終了を変更した場合は[実機検証](validation.md)も行います。
+公開配布物のURL・バージョン・ハッシュを保存し、GPUではハッシュ検証付きで導入します。書き出し時は公開SHA256の行だけに検査除外の理由を付け、ファイル全体は秘密情報検査の対象に残します。Pythonの版を変更する場合は.python-versionとresources/runtime/versions.tomlを揃えます。公式CLIやComfyUI、接続・保存・終了を変更した場合は[実機検証](validation.md)も行います。
 
 ## 配布物を確認する
 

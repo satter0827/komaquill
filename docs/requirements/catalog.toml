@@ -16,17 +16,17 @@ tests = ["tests/integration/test_colab_provider.py", "tests/unit/test_lifecycle.
 
 [requirements.REQ-QUALITY]
 summary = "GPUなしで検査し、全工程が成功した場合だけ成功を確定する"
-status = "in_progress"
+status = "implemented"
 acceptance = ["中断・起動失敗・入力変更で最新成功を更新しない", "行90%以上・分岐80%以上を独立判定する"]
 sources = ["scripts/check.py", "scripts/check_coverage.py"]
 tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py"]
 
 [requirements.REQ-BUNDLES]
 summary = "利用者が生成セットをフォルダー単位で追加・置換できる"
-status = "planned"
+status = "implemented"
 acceptance = ["標準ワークフローと設定を一式で扱う", "GPU確保前に参照を検証する"]
-sources = []
-tests = []
+sources = ["src/komaquill/infrastructure/preset_catalog.py", "src/komaquill/infrastructure/workflows.py"]
+tests = ["tests/unit/test_preset_bundles.py", "tests/unit/test_presets.py"]
 
 [requirements.REQ-CLEAN]
 summary = "保全対象を削除せず、再作成可能な生成物だけを整理する"

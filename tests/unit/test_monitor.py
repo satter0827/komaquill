@@ -252,7 +252,7 @@ def test_worker_freezes_settings_and_saves_terminal_state(project, monkeypatch, 
             raise KomaquillError(code="stopping" if case == "cancel" else "connection_failed")
         ready(SimpleNamespace(runtime_id=uuid4()))
 
-    monkeypatch.setattr(session_worker.runtime, "start", run)
+    monkeypatch.setattr(session_worker.startup, "start", run)
     assert session_worker.main(project.root) == (
         1 if case in {"failure", "credentials_missing", "absent"} else 0
     )

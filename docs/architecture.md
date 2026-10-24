@@ -18,7 +18,7 @@ CLIが要求の記録とローカル保存を担当し、GPU側のComfyUIが画�
 
 対応するCLI引数、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。設定は起動時に検証し、保存・回収・終了で同じ値を使用します。変更は次のstartから反映します。認証情報は設定へ含めません。
 
-Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime.toml、モデルと生成プリセットはpresets.tomlで固定します。
+Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime/versions.toml、モデルと生成プリセットはresources/modelsとresources/presetsで固定します。
 
 ## GPUへの転送
 
@@ -40,7 +40,7 @@ Google認証と公式CLIの管理ファイルは標準のユーザーフォル�
 
 ## 資源とGPUの所有
 
-モデル、LoRA、アップスケーラーの定義はpresets.toml、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
+モデル、LoRA、アップスケーラーの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
 
 Colabの確保・実行・初回転送は公式CLIを使います。状態確認と対象指定の終了には同じ固定パッケージのClientを使い、公式CLIのローカルキャッシュを生存確認の根拠にしません。SSHは固定した公式実装の`_run_proxy_bridge`へ、プロバイダーで照合した一時SessionStateを渡します。この内部関数への依存は一つのアダプターに限定します。公式CLIのSSHコマンドには記録欠損時の自動確保があるため、再接続には使用しません。
 

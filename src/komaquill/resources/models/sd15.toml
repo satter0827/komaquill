@@ -1,0 +1,7 @@
+name = "sd15"
+repo_id = "Comfy-Org/stable-diffusion-v1-5-archive"
+revision = "82ddc01b8d77adc5b4a7c6b5e8f2ddf1a6fe0c08" # pragma: allowlist secret Public immutable asset identity.
+filename = "v1-5-pruned-emaonly-fp16.safetensors"
+sha256 = "e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916" # pragma: allowlist secret Public immutable asset identity.
+license = "CreativeML Open RAIL-M"
+license_url = "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive"

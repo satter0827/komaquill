@@ -23,6 +23,7 @@ from pydantic_settings import (
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure.paths import WorkspacePaths
+from komaquill.infrastructure.preset_catalog import catalog
 
 
 class Settings(RuntimeSettings, BaseSettings):
@@ -42,14 +43,14 @@ class Settings(RuntimeSettings, BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Use typed packaged defaults without loading dotenv or secret files."""
-        with as_file(files("komaquill").joinpath("resources/defaults.toml")) as path:
+        with as_file(files("komaquill").joinpath("resources/settings/defaults.toml")) as path:
             defaults = TomlConfigSettingsSource(settings_cls, toml_file=path)
-        catalog = tomllib.loads(files("komaquill").joinpath("resources/presets.toml").read_text())
+        definitions = catalog()
         return (
             init_settings,
             env_settings,
             defaults,
-            InitSettingsSource(settings_cls, init_kwargs=catalog),
+            InitSettingsSource(settings_cls, init_kwargs=definitions),
         )
 
 
@@ -69,11 +70,21 @@ class Project(WorkspacePaths):
             return self.effective_settings
         with (self.root / "komaquill.toml").open("rb") as handle:
             defaults = tomllib.load(handle)
-        # Environment overrides workspace TOML; secrets are excluded from settings.
+        definitions = catalog(self.root)
+        for section in ("assets", "presets"):
+            for name, changes in defaults.pop(section, {}).items():
+                definitions[section][name] = {**definitions[section].get(name, {}), **changes}
+        import json
+
         for name in list(defaults):
             if f"KOMAQUILL_{name.upper()}" in os.environ:
                 del defaults[name]
-        return RuntimeSettings.model_validate(Settings(**defaults).model_dump())
+        for section in ("assets", "presets"):
+            raw = os.environ.get(f"KOMAQUILL_{section.upper()}")
+            if raw is not None:
+                for name, changes in json.loads(raw).items():
+                    definitions[section][name] = {**definitions[section].get(name, {}), **changes}
+        return RuntimeSettings.model_validate(Settings(**definitions, **defaults).model_dump())
 
     @property
     def repository(self) -> "FileRunRepository":

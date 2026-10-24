@@ -13,7 +13,7 @@ import pytest
 
 from komaquill.infrastructure.colab import Colab, check_port
 from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.runtime import connected
+from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import load_runs
 from komaquill.infrastructure.workflows import prepare
 

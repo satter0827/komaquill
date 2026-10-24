@@ -77,7 +77,7 @@ def test_payload_is_reproducible_and_excludes_local_data(project, monkeypatch):
     with tarfile.open(fileobj=io.BytesIO(content)) as archive:
         names = archive.getnames()
         assert "komaquill/gpu/bootstrap.py" in names
-        assert "komaquill/resources/pylock.worker.toml" in names
+        assert "komaquill/resources/runtime/pylock.worker.toml" in names
         assert all(
             name.startswith("komaquill/") or name in {"manifest.json", "komaquill.toml"}
             for name in names
@@ -127,11 +127,14 @@ def test_payload_allowlist_and_fixed_versions():
     assert len(names) == len(set(names))
     assert all(
         name.endswith(".py")
+        or name.startswith("komaquill/interfaces/comfyui/web/")
         or name.removeprefix("komaquill/resources/") in provenance.RESOURCE_NAMES
         for name in names
     )
     root = Path(__file__).resolve().parents[2]
-    runtime = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
+    runtime = tomllib.loads(
+        files("komaquill").joinpath("resources/runtime/versions.toml").read_text()
+    )
     assert runtime["python_version"] == (root / ".python-version").read_text().strip()
     assert not list((root / "scripts").glob("worker*"))
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -177,7 +180,9 @@ def test_powershell_entrypoints_parse_and_create_only_project_artifacts(tmp_path
 def test_worker_lock_records_exact_public_sources_and_hashes():
     from urllib.parse import urlsplit
 
-    lock = tomllib.loads(files("komaquill").joinpath("resources/pylock.worker.toml").read_text())
+    lock = tomllib.loads(
+        files("komaquill").joinpath("resources/runtime/pylock.worker.toml").read_text()
+    )
     assert lock["requires-python"] == "==3.12.*"
     packages = {item["name"]: item for item in lock["packages"]}
     for item in packages.values():
@@ -203,9 +208,13 @@ def test_worker_lock_satisfies_pinned_comfy_requirements():
 
     root = Path(__file__).resolve().parents[2]
     requirements = root / "tests/fixtures/comfy-requirements.txt"
-    lock = tomllib.loads(files("komaquill").joinpath("resources/pylock.worker.toml").read_text())
+    lock = tomllib.loads(
+        files("komaquill").joinpath("resources/runtime/pylock.worker.toml").read_text()
+    )
     packages = {canonicalize_name(item["name"]): item["version"] for item in lock["packages"]}
-    runtime = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
+    runtime = tomllib.loads(
+        files("komaquill").joinpath("resources/runtime/versions.toml").read_text()
+    )
     assert (
         "/blob/" + runtime["comfy_revision"] + "/requirements.txt"
         in requirements.read_text().splitlines()[0]

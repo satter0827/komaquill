@@ -19,7 +19,7 @@ def main() -> None:
     artifacts = root / ".artifacts"
     tools = artifacts / "runtime/tools"
     tools.mkdir(parents=True, exist_ok=True)
-    config = tomllib.loads((root / "komaquill/resources/runtime.toml").read_text())
+    config = tomllib.loads((root / "komaquill/resources/runtime/versions.toml").read_text())
     uv = tools / "uv"
     print(message("text.preparing_the_runtime_environment"), flush=True)
     if not uv.is_file():
@@ -74,7 +74,7 @@ def main() -> None:
             "--python",
             str(python),
             "--require-hashes",
-            str(root / "komaquill/resources/pylock.worker.toml"),
+            str(root / "komaquill/resources/runtime/pylock.worker.toml"),
         ],
         cwd=root,
         env=env,

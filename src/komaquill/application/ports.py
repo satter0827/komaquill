@@ -6,6 +6,7 @@ from uuid import UUID
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.models import ImageRef, JsonObject, Run, Session
+from komaquill.domain.presets import ModelPreset
 
 
 class GenerationBackend(Protocol):
@@ -38,6 +39,7 @@ class Workspace(Protocol):
     def settings(self) -> RuntimeSettings: ...
     def configured(self, settings: RuntimeSettings | None = None) -> "Workspace": ...
     def identity(self) -> JsonObject: ...
+    def prepared_assets(self, session: Session) -> dict[str, ModelPreset]: ...
     def prepare(
         self,
         prompt: str,

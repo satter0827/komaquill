@@ -126,7 +126,8 @@ def test_payload_allowlist_and_fixed_versions():
     names = [name for name, _ in provenance.package_contents()]
     assert len(names) == len(set(names))
     assert all(
-        name.endswith(".py") or name.rsplit("/", 1)[-1] in provenance.RESOURCE_NAMES
+        name.endswith(".py")
+        or name.removeprefix("komaquill/resources/") in provenance.RESOURCE_NAMES
         for name in names
     )
     root = Path(__file__).resolve().parents[2]

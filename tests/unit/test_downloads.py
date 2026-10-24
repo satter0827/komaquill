@@ -14,7 +14,7 @@ def test_verified_model_is_reused_without_network(project, monkeypatch):
 
     content = b"verified test model"
     model = preset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
-    target = project.artifacts / "models" / model.name / model.filename
+    target = project.artifacts / "models" / model.role / model.sha256 / model.filename
     target.parent.mkdir(parents=True)
     target.write_bytes(content)
 
@@ -30,7 +30,7 @@ def test_corrupted_model_is_downloaded_again(project, monkeypatch):
 
     content = b"verified test model"
     model = preset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
-    target = project.artifacts / "models" / model.name / model.filename
+    target = project.artifacts / "models" / model.role / model.sha256 / model.filename
     target.parent.mkdir(parents=True)
     target.write_bytes(b"corrupted")
 
@@ -76,7 +76,9 @@ def test_url_asset_is_verified_before_replacing_target(project, monkeypatch, cas
     else:
         with pytest.raises(KomaquillError):
             fetch_model(project.artifacts, model)
-        assert not (project.artifacts / "models/upscaler" / model.filename).is_file()
+        assert not (
+            project.artifacts / "models" / model.role / model.sha256 / model.filename
+        ).is_file()
     assert not list((project.artifacts / "models/upscaler").glob("*.part"))
 
 

@@ -40,6 +40,7 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
         if settings and session.backend == "colab"
         else {}
     )
+    known.update(project.prepared_assets(session))
     filenames: set[str] = set()
     for node in graph.values():
         inputs = node.get("inputs") if isinstance(node, dict) else None
@@ -47,13 +48,15 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
             filenames.update(
                 value
                 for key, value in inputs.items()
-                if key in {"ckpt_name", "lora_name", "model_name"} and isinstance(value, str)
+                if key.endswith(("_name", "_name1", "_name2", "_name3")) and isinstance(value, str)
             )
-    used = {asset.filename: asset.sha256 for asset in known.values() if asset.filename in filenames}
+    used = {
+        asset.reference: asset.sha256 for asset in known.values() if asset.reference in filenames
+    }
     checkpoints = [
         asset.sha256
         for asset in known.values()
-        if asset.role == "checkpoints" and asset.filename in filenames
+        if asset.role == "checkpoints" and asset.reference in filenames
     ]
     return Run(
         run_id=run_id,

@@ -52,6 +52,7 @@ dev = [
   "ruff>=0.14,<1", "mypy>=1.18,<2", "pytest>=8.4,<10", "pytest-cov>=7,<8",
   "import-linter>=2.5,<3", "debugpy>=1.8,<2", "types-setuptools>=80",
   "websockets>=15,<17", "types-psutil>=7,<8",
+  "aiohttp>=3.11.8,<4",
   "detect-secrets>=1.5,<2", "unidiff>=0.7.5,<1",
 ]
 

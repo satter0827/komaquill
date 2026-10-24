@@ -94,3 +94,13 @@ def test_catalog_loader_rejects_missing_or_invalid_content(monkeypatch, tmp_path
             messages.catalog()
     finally:
         messages.catalog.cache_clear()
+
+
+def test_extension_catalog_and_executable_resources_are_packaged():
+    import re
+
+    for name in ("web/extension.js", "web/preparation.mjs"):
+        source = (ROOT / "src/komaquill/resources" / name).read_text(encoding="utf-8")
+        for key in re.findall(r'"(ui\.[a-z_]+)"', source):
+            assert key in messages.catalog()
+        assert "komaquill/resources/" + name in dict(provenance.gpu_contents())

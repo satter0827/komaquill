@@ -11,7 +11,18 @@ class ModelPreset(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
-    role: Literal["checkpoints", "loras", "upscale_models"] = "checkpoints"
+    role: Literal[
+        "checkpoints",
+        "loras",
+        "upscale_models",
+        "diffusion_models",
+        "text_encoders",
+        "vae",
+        "controlnet",
+        "clip_vision",
+        "embeddings",
+        "style_models",
+    ] = "checkpoints"
     repo_id: str = ""
     revision: str = ""
     url: str | None = None
@@ -19,6 +30,13 @@ class ModelPreset(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     license: str
     license_url: str = ""
+    local_only: bool = False
+    size_bytes: int | None = Field(default=None, ge=0)
+
+    @property
+    def reference(self) -> str:
+        """Return the unambiguous filename exposed by ComfyUI."""
+        return f"{self.sha256}/{self.filename}"
 
     @model_validator(mode="after")
     def validate_source(self) -> "ModelPreset":
@@ -33,8 +51,12 @@ class ModelPreset(BaseModel):
             or PureWindowsPath(self.filename).drive
         ):
             raise ValueError("Asset filenames must be plain filenames.")
+        if self.local_only:
+            if self.url or self.repo_id or self.revision:
+                raise ValueError("Local model records must not contain download locations.")
+            return self
         if self.url:
-            from urllib.parse import urlsplit
+            from urllib.parse import parse_qs, urlsplit
 
             parsed = urlsplit(self.url)
             if (
@@ -42,7 +64,15 @@ class ModelPreset(BaseModel):
                 or not parsed.hostname
                 or parsed.username
                 or parsed.password
-                or parsed.query
+                or (
+                    parsed.query
+                    and (
+                        parsed.hostname != "civitai.com"
+                        or not set(parse_qs(parsed.query)).issubset(
+                            {"type", "format", "size", "fp"}
+                        )
+                    )
+                )
                 or parsed.fragment
                 or self.repo_id
                 or self.revision

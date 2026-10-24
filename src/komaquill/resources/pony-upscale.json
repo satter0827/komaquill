@@ -277,7 +277,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "v6.safetensors"
+        "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3/v6.safetensors"
       ]
     },
     {
@@ -387,7 +387,7 @@
       ],
       "properties": {},
       "widgets_values": [
-        "RealESRGAN_x4plus_anime_6B.pth"
+        "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da/RealESRGAN_x4plus_anime_6B.pth"
       ]
     },
     {

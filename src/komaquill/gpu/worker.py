@@ -50,7 +50,20 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     extension = comfy / "custom_nodes/komaquill"
     templates = extension / "example_workflows"
     templates.mkdir(parents=True, exist_ok=True)
-    (extension / "__init__.py").write_text("NODE_CLASS_MAPPINGS = {}\n")
+    (extension / "__init__.py").write_text(
+        "import os\nfrom pathlib import Path\n"
+        "from server import PromptServer\n"
+        "from komaquill.gpu.extension import register\n"
+        "NODE_CLASS_MAPPINGS = {}\nWEB_DIRECTORY = './web'\n"
+        "register(PromptServer.instance, Path(os.environ['KOMAQUILL_ARTIFACTS']), "
+        "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']))\n"
+    )
+    web = extension / "web"
+    web.mkdir(exist_ok=True)
+    for name in ("extension.js", "preparation.mjs"):
+        (web / name).write_bytes(files("komaquill").joinpath("resources/web", name).read_bytes())
+    os.environ["KOMAQUILL_ARTIFACTS"] = str(project.artifacts)
+    os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
     settings = project.settings()
     for name in settings.profiles:
         profile = settings.presets[name]
@@ -60,11 +73,30 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
             )
             workflow["extra"]["linearMode"] = view == "app"
             atomic_json(templates / f"{name}_{view}.json", workflow)
-    paths = {}
+    paths = {
+        "managed": {
+            "base_path": str(project.artifacts / "models"),
+            **{
+                role: role
+                for role in (
+                    "checkpoints",
+                    "loras",
+                    "upscale_models",
+                    "diffusion_models",
+                    "text_encoders",
+                    "vae",
+                    "controlnet",
+                    "clip_vision",
+                    "embeddings",
+                    "style_models",
+                )
+            },
+        }
+    }
     for asset in assets(settings):
         progress(project.root, "model_preparation", asset.name)
         model = fetch_model(project.artifacts, asset)
-        paths[asset.name] = {"base_path": str(model.parent), asset.role: "."}
+        paths[asset.name] = {"base_path": str(model.parent.parent), asset.role: "."}
     # JSON is a YAML subset, so the model path file needs no conversion.
     atomic_json(runtime / "model-paths.json", paths)
     user.mkdir(parents=True, exist_ok=True)

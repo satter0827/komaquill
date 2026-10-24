@@ -287,7 +287,7 @@ def doctor(ctx: typer.Context) -> None:
         for asset in assets(settings):
             loader, field = loaders[asset.role]
             choices = input_choices(nodes, loader, field)
-            if asset.filename not in choices:
+            if asset.reference not in choices:
                 raise KomaquillError(
                     display_key="text.the_selected_model_is_missing_check_the_comfyui"
                 )
@@ -414,3 +414,19 @@ def logs_command(
                 )
         except KeyboardInterrupt:
             return
+
+
+@app.command("prepare", help=message("assets.prepare_help"))
+def prepare_command(
+    ctx: typer.Context,
+    workflow: Annotated[
+        Path, typer.Argument(help=message("assets.workflow_help"), exists=True, dir_okay=False)
+    ],
+) -> None:
+    """Prepare explicitly confirmed public models on the current connection."""
+    from komaquill.infrastructure.preparation import prepare_workflow
+
+    with operation(ctx) as project, connected(project) as (client, session):
+        prepare_workflow(
+            project.configured(session.settings), client, workflow, typer.echo, typer.confirm
+        )

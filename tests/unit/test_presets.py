@@ -29,7 +29,7 @@ def test_profile_exports_match_api_and_widget_values(name):
             assert link[0] in nodes[str(link[1])]["outputs"][link[2]]["links"]
     assert graph["3"]["inputs"]["steps"] == nodes["3"]["widgets_values"][2] == profile.steps
     assert graph["5"]["inputs"]["width"] == nodes["5"]["widgets_values"][0] == profile.width
-    assert graph["4"]["inputs"]["ckpt_name"] == settings.assets[profile.checkpoint].filename
+    assert graph["4"]["inputs"]["ckpt_name"] == settings.assets[profile.checkpoint].reference
     if name != "sd15":
         assert (
             graph["10"]["inputs"]["string_b"] == nodes["10"]["widgets_values"][1] == "a blue lake"
@@ -120,8 +120,8 @@ def test_graph_provenance_uses_actual_prepared_assets(project, session):
     from komaquill.application.generation import new_run
 
     session.settings = project.settings()
-    graph = {"4": {"inputs": {"ckpt_name": "v6.safetensors"}}}
+    graph = {"4": {"inputs": {"ckpt_name": session.settings.assets["pony"].reference}}}
     run = new_run(project, session, uuid4(), graph)
     assert run.model_sha256 == session.settings.assets["pony"].sha256
-    graph["4"]["inputs"]["ckpt_name"] = session.settings.assets["sd15"].filename
+    graph["4"]["inputs"]["ckpt_name"] = session.settings.assets["sd15"].reference
     assert new_run(project, session, uuid4(), graph).model_sha256 is None

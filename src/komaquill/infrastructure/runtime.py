@@ -3,6 +3,7 @@
 import subprocess
 import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -33,6 +34,7 @@ from komaquill.infrastructure.monitor_state import (
     read_monitor,
     update_monitor,
 )
+from komaquill.infrastructure.preparation import Coordinator, capabilities, verify_extension
 from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, stop_request
 from komaquill.infrastructure.workflows import assets
 from komaquill.messages import message
@@ -169,6 +171,7 @@ def watch(
 ) -> bool:
     """Maintain the connection and collection until shutdown is requested."""
     project = project.configured(session.settings)
+    coordinator = Coordinator(project, client) if capabilities(client) else None
     disconnected = False
     previous_errors: tuple[UUID | str, ...] = ()
     try:
@@ -180,6 +183,8 @@ def watch(
             try:
                 if reconnect is not None:
                     reconnect()
+                if coordinator is not None:
+                    coordinator.tick()
                 result = collect(project, client, session)
                 if disconnected:
                     echo(message("text.reconnected"))
@@ -210,6 +215,18 @@ def watch(
         echo(message("text.waiting_for_results_press_ctrl_c_again_to"))
         request_stop(project, session, False)
         return False
+    finally:
+        if coordinator is not None:
+            try:
+                coordinator.close()
+            except KomaquillError as error:
+                record_event(
+                    project,
+                    "preparation",
+                    "stop_failed",
+                    runtime_id=session.runtime_id,
+                    failure=failure_info(error, "preparation"),
+                )
 
 
 def finish_colab(
@@ -426,6 +443,8 @@ def start_colab(
             elapsed_seconds=time.monotonic() - started_at,
         )
 
+    local_models = ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-models")
+    local_preparation = []
     cleanup_owned = False
     ready = False
     force = True
@@ -441,9 +460,9 @@ def start_colab(
             echo(message("text.downloading_and_verifying_the_model"))
             for asset in assets(project.settings()):
                 phase("model_preparation", asset=asset.name)
-                fetch_model(project.artifacts, asset)
+                local_preparation.append(local_models.submit(fetch_model, project.artifacts, asset))
                 check_cancel(project)
-        phase("model_verified")
+        phase("models_scheduled" if saved is None else "models_reused")
         payload = create_payload(project)
         phase("payload_ready")
         cleanup_owned = colab.receipt() is None
@@ -519,6 +538,7 @@ def start_colab(
                         retryable=False,
                     )
                 verify_runtime(client, session)
+                verify_extension(client)
                 break
             except KomaquillError as error:
                 if not error.retryable:
@@ -532,6 +552,10 @@ def start_colab(
                         display_key="text.comfyui_did_not_become_ready_check_the_preparation"
                     ) from None
                 time.sleep(project.settings().poll_interval)
+        for future in local_preparation:
+            future.result()
+        phase("model_verified", receipt.runtime_id)
+        check_cancel(project)
         atomic_json(project.session_file, session.model_dump(mode="json"))
         record_event(project, "connection", "ready", runtime_id=session.runtime_id)
         phase("ready", receipt.runtime_id)
@@ -578,6 +602,7 @@ def start_colab(
                     processes,
                 )
         finally:
+            local_models.shutdown(wait=True, cancel_futures=True)
             if client is not None:
                 client.close()
 

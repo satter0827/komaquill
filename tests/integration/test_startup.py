@@ -41,6 +41,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     monkeypatch.setattr(runtime, "check_port", lambda _: None)
     monkeypatch.setattr(runtime, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
+    monkeypatch.setattr(runtime, "verify_extension", lambda _: None)
 
     def acquire(revision):
         calls.append("acquire")
@@ -129,7 +130,7 @@ def cli_connection(project, session, client, monkeypatch):
 def test_doctor_reports_actual_generation_requirements(cli_connection, client, monkeypatch, case):
     original = client.json
     nodes = {row["class_type"]: {} for row in resource_json("workflow-api.json").values()}
-    nodes["CheckpointLoaderSimple"] = {"input": {"required": {"ckpt_name": [[preset().filename]]}}}
+    nodes["CheckpointLoaderSimple"] = {"input": {"required": {"ckpt_name": [[preset().reference]]}}}
     if case == "nodes":
         nodes.pop("KSampler")
     if case == "model":

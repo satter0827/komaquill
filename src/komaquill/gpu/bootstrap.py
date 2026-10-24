@@ -42,6 +42,7 @@ def main() -> None:
             uv.write_bytes(source.read())
         uv.chmod(0o700)
     env = dict(os.environ)
+    env["PYTHONPATH"] = str(root)
     for key, relative in {
         "UV_PROJECT_ENVIRONMENT": "runtime/venv",
         "UV_PYTHON_INSTALL_DIR": "runtime/python",

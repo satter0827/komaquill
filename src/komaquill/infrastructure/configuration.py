@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from komaquill.domain.models import Session
+    from komaquill.domain.presets import ModelPreset
     from komaquill.infrastructure.storage import FileRunRepository
 from dataclasses import dataclass
 from importlib.resources import as_file, files
@@ -80,6 +81,20 @@ class Project(WorkspacePaths):
         from komaquill.infrastructure.storage import FileRunRepository
 
         return FileRunRepository(self)
+
+    def prepared_assets(self, session: "Session") -> dict[str, "ModelPreset"]:
+        """Read only bindings verified on the current remote runtime."""
+        import json
+
+        from komaquill.domain.presets import ModelPreset
+
+        path = self.state / "model-bindings.json"
+        if not path.is_file():
+            return {}
+        data = json.loads(path.read_bytes())
+        if data.get("runtime_id") != str(session.runtime_id):
+            return {}
+        return {name: ModelPreset.model_validate(asset) for name, asset in data["assets"].items()}
 
     def identity(self) -> dict[str, Any]:
         from importlib.metadata import version

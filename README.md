@@ -84,7 +84,7 @@ komaquill open --view graph --profile pony-upscale
 komaquill generate --profile pony-preview --prompt "a sunny forest"
 ```
 
-起動中に別のモデルを追加する場合は、stop後に対象を選んでstartし直します。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/presets.md)を参照してください。
+公開テンプレートの不足モデルは、画面のPrepare Workflowまたは`komaquill prepare ./workflow.json`で準備できます。モデル名・容量・取得元を確認してから取得します。詳細は[ワークフローの準備](docs/preparation.md)を参照してください。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/presets.md)を参照してください。
 
 ## 状態確認と終了
 

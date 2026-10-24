@@ -31,7 +31,7 @@ def pending_count[T: BaseModel](
     for path in folder.glob("*.json"):
         try:
             count += predicate(model.model_validate_json(path.read_bytes()))
-        except (OSError, ValueError):
+        except (OSError, ValueError, KomaquillError):
             unreadable.append(f"{folder.name}/{path.name}")
             failed = True
     return None if failed else count
@@ -71,7 +71,7 @@ def inspect(project: Project) -> SessionStatus:
     if project.session_file.is_file():
         try:
             session = load_session(project)
-        except (OSError, ValueError):
+        except (OSError, ValueError, KomaquillError):
             result.unreadable.append("session.json")
             result.connection = "unknown"
     if session is not None and receipt is None and session.backend == "colab":
@@ -97,7 +97,7 @@ def inspect(project: Project) -> SessionStatus:
                 else "unknown"
             )
             result.observed_at = monitor.observed_at
-    except (OSError, ValueError):
+    except (OSError, ValueError, KomaquillError):
         result.unreadable.append("monitor.json")
     result.preparation_count = pending_count(
         project.state / "preparation",

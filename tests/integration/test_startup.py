@@ -6,12 +6,14 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner
 
+from komaquill.api import services
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ShutdownResult
 from komaquill.infrastructure import views
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.sessions import connection, startup
-from komaquill.infrastructure.storage import atomic_json, load_session
+from komaquill.infrastructure.storage import load_session
 from komaquill.infrastructure.workflows import preset, resource_json
 from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop
@@ -173,6 +175,7 @@ def test_doctor_reports_actual_generation_requirements(cli_connection, client, m
 
 @pytest.mark.parametrize("prompt", ["a cabin", ""])
 def test_generate_cli_prompts_and_returns_saved_path(cli_connection, monkeypatch, prompt):
+    monkeypatch.setattr(services, "connected", cli.connected)
     monkeypatch.setattr(cli.typer, "prompt", lambda _: prompt)
     result = cli_connection("generate")
     assert result.exit_code == (0 if prompt else 1), result.output
@@ -183,10 +186,12 @@ def test_generate_cli_prompts_and_returns_saved_path(cli_connection, monkeypatch
 @pytest.mark.parametrize("command", ["start", "stop", "models"])
 def test_cli_delegates_operations_without_editor_dependencies(project, monkeypatch, command):
     calls = []
-    monkeypatch.setattr(cli.supervisor, "start", lambda *args: calls.append(args))
-    monkeypatch.setattr(cli.shutdown, "stop", lambda *args: calls.append(args))
+    monkeypatch.setattr(services.supervisor, "start", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(services.shutdown, "stop", lambda *args, **kwargs: calls.append(args))
     monkeypatch.setattr(
-        cli, "fetch_model", lambda *args: calls.append(args) or project.artifacts / "model"
+        cli,
+        "fetch_model",
+        lambda *args, **kwargs: calls.append(args) or project.artifacts / "model",
     )
     monkeypatch.setattr(cli.typer, "prompt", lambda *args, **kwargs: "private-password")
     monkeypatch.setattr(cli.keyring, "set_password", lambda *args: None)
@@ -228,13 +233,13 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
 ):
     calls = []
 
-    def start(bound, backend, endpoint, username, open_browser, echo, foreground):
+    def start(bound, backend, endpoint, username, open_browser, echo, foreground, **kwargs):
         assert bound.settings().profiles == ("pony-preview",)
         assert open_browser is (open_flag == "--open")
         assert foreground is None
         calls.append("connected")
 
-    monkeypatch.setattr(cli.supervisor, "start", start)
+    monkeypatch.setattr(services.supervisor, "start", start)
     arguments = ["--project", str(project.root), "start", "--profile", "pony-preview"]
     if open_flag:
         arguments.append(open_flag)

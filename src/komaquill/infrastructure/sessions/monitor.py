@@ -21,6 +21,7 @@ from komaquill.infrastructure.monitor_state import (
 from komaquill.infrastructure.preparation import Coordinator, capabilities
 from komaquill.infrastructure.sessions.connection import request_stop
 from komaquill.infrastructure.storage import load_runs, stop_request
+from komaquill.infrastructure.stories.storage import refresh_saved_stories
 from komaquill.messages import message
 
 
@@ -45,6 +46,7 @@ def drain(
                 request_stop(project, session, True)
             try:
                 result = collect(project, client, session)
+                refresh_saved_stories(project)
                 material_errors = preserve(project, client) or ()
                 if material_errors:
                     result = Collection(
@@ -130,6 +132,7 @@ def watch(
                             )
                             sidecar_failures["preparation"] = failure
                 result = collect(project, client, session)
+                refresh_saved_stories(project)
                 if coordinator is not None:
                     try:
                         coordinator.materials.collect()

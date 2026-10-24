@@ -9,8 +9,8 @@ import pytest
 
 from komaquill.domain.errors import AllocationRefused, KomaquillError
 from komaquill.infrastructure import colab as module
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
-from komaquill.infrastructure.storage import atomic_json
 
 
 @pytest.fixture

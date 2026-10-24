@@ -145,6 +145,22 @@ def run_acceptance(wheel: Path | None = None) -> None:
                 "[presets.custom]\nsteps=27\n"
             )
             command("--help")
+            imported = subprocess.run(
+                [
+                    str(python),
+                    "-B",
+                    "-c",
+                    "import sys; from komaquill.api import Client; "
+                    "assert not any(x.startswith(('langchain', 'langsmith', 'colab_cli')) "
+                    "for x in sys.modules)",
+                ],
+                cwd=workspace,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            assert imported.returncode == 0 and imported.stdout == imported.stderr == ""
             source_file = workspace / "story.md"
             source_file.write_bytes(
                 files("komaquill")
@@ -237,6 +253,34 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         command("stories", "resume", illustrated["render_id"], "--json").stdout
                     )
                     assert resumed["complete"]
+                    api_script = "\n".join(
+                        [
+                            "from pathlib import Path",
+                            "from uuid import UUID",
+                            "from komaquill.api import Client, StorySnapshot",
+                            "client = Client(Path.cwd())",
+                            f"story_id = UUID({illustrated['story_id']!r})",
+                            "snapshot = client.stories.show(story_id)",
+                            "assert isinstance(snapshot, StorySnapshot) and snapshot.complete",
+                            f"assert len(client.stories.list().stories) == {2 if wheel else 1}",
+                            "for scene in snapshot.scenes:",
+                            "    assert scene.primary_image is not None",
+                            "    assert client.artifact_path(scene.primary_image.key).is_file()",
+                            "assert client.stories.export(story_id)['format_version'] == 2",
+                            "client.stories.refresh(story_id)",
+                            "assert client.sessions.status().collector_running",
+                        ]
+                    )
+                    api_result = subprocess.run(
+                        [str(python), "-B", "-c", api_script],
+                        cwd=workspace,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    assert api_result.returncode == 0, api_result.stderr
+                    assert api_result.stdout == api_result.stderr == ""
                     command("collect")
                     command("status")
                     for arguments, expected in [
@@ -257,10 +301,24 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     command("stop")
                     assert monitor.wait(timeout=30) == 0
                 finally:
+                    primary = sys.exc_info()[1]
+                    stopped = subprocess.run(
+                        [str(python), "-B", "-m", "komaquill", "stop", "--force"],
+                        cwd=workspace,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    if primary is None:
+                        assert stopped.returncode == 0, stopped.stderr
+                    elif stopped.returncode:
+                        primary.add_note("The isolated acceptance monitor could not be stopped.")
                     if monitor.poll() is None:
                         monitor.terminate()
                         monitor.wait(timeout=10)
             runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
+            runs.extend((workspace / ".artifacts/data/stories").glob("*/renders/*/runs/*/run.json"))
             assert len(runs) == 5
             runs = sorted(runs, key=lambda path: json.loads(path.read_bytes())["created_at"])
             run = json.loads(runs[0].read_bytes())
@@ -319,6 +377,44 @@ def run_acceptance(wheel: Path | None = None) -> None:
                 capture_output=True,
                 timeout=30,
             )
+            if wheel is not None:
+                consumer = workspace / "consumer.py"
+                consumer.write_text(
+                    "from pathlib import Path\n"
+                    "from collections.abc import Iterator\n"
+                    "from uuid import UUID\n"
+                    "from komaquill.api import Client, StoryPlan, StoryEvent, StorySnapshot\n"
+                    "client = Client(Path.cwd())\n"
+                    "def plan(text: str) -> StoryPlan:\n"
+                    "    return client.stories.plan(text, images='auto', allow_real_llm=True)\n"
+                    "def render(identity: UUID) -> Iterator[StoryEvent]:\n"
+                    "    return client.stories.render(identity)\n"
+                    "def show(identity: UUID) -> StorySnapshot:\n"
+                    "    return client.stories.show(identity)\n",
+                    encoding="utf-8",
+                )
+                typed_env = {key: value for key, value in env.items() if key != "MYPYPATH"}
+                typed = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        "-m",
+                        "mypy",
+                        "--strict",
+                        "--no-incremental",
+                        "--cache-dir",
+                        str(root / "mypy-cache"),
+                        "--python-executable",
+                        str(python),
+                        str(consumer),
+                    ],
+                    cwd=workspace,
+                    env=typed_env,
+                    text=True,
+                    capture_output=True,
+                    timeout=90,
+                )
+                assert typed.returncode == 0, typed.stdout + typed.stderr
             assert thread.is_alive()
             with contextlib.closing(
                 __import__("urllib.request").request.urlopen(

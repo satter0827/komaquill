@@ -15,6 +15,7 @@ from pathlib import Path
 
 from pydantic_settings import (
     BaseSettings,
+    EnvSettingsSource,
     InitSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
@@ -27,11 +28,28 @@ from komaquill.infrastructure.paths import GpuPaths, WorkspacePaths
 from komaquill.infrastructure.preset_catalog import catalog
 
 
+def merge_settings(base: dict[str, object], changes: dict[str, object]) -> dict[str, object]:
+    """Apply leaf overrides without discarding unspecified profile values."""
+    result = dict(base)
+    for key, value in changes.items():
+        prior = result.get(key)
+        result[key] = (
+            merge_settings(prior, value)
+            if isinstance(prior, dict) and isinstance(value, dict)
+            else value
+        )
+    return result
+
+
 class Settings(RuntimeSettings, BaseSettings):
     """Validate transport and operation limits."""
 
     model_config = SettingsConfigDict(
-        env_prefix="KOMAQUILL_", extra="forbid", frozen=True, allow_inf_nan=False
+        env_prefix="KOMAQUILL_",
+        extra="forbid",
+        frozen=True,
+        allow_inf_nan=False,
+        env_nested_delimiter="__",
     )
 
     @classmethod
@@ -73,21 +91,9 @@ class Project(WorkspacePaths):
             defaults = tomllib.load(handle)
         defaults.pop("story", None)
         defaults.pop("llm_profiles", None)
-        definitions = catalog(self.root)
-        for section in ("assets", "presets"):
-            for name, changes in defaults.pop(section, {}).items():
-                definitions[section][name] = {**definitions[section].get(name, {}), **changes}
-        import json
-
-        for name in list(defaults):
-            if f"KOMAQUILL_{name.upper()}" in os.environ:
-                del defaults[name]
-        for section in ("assets", "presets"):
-            raw = os.environ.get(f"KOMAQUILL_{section.upper()}")
-            if raw is not None:
-                for name, changes in json.loads(raw).items():
-                    definitions[section][name] = {**definitions[section].get(name, {}), **changes}
-        return RuntimeSettings.model_validate(Settings(**definitions, **defaults).model_dump())
+        combined = merge_settings(catalog(self.root), defaults)
+        combined = merge_settings(combined, EnvSettingsSource(Settings)())
+        return RuntimeSettings.model_validate(Settings.model_validate(combined).model_dump())
 
     @property
     def repository(self) -> "FileRunRepository":

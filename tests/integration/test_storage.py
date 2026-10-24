@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from komaquill.infrastructure import storage
+from komaquill.infrastructure import atomic as storage
 
 
 @pytest.mark.parametrize("case", ["sharing", "permanent", "posix", "unknown"])

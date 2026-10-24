@@ -6,8 +6,9 @@ import pytest
 
 from komaquill.application.generation import new_run
 from komaquill.domain.errors import KomaquillError
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.sessions import connection, monitor, shutdown, startup
-from komaquill.infrastructure.storage import atomic_json, load_runs, load_session, save_run
+from komaquill.infrastructure.storage import load_runs, load_session, save_run
 from komaquill.infrastructure.workflows import resource_json
 from tests.support.provider import stopped as confirmed_stop
 from tests.support.session_controls import patch_session

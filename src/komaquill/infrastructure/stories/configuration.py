@@ -1,6 +1,5 @@
 """Read local planning configuration independently of GPU session settings."""
 
-import os
 import tomllib
 from importlib.resources import files
 from pathlib import Path
@@ -8,10 +7,10 @@ from typing import Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
 
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.configuration import Project
+from komaquill.infrastructure.configuration import Project, merge_settings
 
 
 class LLMProfile(BaseModel):
@@ -48,6 +47,12 @@ class LLMProfile(BaseModel):
         return self
 
 
+class PlanningPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    style: str
+    guidance: list[str]
+
+
 class StorySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="KOMAQUILL_STORY_",
@@ -56,7 +61,8 @@ class StorySettings(BaseSettings):
         allow_inf_nan=False,
         env_nested_delimiter="__",
     )
-    images: int = Field(ge=1)
+    images: int | Literal["auto"]
+    planning: PlanningPolicy
     max_images: int = Field(ge=1)
     llm_profile: str
     image_profile: str
@@ -70,6 +76,10 @@ class StorySettings(BaseSettings):
 
     @model_validator(mode="after")
     def selected(self) -> Self:
+        if isinstance(self.images, int) and not 1 <= self.images <= self.max_images:
+            raise KomaquillError(
+                code="invalid_story_count", stage="story_planning", retryable=False
+            )
         if self.llm_profile not in self.llm_profiles:
             raise ValueError("The image count or selected LLM profile is invalid.")
         return self
@@ -85,12 +95,27 @@ def settings(project: Project, **overrides: object) -> StorySettings:
     data["llm_profiles"] = {name: dict(value) for name, value in defaults["llm_profiles"].items()}
     for name, value in workspace.get("llm_profiles", {}).items():
         data["llm_profiles"][name] = {**data["llm_profiles"].get(name, {}), **value}
-    for name in StorySettings.model_fields:
-        prefix = f"KOMAQUILL_STORY_{name.upper()}"
-        if prefix in os.environ or any(key.startswith(prefix + "__") for key in os.environ):
-            data.pop(name, None)
-    data.update({key: value for key, value in overrides.items() if value is not None})
-    return StorySettings(**data)
+
+    environment = EnvSettingsSource(StorySettings)()
+    explicit = {key: value for key, value in overrides.items() if value is not None}
+    preliminary = merge_settings(merge_settings(data, environment), explicit)
+    profile = str(preliminary["image_profile"])
+    from komaquill.infrastructure.preset_catalog import catalog
+
+    if profile not in catalog(project.root)["presets"]:
+        raise KomaquillError(code="invalid_configuration", stage="story_planning")
+    local = project.root / "presets" / profile
+    policy_file = (
+        local / "planning.toml"
+        if local.is_dir()
+        else files("komaquill").joinpath(f"resources/presets/{profile}/planning.toml")
+    )
+    policy = defaults["planning"]
+    if policy_file.is_file():
+        policy = merge_settings(policy, tomllib.loads(policy_file.read_text(encoding="utf-8")))
+    data["planning"] = merge_settings(policy, workspace.get("story", {}).get("planning", {}))
+    combined = merge_settings(merge_settings(data, environment), explicit)
+    return StorySettings.model_validate(combined)
 
 
 def instructions(project: Project, settings: StorySettings) -> str:

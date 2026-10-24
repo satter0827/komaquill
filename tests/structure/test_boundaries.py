@@ -139,3 +139,18 @@ def test_browser_modules_use_comfyuis_uncached_javascript_routes():
     for module in modules:
         for relative in re.findall(r'from "(\./[^"]+)"', module.read_text(encoding="utf-8")):
             assert web.joinpath(relative.removeprefix("./")).is_file()
+
+
+def test_test_discovery_and_cache_stay_inside_the_artifact_root():
+    import json
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"][
+        "ini_options"
+    ]
+    assert config["cache_dir"] == ".artifacts/cache/pytest"
+    assert "tests/live" not in config["testpaths"]
+    assert "no:cacheprovider" not in config["addopts"]
+    editor = json.loads((ROOT / ".vscode/settings.json").read_bytes())
+    assert set(editor["python.testing.pytestArgs"]) <= set(config["testpaths"])
+    assert "tests/live" not in editor["python.testing.pytestArgs"]

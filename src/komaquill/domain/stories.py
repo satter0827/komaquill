@@ -76,7 +76,8 @@ class StoryInput(StoryRecord):
     source_name: str
     source_text: str
     source_sha256: str
-    image_count: int = Field(ge=1)
+    image_count: int | Literal["auto"] = "auto"
+    max_images: int | None = Field(default=None, ge=1)
     purpose: Literal["work", "verification"] = "work"
     case_id: str | None = None
 
@@ -91,6 +92,10 @@ class StoryInput(StoryRecord):
 
     @model_validator(mode="after")
     def valid_source(self) -> Self:
+        if isinstance(self.image_count, int) and self.image_count < 1:
+            raise ValueError("The image count must be positive.")
+        if self.image_count == "auto" and self.max_images is None:
+            raise ValueError("Automatic image selection requires an upper bound.")
         if hashlib.sha256(self.source_text.encode("utf-8")).hexdigest() != self.source_sha256:
             raise ValueError("The source checksum does not match.")
         return self
@@ -99,6 +104,13 @@ class StoryInput(StoryRecord):
 class Scene(SceneDraft):
     scene_id: UUID
     position: int = Field(ge=1)
+
+
+class TokenUsage(StoryRecord):
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
 
 
 class PlanningResponse(BaseModel):
@@ -110,6 +122,8 @@ class PlanningResponse(BaseModel):
     content: str
     model: str | None = None
     finish_reason: str | None = None
+    usage: TokenUsage | None = None
+    system_fingerprint: str | None = None
 
 
 class PlanningAttempt(StoryRecord):
@@ -131,11 +145,14 @@ class PlannerProvenance(StoryRecord):
     instruction_sha256: str
     timeout_seconds: float
     max_output_tokens: int
+    repair_attempts: int | None = Field(default=None, ge=0, le=1)
     require_model_match: bool = False
     base_url: str | None = None
     reasoning_effort: str | None = None
     temperature: float | None = None
     app_identity: dict[str, Any] = Field(default_factory=dict)
+    image_profile: str | None = None
+    planning_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class StoryPlan(StoryRecord):
@@ -151,7 +168,7 @@ class StoryPlan(StoryRecord):
 
     @model_validator(mode="after")
     def references(self) -> Self:
-        validate_draft(
+        validate_structure(
             StoryDraft(
                 title=self.title,
                 synopsis=self.synopsis,
@@ -164,9 +181,7 @@ class StoryPlan(StoryRecord):
             ),
             self.request,
         )
-        if [scene.position for scene in self.scenes] != list(
-            range(1, self.request.image_count + 1)
-        ):
+        if [scene.position for scene in self.scenes] != list(range(1, len(self.scenes) + 1)):
             raise ValueError("Scene positions must be consecutive.")
         if len({scene.scene_id for scene in self.scenes}) != len(self.scenes):
             raise ValueError("Scene identifiers must be distinct.")
@@ -201,18 +216,16 @@ class StoryRender(StoryRecord):
         return self
 
 
-def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
-    """Check product invariants in both fake and real model output."""
-    if len(draft.scenes) != request.image_count:
+def validate_structure(draft: StoryDraft, request: StoryInput) -> None:
+    """Validate durable identities without retroactively regrading old content."""
+    if request.image_count == "auto":
+        if request.max_images is None or not 1 <= len(draft.scenes) <= request.max_images:
+            raise ValueError("The selected scene count is outside the allowed range.")
+    elif len(draft.scenes) != request.image_count:
         raise ValueError("The scene count differs from the requested image count.")
-    descriptions = [" ".join(scene.visual_description.split()).casefold() for scene in draft.scenes]
-    if len(set(descriptions)) != len(descriptions):
-        raise ValueError("Every scene must depict a distinct visual moment.")
     keys = [character.key for character in draft.characters]
     if len(set(keys)) != len(keys):
         raise ValueError("Character keys must be distinct.")
-    if {ref for scene in draft.scenes for ref in scene.source_refs} != set(request.paragraphs):
-        raise ValueError("Every source paragraph must be represented by the plan.")
     for scene in draft.scenes:
         if not scene.source_refs or not set(scene.source_refs) <= request.paragraphs.keys():
             raise ValueError("Scene source references are invalid.")
@@ -222,6 +235,28 @@ def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
             raise ValueError("Scene character references are invalid.")
 
 
+def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
+    """Apply current acceptance checks only to newly planned content."""
+    validate_structure(draft, request)
+    if re.search(r"[぀-ヿ㐀-鿿]", request.source_text) and any(
+        not re.search(r"[぀-ヿ㐀-鿿]", scene.narrative) for scene in draft.scenes
+    ):
+        raise ValueError("Write every narrative in Japanese, not English.")
+    visible = [character.appearance for character in draft.characters] + [
+        scene.visual_description for scene in draft.scenes
+    ]
+    if any(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text) for text in visible):
+        raise ValueError("Use English for appearance and visual_description.")
+    descriptions = [" ".join(scene.visual_description.split()).casefold() for scene in draft.scenes]
+    if len(set(descriptions)) != len(descriptions):
+        raise ValueError("Every scene must depict a distinct visual moment.")
+    narratives = [" ".join(scene.narrative.split()) for scene in draft.scenes]
+    if len(set(narratives)) != len(narratives):
+        raise ValueError("Each scene must advance the narrative without repeated prose.")
+    if {ref for scene in draft.scenes for ref in scene.source_refs} != set(request.paragraphs):
+        raise ValueError("Every source paragraph must be represented by the plan.")
+
+
 def image_prompt(plan: StoryPlan, scene: Scene) -> str:
     """Combine scene intent and stable appearance without model-specific quality tags."""
     characters = {character.key: character for character in plan.characters}
@@ -229,5 +264,10 @@ def image_prompt(plan: StoryPlan, scene: Scene) -> str:
         [
             *(characters[key].appearance for key in scene.characters),
             scene.visual_description,
+            *(
+                [str(plan.planner.planning_policy["style"])]
+                if plan.planner.planning_policy.get("style")
+                else []
+            ),
         ]
     )

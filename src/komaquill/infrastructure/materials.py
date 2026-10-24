@@ -11,10 +11,11 @@ from filelock import FileLock, Timeout
 
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.materials import Material
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
-from komaquill.infrastructure.storage import atomic_json, load_session
+from komaquill.infrastructure.storage import load_session
 
 PREFIX = "/komaquill/v1"
 

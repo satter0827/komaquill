@@ -34,6 +34,7 @@ def main(root: Path) -> int:
         state.observed_at = datetime.now(UTC)
         write_monitor(project, state)
     project = project.configured(state.settings)
+    os.environ["KOMAQUILL_OPERATION_ID"] = str(state.operation_id)
     record_event(project, "monitor", "started", operation_id=state.operation_id)
     password = None
     try:

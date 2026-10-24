@@ -23,7 +23,7 @@ from komaquill.infrastructure.asset_store import (
 from komaquill.infrastructure.asset_store import (
     register as register_model,
 )
-from komaquill.infrastructure.storage import atomic_json
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.interfaces.comfyui.preservation import Preservation
 from komaquill.messages import catalog
 

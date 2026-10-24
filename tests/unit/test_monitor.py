@@ -344,8 +344,8 @@ def test_corrupt_monitor_does_not_block_provider_shutdown(project):
 def test_progress_cleanup_failure_does_not_abort_startup(project, session, monkeypatch):
     from pathlib import Path
 
+    from komaquill.infrastructure.atomic import atomic_json
     from komaquill.infrastructure.colab import Colab, Receipt
-    from komaquill.infrastructure.storage import atomic_json
 
     control = Colab(project)
     receipt = Receipt(
@@ -397,3 +397,16 @@ def test_progress_transport_reads_the_file_published_by_the_gpu(project, tmp_pat
 
     monkeypatch.setattr(control, "provider_call", download)
     assert control.progress(receipt) == {"phase": "dependencies", "asset": None}
+
+
+def test_log_follow_does_not_reload_configuration(project, monkeypatch):
+    project.logs.mkdir(parents=True)
+    (project.logs / "cli.jsonl").write_text('{"operation":"first"}\n')
+    stream = supervisor.events(project, True)
+    assert next(stream)["operation"] == "first"
+    (project.root / "komaquill.toml").write_text("invalid [")
+    monkeypatch.setattr(
+        supervisor.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt())
+    )
+    with pytest.raises(KeyboardInterrupt):
+        next(stream)

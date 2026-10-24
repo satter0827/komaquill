@@ -1,6 +1,7 @@
 """Persist evaluations and export bounded evidence for external AI analysis."""
 
 import hashlib
+import io
 import json
 import os
 import sys
@@ -10,14 +11,15 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from filelock import FileLock
+from PIL import Image, UnidentifiedImageError
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.models import JsonObject
 from komaquill.domain.workflow import digest
 from komaquill.infrastructure.asset_store import inventory
+from komaquill.infrastructure.atomic import atomic_json, discard_temporary
 from komaquill.infrastructure.configuration import Project
-from komaquill.infrastructure.storage import atomic_json, discard_temporary
 
 
 class FileEvaluationRepository:
@@ -154,6 +156,13 @@ def image_evidence(project: Project, key: str, metadata: object) -> JsonObject:
             "size_bytes": len(content),
             "observed_at": datetime.now(UTC).isoformat(),
         }
+        try:
+            with Image.open(io.BytesIO(content)) as image:
+                observed.update(width=image.width, height=image.height)
+                image.verify()
+            observed["valid"] = True
+        except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError):
+            observed["valid"] = False
     return {
         "key": key,
         "metadata": stored.model_dump(mode="json") if stored else None,
@@ -173,7 +182,7 @@ def story_associations(project: Project) -> tuple[dict[str, list[JsonObject]], l
         try:
             render = repository.render(UUID(path.parent.name))
             plan = repository.read(render.story_id)
-            if render.plan_sha256 != digest(plan.model_dump(mode="json")):
+            if render.plan_sha256 != digest(plan.model_dump(mode="json", exclude_unset=True)):
                 raise ValueError("The plan changed after rendering.")
             scenes = {scene.scene_id: scene for scene in plan.scenes}
             pending: dict[str, JsonObject] = {}

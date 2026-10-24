@@ -58,10 +58,10 @@ komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 LM Studioの4BモデルとLocal Serverを準備し、UTF-8の原文ファイルを指定します。実モデルの呼び出し許可は操作ごとに必要です。
 
 ```powershell
-komaquill stories generate ./story.txt --images 4 --allow-real-llm
+komaquill stories generate ./story.txt --allow-real-llm
 ```
 
-保存できた場面から本文と画像の保存先を表示します。既定は4枚、1〜8枚に対応します。計画だけの保存、再生成、中断後の再開、構造化出力は[ストーリーの生成](docs/guides/stories.md)を参照してください。画像やブラウザーを自動起動しません。
+保存できた場面から本文と画像の保存先を表示します。`.artifacts/data/stories/README.md`から作品を選び、各生成試行の`story.md`で本文と画像を順番に読めます。枚数は出来事と描画方針から自動で選びます。固定する場合は`--images 4`を指定します。上限は既定で8枚です。計画だけの保存、再生成、中断後の再開、構造化出力は[ストーリーの生成](docs/guides/stories.md)を参照してください。画像やブラウザーを自動起動しません。
 
 ## ComfyUIの画面を使う
 
@@ -118,8 +118,8 @@ komaquill start --backend external --endpoint http://127.0.0.1:8188
 
 | フォルダー | 内容 |
 |---|---|
-| .artifacts/data/stories/ | 原文、計画、生成試行、LLMの可視出力 |
-| .artifacts/data/runs/ | 画像、生成条件、履歴 |
+| .artifacts/data/stories/ | 作品一覧、原文、計画、本文と画像、生成試行、LLMの可視出力 |
+| .artifacts/data/runs/ | 単画像の画像、生成条件、履歴 |
 | .artifacts/data/inputs/ | 入力画像・マスクの版と参照情報 |
 | .artifacts/data/workflows/ | 保存したワークフローと入力の参照情報 |
 | .artifacts/data/models/ | モデルのローカル正本 |
@@ -149,6 +149,6 @@ Google Driveは使いません。モデルはローカルとColabが配布元か
 
 ## 設計と開発資料
 
-[文書の索引](docs/README.md)から、目的・要件、実装済み設計、操作・開発・運用、検証結果、今後の計画を参照できます。日本語ストーリーからのLLM連携は未実装です。
+[文書の索引](docs/README.md)から、目的・要件、実装済み設計、操作・開発・運用、検証結果、今後の計画を参照できます。CLIと同じ処理をPythonから利用する方法は[公開API](docs/guides/python-api.md)を参照してください。
 
 生成履歴をAIで比較・分析する出力と評価の登録は[評価の操作](docs/guides/evaluations.md)を参照してください。自動評価や外部送信は行いません。

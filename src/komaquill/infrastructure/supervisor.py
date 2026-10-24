@@ -27,6 +27,7 @@ from komaquill.infrastructure.monitor_state import (
     request_cancel,
     write_monitor,
 )
+from komaquill.infrastructure.sessions.connection import session_project
 from komaquill.infrastructure.storage import load_session
 from komaquill.infrastructure.views import open_view
 from komaquill.messages import message
@@ -100,7 +101,7 @@ def wait_ready(project: Project, operation_id: object, echo: Callable[[str], Non
             if time.monotonic() >= deadline:
                 request_cancel(project, state.operation_id, False)
                 raise KomaquillError(display_key="monitor.timeout", code="operation_failed")
-            time.sleep(project.settings().poll_interval)
+            time.sleep(state.settings.poll_interval)
         except KeyboardInterrupt:
             state = read_monitor(project)
             if state is not None:
@@ -117,6 +118,8 @@ def start(
     open_browser: bool,
     echo: Callable[[str], None],
     foreground: Callable[[Path], int] | None = None,
+    *,
+    interactive_auth: bool = True,
 ) -> None:
     """Reuse an identical active supervisor or start exactly one new worker."""
     project = project.configured()
@@ -139,7 +142,10 @@ def start(
             if prior is not None and prior.phase not in TERMINAL_PHASES:
                 record_event(project, "monitor", "lost", runtime_id=prior.runtime_id)
             if backend == "colab":
-                authenticate(project)
+                if interactive_auth:
+                    authenticate(project)
+                else:
+                    Colab(project).provider_call("identity")
             state = MonitorState(
                 operation_id=uuid4(),
                 backend=backend,
@@ -215,6 +221,7 @@ def stop(project: Project, force: bool, echo: Callable[[str], None]) -> bool:
 def events(project: Project, follow: bool) -> Iterator[dict[str, object]]:
     """Read new JSON events without printing unknown keys or exception payloads."""
     offsets: dict[Path, int] = {}
+    interval = session_project(project).settings().poll_interval if follow else 0.0
     while True:
         for path in sorted((project.logs).glob("**/*.jsonl")):
             if path.name not in {"cli.jsonl", "events.jsonl", "worker-events.jsonl"}:
@@ -231,4 +238,4 @@ def events(project: Project, follow: bool) -> Iterator[dict[str, object]]:
                 offsets[path] = handle.tell()
         if not follow:
             break
-        time.sleep(project.settings().poll_interval)
+        time.sleep(interval)

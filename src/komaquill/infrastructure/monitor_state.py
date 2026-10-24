@@ -10,8 +10,8 @@ from filelock import FileLock
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.monitor import MonitorState
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.paths import WorkspacePaths
-from komaquill.infrastructure.storage import atomic_json
 
 PID_TIME_TOLERANCE = 0.01
 TERMINAL_PHASES = frozenset({"stopped", "failed"})

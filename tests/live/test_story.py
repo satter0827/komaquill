@@ -7,7 +7,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 @pytest.mark.parametrize("count", [1, 4, 8])
 def test_real_4b_story_plan(count):
     project = find_project(Path(os.environ["KOMAQUILL_PROJECT_DIR"]))
-    report = project.root / ".artifacts" / "records/reports/story-generation"
+    report = project.reports / "story-generation" / uuid4().hex
     report.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env.update(KOMAQUILL_STORY_PURPOSE="verification", KOMAQUILL_STORY_CASE_ID="rainy-cat")

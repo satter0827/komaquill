@@ -190,7 +190,7 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
 
 
 def test_bindings_are_scoped_to_the_verified_runtime(coordinator, session):
-    from komaquill.infrastructure.storage import atomic_json
+    from komaquill.infrastructure.atomic import atomic_json
 
     control, client = coordinator
     atomic_json(control.project.session_file, session.model_dump(mode="json"))

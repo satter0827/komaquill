@@ -108,7 +108,7 @@ def test_collection_failure_stops_new_scenes_and_can_be_retried(project, session
     assert stub.submissions == 4
 
 
-def test_two_renderers_and_changed_conditions_are_rejected(project, session, client):
+def test_two_renderers_and_changed_resources_are_rejected(project, session, client):
     repository, plan = planned(project)
     active = bound(project, session)
     render = create_render(repository, project, active, plan.request.story_id, "pony")
@@ -126,8 +126,26 @@ def test_two_renderers_and_changed_conditions_are_rejected(project, session, cli
             )
         }
     )
+    assert render_story(repository, project, client, changed, render.render_id)["complete"]
+    for run in project.repository.load():
+        graph = json.loads(project.artifacts_store.read(f"runs/{run.run_id}/workflow-api.json"))
+        assert graph["3"]["inputs"]["steps"] == active.settings.presets["pony"].steps
+    changed_resource = changed.model_copy(
+        update={
+            "settings": changed.settings.model_copy(
+                update={
+                    "assets": {
+                        **changed.settings.assets,
+                        "pony": changed.settings.assets["pony"].model_copy(
+                            update={"sha256": "0" * 64}
+                        ),
+                    }
+                }
+            )
+        }
+    )
     with pytest.raises(KomaquillError):
-        render_story(repository, project, client, changed, render.render_id)
+        render_story(repository, project, client, changed_resource, render.render_id)
     with pytest.raises(KomaquillError):
         create_render(repository, project, active, plan.request.story_id, "missing")
     with pytest.raises(KomaquillError):
@@ -162,11 +180,7 @@ def test_wrong_story_reference_and_corrupted_render_are_not_hidden(project, sess
     with pytest.raises(KomaquillError):
         story_view(repository, project, other.request.story_id, render.render_id)
     file = (
-        repository.root
-        / str(plan.request.story_id)
-        / "renders"
-        / str(render.render_id)
-        / "render.json"
+        repository.folder(plan.request.story_id) / "renders" / str(render.render_id) / "render.json"
     )
     data = json.loads(file.read_bytes())
     data["render_id"] = str(uuid4())

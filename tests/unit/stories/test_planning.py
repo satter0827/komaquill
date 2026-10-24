@@ -40,7 +40,7 @@ def test_fake_plans_are_coherent_and_immutable(project, count):
 
 
 @pytest.mark.parametrize(
-    "fault", ["json", "count", "character", "source", "blank", "coverage", "duplicate"]
+    "fault", ["json", "count", "character", "source", "blank", "coverage", "duplicate", "language"]
 )
 def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     repository = FileStoryRepository(project)
@@ -52,7 +52,9 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
         .read_text(encoding="utf-8")
     )
     broken = json.loads(valid)
-    if fault == "count":
+    if fault == "language":
+        broken["scenes"][0]["narrative"] = "Mio covers the kitten with her umbrella."
+    elif fault == "count":
         broken["scenes"].pop()
     elif fault == "character":
         broken["scenes"][0]["characters"] = ["unknown"]
@@ -68,9 +70,9 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     actual = LangChainPlanner(base.provenance, model)
     value = request()
     result = plan_story(repository, actual, value, max_images=8)
-    attempts = list((repository.root / str(value.story_id) / "planning").glob("*.json"))
+    attempts = list((repository.folder(value.story_id) / "planning").glob("*.json"))
     assert result.request == value and len(attempts) == 2
-    first = json.loads((repository.root / str(value.story_id) / "planning/01.json").read_bytes())
+    first = json.loads((repository.folder(value.story_id) / "planning/01.json").read_bytes())
     assert first["failure"]["code"] == "story_plan_invalid"
     with pytest.raises(KomaquillError):
         from komaquill.domain.stories import PlanningAttempt
@@ -87,7 +89,7 @@ def test_repair_budget_does_not_loop_over_cycling_fake(project):
     with pytest.raises(KomaquillError) as error:
         plan_story(repository, LangChainPlanner(base.provenance, model), value, max_images=8)
     assert error.value.code == "story_plan_invalid" and model.i == 2
-    assert not (repository.root / str(value.story_id) / "plan.json").exists()
+    assert not (repository.folder(value.story_id) / "plan.json").exists()
 
 
 def test_real_permission_and_limits_are_checked_before_writes(project):
@@ -120,9 +122,7 @@ def test_truncation_is_recorded_without_silent_scene_loss(project):
     value = request()
     with pytest.raises(KomaquillError):
         plan_story(repository, Truncated(), value, max_images=8, repair_attempts=0)
-    attempt = json.loads(
-        next((repository.root / str(value.story_id)).rglob("01.json")).read_bytes()
-    )
+    attempt = json.loads(next((repository.folder(value.story_id)).rglob("01.json")).read_bytes())
     assert attempt["response"]["finish_reason"] == "length"
 
 
@@ -153,15 +153,13 @@ def test_fake_rejects_unrelated_source_and_backend_failure_is_recorded(project):
     with pytest.raises(KomaquillError) as error:
         plan_story(repository, base, value, max_images=8)
     assert error.value.code == "fake_story_mismatch"
-    attempt = json.loads(
-        next((repository.root / str(value.story_id)).rglob("01.json")).read_bytes()
-    )
+    attempt = json.loads(next((repository.folder(value.story_id)).rglob("01.json")).read_bytes())
     assert attempt["failure"]["code"] == "fake_story_mismatch"
 
 
 def test_plan_checksum_prevents_later_manual_edits(project):
     repository, result = planned(project)
-    path = repository.root / str(result.request.story_id) / "plan.json"
+    path = repository.folder(result.request.story_id) / "plan.json"
     data = json.loads(path.read_bytes())
     data["plan"]["title"] = "Changed"
     path.write_text(json.dumps(data), encoding="utf-8")

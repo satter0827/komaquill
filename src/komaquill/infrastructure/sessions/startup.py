@@ -14,6 +14,7 @@ from komaquill.application.generation import (
 )
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import Session
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, check_port
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
@@ -34,7 +35,7 @@ from komaquill.infrastructure.sessions.connection import (
 )
 from komaquill.infrastructure.sessions.monitor import supervise
 from komaquill.infrastructure.sessions.shutdown import finish_colab, finish_external
-from komaquill.infrastructure.storage import atomic_json, load_session
+from komaquill.infrastructure.storage import load_session
 from komaquill.infrastructure.workflows import assets
 from komaquill.messages import message
 

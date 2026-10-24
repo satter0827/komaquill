@@ -7,8 +7,8 @@ from urllib.parse import urlencode
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Session
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
-from komaquill.infrastructure.storage import atomic_json
 from komaquill.infrastructure.workflows import prepare, select
 from komaquill.messages import message
 

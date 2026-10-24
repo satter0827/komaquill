@@ -6,10 +6,10 @@ from contextlib import contextmanager
 import pytest
 from typer.testing import CliRunner
 
+from komaquill.api import stories
 from komaquill.application.stories.rendering import create_render
 from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure.stories.storage import FileStoryRepository
-from komaquill.interfaces import stories
 from komaquill.interfaces.cli import app
 from tests.support.stories import planned, source
 
@@ -98,7 +98,9 @@ def test_generate_refuses_missing_gpu_before_calling_planner(project, cli_story,
         yield
 
     monkeypatch.setattr(stories, "connected", disconnected)
-    monkeypatch.setattr(stories, "make_plan", lambda *args: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(
+        stories.StoryService, "_plan", lambda *args: (_ for _ in ()).throw(AssertionError())
+    )
     result = invoke("generate", file, "--llm-profile", "fake")
     assert result.exit_code == 1
     assert not FileStoryRepository(project).root.exists()
@@ -122,16 +124,17 @@ def test_interrupt_and_partial_failure_have_clear_exit_status(
     def interrupt(*args, **kwargs):
         raise KeyboardInterrupt
 
-    original = stories.render_story
-    monkeypatch.setattr(stories, "render_story", interrupt)
+    original = stories.render_events
+    monkeypatch.setattr(stories, "render_events", interrupt)
     result = invoke("generate", file, "--llm-profile", "fake")
     assert result.exit_code == 130 and "resume" in result.output
-    monkeypatch.setattr(stories, "render_story", original)
+    monkeypatch.setattr(stories, "render_events", original)
 
-    def incomplete(*args, **kwargs):
-        return {"complete": False}
+    def incomplete(repository, workspace, backend, session, render_id, **kwargs):
+        render = repository.render(render_id)
+        yield stories.story_view(repository, workspace, render.story_id, render_id)
 
-    monkeypatch.setattr(stories, "render_story", incomplete)
+    monkeypatch.setattr(stories, "render_events", incomplete)
     result = invoke("generate", file, "--llm-profile", "fake")
     assert result.exit_code == 1 and "not saved" in result.output
 
@@ -181,7 +184,9 @@ def test_generate_rejects_unavailable_devices_without_planning(
         "json",
         lambda route: {"devices": devices} if route == "/system_stats" else original(route),
     )
-    monkeypatch.setattr(stories, "make_plan", lambda *args: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(
+        stories.StoryService, "_plan", lambda *args: (_ for _ in ()).throw(AssertionError())
+    )
     result = invoke("generate", file, "--llm-profile", "fake")
     assert result.exit_code == 1 and "GPU" in result.output
 
@@ -192,7 +197,7 @@ def test_collection_error_always_identifies_rendering_and_resume_command(cli_sto
     def failure(*args, **kwargs):
         raise KomaquillError(code="collection_failed")
 
-    monkeypatch.setattr(stories, "render_story", failure)
+    monkeypatch.setattr(stories, "render_events", failure)
     result = invoke("generate", file, "--llm-profile", "fake", "--json")
     assert result.exit_code == 1 and result.stdout == ""
     assert "Rendering:" in result.stderr and "stories resume" in result.stderr

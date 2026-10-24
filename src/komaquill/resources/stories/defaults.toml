@@ -1,5 +1,5 @@
 # Local planning defaults; these values are not GPU runtime settings.
-images = 4
+images = "auto"
 max_images = 8
 llm_profile = "lmstudio-4b"
 image_profile = "pony"
@@ -19,3 +19,7 @@ temperature = 0.3
 [llm_profiles.fake]
 provider = "fake"
 model = "fake-list"
+
+[planning]
+style = "simple illustration, consistent colors and lighting"
+guidance = ["One still moment with a clear focal subject.", "Use prose to connect events that are difficult to draw.", "Keep necessary relationships; simplify poses, not the plot."]

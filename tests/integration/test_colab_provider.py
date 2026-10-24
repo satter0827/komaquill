@@ -12,8 +12,8 @@ from komaquill.application.lifecycle import ShutdownActions, shutdown
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import RuntimeObservation
 from komaquill.infrastructure import colab_bridge as bridge
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
-from komaquill.infrastructure.storage import atomic_json
 
 SUBJECT = hashlib.sha256(b"account-subject").hexdigest()
 

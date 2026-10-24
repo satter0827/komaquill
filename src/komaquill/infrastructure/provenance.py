@@ -42,6 +42,7 @@ def package_contents() -> Iterator[tuple[str, bytes]]:
                 yield "komaquill/" + relative, item.read_bytes()
 
     yield from modules(anchor)
+    yield "komaquill/py.typed", anchor.joinpath("py.typed").read_bytes()
     for item in sorted(
         anchor.joinpath("interfaces/comfyui/web").iterdir(), key=lambda row: row.name
     ):
@@ -96,6 +97,8 @@ GPU_MODULES = frozenset(
         "infrastructure/configuration.py",
         "infrastructure/paths.py",
         "infrastructure/storage.py",
+        "infrastructure/atomic.py",
+        "infrastructure/locations.py",
         "infrastructure/artifacts.py",
         "infrastructure/diagnostics.py",
         "infrastructure/downloads.py",
@@ -111,6 +114,7 @@ def gpu_contents() -> Iterator[tuple[str, bytes]]:
     entries = [
         (name, content)
         for name, content in package_contents()
+        if not name.endswith("/planning.toml")
         if name.removeprefix("komaquill/") in GPU_MODULES
         or name.startswith("komaquill/interfaces/comfyui/web/")
         or (

@@ -23,12 +23,12 @@ from pydantic import BaseModel
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
 from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.paths import GpuPaths
 from komaquill.infrastructure.provenance import source_revision
-from komaquill.infrastructure.storage import atomic_json
 
 COLAB_CLI_VERSION = "0.7.5"
 PROCESS_EXIT_GRACE = 3.0
@@ -339,6 +339,8 @@ class Colab:
             "os.environ['KOMAQUILL_SOURCE_REVISION'] = manifest.get('source_revision') or ''\n"
             "os.environ['KOMAQUILL_CODE_SHA256'] = manifest['code_sha256']\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
+            "os.environ['KOMAQUILL_OPERATION_ID'] = "
+            f"{os.environ.get('KOMAQUILL_OPERATION_ID', '')!r}\n"
             "sys.path.insert(0, root)\n"
             "from komaquill.infrastructure.paths import GpuPaths\n"
             "from pathlib import Path\n"
@@ -475,15 +477,17 @@ class Colab:
             if (folder / name).is_file():
                 item["size_bytes"] = (folder / name).stat().st_size
             files[name] = item
-        atomic_json(
-            capture,
-            {
-                "captured_at": datetime.now(UTC).isoformat(),
-                "runtime_id": str(receipt.runtime_id),
-                "files": files,
-                "failed": failed,
-            },
-        )
+        snapshot = {
+            "captured_at": datetime.now(UTC).isoformat(),
+            "runtime_id": str(receipt.runtime_id),
+            "files": files,
+            "failed": failed,
+        }
+        with FileLock(str(folder / ".capture.lock")):
+            atomic_json(capture, snapshot)
+            with (folder / "captures.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"capture_id": uuid4().hex, **snapshot}) + "\n")
+                handle.flush()
         record_event(
             self.project,
             "log_collection",

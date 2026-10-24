@@ -2,7 +2,7 @@
 
 import secrets
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -31,7 +31,7 @@ def create_render(
     initial_seed = seed if seed is not None else secrets.randbits(63)
     render = StoryRender(
         story_id=story_id,
-        plan_sha256=digest(plan.model_dump(mode="json")),
+        plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),
         image_profile=image_profile,
         settings=settings,
         scenes=[
@@ -49,11 +49,10 @@ def compatible(plan: StoryPlan, render: StoryRender, session: Session) -> None:
     expected = render.settings
     profile = render.image_profile
     if (
-        digest(plan.model_dump(mode="json")) != render.plan_sha256
+        digest(plan.model_dump(mode="json", exclude_unset=True)) != render.plan_sha256
         or [scene.scene_id for scene in plan.scenes] != [scene.scene_id for scene in render.scenes]
         or current is None
         or profile not in current.profiles
-        or current.presets[profile] != expected.presets[profile]
         or any(
             current.assets.get(name) != expected.assets[name]
             for name in expected.presets[profile].asset_ids
@@ -90,7 +89,7 @@ def story_view(
     if render is not None and render.story_id != story_id:
         raise KomaquillError(code="invalid_request", stage="story_rendering")
     if render is not None and (
-        digest(plan.model_dump(mode="json")) != render.plan_sha256
+        digest(plan.model_dump(mode="json", exclude_unset=True)) != render.plan_sha256
         or [scene.scene_id for scene in plan.scenes] != [scene.scene_id for scene in render.scenes]
     ):
         raise KomaquillError(code="storage_failed", stage="story_rendering")
@@ -140,7 +139,8 @@ def story_view(
             "text": plan.request.source_text,
             "sha256": plan.request.source_sha256,
         },
-        "image_count": plan.request.image_count,
+        "image_count": len(plan.scenes),
+        "requested_images": plan.request.image_count,
         "purpose": plan.request.purpose,
         "case_id": plan.request.case_id,
         "planner": {
@@ -152,13 +152,13 @@ def story_view(
         "supplements": plan.supplements,
         "image_profile": render.image_profile if render else None,
         "updated_at": max(updated).isoformat(),
-        "complete": counts.get("saved", 0) == plan.request.image_count,
+        "complete": counts.get("saved", 0) == len(plan.scenes),
         "counts": counts,
         "scenes": scenes,
     }
 
 
-def render_story(
+def render_events(
     repository: StoryRepository,
     workspace: Workspace,
     client: GenerationBackend,
@@ -166,8 +166,7 @@ def render_story(
     render_id: UUID,
     *,
     retry_failed: bool = False,
-    notify: Callable[[JsonObject], None] | None = None,
-) -> JsonObject:
+) -> Iterator[JsonObject]:
     """Keep one in-flight scene and preserve links before any submission."""
     with repository.claim(render_id) as acquired:
         if not acquired:
@@ -208,17 +207,34 @@ def render_story(
                         render.image_profile,
                         run_id=link.run_ids[-1],
                     )
-                if notify:
-                    notify(story_view(repository, bound, render.story_id, render_id))
+                yield story_view(repository, bound, render.story_id, render_id)
                 if run.state != "saved":
                     wait_generation(bound, client, bound_session, run.run_id)
             except KomaquillError:
                 current = latest_run(bound, link)
-                if notify:
-                    notify(story_view(repository, bound, render.story_id, render_id))
+                yield story_view(repository, bound, render.story_id, render_id)
                 if current is None or current.state != "failed":
                     raise
             else:
-                if notify:
-                    notify(story_view(repository, bound, render.story_id, render_id))
-        return story_view(repository, bound, render.story_id, render_id)
+                yield story_view(repository, bound, render.story_id, render_id)
+        yield story_view(repository, bound, render.story_id, render_id)
+
+
+def render_story(
+    repository: StoryRepository,
+    workspace: Workspace,
+    client: GenerationBackend,
+    session: Session,
+    render_id: UUID,
+    *,
+    retry_failed: bool = False,
+    notify: Callable[[JsonObject], None] | None = None,
+) -> JsonObject:
+    """Consume the shared iterator for callers that need a final snapshot."""
+    result: JsonObject = {}
+    for result in render_events(
+        repository, workspace, client, session, render_id, retry_failed=retry_failed
+    ):
+        if notify:
+            notify(result)
+    return result

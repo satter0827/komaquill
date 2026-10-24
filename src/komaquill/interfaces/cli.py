@@ -1,6 +1,5 @@
 """Operate ComfyUI from the terminal."""
 
-import secrets
 import subprocess
 import tomllib
 from collections.abc import Iterator
@@ -14,16 +13,16 @@ import keyring
 import typer
 from pydantic import ValidationError
 
-from komaquill.application.generation import Collection, collect, generate, verify_runtime
+from komaquill.api import Client
+from komaquill.application.generation import Collection, verify_runtime
 from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.models import Session
-from komaquill.infrastructure import inspection, supervisor
+from komaquill.infrastructure import supervisor
 from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
+from komaquill.infrastructure.diagnostics import operation_scope
 from komaquill.infrastructure.downloads import fetch_model
-from komaquill.infrastructure.materials import MaterialCollector
-from komaquill.infrastructure.preparation import capabilities
-from komaquill.infrastructure.sessions import connection, shutdown
+from komaquill.infrastructure.sessions import connection
 from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import run_dir
 from komaquill.infrastructure.views import open_view
@@ -72,6 +71,27 @@ def init_command(
     typer.echo(message("text.workspace_initialized_root", root=project.root))
 
 
+@app.command("migrate", help=message("storage.migrate_help"))
+def migrate_command(
+    ctx: typer.Context,
+    dry_run: Annotated[bool, typer.Option(help=message("storage.migrate_preview"))] = False,
+    json_output: Annotated[bool, typer.Option("--json", help=message("stories.json_help"))] = False,
+) -> None:
+    with operation(ctx) as project:
+        result = Client(project.root).migrate(dry_run=dry_run)
+        if json_output:
+            typer.echo(result.model_dump_json())
+        else:
+            typer.echo(
+                message(
+                    "storage.migrate_result",
+                    files=result.files,
+                    logical_bytes=result.logical_bytes,
+                    status=result.status,
+                )
+            )
+
+
 @app.callback(help=APP_HELP)
 def main(
     ctx: typer.Context,
@@ -97,7 +117,8 @@ def main(
 def operation(ctx: typer.Context) -> Iterator[Project]:
     """Report safe operational errors without credential-bearing tracebacks."""
     try:
-        yield find_project(ctx.obj)
+        with operation_scope():
+            yield find_project(ctx.obj)
     except (
         KomaquillError,
         ValidationError,
@@ -113,7 +134,7 @@ def operation(ctx: typer.Context) -> Iterator[Project]:
         )
         typer.echo(user_message, err=True)
         raise typer.Exit(1) from None
-    except typer.Exit:
+    except (typer.Exit, typer.BadParameter):
         raise
     except Exception as exc:
         from komaquill.domain.errors import failure_info
@@ -176,10 +197,6 @@ def start(
 ) -> None:
     """Maintain the connection and automatic collection until interrupted."""
     with operation(ctx) as project:
-        settings = project.settings()
-        if profile:
-            settings = type(settings).model_validate({**settings.model_dump(), "profiles": profile})
-        project = project.configured(settings)
         password = None
         if backend == "external" and endpoint is not None:
             Session(endpoint=endpoint, backend="external", runtime_id=uuid4(), username=username)
@@ -195,14 +212,15 @@ def start(
             )
         from komaquill.interfaces.session_worker import main as session_main
 
-        supervisor.start(
-            project,
-            backend,
-            endpoint,
-            username,
-            open_browser,
-            typer.echo,
-            session_main if foreground else None,
+        Client(project.root).sessions.start(
+            backend=backend,
+            endpoint=endpoint,
+            username=username,
+            profiles=profile,
+            open_browser=open_browser,
+            progress=typer.echo,
+            foreground=session_main if foreground else None,
+            interactive_auth=True,
         )
 
 
@@ -219,7 +237,7 @@ def generate_command(
     profile: Annotated[str | None, typer.Option(help=message("profile.select_help"))] = None,
 ) -> None:
     """Generate an image and save its conditions."""
-    with operation(ctx) as project, connected(project) as (client, session):
+    with operation(ctx) as project:
         text = (
             prompt
             if prompt is not None
@@ -228,14 +246,8 @@ def generate_command(
         if not text.strip():
             raise KomaquillError(display_key="text.enter_a_nonempty_image_description")
         typer.echo(message("text.generating_the_image"))
-        run = generate(
-            project,
-            client,
-            session,
-            text,
-            negative,
-            seed if seed is not None else secrets.randbits(63),
-            profile,
+        run = Client(project.root).images.generate(
+            text, negative=negative, seed=seed, profile=profile
         )
         typer.echo(message("text.saved_directory", directory=run_dir(project, run.run_id)))
 
@@ -245,18 +257,8 @@ def collect_command(
     ctx: typer.Context, run_id: Annotated[UUID | None, typer.Argument()] = None
 ) -> None:
     """Collect completed images and generation conditions."""
-    with operation(ctx) as project, connected(project) as (client, session):
-        result = collect(project, client, session, run_id)
-        if capabilities(client):
-            material_errors = MaterialCollector(project, client).collect()
-            result = Collection(
-                result.saved,
-                result.pending,
-                result.failed,
-                (*result.errors, *material_errors),
-                result.pending_ids,
-            )
-        report(result)
+    with operation(ctx) as project:
+        report(Client(project.root).images.collect(run_id))
 
 
 @app.command("open", help=message("text.open_a_comfyui_view_in_the_browser"))
@@ -318,7 +320,7 @@ def doctor(ctx: typer.Context) -> None:
 def status(ctx: typer.Context) -> None:
     """Display runtime, monitor and collection state."""
     with operation(ctx) as project:
-        state = inspection.inspect(project)
+        state = Client(project.root).sessions.status()
         gpu_keys = {
             "absent": "text.colab_no_owned_runtime",
             "active": "text.colab_active",
@@ -385,8 +387,7 @@ def stop(
 ) -> None:
     """Stop the owned runtime after collecting available results."""
     with operation(ctx) as project:
-        if not supervisor.stop(project, force, typer.echo):
-            shutdown.stop(project, force, typer.echo)
+        Client(project.root).sessions.stop(force=force, progress=typer.echo)
 
 
 @app.command("logs", help=message("monitor.logs_help"))

@@ -76,6 +76,16 @@ logs/ランタイムID/capture.jsonで、ログごとの取得結果と最終成
 
 日常ゲートではFakeListLLMと擬似ComfyUIで1・4・8枚、順次保存、部分失敗、二重実行、中断、再開、別条件での再生成を検査します。LLMアダプターの検査はlocalhostの擬似APIだけを使います。外部トレースの環境変数が有効でも送信しないこと、任意のキーや許可変数があっても日常ゲートから実モデルを呼ばないことを確認します。
 
-実4Bの確認はKOMAQUILL_REAL_LLM=1、KOMAQUILL_PROJECT_DIRを明示し、tests/live/test_story.py::test_real_4b_story_planを実行します。この入口はCLIへ--allow-real-llmを渡し、1・4・8場面の計画を作ります。原文の出来事と結末、補足の区別は保存済みの計画を読んで確認します。
+実4Bの確認はKOMAQUILL_REAL_LLM=1、KOMAQUILL_PROJECT_DIRを明示し、tests/live/test_story_comparison.py::test_real_4b_fixed_and_autoを実行します。この入口は公開APIへallow_real_llmを渡し、複数の短い物語を固定4枚と自動枚数で比較します。結果は実行ごとに新しいフォルダーへ保全し、原文ハッシュ・条件・使用量・全呼び出し回数・所要時間を記録します。原文の出来事と結末、補足の区別は保存済みの計画を読んで確認します。
 
 4場面の保存済み計画を用意してからT4を1セッション起動します。stories renderで生成し、全場面の完了前に最初の画像と本文を確認できることを確かめます。KOMAQUILL_STORY_RENDERに試行IDを指定したtests/live/test_story.py::test_real_story_saved_imagesで対応と実ファイルのハッシュを照合します。通常終了後にGPU・監視・SSH・待ち受けの終了を確認します。実機用の環境変数を日常の端末へ残さないでください。
+
+
+## テストの配置と公開API
+
+単体はtests/unit、複数の境界を通す検査はtests/integration、依存・配布・入口の構造はtests/structure、隔離導入はtests/e2eへ置きます。各分類内は機能単位で整理します。tests/liveは既定のpytest実行とVS Codeの検出対象へ含めません。
+
+隔離wheelではGitのない作業場所からClientとCLIを使い、本文・画像・履歴の対応を確認します。利用側コードのstrict mypy、py.typed、追加依存なしのimportとヘルプ、GPU用部分パッケージの単独importも検査します。importは通信・認証・ファイル作成・プロセス起動を行いません。
+
+
+実4Bの比較記録は、成功と拒否の両方で作成します。件数、成功率、全呼び出しの使用量、成功した計画1件当たりの総量を分けます。途中で残せなかった計測値は不明とし、保存済み原本から観測を補う場合はその根拠を別に記載します。代表例を個別実行する場合はpytestの完全なnode IDを指定します。

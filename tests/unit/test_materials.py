@@ -11,7 +11,7 @@ import pytest
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.materials import Material
 from komaquill.infrastructure import materials as module
-from komaquill.infrastructure.storage import atomic_bytes, atomic_json
+from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 
 
 def material(content=b"image", **changes):

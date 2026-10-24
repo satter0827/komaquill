@@ -52,3 +52,23 @@ def test_instruction_override_is_utf8_and_snapshotted(project):
     file.write_text(" ", encoding="utf-8")
     with pytest.raises(KomaquillError):
         instructions(project, options)
+
+
+def test_nested_environment_keeps_profile_defaults_and_other_profiles(project, monkeypatch):
+    monkeypatch.setenv("KOMAQUILL_STORY_LLM_PROFILES__LMSTUDIO-4B__TEMPERATURE", "0.1")
+    configured = settings(project)
+    assert configured.llm_profiles["lmstudio-4b"].temperature == 0.1
+    assert configured.llm_profiles["lmstudio-4b"].provider == "openai-compatible"
+    assert "fake" in configured.llm_profiles
+
+
+def test_runtime_profile_leaf_override_preserves_model_and_workflow(project, monkeypatch):
+    defaults = project.settings()
+    (project.root / "komaquill.toml").write_text("[presets.pony]\nsteps=31\n", encoding="utf-8")
+    monkeypatch.setenv("KOMAQUILL_PRESETS__PONY__CFG", "5.5")
+    configured = project.settings()
+    assert configured.presets["pony"].steps == 31
+    assert configured.presets["pony"].cfg == 5.5
+    assert configured.presets["pony"].api == defaults.presets["pony"].api
+    assert configured.assets == defaults.assets
+    assert configured.presets["pony-preview"] == defaults.presets["pony-preview"]

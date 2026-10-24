@@ -40,6 +40,8 @@ class ErrorCode(StrEnum):
     RUNTIME_ENDED = "runtime_ended"
     SHUTDOWN_TIMEOUT = "shutdown_timeout"
     STOPPING = "stopping"
+    PUBLICATION_FAILED = "publication_failed"
+    MIGRATION_REQUIRED = "migration_required"
     STORAGE_FAILED = "storage_failed"
     SUBMISSION_UNKNOWN = "submission_unknown"
     UNSUPPORTED_ASSET = "unsupported_asset"

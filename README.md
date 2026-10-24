@@ -60,7 +60,7 @@ komaquill open --view app
 komaquill open --view graph
 ```
 
-appは画像説明と結果を表示するApp Mode、graphは標準ノードを編集するNode Graphです。どちらも同じ接続とGPUを使い、openではGPUを追加確保しません。画面からの生成もstartが実際に実行されたグラフとともに自動保存します。標準の画像・マスクのアップロードとSaveしたワークフローも保全します。未保存の編集内容は対象外です。保存と復元の範囲は[素材の保全](docs/preservation.md)を参照してください。openはブラウザーを起動したら端末へ戻ります。
+appは画像説明と結果を表示するApp Mode、graphは標準ノードを編集するNode Graphです。どちらも同じ接続とGPUを使い、openではGPUを追加確保しません。画面からの生成もstartが実際に実行されたグラフとともに自動保存します。標準の画像・マスクのアップロードとSaveしたワークフローも保全します。未保存の編集内容は対象外です。保存と復元の範囲は[素材の保全](docs/guides/preservation.md)を参照してください。openはブラウザーを起動したら端末へ戻ります。
 
 VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen GeneratorやGenerate Imageを選びます。Open GeneratorはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。どの入口も同じCLIと品質ゲートを呼び出します。
 
@@ -84,7 +84,7 @@ komaquill open --view graph --profile pony-upscale
 komaquill generate --profile pony-preview --prompt "a sunny forest"
 ```
 
-公開テンプレートの不足モデルは、画面のPrepare Workflowまたは`komaquill prepare ./workflow.json`で準備できます。モデル名・容量・取得元を確認してから取得します。詳細は[ワークフローの準備](docs/preparation.md)を参照してください。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/presets.md)を参照してください。
+公開テンプレートの不足モデルは、画面のPrepare Workflowまたは`komaquill prepare ./workflow.json`で準備できます。モデル名・容量・取得元を確認してから取得します。詳細は[ワークフローの準備](docs/guides/preparation.md)を参照してください。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/current/presets.md)を参照してください。
 
 ## 状態確認と終了
 
@@ -126,8 +126,16 @@ Google Driveは使いません。モデルはローカルとColabが配布元か
 
 ## 詳細
 
-- [操作と障害対応](docs/usage.md)
-- [構成と設定](docs/architecture.md)
+- [操作と障害対応](docs/guides/usage.md)
+- [構成と設定](docs/current/architecture.md)
 - [開発への参加](CONTRIBUTING.md)
-- [開発とリリース](docs/development.md)
-- [検証手順](docs/validation.md)
+- [開発とリリース](docs/development/workflow.md)
+- [検証手順](docs/verification/strategy.md)
+
+## 生成物を整理する
+
+セッションの停止後、`komaquill clean --dry-run`で候補を確認し、`komaquill clean`で整理します。作品・資源はdata、ログ・検証記録はrecordsとして保持します。所有・復旧に必要なstateと実行環境runtimeも削除しません。[削除範囲](docs/operations/artifacts.md)と[バックアップ](docs/operations/backup.md)を確認してください。
+
+## 設計と開発資料
+
+[文書の索引](docs/README.md)から、目的・要件、実装済み設計、操作・開発・運用、検証結果、今後の計画を参照できます。日本語ストーリーからのLLM連携は未実装です。

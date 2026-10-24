@@ -41,3 +41,38 @@ status = "planned"
 acceptance = ["絵コンテ・人物・場面・モデル別プロンプトを構成する"]
 sources = []
 tests = []
+
+[requirements.REQ-SESSION]
+summary = "端末終了後も一つの監視で接続と回収を維持する"
+status = "implemented"
+acceptance = ["二重起動とPID再利用を識別する", "起動時の検証済み設定を共有する"]
+sources = ["src/komaquill/infrastructure/supervisor.py", "src/komaquill/infrastructure/sessions/startup.py"]
+tests = ["tests/unit/test_monitor.py", "tests/integration/test_startup.py"]
+
+[requirements.REQ-ASSETS]
+summary = "確認した公開モデルをハッシュで管理し必要なものだけ準備する"
+status = "implemented"
+acceptance = ["取得前に容量・取得元を確認する", "再利用・取消・再開を扱う"]
+sources = ["src/komaquill/infrastructure/preparation.py", "src/komaquill/interfaces/comfyui/api.py"]
+tests = ["tests/unit/test_assets.py", "tests/unit/test_preparation.py"]
+
+[requirements.REQ-MATERIALS]
+summary = "入力画像・マスク・明示保存ワークフローを版ごとに保持する"
+status = "implemented"
+acceptance = ["上書き前の版を残す", "保存時の入力版を復元する"]
+sources = ["src/komaquill/infrastructure/materials.py", "src/komaquill/interfaces/comfyui/preservation.py"]
+tests = ["tests/unit/test_materials.py", "tests/integration/test_preservation.py"]
+
+[requirements.REQ-PACKAGE]
+summary = "リポジトリ外でもwheelから初期化・生成・GPU転送できる"
+status = "implemented"
+acceptance = ["Gitと編集可能インストールへ依存しない", "生成物と秘密情報を配布しない"]
+sources = ["src/komaquill/infrastructure/provenance.py", "scripts/check_package.py"]
+tests = ["tests/e2e/test_wheel.py", "tests/integration/test_distribution.py"]
+
+[requirements.REQ-DOCS]
+summary = "要件から運用まで参照でき、現在設計と将来計画を区別できる"
+status = "implemented"
+acceptance = ["要件と実装・テストを対応付ける", "文書の内部リンクと参照先を検査する"]
+sources = ["scripts/check_docs.py"]
+tests = ["tests/unit/test_docs.py"]

@@ -29,6 +29,14 @@ preset.tomlのbindingsは、名前付きの生成条件をAPIのノード入力�
 
 ## 保存と再利用
 
-モデルは.artifacts/data/models/用途/SHA256/へ保存します。固定配布元と検証済みの台帳を使って再利用します。モデル準備と素材保存の範囲は[準備手順](preparation.md)と[素材保全](preservation.md)を参照してください。
+モデルは.artifacts/data/models/用途/SHA256/へ保存します。固定配布元と検証済みの台帳を使って再利用します。モデル準備と素材保存の範囲は[準備手順](../guides/preparation.md)と[素材保全](../guides/preservation.md)を参照してください。
 
 Pony、Hyper-SDXL、Real-ESRGANの利用条件は各モデル定義のlicenseとlicense_urlを確認してください。新しいモデル系列・LoRA・ワークフローは互換性と実機生成を確認してから登録します。
+
+## パラメーターを調整する
+
+通常は作業フォルダーのkomaquill.tomlの`[presets.対象ID]`でsteps、cfg、width、height、sampler、scheduler、negativeなどを変更します。セットごとの値を起動時に上書きし、全セット共通の値を暗黙に優先させません。profilesは使うIDと既定の順序を選び、生成条件そのものではありません。
+
+構成・モデル参照・入力対応も変更する場合は、同梱のセットフォルダーを作業フォルダーのpresets/IDへコピーし、一式を編集します。変更後はstopとstartで再検証します。個々の生成でseedや正負プロンプトを変える場合はgenerateの引数、実行中の詳細編集はNode Graphを使います。
+
+CLIはプロンプトファイルと独立した複数プロンプトの入力に未対応です。[今後の候補](../plans/future.md)と実装済みの入力を区別してください。

@@ -1,14 +1,22 @@
-# 文書の読み方
+# 文書の索引
 
-このリポジトリは、要件・設計・実装・検証・運用改善を同じ変更単位で管理します。
+## 読み始める場所
 
-| 調べること | 参照先 |
-|---|---|
-| 利用開始 | [README](../README.md) |
-| 作業規約 | [AGENTS](../AGENTS.md) |
-| 要件と受入条件 | [要件台帳](requirements/catalog.toml) |
-| 現在の構成 | [構成と設定](architecture.md) |
-| 検証手順と対象版 | [検証](validation.md) |
-| 未実装の変更 | [再構築計画](plans/repository-rebuild.md) |
+| 作業 | 最初に読む文書 | 次に確認するもの |
+|---|---|---|
+| 利用を始める | [README](../README.md) | [操作](guides/usage.md) |
+| 要件を変更する | [目的と範囲](product/scope.md) | [要件台帳](requirements/catalog.toml) |
+| コードを変更する | [開発規約](../AGENTS.md) | [現在の構成](current/architecture.md)、[変更・検証](development/workflow.md) |
+| 生成条件を変える | [プリセット](current/presets.md) | [モデル準備](guides/preparation.md) |
+| 接続・保存を調査する | [障害対応](operations/diagnostics.md) | [保存と整理](operations/artifacts.md) |
+| 設計判断を確認する | [設計判断](decisions/0001-native-interfaces.md) | [契約](current/contracts.md) |
+| 受入検証を行う | [検証戦略](verification/strategy.md) | [検証記録](verification/README.md) |
+| 今後の機能を検討する | [今後の候補](plans/future.md) | [再構築計画](plans/repository-rebuild.md) |
 
-計画の承認は実装完了を意味しません。実装の有無と、確認した環境・検証結果を分けて判断します。検証結果には対象コードと日時を記録し、過去の成功を現在の稼働状態として扱いません。
+## 文書の状態と正本
+
+`current/`は実装済みの構成と契約、`plans/`は未完了の計画を扱います。要件台帳のstatusは実装状態であり、実機で確認済みという意味ではありません。検証の対象版・日時・環境は`verification/`で別に確認します。
+
+設定値・固定バージョン・エラーコードの正本はコードと設定です。文書には責務、使い方、制約、参照先を記載します。変更するときは要件ID、受入条件、実装、テスト、操作・運用手順を同じPRで対応付けます。
+
+AIによる変更でも、この索引とAGENTSから対象文書を選び、実装状態と検証対象版を確認します。計画だけを根拠に実装済みと判断しません。ファイル・節へのリンクと要件の参照先は品質ゲートで確認します。

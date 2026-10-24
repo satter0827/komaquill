@@ -59,3 +59,21 @@ worker_execution_timeoutは公式Colab CLIがコード実行を待つ時間で�
 ComfyUI上の拡張は標準の書き込みと生成要求を観測し、一時領域に不変の版を作ります。ローカル監視は画像回収とは別に素材を回収し、内容と参照記録を保存してから確認を返します。停止時は新しい要求を抑止し、処理中の標準書き込みが完了してから最終回収へ進みます。
 
 新しいrun.jsonの形式バージョンは2、素材・準備要求・モデル台帳は1です。既存の画像・履歴・取得済みログは書き換えません。DBや別の画面へ拡張する場合も、生成・保存の契約と実行環境の制御を分離します。
+
+## ソースの配置
+
+| 配置 | 責務 |
+|---|---|
+| domain | 状態・設定・モデル・失敗の契約 |
+| application | 生成・回収・終了・準備・整理の判断と必要な境界 |
+| infrastructure/sessions | 接続、起動、監視、終了の具体的な調整 |
+| infrastructure/inspection.py | GPUとローカル記録の独立した状態取得 |
+| interfaces/cli.py | CLIの入力と表示 |
+| interfaces/comfyui | 標準HTTP拡張、素材観測、配信するJavaScript |
+| gpu | 一時環境の準備とComfyUI起動 |
+| resources/settings | 運用上の既定値 |
+| resources/models | 共有するモデルの固定定義 |
+| resources/presets/ID | 生成セットの3ファイル |
+| resources/runtime | 固定バージョンとGPU依存ロック |
+
+具体的な依存方向はImport Linterで検査します。ComfyUI用インターフェースはGPUへ配布しますが、CLI・Colab制御・ローカル監視は配布しません。詳細な状態と失敗は[契約](contracts.md)を参照してください。

@@ -58,6 +58,7 @@ def main(group: str = "all") -> None:
                 [python, "-m", "mypy", "src", "scripts"],
                 ["node", "--test", "tests/js/*.test.mjs"],
                 [python, str(root / "scripts/check_worker_lock.py")],
+                [python, str(root / "scripts/check_docs.py")],
                 [
                     python,
                     "-c",

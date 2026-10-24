@@ -2,13 +2,13 @@
 
 ## 構成
 
-src/は製品、bootstrap/は初回導入、scripts/は品質ゲート、tests/はテストと検証コードを担当します。文言・保存・依存方向などの規約は[AGENTS](../AGENTS.md)を正本とします。
+src/は製品、bootstrap/は初回導入、scripts/は品質ゲート、tests/はテストと検証コードを担当します。文言・保存・依存方向などの規約は[AGENTS](../../AGENTS.md)を正本とします。
 
 ## 品質検査
 
-[環境構築](../CONTRIBUTING.md#環境を構築する)後、python scripts/check.pyを実行します。Check Projectも同じ処理を呼び出します。
+[環境構築](../../CONTRIBUTING.md#環境を構築する)後、python scripts/check.pyを実行します。Check Projectも同じ処理を呼び出します。
 
-check.pyはRuffの整形確認・lint、strict mypy、GPU依存ロックの一致、Import Linter、Node標準テスト、pytest、行・分岐カバレッジ、配布物、隔離wheel E2E、秘密情報を順に確認します。srcとscriptsの未実行Pythonファイルも対象とし、testsは除外します。閾値はpyproject.tomlのtool.komaquill.coverageで管理します。
+check.pyはRuffの整形確認・lint、strict mypy、GPU依存ロックの一致、Import Linter、文書リンク・要件参照、Node標準テスト、pytest、行・分岐カバレッジ、配布物、隔離wheel E2E、秘密情報を順に確認します。srcとscriptsの未実行Pythonファイルも対象とし、testsは除外します。閾値はpyproject.tomlのtool.komaquill.coverageで管理します。
 
 security.pyは公開対象、ステージ済み差分、全Git履歴をdetect-secretsで検査します。検出値を外部送信する確認機能は無効です。レポートへはファイル、行番号、検出種類だけを保存します。公開ハッシュや試験値の除外には行単位で理由を記載します。setup.ps1は同じ検査を送信前フックへ登録します。
 
@@ -23,7 +23,7 @@ python scripts/check_worker_lock.py --write
 python scripts/check.py
 ```
 
-公開配布物のURL・バージョン・ハッシュを保存し、GPUではハッシュ検証付きで導入します。書き出し時は公開SHA256の行だけに検査除外の理由を付け、ファイル全体は秘密情報検査の対象に残します。Pythonの版を変更する場合は.python-versionとresources/runtime/versions.tomlを揃えます。公式CLIやComfyUI、接続・保存・終了を変更した場合は[実機検証](validation.md)も行います。
+公開配布物のURL・バージョン・ハッシュを保存し、GPUではハッシュ検証付きで導入します。書き出し時は公開SHA256の行だけに検査除外の理由を付け、ファイル全体は秘密情報検査の対象に残します。Pythonの版を変更する場合は.python-versionとresources/runtime/versions.tomlを揃えます。公式CLIやComfyUI、接続・保存・終了を変更した場合は[実機検証](../verification/strategy.md)も行います。
 
 ## 配布物を確認する
 
@@ -41,8 +41,12 @@ sdistとwheelのバージョン、ワークフロー、設定・起動用ファ�
 
 qualityとsecurityが成功したmain上で、宣言した版と一致するv0.1.0などのタグを作成します。公開済みタグは変更・削除しません。リリースノートには利用者への変更と必要な操作を記載します。PyPIへの自動公開は行いません。
 
-GPU環境の依存はpyproject.tomlのworkerグループです。CLI専用の依存を含めず、uv.lockからpylock.worker.tomlを出力します。モデル定義の変更は[プリセットの管理](presets.md)に従い、APIと画面の接続・パラメーターの一致も検査してください。
+GPU環境の依存はpyproject.tomlのworkerグループです。CLI専用の依存を含めず、uv.lockからpylock.worker.tomlを出力します。モデル定義の変更は[プリセットの管理](../current/presets.md)に従い、APIと画面の接続・パラメーターの一致も検査してください。
 
 ComfyUIの固定リビジョンを更新するときは、同じリビジョンのrequirements.txtをtests/fixtures/comfy-requirements.txtへ保存します。品質ゲートはGPUロックがその依存一覧とバージョン条件を満たすことを確認します。
 
 画面拡張の自作処理はtests/js/でNode標準テストを実行します。Node.js 24を使用してください。ComfyUIのライブラリ内部を再検査するテストは追加せず、準備要求・確認・取消・表示状態の契約を確認します。
+
+## VS Codeの設定
+
+launchは選択中のPythonを使い、CLIの同じ引数を渡します。標準のpickString・promptString・[引数入力](https://code.visualstudio.com/docs/python/debugging)を使用し、独自のエディター拡張は追加しません。環境の初期候補には[環境フォルダー](https://code.visualstudio.com/docs/python/settings-reference)を指定します。既に別のPythonが選択されている場合はPython: Select Interpreterで切り替えます。

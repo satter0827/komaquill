@@ -10,7 +10,6 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "start"
       ],
@@ -25,7 +24,6 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "open",
         "--view",
@@ -42,11 +40,25 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "generate",
         "--prompt",
         "${input:prompt}"
+      ],
+      "subProcess": false
+    },
+    {
+      "name": "Prepare Workflow",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "prepare",
+        "${input:workflow}"
       ],
       "subProcess": false
     },
@@ -59,7 +71,6 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "collect"
       ],
@@ -74,7 +85,6 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "status"
       ],
@@ -89,9 +99,23 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "doctor"
+      ],
+      "subProcess": false
+    },
+    {
+      "name": "Show Logs",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "logs",
+        "--follow"
       ],
       "subProcess": false
     },
@@ -104,10 +128,24 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": [
         "stop",
         "${input:stopMode}"
+      ],
+      "subProcess": false
+    },
+    {
+      "name": "Clean Generated Files",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "clean",
+        "${input:cleanMode}"
       ],
       "subProcess": false
     },
@@ -120,8 +158,23 @@
       "console": "integratedTerminal",
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
-      "python": "${workspaceFolder}/.artifacts/runtime/venv/Scripts/python.exe",
       "args": "${command:pickArgs}",
+      "subProcess": false
+    },
+    {
+      "name": "Debug Session",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "start",
+        "--foreground",
+        "--no-open"
+      ],
       "subProcess": false
     }
   ],
@@ -162,6 +215,27 @@
         }
       ],
       "default": "--no-force"
+    },
+    {
+      "id": "workflow",
+      "type": "promptString",
+      "description": "Enter the workflow JSON path"
+    },
+    {
+      "id": "cleanMode",
+      "type": "pickString",
+      "description": "Preview or clean disposable generated files",
+      "options": [
+        {
+          "label": "Preview",
+          "value": "--dry-run"
+        },
+        {
+          "label": "Clean",
+          "value": "--no-dry-run"
+        }
+      ],
+      "default": "--dry-run"
     }
   ]
 }

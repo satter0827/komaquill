@@ -277,5 +277,7 @@
   "cleanup.completed": "completed",
   "cleanup.failed": "failed; see the cleanup record",
   "status.connection_unknown": "ComfyUI: unknown; inspect the saved session record.",
-  "status.unreadable": "Some records could not be read: {identities}. Check their files before retrying status."
+  "status.unreadable": "Some records could not be read: {identities}. Check their files before retrying status.",
+  "quality.docs_invalid": "Documentation references are invalid: {identities}. Update the links and requirement registry.",
+  "quality.docs_valid": "Documentation links and requirement references verified."
 }

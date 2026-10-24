@@ -115,7 +115,7 @@ def operation(ctx: typer.Context) -> Iterator[Project]:
         )
         typer.echo(user_message, err=True)
         raise typer.Exit(1) from None
-    except typer.Exit:
+    except (typer.Exit, typer.BadParameter):
         raise
     except Exception as exc:
         from komaquill.domain.errors import failure_info

@@ -19,7 +19,7 @@ def test_python_plan_uses_text_without_console_or_gpu(project, monkeypatch, caps
     snapshot = client.stories.show(plan.request.story_id)
     assert isinstance(snapshot, StorySnapshot)
     assert snapshot.image_count == 4 and not snapshot.complete
-    assert client.stories.export(plan.request.story_id)["source"]["text"] == source()
+    assert client.stories.export(plan.request.story_id)["story"]["source"]["text"] == source()
     assert capsys.readouterr() == ("", "")
 
 

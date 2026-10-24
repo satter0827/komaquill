@@ -47,6 +47,12 @@ class LLMProfile(BaseModel):
         return self
 
 
+class PlanningPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    style: str
+    guidance: list[str]
+
+
 class StorySettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="KOMAQUILL_STORY_",
@@ -55,7 +61,8 @@ class StorySettings(BaseSettings):
         allow_inf_nan=False,
         env_nested_delimiter="__",
     )
-    images: int = Field(ge=1)
+    images: int | Literal["auto"]
+    planning: PlanningPolicy
     max_images: int = Field(ge=1)
     llm_profile: str
     image_profile: str
@@ -69,6 +76,10 @@ class StorySettings(BaseSettings):
 
     @model_validator(mode="after")
     def selected(self) -> Self:
+        if isinstance(self.images, int) and not 1 <= self.images <= self.max_images:
+            raise KomaquillError(
+                code="invalid_story_count", stage="story_planning", retryable=False
+            )
         if self.llm_profile not in self.llm_profiles:
             raise ValueError("The image count or selected LLM profile is invalid.")
         return self
@@ -96,10 +107,25 @@ def settings(project: Project, **overrides: object) -> StorySettings:
             )
         return result
 
-    combined = merge(data, EnvSettingsSource(StorySettings)())
-    combined = merge(
-        combined, {key: value for key, value in overrides.items() if value is not None}
+    environment = EnvSettingsSource(StorySettings)()
+    explicit = {key: value for key, value in overrides.items() if value is not None}
+    preliminary = merge(merge(data, environment), explicit)
+    profile = str(preliminary["image_profile"])
+    from komaquill.infrastructure.preset_catalog import catalog
+
+    if profile not in catalog(project.root)["presets"]:
+        raise KomaquillError(code="invalid_configuration", stage="story_planning")
+    local = project.root / "presets" / profile
+    policy_file = (
+        local / "planning.toml"
+        if local.is_dir()
+        else files("komaquill").joinpath(f"resources/presets/{profile}/planning.toml")
     )
+    policy = defaults["planning"]
+    if policy_file.is_file():
+        policy = merge(policy, tomllib.loads(policy_file.read_text(encoding="utf-8")))
+    data["planning"] = merge(policy, workspace.get("story", {}).get("planning", {}))
+    combined = merge(merge(data, environment), explicit)
     return StorySettings.model_validate(combined)
 
 

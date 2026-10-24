@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import UUID
 
 import click
+import typer
 
 from komaquill.domain.errors import ErrorCode, FailureInfo, OperationStage
 from komaquill.infrastructure.configuration import Project
@@ -25,7 +26,7 @@ def main() -> None:
     try:
         result = cli.app(standalone_mode=False)
         raise SystemExit(result if isinstance(result, int) else 0)
-    except click.exceptions.Exit as error:
+    except (click.exceptions.Exit, typer.Exit) as error:
         raise SystemExit(error.exit_code) from None
     except KeyboardInterrupt:
         raise SystemExit(130) from None

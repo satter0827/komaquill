@@ -3,6 +3,8 @@
 import hashlib
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from komaquill.application.generation import verify_runtime
@@ -36,6 +38,7 @@ class StoryService:
             source_text=text,
             source_sha256=hashlib.sha256(text.encode()).hexdigest(),
             image_count=options.images,
+            max_images=options.max_images,
             purpose="verification"
             if options.llm_profiles[options.llm_profile].provider == "fake"
             else options.purpose,
@@ -81,7 +84,7 @@ class StoryService:
         text: str,
         *,
         source_name: str = "story.txt",
-        images: int | None = None,
+        images: int | Literal["auto"] | None = None,
         llm_profile: str | None = None,
         image_profile: str | None = None,
         allow_real_llm: bool = False,
@@ -109,7 +112,21 @@ class StoryService:
             time.sleep(self._project.settings().poll_interval)
 
     def export(self, story_id: UUID, *, render_id: UUID | None = None) -> JsonObject:
-        return self.show(story_id, render_id=render_id).model_dump(mode="json")
+        evidence = self._repository.planning_evidence(story_id)
+        try:
+            plan = self._repository.read(story_id)
+        except FileNotFoundError:
+            plan = None
+        return {
+            "format_version": 2,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "exporter": self._project.identity(),
+            "story": self.show(story_id, render_id=render_id).model_dump(mode="json")
+            if plan
+            else None,
+            "plan": plan.model_dump(mode="json", exclude_unset=True) if plan else None,
+            "planning": evidence,
+        }
 
     def _events(
         self, backend: ComfyClient, session: Session, render_id: UUID, retry_failed: bool
@@ -167,7 +184,7 @@ class StoryService:
         text: str,
         *,
         source_name: str = "story.txt",
-        images: int | None = None,
+        images: int | Literal["auto"] | None = None,
         llm_profile: str | None = None,
         image_profile: str | None = None,
         seed: int | None = None,

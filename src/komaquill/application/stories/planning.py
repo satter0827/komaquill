@@ -1,6 +1,7 @@
-"""Build validated immutable plans before sending any image requests."""
+"""Validate bounded planning attempts and preserve input before every model call."""
 
 import hashlib
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -27,13 +28,15 @@ def plan_story(
     repair_attempts: int = 1,
     max_images: int,
 ) -> StoryPlan:
-    """Bound repair calls and persist visible evidence without diagnostic payloads."""
+    """Repair invalid content once; never retry authentication, transport or truncation."""
     if planner.provenance.provider != "fake" and not allow_real_llm:
         raise KomaquillError(code="real_llm_not_allowed", stage="story_planning", retryable=False)
     if repair_attempts not in {0, 1}:
         raise KomaquillError(code="invalid_configuration", stage="story_planning")
-    if request.image_count > max_images:
+    if isinstance(request.image_count, int) and request.image_count > max_images:
         raise KomaquillError(code="invalid_story_count", stage="story_planning", retryable=False)
+    if request.image_count == "auto" and request.max_images != max_images:
+        raise KomaquillError(code="invalid_configuration", stage="story_planning")
     if (
         hashlib.sha256(planner.provenance.instructions.encode()).hexdigest()
         != planner.provenance.instruction_sha256
@@ -43,8 +46,13 @@ def plan_story(
     schema = output_schema(request)
     correction = None
     for index in range(repair_attempts + 1):
+        repository.prepare_attempt(request, planner.provenance, schema, index + 1, correction)
+        applied_correction = correction
         started = datetime.now(UTC)
         response = None
+        draft = None
+        failure = None
+        terminal = None
         try:
             response = planner.complete(request, schema, correction)
             if (
@@ -54,24 +62,41 @@ def plan_story(
                 raise KomaquillError(
                     code="identity_mismatch", stage="story_planning", retryable=False
                 )
-            if response.refusal:
+            if response.refusal or response.finish_reason not in {None, "stop"}:
                 raise KomaquillError(
-                    code="story_plan_invalid", stage="story_planning", retryable=False
+                    code="story_plan_invalid",
+                    stage="story_planning",
+                    retryable=False,
+                    details={"reason": "refusal" if response.refusal else "incomplete_output"},
                 )
-            if response.finish_reason not in {None, "stop"}:
-                raise ValueError("The model response did not finish normally.")
-            draft = StoryDraft.model_validate_json(response.content)
-            validate_draft(draft, request)
-        except (ValueError, ValidationError):
+            candidate = StoryDraft.model_validate_json(response.content)
+            validate_draft(candidate, request)
+            draft = candidate
+        except ValueError as error:
             failure = failure_info(
-                KomaquillError(code="story_plan_invalid", stage="story_planning"),
-                "story_planning",
+                KomaquillError(code="story_plan_invalid", stage="story_planning"), "story_planning"
             )
+            issues = (
+                error.errors(include_input=False, include_context=False, include_url=False)
+                if isinstance(error, ValidationError)
+                else [{"message": str(error)}]
+            )
+            correction = json.dumps(
+                {
+                    "validation_errors": issues,
+                    "previous_output": response.content if response else None,
+                },
+                ensure_ascii=False,
+            )
+        except KomaquillError as error:
+            failure = failure_info(error, "story_planning")
+            terminal = error
+        finally:
             repository.attempt(
                 request.story_id,
                 PlanningAttempt(
                     attempt=index + 1,
-                    correction=correction,
+                    correction=applied_correction,
                     output_schema=schema,
                     started_at=started,
                     finished_at=datetime.now(UTC),
@@ -79,40 +104,9 @@ def plan_story(
                     failure=failure,
                 ),
             )
-            correction = (
-                "Return complete JSON with the exact scene count, "
-                "valid references covering EVERY source paragraph, Japanese narrative "
-                "through the ending, English appearance and visual_description, "
-                "and all required fields. "
-                "Every scene needs a DISTINCT visual moment. Split source paragraphs into smaller "
-                "consecutive moments when needed. Never repeat or restart the story sequence."
-            )
-        except KomaquillError as error:
-            repository.attempt(
-                request.story_id,
-                PlanningAttempt(
-                    attempt=index + 1,
-                    correction=correction,
-                    output_schema=schema,
-                    started_at=started,
-                    finished_at=datetime.now(UTC),
-                    failure=failure_info(error, "story_planning"),
-                    response=response,
-                ),
-            )
-            raise
-        else:
-            repository.attempt(
-                request.story_id,
-                PlanningAttempt(
-                    attempt=index + 1,
-                    correction=correction,
-                    output_schema=schema,
-                    started_at=started,
-                    finished_at=datetime.now(UTC),
-                    response=response,
-                ),
-            )
+        if terminal is not None:
+            raise terminal
+        if draft is not None:
             plan = StoryPlan(
                 request=request,
                 title=draft.title,
@@ -120,13 +114,13 @@ def plan_story(
                 characters=draft.characters,
                 supplements=draft.supplements,
                 scenes=[
-                    Scene(**scene.model_dump(), scene_id=uuid4(), position=position)
-                    for position, scene in enumerate(draft.scenes, 1)
+                    Scene(**scene.model_dump(), scene_id=uuid4(), position=i)
+                    for i, scene in enumerate(draft.scenes, 1)
                 ],
                 planner=planner.provenance,
             )
             repository.complete(plan)
-            return plan
+            return repository.read(request.story_id)
     raise KomaquillError(
         code="story_plan_invalid",
         stage="story_planning",

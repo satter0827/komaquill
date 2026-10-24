@@ -31,7 +31,7 @@ def create_render(
     initial_seed = seed if seed is not None else secrets.randbits(63)
     render = StoryRender(
         story_id=story_id,
-        plan_sha256=digest(plan.model_dump(mode="json")),
+        plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),
         image_profile=image_profile,
         settings=settings,
         scenes=[
@@ -49,11 +49,10 @@ def compatible(plan: StoryPlan, render: StoryRender, session: Session) -> None:
     expected = render.settings
     profile = render.image_profile
     if (
-        digest(plan.model_dump(mode="json")) != render.plan_sha256
+        digest(plan.model_dump(mode="json", exclude_unset=True)) != render.plan_sha256
         or [scene.scene_id for scene in plan.scenes] != [scene.scene_id for scene in render.scenes]
         or current is None
         or profile not in current.profiles
-        or current.presets[profile] != expected.presets[profile]
         or any(
             current.assets.get(name) != expected.assets[name]
             for name in expected.presets[profile].asset_ids
@@ -90,7 +89,7 @@ def story_view(
     if render is not None and render.story_id != story_id:
         raise KomaquillError(code="invalid_request", stage="story_rendering")
     if render is not None and (
-        digest(plan.model_dump(mode="json")) != render.plan_sha256
+        digest(plan.model_dump(mode="json", exclude_unset=True)) != render.plan_sha256
         or [scene.scene_id for scene in plan.scenes] != [scene.scene_id for scene in render.scenes]
     ):
         raise KomaquillError(code="storage_failed", stage="story_rendering")
@@ -140,7 +139,8 @@ def story_view(
             "text": plan.request.source_text,
             "sha256": plan.request.source_sha256,
         },
-        "image_count": plan.request.image_count,
+        "image_count": len(plan.scenes),
+        "requested_images": plan.request.image_count,
         "purpose": plan.request.purpose,
         "case_id": plan.request.case_id,
         "planner": {
@@ -152,7 +152,7 @@ def story_view(
         "supplements": plan.supplements,
         "image_profile": render.image_profile if render else None,
         "updated_at": max(updated).isoformat(),
-        "complete": counts.get("saved", 0) == plan.request.image_count,
+        "complete": counts.get("saved", 0) == len(plan.scenes),
         "counts": counts,
         "scenes": scenes,
     }

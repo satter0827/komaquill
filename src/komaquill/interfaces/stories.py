@@ -4,7 +4,7 @@ import json
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 import typer
@@ -15,6 +15,20 @@ from komaquill.infrastructure.configuration import Project
 from komaquill.messages import message
 
 GROUP = typer.Typer(no_args_is_help=True, add_completion=False, help=message("stories.help"))
+
+
+def selected_images(value: str | None) -> int | Literal["auto"] | None:
+    if value is None:
+        return None
+    if value == "auto":
+        return "auto"
+    try:
+        count = int(value)
+    except ValueError:
+        raise typer.BadParameter(message("stories.images_help")) from None
+    if count < 1:
+        raise typer.BadParameter(message("stories.images_help"))
+    return count
 
 
 def display(client: Client, view: JsonObject) -> None:
@@ -144,9 +158,7 @@ def bind(
         file: Annotated[
             Path, typer.Argument(help=message("stories.file_help"), exists=True, dir_okay=False)
         ],
-        images: Annotated[
-            int | None, typer.Option(min=1, help=message("stories.images_help"))
-        ] = None,
+        images: Annotated[str | None, typer.Option(help=message("stories.images_help"))] = None,
         llm_profile: Annotated[
             str | None, typer.Option(help=message("stories.llm_profile_help"))
         ] = None,
@@ -165,12 +177,12 @@ def bind(
             plan = client.stories.plan(
                 file.read_bytes().decode("utf-8-sig"),
                 source_name=file.name,
-                images=images,
+                images=selected_images(images),
                 llm_profile=llm_profile,
                 image_profile=image_profile,
                 allow_real_llm=allow_real_llm,
             )
-            value = client.stories.export(plan.request.story_id)
+            value = client.stories.show(plan.request.story_id).model_dump(mode="json")
             if json_output:
                 typer.echo(json.dumps(value, ensure_ascii=False))
             else:
@@ -182,9 +194,7 @@ def bind(
         file: Annotated[
             Path, typer.Argument(help=message("stories.file_help"), exists=True, dir_okay=False)
         ],
-        images: Annotated[
-            int | None, typer.Option(min=1, help=message("stories.images_help"))
-        ] = None,
+        images: Annotated[str | None, typer.Option(help=message("stories.images_help"))] = None,
         llm_profile: Annotated[
             str | None, typer.Option(help=message("stories.llm_profile_help"))
         ] = None,
@@ -207,7 +217,7 @@ def bind(
                 client.stories.generate(
                     file.read_bytes().decode("utf-8-sig"),
                     source_name=file.name,
-                    images=images,
+                    images=selected_images(images),
                     llm_profile=llm_profile,
                     image_profile=image_profile,
                     seed=seed,
@@ -249,6 +259,19 @@ def bind(
         with story_operation(ctx) as client:
             present(
                 client, client.stories.resume(render_id, retry_failed=retry_failed), json_output
+            )
+
+    @GROUP.command("export", help=message("stories.export_help"))
+    def export_command(
+        ctx: typer.Context,
+        story_id: UUID,
+        render_id: Annotated[
+            UUID | None, typer.Option(help=message("stories.render_id_help"))
+        ] = None,
+    ) -> None:
+        with story_operation(ctx) as client:
+            typer.echo(
+                json.dumps(client.stories.export(story_id, render_id=render_id), ensure_ascii=False)
             )
 
     @GROUP.command("show", help=message("stories.show_help"))

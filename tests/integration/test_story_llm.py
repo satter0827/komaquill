@@ -128,7 +128,8 @@ def test_actual_adapter_transmits_schema_and_source_but_not_ambient_destinations
     )
     human = json.loads(payload["messages"][1]["content"])
     assert human["source_paragraphs"] == value.paragraphs and human["image_count"] == 4
-    assert [s["source_refs"] for s in human["scene_guide"]] == [["p1"], ["p2"], ["p3"], ["p4"]]
+    assert "scene_guide" not in human and "schema" not in human
+    assert human["drawing_policy"]["guidance"]
     stored = "".join(path.read_text(encoding="utf-8") for path in repository.root.rglob("*.json"))
     assert "not-a-real-key" not in stored
     assert result.planner.app_identity["code_sha256"]

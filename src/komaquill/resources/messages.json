@@ -301,7 +301,7 @@
   "stories.resume_help": "Resume an existing rendering without changing its conditions.",
   "stories.show_help": "Show narrative, image references and saved scene states.",
   "stories.file_help": "UTF-8 file containing the source story.",
-  "stories.images_help": "Number of illustrated scenes; defaults and limit come from story settings.",
+  "stories.images_help": "Number of images: auto or a positive integer within the configured limit.",
   "stories.llm_profile_help": "Local planning connection profile.",
   "stories.image_profile_help": "Image profile already prepared in the active session.",
   "stories.allow_real_help": "Allow this command to call the configured real language model.",
@@ -330,5 +330,6 @@
   "error.invalid_story_count": "Image count is outside the configured range. Check --images and story.max_images.",
   "error.image_backend_unavailable": "An image GPU is not available. Start a prepared image session before generating a story. Planning alone does not need an image GPU.",
   "stories.planning_started": "Planning story.",
-  "stories.operation_interrupted": "Story operation interrupted. Use stories show to inspect saved progress."
+  "stories.operation_interrupted": "Story operation interrupted. Use stories show to inspect saved progress.",
+  "stories.export_help": "Export story, planning evidence and image references as JSON."
 }

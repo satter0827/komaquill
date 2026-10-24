@@ -112,6 +112,7 @@ def gpu_contents() -> Iterator[tuple[str, bytes]]:
     entries = [
         (name, content)
         for name, content in package_contents()
+        if not name.endswith("/planning.toml")
         if name.removeprefix("komaquill/") in GPU_MODULES
         or name.startswith("komaquill/interfaces/comfyui/web/")
         or (

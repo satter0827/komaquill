@@ -8,8 +8,15 @@ from uuid import UUID
 
 from filelock import FileLock, Timeout
 
+from komaquill.application.stories.ports import planner_input
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.stories import PlanningAttempt, StoryInput, StoryPlan, StoryRender
+from komaquill.domain.stories import (
+    PlannerProvenance,
+    PlanningAttempt,
+    StoryInput,
+    StoryPlan,
+    StoryRender,
+)
 from komaquill.domain.workflow import digest
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.storage import atomic_json
@@ -24,6 +31,27 @@ class FileStoryRepository:
         folder = self.root / str(request.story_id)
         folder.mkdir(parents=True, exist_ok=False)
         atomic_json(folder / "request.json", request.model_dump(mode="json"))
+
+    def prepare_attempt(
+        self,
+        request: StoryInput,
+        provenance: PlannerProvenance,
+        schema: dict[str, object],
+        attempt: int,
+        correction: str | None,
+    ) -> None:
+        """Commit the exact input and configuration before the model is called."""
+        folder = self.root / str(request.story_id)
+        if not (folder / "provenance.json").exists():
+            atomic_json(folder / "provenance.json", provenance.model_dump(mode="json"))
+        atomic_json(
+            folder / "planning/inputs" / f"attempt-{attempt:02d}.json",
+            {
+                "format_version": 1,
+                "schema": schema,
+                "input": planner_input(request, provenance, correction),
+            },
+        )
 
     def attempt(self, story_id: UUID, attempt: PlanningAttempt) -> None:
         path = self.root / str(story_id) / "planning" / f"{attempt.attempt:02d}.json"
@@ -46,6 +74,24 @@ class FileStoryRepository:
         if plan.request.story_id != story_id:
             raise KomaquillError(code="storage_failed", stage="story_planning")
         return plan
+
+    def planning_evidence(self, story_id: UUID) -> dict[str, object]:
+        """Expose immutable inputs and outcomes, including failed planning attempts."""
+        folder = self.root / str(story_id)
+        return {
+            "request": json.loads((folder / "request.json").read_bytes()),
+            "provenance": json.loads((folder / "provenance.json").read_bytes())
+            if (folder / "provenance.json").is_file()
+            else None,
+            "inputs": [
+                json.loads(path.read_bytes())
+                for path in sorted((folder / "planning/inputs").glob("attempt-*.json"))
+            ],
+            "attempts": [
+                json.loads(path.read_bytes())
+                for path in sorted((folder / "planning").glob("[0-9]*.json"))
+            ],
+        }
 
     def save_render(self, render: StoryRender) -> None:
         path = self.root / str(render.story_id) / "renders" / str(render.render_id) / "render.json"

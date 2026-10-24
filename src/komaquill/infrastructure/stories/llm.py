@@ -10,10 +10,34 @@ from urllib.parse import urlsplit
 import keyring
 from pydantic import SecretStr
 
+from komaquill.application.stories.ports import planner_input
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.stories import PlannerProvenance, PlanningResponse, StoryInput
+from komaquill.domain.stories import PlannerProvenance, PlanningResponse, StoryInput, TokenUsage
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.configuration import StorySettings, instructions
+
+
+def token_usage(value: Any) -> TokenUsage | None:
+    """Keep only provider-reported token counters, leaving unavailable values unknown."""
+    if value is None:
+        return None
+    data = value if isinstance(value, dict) else value.model_dump()
+    details = data.get("output_token_details") or data.get("completion_tokens_details") or {}
+
+    def counter(*names: str) -> int | None:
+        for name in names:
+            found = data.get(name)
+            if isinstance(found, int) and not isinstance(found, bool) and found >= 0:
+                return found
+        return None
+
+    reasoning = details.get("reasoning", details.get("reasoning_tokens"))
+    return TokenUsage(
+        input_tokens=counter("input_tokens", "prompt_tokens"),
+        output_tokens=counter("output_tokens", "completion_tokens"),
+        total_tokens=counter("total_tokens"),
+        reasoning_tokens=reasoning if isinstance(reasoning, int) and reasoning >= 0 else None,
+    )
 
 
 class LangChainPlanner:
@@ -32,26 +56,7 @@ class LangChainPlanner:
             from langsmith import tracing_context
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing", stage="story_planning") from None
-        paragraphs = list(request.paragraphs)
-        count = request.image_count
-        guide = [
-            {
-                "position": index + 1,
-                "source_refs": paragraphs[
-                    index * len(paragraphs) // count : max(
-                        (index + 1) * len(paragraphs) // count, index * len(paragraphs) // count + 1
-                    )
-                ],
-            }
-            for index in range(count)
-        ]
-        payload = {
-            "scene_guide": guide,
-            "image_count": request.image_count,
-            "source_paragraphs": request.paragraphs,
-            "schema": schema,
-            "correction": correction,
-        }
+        payload = planner_input(request, self.provenance, correction)
         with tracing_context(enabled=False):
             template = ChatPromptTemplate.from_messages(
                 [
@@ -65,20 +70,22 @@ class LangChainPlanner:
             )
             if self.provenance.provider == "fake":
                 example = files("komaquill").joinpath("resources/stories/examples/rainy-cat")
-                expected = example.joinpath("source.md").read_text(encoding="utf-8")
-                if request.source_text.replace("\r\n", "\n").strip() != expected.strip():
-                    raise KomaquillError(
-                        code="fake_story_mismatch", stage="story_planning", retryable=False
+                if self.model is None:
+                    expected = example.joinpath("source.md").read_text(encoding="utf-8")
+                    if request.source_text.replace("\r\n", "\n").strip() != expected.strip():
+                        raise KomaquillError(
+                            code="fake_story_mismatch", stage="story_planning", retryable=False
+                        )
+                    name = f"plan-{request.image_count}.json"
+                    if not example.joinpath(name).is_file():
+                        raise KomaquillError(
+                            code="fake_story_mismatch", stage="story_planning", retryable=False
+                        )
+                    fake = FakeListLLM(
+                        responses=[example.joinpath(name).read_text(encoding="utf-8")], cache=False
                     )
-                name = f"plan-{request.image_count}.json"
-                if not example.joinpath(name).is_file():
-                    raise KomaquillError(
-                        code="fake_story_mismatch", stage="story_planning", retryable=False
-                    )
-                fake = self.model or FakeListLLM(
-                    responses=[example.joinpath(name).read_text(encoding="utf-8")],
-                    cache=False,
-                )
+                else:
+                    fake = self.model
                 return PlanningResponse(
                     content=fake.invoke(prompt), model="fake-list", finish_reason="stop"
                 )
@@ -98,6 +105,7 @@ class LangChainPlanner:
                         content=choice.message.content or "",
                         model=error.completion.model,
                         finish_reason="length",
+                        usage=token_usage(error.completion.usage),
                     )
                 status = getattr(error, "status_code", None)
                 code = "authentication_failed" if status in {401, 403} else "llm_unavailable"
@@ -115,6 +123,8 @@ class LangChainPlanner:
             else json.dumps(result.content, ensure_ascii=False),
             model=actual,
             finish_reason=result.response_metadata.get("finish_reason"),
+            usage=token_usage(result.usage_metadata or result.response_metadata.get("token_usage")),
+            system_fingerprint=result.response_metadata.get("system_fingerprint"),
         )
 
 
@@ -137,6 +147,8 @@ def planner(project: Project, options: StorySettings, *, allow_real_llm: bool) -
         reasoning_effort=profile.reasoning_effort,
         temperature=profile.temperature,
         app_identity=project.identity(),
+        image_profile=options.image_profile,
+        planning_policy=options.planning.model_dump(mode="json"),
     )
     if profile.provider == "fake":
         return LangChainPlanner(provenance)

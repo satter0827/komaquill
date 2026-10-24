@@ -173,7 +173,7 @@ def story_associations(project: Project) -> tuple[dict[str, list[JsonObject]], l
         try:
             render = repository.render(UUID(path.parent.name))
             plan = repository.read(render.story_id)
-            if render.plan_sha256 != digest(plan.model_dump(mode="json")):
+            if render.plan_sha256 != digest(plan.model_dump(mode="json", exclude_unset=True)):
                 raise ValueError("The plan changed after rendering.")
             scenes = {scene.scene_id: scene for scene in plan.scenes}
             pending: dict[str, JsonObject] = {}

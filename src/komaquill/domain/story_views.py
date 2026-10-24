@@ -53,6 +53,7 @@ class StorySnapshot(BaseModel):
     synopsis: str
     source: StorySource
     image_count: int
+    requested_images: int | Literal["auto"]
     purpose: str
     case_id: str | None
     planner: dict[str, str]

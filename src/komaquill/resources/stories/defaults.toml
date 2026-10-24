@@ -1,0 +1,21 @@
+# Local planning defaults; these values are not GPU runtime settings.
+images = 4
+max_images = 8
+llm_profile = "lmstudio-4b"
+image_profile = "pony"
+request_timeout = 300.0
+max_output_tokens = 4096
+repair_attempts = 1
+
+[llm_profiles.lmstudio-4b]
+provider = "openai-compatible"
+base_url = "http://127.0.0.1:1234/v1"
+model = "qwen3.5-4b-uncensored-hauhaucs-aggressive"
+key_env = "KOMAQUILL_LLM_API_KEY"
+require_model_match = true
+reasoning_effort = "none"
+temperature = 0.3
+
+[llm_profiles.fake]
+provider = "fake"
+model = "fake-list"

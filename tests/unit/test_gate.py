@@ -122,3 +122,22 @@ def test_status_is_read_only_and_distinguishes_missing_stale_and_current(gate, c
     (root / "README.md").write_text("changed")
     check.main(1, status=True, json_output=True)
     assert not json.loads(capsys.readouterr().out)["success"]["matches_current_inputs"]
+
+
+def test_gate_disables_external_tracing_and_removes_inherited_credentials(gate, monkeypatch):
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
+    monkeypatch.setenv("LANGCHAIN_TRACING_V2", "true")
+    monkeypatch.setenv("LANGSMITH_TEST_TRACKING", "true")
+    monkeypatch.setenv("LANGSMITH_API_KEY", "test-only")
+    monkeypatch.setenv("LANGCHAIN_API_KEY", "test-only")
+    environments = []
+    monkeypatch.setattr(
+        check.subprocess, "run", lambda *args, **kwargs: environments.append(kwargs["env"])
+    )
+    assert check.main(1)
+    assert environments
+    for env in environments:
+        assert env["LANGSMITH_TRACING"] == "false"
+        assert env["LANGCHAIN_TRACING_V2"] == "false"
+        assert env["LANGSMITH_TEST_TRACKING"] == "false"
+        assert "LANGSMITH_API_KEY" not in env and "LANGCHAIN_API_KEY" not in env

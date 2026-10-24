@@ -21,6 +21,13 @@ class ErrorCode(StrEnum):
     IMAGE_INVALID = "image_invalid"
     INTERNAL_ERROR = "internal_error"
     INVALID_EVALUATION = "invalid_evaluation"
+    REAL_LLM_NOT_ALLOWED = "real_llm_not_allowed"
+    LLM_DEPENDENCIES_MISSING = "llm_dependencies_missing"
+    LLM_UNAVAILABLE = "llm_unavailable"
+    STORY_PLAN_INVALID = "story_plan_invalid"
+    INVALID_STORY_COUNT = "invalid_story_count"
+    IMAGE_BACKEND_UNAVAILABLE = "image_backend_unavailable"
+    FAKE_STORY_MISMATCH = "fake_story_mismatch"
     INVALID_CONFIGURATION = "invalid_configuration"
     INVALID_OUTPUT = "invalid_output"
     INVALID_REQUEST = "invalid_request"
@@ -68,6 +75,8 @@ class OperationStage(StrEnum):
     RESPONSE_VALIDATION = "response_validation"
     STORAGE = "storage"
     SUBMISSION = "submission"
+    STORY_PLANNING = "story_planning"
+    STORY_RENDERING = "story_rendering"
     SUMMARY = "summary"
 
 

@@ -310,7 +310,7 @@ def mark_lost(project: Workspace, runtime_id: UUID) -> tuple[UUID, ...]:
     return tuple(lost)
 
 
-def generate(
+def submit_generation(
     project: Workspace,
     client: GenerationBackend,
     session: Session,
@@ -318,11 +318,13 @@ def generate(
     negative: str | None,
     seed: int,
     profile_name: str | None = None,
+    *,
+    run_id: UUID | None = None,
 ) -> Run:
-    """Record before submission and wait until local persistence completes."""
+    """Record before submission and return without waiting for image persistence."""
     project = project.configured(session.settings)
     verify_runtime(client, session)
-    run_id = uuid4()
+    run_id = run_id or uuid4()
     graph, ui = project.prepare(prompt, negative, seed, str(run_id), profile_name)
     if session.backend == "external":
         graph, ui = client.resolve_models(graph, ui)
@@ -331,6 +333,12 @@ def generate(
     with collection_lock(project):
         if project.stop_requested(session) is not None:
             raise KomaquillError(code="stopping", retryable=False)
+        try:
+            project.repository.read(run_id)
+        except FileNotFoundError:
+            pass
+        else:
+            raise KomaquillError(code="invalid_request", stage="submission", retryable=False)
         project.repository.prepare(run, graph, ui)
         project.repository.save(run)
     try:
@@ -359,6 +367,14 @@ def generate(
         if run.pending:
             run.state = "queued"
         project.repository.save(run)
+    return run
+
+
+def wait_generation(
+    project: Workspace, client: GenerationBackend, session: Session, run_id: UUID
+) -> Run:
+    """Collect a recorded request without submitting it again."""
+    project = project.configured(session.settings)
     settings = project.settings()
     deadline = time.monotonic() + settings.generation_timeout
     while time.monotonic() < deadline:
@@ -374,3 +390,17 @@ def generate(
             raise KomaquillError(code="collection_failed", details={"run_id": str(run_id)})
         time.sleep(settings.poll_interval)
     raise KomaquillError(code="generation_timeout", details={"run_id": str(run_id)})
+
+
+def generate(
+    project: Workspace,
+    client: GenerationBackend,
+    session: Session,
+    prompt: str,
+    negative: str | None,
+    seed: int,
+    profile_name: str | None = None,
+) -> Run:
+    """Share request submission and recovery with story generation."""
+    run = submit_generation(project, client, session, prompt, negative, seed, profile_name)
+    return wait_generation(project, client, session, run.run_id)

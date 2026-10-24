@@ -19,6 +19,8 @@ class MemoryRepository:
         return list(self.rows.values())
 
     def read(self, identity):
+        if identity not in self.rows:
+            raise FileNotFoundError(str(identity))
         return self.rows[identity].model_copy(deep=True)
 
     def save(self, run):

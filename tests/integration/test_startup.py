@@ -222,22 +222,22 @@ def test_external_open_exports_workflow_and_returns_to_terminal(
     assert (project.runtime / "workflows/pony_app.json").is_file()
 
 
-@pytest.mark.parametrize("no_open", [False, True])
+@pytest.mark.parametrize("open_flag", [None, "--open", "--no-open"])
 def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
-    project, session, monkeypatch, no_open
+    project, session, monkeypatch, open_flag
 ):
     calls = []
 
     def start(bound, backend, endpoint, username, open_browser, echo, foreground):
         assert bound.settings().profiles == ("pony-preview",)
-        assert open_browser is (not no_open)
+        assert open_browser is (open_flag == "--open")
         assert foreground is None
         calls.append("connected")
 
     monkeypatch.setattr(cli.supervisor, "start", start)
     arguments = ["--project", str(project.root), "start", "--profile", "pony-preview"]
-    if no_open:
-        arguments.append("--no-open")
+    if open_flag:
+        arguments.append(open_flag)
     result = CliRunner().invoke(cli.app, arguments)
     assert result.exit_code == 0, result.output
     assert calls == ["connected"]

@@ -1,6 +1,6 @@
 # Komaquill
 
-ComfyUIで画像を生成し、画像と生成条件をローカルへ保存するPython CLIです。Google ColabのGPU、または起動済みのComfyUIを利用します。既定のモデルはPony Diffusion V6 XL、生成サイズは1024×1024です。
+ストーリーから本文付きの画像を順次生成し、作品と生成条件をローカルへ保存するPython CLIです。単画像の生成にも対応します。Google ColabのGPU、または起動済みのComfyUIを利用します。既定のモデルはPony Diffusion V6 XL、生成サイズは1024×1024です。
 
 ## 必要な環境
 
@@ -28,7 +28,7 @@ cd ./my-images
 $env:UV_PYTHON_INSTALL_DIR = "$PWD/.artifacts/runtime/python"
 $env:UV_CACHE_DIR = "$PWD/.artifacts/cache/uv"
 uv venv --python 3.12 .artifacts/runtime/venv
-uv pip install --python .artifacts/runtime/venv/Scripts/python.exe '../komaquill-0.1.0.dev0-py3-none-any.whl[colab-client]'
+uv pip install --python .artifacts/runtime/venv/Scripts/python.exe '../komaquill-0.1.0.dev0-py3-none-any.whl[colab-client,llm]'
 . ./.artifacts/runtime/venv/Scripts/Activate.ps1
 komaquill init
 komaquill --version
@@ -42,7 +42,7 @@ komaquill --version
 komaquill start
 ```
 
-初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。接続後はApp Modeが開きます。例のプロンプトが入力されているので、そのままRunで生成できます。接続と自動回収はバックグラウンドで続くため、端末やVS Codeを閉じられます。終了する場合は`komaquill stop`を実行します。ブラウザーを開かない場合は`start --no-open`を使います。
+初回のGoogle認証は公式Colab CLIの案内に従います。認証コードはその端末だけに入力してください。モデルを検証し、ColabのT4上でComfyUIを起動します。接続後は端末へ戻ります。画面を使う場合はopenを実行します。接続と自動回収はバックグラウンドで続くため、端末やVS Codeを閉じられます。終了する場合は`komaquill stop`を実行します。起動後に画面も開く場合だけ`start --open`を指定します。
 
 同じ作業フォルダーで次を実行します。ソースから導入した場合は、その端末でもbootstrap/activate.ps1を読み込みます。
 
@@ -52,6 +52,16 @@ komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 ```
 
 保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
+
+## ストーリーから生成する
+
+LM Studioの4BモデルとLocal Serverを準備し、UTF-8の原文ファイルを指定します。実モデルの呼び出し許可は操作ごとに必要です。
+
+```powershell
+komaquill stories generate ./story.txt --images 4 --allow-real-llm
+```
+
+保存できた場面から本文と画像の保存先を表示します。既定は4枚、1〜8枚に対応します。計画だけの保存、再生成、中断後の再開、構造化出力は[ストーリーの生成](docs/guides/stories.md)を参照してください。画像やブラウザーを自動起動しません。
 
 ## ComfyUIの画面を使う
 
@@ -108,6 +118,7 @@ komaquill start --backend external --endpoint http://127.0.0.1:8188
 
 | フォルダー | 内容 |
 |---|---|
+| .artifacts/data/stories/ | 原文、計画、生成試行、LLMの可視出力 |
 | .artifacts/data/runs/ | 画像、生成条件、履歴 |
 | .artifacts/data/inputs/ | 入力画像・マスクの版と参照情報 |
 | .artifacts/data/workflows/ | 保存したワークフローと入力の参照情報 |

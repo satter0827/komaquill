@@ -86,6 +86,9 @@ def run_acceptance(wheel: Path | None = None) -> None:
         with tempfile.TemporaryDirectory(prefix="komaquill-wheel-", dir=parent) as temporary:
             root = Path(temporary)
             env = dict(os.environ, PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
+            for name in list(env):
+                if name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV":
+                    env.pop(name)
             for name in [
                 "PYTHONPATH",
                 "KOMAQUILL_PROJECT_DIR",
@@ -142,6 +145,46 @@ def run_acceptance(wheel: Path | None = None) -> None:
                 "[presets.custom]\nsteps=27\n"
             )
             command("--help")
+            source_file = workspace / "story.md"
+            source_file.write_bytes(
+                files("komaquill")
+                .joinpath("resources/stories/examples/rainy-cat/source.md")
+                .read_bytes()
+            )
+            if wheel is not None:
+                missing = subprocess.run(
+                    [
+                        str(python),
+                        "-B",
+                        "-m",
+                        "komaquill",
+                        "stories",
+                        "plan",
+                        str(source_file),
+                        "--llm-profile",
+                        "fake",
+                    ],
+                    cwd=workspace,
+                    env=env,
+                    text=True,
+                    encoding="utf-8",
+                    capture_output=True,
+                    timeout=30,
+                )
+                assert missing.returncode == 1 and "komaquill[llm]" in missing.stderr
+                subprocess.run(
+                    [
+                        uv,
+                        "pip",
+                        "install",
+                        "--python",
+                        str(python),
+                        f"komaquill[llm] @ {wheel.as_uri()}",
+                    ],
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                )
             output = root / "monitor.txt"
             with output.open("w", encoding="utf-8") as handle:
                 monitor = subprocess.Popen(
@@ -171,6 +214,29 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     assert session.is_file(), output.read_text(encoding="utf-8")
                     assert monitor.wait(timeout=30) == 0
                     command("generate", "--prompt", "a quiet blue lake", "--seed", "5")
+                    illustrated = json.loads(
+                        command(
+                            "stories",
+                            "generate",
+                            str(source_file),
+                            "--images",
+                            "4",
+                            "--llm-profile",
+                            "fake",
+                            "--image-profile",
+                            "custom",
+                            "--json",
+                        ).stdout
+                    )
+                    assert illustrated["complete"] and illustrated["image_count"] == 4
+                    shown = json.loads(
+                        command("stories", "show", illustrated["story_id"], "--json").stdout
+                    )
+                    assert shown["render_id"] == illustrated["render_id"]
+                    resumed = json.loads(
+                        command("stories", "resume", illustrated["render_id"], "--json").stdout
+                    )
+                    assert resumed["complete"]
                     command("collect")
                     command("status")
                     for arguments, expected in [
@@ -195,7 +261,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         monitor.terminate()
                         monitor.wait(timeout=10)
             runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
-            assert len(runs) == 1
+            assert len(runs) == 5
+            runs = sorted(runs, key=lambda path: json.loads(path.read_bytes())["created_at"])
             run = json.loads(runs[0].read_bytes())
             assert run["state"] == "saved"
             if wheel is not None:
@@ -219,8 +286,10 @@ def run_acceptance(wheel: Path | None = None) -> None:
             evidence = workspace / ".artifacts/records/reports/evidence.json"
             command("evaluations", "export", "--output", str(evidence))
             exported = json.loads(evidence.read_text(encoding="utf-8"))
-            assert exported["runs"][0]["workflow_integrity"] is True
-            assert exported["runs"][0]["images"][0]["matches_record"] is True
+            assert all(item["workflow_integrity"] is True for item in exported["runs"])
+            assert all(item["images"][0]["matches_record"] is True for item in exported["runs"])
+            assert exported["exported_at"] and exported["exporter"]["code_sha256"]
+            assert sum(bool(item["story_context"]) for item in exported["runs"]) == 4
             command("evaluations", "import", str(evidence))
             command("clean", "--dry-run")
             assert runs[0].is_file()

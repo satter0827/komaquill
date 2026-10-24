@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: '24'
       - name: Check quality and installed wheel
-        run: uv run --locked --extra colab-client python scripts/check.py --level 3
+        run: uv run --locked --extra colab-client --extra llm python scripts/check.py --level 3
   quality:
     name: quality
     needs: checks

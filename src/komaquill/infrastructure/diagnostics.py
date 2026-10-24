@@ -24,6 +24,9 @@ def record_event(
     operation_id: UUID | None = None,
     elapsed_seconds: float | None = None,
     asset: str | None = None,
+    story_id: UUID | None = None,
+    render_id: UUID | None = None,
+    scene_id: UUID | None = None,
 ) -> bool:
     """Append an event; return false if diagnostics storage is unavailable."""
     folder = project.logs
@@ -46,6 +49,9 @@ def record_event(
         "result": result,
         "runtime_id": str(runtime_id) if runtime_id else None,
         "run_id": str(run_id) if run_id else None,
+        "story_id": str(story_id) if story_id else None,
+        "render_id": str(render_id) if render_id else None,
+        "scene_id": str(scene_id) if scene_id else None,
         "failure": failure.model_dump(mode="json") if failure else None,
     }
     try:

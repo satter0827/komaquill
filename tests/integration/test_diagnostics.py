@@ -1,6 +1,7 @@
 """Exercise recovery records, settings lifetime, and concurrent persistence."""
 
 import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from PIL import Image
 from typer.testing import CliRunner
 
 from komaquill.application.generation import collect, generate, generation_times, new_run
@@ -66,6 +68,32 @@ def test_partial_images_are_reused_and_tampered_images_are_repaired(project, cli
         hashlib.sha256(target.read_bytes()).hexdigest()
         == saved.image_metadata[saved.images[0]].sha256
     )
+
+
+def test_oversized_image_does_not_block_other_requests_or_retry(
+    project, client, session, stub, monkeypatch
+):
+    first = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    second = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    stub.history[first]["outputs"]["9"]["images"] = [{"filename": "oversized.png"}]
+    stub.history[second]["outputs"]["9"]["images"] = [{"filename": "small.png"}]
+    contents = {}
+    for name, size in [("oversized.png", (2, 2)), ("small.png", (1, 1))]:
+        buffer = io.BytesIO()
+        Image.new("RGB", size).save(buffer, "PNG")
+        contents[name] = buffer.getvalue()
+    monkeypatch.setattr(client, "image", lambda reference: contents[reference.filename])
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1)
+
+    result = collect(project, client, session)
+    runs = {run.prompt_id: run for run in load_runs(project)}
+    assert result.saved == 1 and result.errors == (runs[first].run_id,)
+    assert runs[first].pending and runs[first].failure.code == "image_invalid"
+    assert runs[second].state == "saved"
+
+    contents["oversized.png"] = contents["small.png"]
+    assert collect(project, client, session).saved == 1
+    assert all(run.state == "saved" for run in load_runs(project))
 
 
 def test_parallel_collectors_commit_each_image_once(project, client, session, stub):

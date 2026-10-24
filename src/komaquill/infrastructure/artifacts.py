@@ -67,7 +67,7 @@ class LocalArtifactStore:
             with Image.open(io.BytesIO(content)) as image:
                 width, height = image.size
                 image.verify()
-        except (UnidentifiedImageError, OSError, SyntaxError):
+        except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError):
             raise KomaquillError(code="image_invalid", stage="image_validation") from None
         return ImageMetadata(
             sha256=hashlib.sha256(content).hexdigest(),

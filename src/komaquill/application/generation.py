@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from komaquill.application.ports import GenerationBackend, Workspace
 from komaquill.domain.errors import FailureInfo, KomaquillError, SubmissionUnknown, failure_info
-from komaquill.domain.models import JsonObject, Run, Session
+from komaquill.domain.models import ImageRef, JsonObject, Run, Session
 from komaquill.domain.workflow import digest
 
 
@@ -114,110 +114,181 @@ def collection_lock(project: Workspace) -> AbstractContextManager[Any]:
     return project.repository.lock()
 
 
+def image_references(record: JsonObject) -> list[tuple[str, ImageRef]]:
+    """Validate output references without interpreting remote paths as local paths."""
+    from pathlib import PurePosixPath
+
+    outputs = record.get("outputs", {})
+    if not isinstance(outputs, dict):
+        raise KomaquillError(code="invalid_output", stage="history_validation")
+    result: list[tuple[str, ImageRef]] = []
+    for output in outputs.values():
+        if not isinstance(output, dict) or not isinstance(output.get("images", []), list):
+            raise KomaquillError(code="invalid_output", stage="history_validation")
+        for raw in output.get("images", []):
+            reference = ImageRef.model_validate(raw)
+            suffix = PurePosixPath(reference.filename).suffix.lower()
+            if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"}:
+                raise KomaquillError(code="unsupported_image", stage="image_validation")
+            result.append((f"images/{len(result) + 1:04d}{suffix}", reference))
+    if not result:
+        raise KomaquillError(code="missing_image", stage="image_collection")
+    return result
+
+
+def collect_images(
+    project: Workspace,
+    client: GenerationBackend,
+    session: Session,
+    run_id: UUID,
+    record: JsonObject,
+) -> bool:
+    """Fetch and validate outside the shared metadata lock, committing each checkpoint."""
+    names = []
+    for name, reference in image_references(record):
+        with collection_lock(project):
+            run = project.repository.read(run_id)
+            if not run.pending or not project.accepts_results(session):
+                return False
+            previous = run.image_metadata.get(name)
+        key = f"runs/{run_id}/{name}"
+        content = project.artifacts_store.cached_image(key, previous)
+        if content is None:
+            content = client.image(reference)
+        metadata = project.artifacts_store.inspect_image(content, reference)
+        with collection_lock(project):
+            run = project.repository.read(run_id)
+            if not run.pending or not project.accepts_results(session):
+                return False
+            project.artifacts_store.write(key, content)
+            names.append(name)
+            run.images = list(names)
+            run.image_metadata[name] = metadata
+            project.repository.save(run)
+    with collection_lock(project):
+        run = project.repository.read(run_id)
+        if not run.pending or not project.accepts_results(session):
+            return False
+        run.state = "saved"
+        run.error = None
+        run.failure = None
+        project.repository.save(run)
+    return True
+
+
 def collect(
     project: Workspace, client: GenerationBackend, session: Session, only: UUID | None = None
 ) -> Collection:
-    """Observe queue and history, then collect each request independently."""
+    """Continue independent requests without holding a shared lock over network waits."""
     project = project.configured(session.settings)
+    verify_runtime(client, session)
+    records: dict[str, JsonObject] = {row[1]: {"prompt": row} for row in client.queue()}
+    records.update(client.history())
     with collection_lock(project):
-        verify_runtime(client, session)
-        records: dict[str, JsonObject] = {row[1]: {"prompt": row} for row in client.queue()}
-        records.update(client.history())
         unreadable: list[UUID | str] = []
         runs = {run.run_id: run for run in project.repository.load(unreadable)}
-        known_prompts = {
-            run.prompt_id: run.run_id
-            for run in runs.values()
-            if run.runtime_id == session.runtime_id and run.prompt_id is not None
-        }
-        if only is not None and only not in runs and only not in unreadable:
-            raise KomaquillError(code="request_not_found", retryable=False)
-        related: set[UUID] = set()
-        errors = [identity for identity in unreadable if only is None or identity == only]
-        saved = 0
-        for prompt_id, raw_record in records.items():
-            record = raw_record if isinstance(raw_record, dict) else {}
-            raw_prompt = record.get("prompt")
-            prompt = raw_prompt if isinstance(raw_prompt, list) else []
-            identity = (
-                request_id(prompt)
-                or known_prompts.get(prompt_id)
-                or uuid5(NAMESPACE_URL, f"komaquill:{session.runtime_id}:{prompt_id}")
-            )
-            if identity in unreadable or (only is not None and identity != only):
-                continue
-            run = runs.get(identity)
-            if run is None:
-                if prompt_id in session.excluded_prompt_ids:
-                    continue
-                graph = prompt[2] if len(prompt) > 2 and isinstance(prompt[2], dict) else {}
-                run = new_run(project, session, identity, graph)
-                runs[identity] = run
-            owns_request = session.backend == "external" and request_id(prompt) == run.run_id
-            if run.runtime_id != session.runtime_id and not owns_request:
-                continue
-            related.add(run.run_id)
-            if not run.pending:
+    known_prompts = {
+        run.prompt_id: run.run_id
+        for run in runs.values()
+        if run.runtime_id == session.runtime_id and run.prompt_id is not None
+    }
+    if only is not None and only not in runs and only not in unreadable:
+        raise KomaquillError(code="request_not_found", retryable=False)
+    related: set[UUID] = set()
+    errors = [identity for identity in unreadable if only is None or identity == only]
+    saved = 0
+    for prompt_id, raw_record in records.items():
+        record = raw_record if isinstance(raw_record, dict) else {}
+        raw_prompt = record.get("prompt")
+        prompt = raw_prompt if isinstance(raw_prompt, list) else []
+        identity = (
+            request_id(prompt)
+            or known_prompts.get(prompt_id)
+            or uuid5(NAMESPACE_URL, f"komaquill:{session.runtime_id}:{prompt_id}")
+        )
+        if identity in unreadable or (only is not None and identity != only):
+            continue
+        if identity not in runs and prompt_id in session.excluded_prompt_ids:
+            continue
+        related.add(identity)
+        with project.repository.claim(identity) as acquired:
+            if not acquired:
                 continue
             try:
-                run.prompt_id = prompt_id
-                run.state = "queued"
-                project.repository.save(run)
-                if not isinstance(prompt, list) or len(prompt) < 3:
-                    raise KomaquillError(
-                        code="invalid_response", stage="history_validation", retryable=False
+                with collection_lock(project):
+                    if not project.accepts_results(session):
+                        continue
+                    try:
+                        run = project.repository.read(identity)
+                    except FileNotFoundError:
+                        graph = prompt[2] if len(prompt) > 2 and isinstance(prompt[2], dict) else {}
+                        run = new_run(project, session, identity, graph)
+                    owns_request = (
+                        session.backend == "external" and request_id(prompt) == run.run_id
                     )
-                project.repository.conditions(run, prompt)
-                status = record.get("status", {})
-                if not isinstance(status, dict):
-                    raise KomaquillError(
-                        code="invalid_response", stage="history_validation", retryable=False
-                    )
-                if status.get("status_str") == "error":
-                    run.state = "failed"
-                    run.error = "generation_failed"
-                    run.failure = failure_info(
-                        KomaquillError("", code="generation_failed", retryable=False), "generation"
-                    )
+                    if run.runtime_id != session.runtime_id and not owns_request:
+                        continue
+                    if not run.pending:
+                        continue
+                    run.prompt_id = prompt_id
+                    run.state = "queued"
+                    project.repository.save(run)
+                    if len(prompt) < 3:
+                        raise KomaquillError(
+                            code="invalid_response", stage="history_validation", retryable=False
+                        )
+                    project.repository.conditions(run, prompt)
+                    status = record.get("status", {})
+                    if not isinstance(status, dict):
+                        raise KomaquillError(
+                            code="invalid_response", stage="history_validation", retryable=False
+                        )
                     generation_times(run, status)
+                    if status.get("status_str") == "error":
+                        run.state = "failed"
+                        run.error = "generation_failed"
+                        run.failure = failure_info(
+                            KomaquillError(code="generation_failed", retryable=False), "generation"
+                        )
                     project.repository.save(run)
-                    continue
-                generation_times(run, status)
-                if not status.get("completed"):
-                    project.repository.save(run)
-                    continue
-                run.images = project.repository.images(client, run, record)
-                run.state = "saved"
-                run.error = None
-                run.failure = None
-                project.repository.save(run)
-                saved += 1
+                    completed = status.get("completed") and run.pending
+                if completed and collect_images(project, client, session, identity, record):
+                    saved += 1
             except (KomaquillError, OSError, ValidationError) as error:
-                errors.append(run.run_id)
-                run.state = "queued"
-                stage = "storage"
-                if isinstance(error, ValidationError):
-                    stage = "history_validation"
-                elif isinstance(error, KomaquillError):
-                    stage = error.stage if error.stage != "operation" else "image_collection"
-                run.failure = failure_info(error, stage)
-                run.error = "collection_failed"
-                with suppress(OSError):
-                    project.repository.save(run)
+                errors.append(identity)
+                with collection_lock(project):
+                    try:
+                        current = project.repository.read(identity)
+                    except (OSError, ValueError):
+                        continue
+                    if not current.pending or not project.accepts_results(session):
+                        continue
+                    stage = (
+                        "history_validation"
+                        if isinstance(error, ValidationError)
+                        else error.stage
+                        if isinstance(error, KomaquillError) and error.stage != "operation"
+                        else "image_collection"
+                    )
+                    current.failure = failure_info(error, stage)
+                    current.error = "collection_failed"
+                    with suppress(OSError):
+                        project.repository.save(current)
+    with collection_lock(project):
         selected = [
             run
-            for run in runs.values()
+            for run in project.repository.load([])
             if (run.runtime_id == session.runtime_id or run.run_id in related)
             and (only is None or run.run_id == only)
         ]
-        pending = tuple(run.run_id for run in selected if run.pending)
-        return Collection(
-            saved=saved,
-            pending=len(pending),
-            failed=sum(run.state == "failed" for run in selected),
-            errors=tuple(errors),
-            pending_ids=pending,
-        )
+    pending = tuple(run.run_id for run in selected if run.pending)
+    return Collection(
+        saved=saved,
+        pending=len(pending),
+        failed=sum(run.state == "failed" for run in selected),
+        errors=tuple(errors),
+        pending_ids=pending,
+    )
 
 
 def mark_lost(project: Workspace, runtime_id: UUID) -> tuple[UUID, ...]:

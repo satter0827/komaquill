@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from komaquill.domain.models import Session
     from komaquill.domain.presets import ModelPreset
+    from komaquill.infrastructure.artifacts import LocalArtifactStore
     from komaquill.infrastructure.storage import FileRunRepository
 from dataclasses import dataclass
 from importlib.resources import as_file, files
@@ -92,6 +93,26 @@ class Project(WorkspacePaths):
         from komaquill.infrastructure.storage import FileRunRepository
 
         return FileRunRepository(self)
+
+    @property
+    def artifacts_store(self) -> "LocalArtifactStore":
+        from komaquill.infrastructure.artifacts import LocalArtifactStore
+
+        return LocalArtifactStore(self)
+
+    def accepts_results(self, session: "Session") -> bool:
+        """Reject results belonging to a replaced or finalized session."""
+        from komaquill.infrastructure.storage import load_session
+
+        if self.session_file.is_file() and load_session(self).runtime_id != session.runtime_id:
+            return False
+        import json
+
+        outcome = self.logs / str(session.runtime_id) / "shutdown.json"
+        if session.backend == "colab" and outcome.is_file():
+            result = json.loads(outcome.read_bytes())
+            return not (result.get("finished_at") and result.get("gpu") == "stopped")
+        return True
 
     def prepared_assets(self, session: "Session") -> dict[str, "ModelPreset"]:
         """Read only bindings verified on the current remote runtime."""

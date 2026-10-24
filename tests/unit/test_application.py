@@ -31,9 +31,24 @@ class MemoryRepository:
     def prepare(self, run, graph, ui):
         pass
 
-    def images(self, backend, run, record):
-        assert backend.image(None) == b"adapter-verified-image"
-        return ["images/result.png"]
+    def claim(self, identity):
+        return nullcontext(True)
+
+
+class MemoryArtifacts:
+    def cached_image(self, key, previous):
+        return None
+
+    def inspect_image(self, content, reference):
+        from komaquill.domain.models import ImageMetadata
+
+        assert content == b"adapter-verified-image"
+        return ImageMetadata(
+            sha256="a" * 64, size_bytes=len(content), width=1, height=1, source=reference
+        )
+
+    def write(self, key, content):
+        assert key.endswith("images/0001.png")
 
 
 class MemoryBackend:
@@ -49,7 +64,9 @@ class MemoryBackend:
         self.record = {
             "prompt": [0, "prompt-id", graph, {"komaquill": {"run_id": identity}}],
             "status": {"completed": True},
-            "outputs": {},
+            "outputs": {
+                "9": {"images": [{"filename": "result.png", "subfolder": "", "type": "output"}]}
+            },
         }
         return "prompt-id"
 
@@ -100,9 +117,11 @@ def test_generation_uses_only_replaceable_contracts():
 
     workspace = Workspace()
     workspace.repository = repository
+    workspace.artifacts_store = MemoryArtifacts()
+    workspace.accepts_results = lambda session: True
     backend = MemoryBackend()
     session = Session(endpoint="http://127.0.0.1:8188", runtime_id=uuid4(), backend="external")
     run = generate(workspace, backend, session, "a quiet lake", "", 1)
-    assert run.state == "saved" and run.images == ["images/result.png"]
+    assert run.state == "saved" and run.images == ["images/0001.png"]
     assert backend.submissions == 1 and repository.writes >= 3
     assert len(repository.rows) == 1

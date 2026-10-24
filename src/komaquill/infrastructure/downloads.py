@@ -37,9 +37,10 @@ def fetch_model(project: Project, model: ModelPreset) -> Path:
                 asset=model.name,
                 elapsed_seconds=round(time.monotonic() - started, 3),
             )
-            register(project.models, model, existing)
             return existing
         record_event(project, "model", "download_started", asset=model.name)
+        verified = False
+        acquired_at = time.monotonic()
         try:
             if model.url:
                 target = existing
@@ -55,8 +56,24 @@ def fetch_model(project: Project, model: ModelPreset) -> Path:
                         with temporary.open("wb") as handle:
                             for chunk in response.iter_bytes():
                                 handle.write(chunk)
+                    record_event(
+                        project,
+                        "model",
+                        "download_finished",
+                        asset=model.name,
+                        elapsed_seconds=round(time.monotonic() - acquired_at, 3),
+                    )
+                    verify_started = time.monotonic()
                     if file_digest(temporary) != model.sha256:
                         raise KomaquillError(code="invalid_output")
+                    verified = True
+                    record_event(
+                        project,
+                        "model",
+                        "hash_verified",
+                        asset=model.name,
+                        elapsed_seconds=round(time.monotonic() - verify_started, 3),
+                    )
                     temporary.replace(target)
                 finally:
                     if temporary.exists():
@@ -80,9 +97,26 @@ def fetch_model(project: Project, model: ModelPreset) -> Path:
                 stage="preparation",
                 http_status=status if isinstance(status, int) else None,
             ) from None
-        if file_digest(target) != model.sha256:
+        if not verified:
+            record_event(
+                project,
+                "model",
+                "download_finished",
+                asset=model.name,
+                elapsed_seconds=round(time.monotonic() - acquired_at, 3),
+            )
+        verify_started = time.monotonic()
+        if not verified and file_digest(target) != model.sha256:
             raise KomaquillError(
                 display_key="text.the_model_failed_sha256_verification_check_the_downloaded"
+            )
+        if not verified:
+            record_event(
+                project,
+                "model",
+                "hash_verified",
+                asset=model.name,
+                elapsed_seconds=round(time.monotonic() - verify_started, 3),
             )
         record_event(
             project,

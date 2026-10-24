@@ -1,17 +1,11 @@
 """Store verified models by purpose and digest without filename collisions."""
 
-import hashlib
 import json
 from pathlib import Path
 
 from komaquill.domain.presets import ModelPreset
+from komaquill.infrastructure.artifacts import file_digest as file_digest
 from komaquill.infrastructure.storage import atomic_json
-
-
-def file_digest(path: Path) -> str:
-    """Compute a SHA256 using bounded reads."""
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
 
 
 def model_path(models: Path, model: ModelPreset) -> Path:

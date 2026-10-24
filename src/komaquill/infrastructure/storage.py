@@ -1,28 +1,24 @@
 """Persist generation requests and collection results atomically."""
 
-import hashlib
-import io
 import json
 import os
 import sys
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
-from filelock import FileLock
-from PIL import Image, UnidentifiedImageError
+from filelock import FileLock, Timeout
 
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.models import ImageMetadata, ImageRef, JsonObject, Run, Session
+from komaquill.domain.models import JsonObject, Run, Session
 from komaquill.domain.workflow import digest
 from komaquill.infrastructure.diagnostics import record_event
-from komaquill.messages import message
-
-if TYPE_CHECKING:
-    from komaquill.application.ports import GenerationBackend
 from komaquill.infrastructure.paths import WorkspacePaths
+from komaquill.messages import message
 
 WINDOWS_REPLACE_ERRORS = frozenset({5, 32, 33})
 REPLACE_TIMEOUT_SECONDS = 1.0
@@ -150,67 +146,6 @@ def stop_request(project: WorkspacePaths, session: Session) -> bool | None:
     return bool(request.get("force"))
 
 
-def save_images(
-    project: WorkspacePaths, client: "GenerationBackend", run: Run, record: JsonObject
-) -> list[str]:
-    """Verify each image and persist its integrity information before continuing."""
-    image_names: list[str] = []
-    outputs = record.get("outputs", {})
-    if not isinstance(outputs, dict):
-        raise KomaquillError(
-            display_key="text.the_image_output_structure_is_invalid", code="invalid_output"
-        )
-    for output in outputs.values():
-        if not isinstance(output, dict) or not isinstance(output.get("images", []), list):
-            raise KomaquillError(
-                display_key="text.the_image_output_structure_is_invalid", code="invalid_output"
-            )
-        for raw_reference in output.get("images", []):
-            reference = ImageRef.model_validate(raw_reference)
-            suffix = PurePosixPath(reference.filename).suffix.lower()
-            if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"}:
-                raise KomaquillError(
-                    display_key="text.the_image_format_is_unsupported", code="unsupported_image"
-                )
-            name = f"images/{len(image_names) + 1:04d}{suffix}"
-            target = run_dir(project, run.run_id) / name
-            previous = run.image_metadata.get(name)
-            content = target.read_bytes() if target.is_file() else None
-            if (
-                content is None
-                or previous is None
-                or (hashlib.sha256(content).hexdigest() != previous.sha256)
-            ):
-                content = client.image(reference)
-            try:
-                with Image.open(io.BytesIO(content)) as image:
-                    width, height = image.size
-                    image.verify()
-            except (UnidentifiedImageError, OSError, SyntaxError) as error:
-                raise KomaquillError(
-                    display_key="text.image_verification_failed_run_collect_to_retry",
-                    code="image_invalid",
-                    stage="image_validation",
-                ) from error
-            if not target.is_file() or target.read_bytes() != content:
-                atomic_bytes(target, content)
-            run.image_metadata[name] = ImageMetadata(
-                sha256=hashlib.sha256(content).hexdigest(),
-                size_bytes=len(content),
-                width=width,
-                height=height,
-                source=reference,
-            )
-            image_names.append(name)
-            run.images = list(image_names)
-            save_run(project, run)
-    if not image_names:
-        raise KomaquillError(
-            display_key="text.no_output_images_were_found_check_the_workflow", code="missing_image"
-        )
-    return image_names
-
-
 def save_conditions(project: WorkspacePaths, run: Run, prompt: list[Any]) -> None:
     """Record observed conditions before generation completes."""
     folder = run_dir(project, run.run_id)
@@ -270,5 +205,18 @@ class FileRunRepository:
         atomic_json(folder / "workflow-api.json", graph)
         atomic_json(folder / "workflow.json", ui)
 
-    def images(self, backend: "GenerationBackend", run: Run, record: JsonObject) -> list[str]:
-        return save_images(self.project, backend, run, record)
+    @contextmanager
+    def claim(self, run_id: UUID) -> Iterator[bool]:
+        """Serialize one request without blocking unrelated state updates."""
+        folder = self.project.state / "collection"
+        folder.mkdir(parents=True, exist_ok=True)
+        lock = FileLock(str(folder / f"{run_id}.lock"), timeout=0)
+        try:
+            lock.acquire()
+        except Timeout:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            lock.release()

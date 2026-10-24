@@ -114,7 +114,8 @@ def plan(project: Project) -> tuple[CleanupItem, ...]:
     assert_stopped(project)
     protected = set()
     for pointer in (project.reports / "quality").glob("latest-*.json"):
-        protected.add(json.loads(pointer.read_bytes())["report"])
+        if not pointer.name.startswith("latest-attempt-"):
+            protected.add(json.loads(pointer.read_bytes())["report"])
     busy = cache_in_use(project)
     result = []
     for category in ("cache", "tmp", "dist"):
@@ -130,9 +131,10 @@ def plan(project: Project) -> tuple[CleanupItem, ...]:
             if gate.is_file():
                 try:
                     evidence = json.loads(gate.read_bytes())
-                    known = evidence.get("group") in {"quality", "all"} and isinstance(
-                        evidence.get("steps"), list
-                    )
+                    known = (
+                        evidence.get("group") in {"quality", "all"}
+                        or evidence.get("format_version") == 2
+                    ) and isinstance(evidence.get("steps"), list)
                 except (OSError, ValueError, AttributeError):
                     pass
             reason = exclusion(category, path.name, protected, known, busy)
@@ -199,8 +201,27 @@ def execute(project: Project, dry_run: bool) -> tuple[tuple[CleanupItem, ...], P
                     )
                 else:
                     shutil.rmtree(path)
-                outcomes.append({"path": item.relative_path, "result": "completed"})
-                updated.append(replace(item, result="completed"))
+                after_count, after_size, _ = measured(path) if path.exists() else (0, 0, False)
+                outcomes.append(
+                    {
+                        "path": item.relative_path,
+                        "result": "completed",
+                        "before_files": item.file_count,
+                        "before_bytes": item.size_bytes,
+                        "after_files": after_count,
+                        "after_bytes": after_size,
+                        "removed_files": max(0, item.file_count - after_count),
+                        "removed_logical_bytes": max(0, item.size_bytes - after_size),
+                    }
+                )
+                updated.append(
+                    replace(
+                        item,
+                        result="completed",
+                        after_size_bytes=after_size,
+                        after_file_count=after_count,
+                    )
+                )
             except (OSError, KomaquillError, subprocess.SubprocessError) as error:
                 failed = True
                 updated.append(replace(item, result="failed"))

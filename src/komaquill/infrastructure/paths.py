@@ -39,6 +39,10 @@ class WorkspacePaths:
         return self.data / "workflows"
 
     @property
+    def evaluations(self) -> Path:
+        return self.data / "evaluations"
+
+    @property
     def logs(self) -> Path:
         return self.records / "logs"
 

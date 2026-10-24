@@ -165,6 +165,11 @@ def test_cleanup_locates_uv_without_shell_activation(project, monkeypatch, sourc
         ("cwd", True),
         ("open_cache", True),
         ("open_tmp", True),
+        ("path_environment", True),
+        ("virtual_environment", True),
+        ("pythonpath_environment", True),
+        ("workspace_environment", True),
+        ("denied_environment", True),
         ("unrelated", False),
         ("prefix_collision", False),
         ("disappeared", False),
@@ -186,6 +191,7 @@ def test_cleanup_detects_workspace_use_beyond_resolved_executable(
     arguments = [str(executable), "-c", "pass"]
     directory = outside
     files = []
+    environment = {}
     if case == "executable":
         executable = project.runtime / "venv/bin/python"
     elif case == "symlink_argv":
@@ -201,6 +207,15 @@ def test_cleanup_detects_workspace_use_beyond_resolved_executable(
         arguments[0] = str(
             project.root.with_name(project.root.name + "-other") / ".artifacts/runtime/bin/python"
         )
+    if case == "path_environment":
+        environment["PATH"] = str(project.runtime / "venv/bin") + os.pathsep + str(outside)
+        arguments[0] = "python"
+    elif case == "virtual_environment":
+        environment["VIRTUAL_ENV"] = str(project.runtime / "venv")
+    elif case == "pythonpath_environment":
+        environment["PYTHONPATH"] = str(project.root / "src")
+    elif case == "workspace_environment":
+        environment["KOMAQUILL_PROJECT_DIR"] = str(project.root)
     process = SimpleNamespace(
         pid=os.getpid() if case == "self" else os.getpid() + 1,
         info={"name": "node" if case == "denied_other" else "python3"},
@@ -208,6 +223,7 @@ def test_cleanup_detects_workspace_use_beyond_resolved_executable(
         cmdline=lambda: arguments,
         cwd=lambda: str(directory),
         open_files=lambda: files,
+        environ=lambda: environment,
     )
     if case.startswith("denied") or case == "disappeared":
 
@@ -216,6 +232,9 @@ def test_cleanup_detects_workspace_use_beyond_resolved_executable(
                 raise psutil.NoSuchProcess(process.pid)
             raise psutil.AccessDenied(process.pid)
 
-        process.exe = inaccessible
+        if case == "denied_environment":
+            process.environ = inaccessible
+        else:
+            process.exe = inaccessible
     monkeypatch.setattr(cleanup.psutil, "process_iter", lambda _: iter([process]))
     assert cleanup.cache_in_use(project) is expected

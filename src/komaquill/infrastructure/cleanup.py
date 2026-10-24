@@ -73,6 +73,19 @@ def cache_in_use(project: Project) -> bool:
                 within(argument, project.root) for argument in arguments
             ):
                 return True
+            environment = process.environ()
+            runtime_hints = [
+                environment.get("VIRTUAL_ENV", ""),
+                *environment.get("PATH", "").split(os.pathsep),
+            ]
+            workspace_hints = [
+                environment.get("KOMAQUILL_PROJECT_DIR", ""),
+                *environment.get("PYTHONPATH", "").split(os.pathsep),
+            ]
+            if any(within(hint, project.runtime) for hint in runtime_hints) or any(
+                within(hint, project.root) for hint in workspace_hints
+            ):
+                return True
             if any(
                 within(file.path, folder)
                 for file in process.open_files()

@@ -76,3 +76,10 @@ status = "implemented"
 acceptance = ["要件と実装・テストを対応付ける", "文書の内部リンクと参照先を検査する"]
 sources = ["scripts/checks/documentation.py"]
 tests = ["tests/unit/test_docs.py"]
+
+[requirements.REQ-EVALUATIONS]
+summary = "過去の生成へ人とAIの評価を関連付け、分析用の条件と画像参照を出力する"
+status = "implemented"
+acceptance = ["採否・選好・基準・根拠・評価者とAIの版を保存する", "訂正は追記し生成条件を変更しない", "未評価の生成も分析用に出力する"]
+sources = ["src/komaquill/domain/evaluations.py", "src/komaquill/application/evaluations.py", "src/komaquill/infrastructure/evaluations.py"]
+tests = ["tests/unit/test_evaluations.py", "tests/integration/test_acceptance.py"]

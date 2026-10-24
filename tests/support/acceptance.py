@@ -203,6 +203,25 @@ def run_acceptance(wheel: Path | None = None) -> None:
             assert run["image_metadata"] and run["code_sha256"]
             graph = json.loads((runs[0].parent / "workflow-api.json").read_bytes())
             assert graph["3"]["inputs"]["steps"] == 27
+            command(
+                "evaluations",
+                "add",
+                run["run_id"],
+                "--decision",
+                "accept",
+                "--criterion",
+                "composition",
+                "--reason",
+                "Matches the scene.",
+            )
+            evaluation_data = json.loads(command("evaluations", "list").stdout)
+            assert len(evaluation_data) == 1
+            evidence = workspace / ".artifacts/records/reports/evidence.json"
+            command("evaluations", "export", "--output", str(evidence))
+            exported = json.loads(evidence.read_text(encoding="utf-8"))
+            assert exported["runs"][0]["workflow_integrity"] is True
+            assert exported["runs"][0]["images"][0]["matches_record"] is True
+            command("evaluations", "import", str(evidence))
             command("clean", "--dry-run")
             assert runs[0].is_file()
             script = "\n".join(

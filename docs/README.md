@@ -7,6 +7,7 @@
 | 利用を始める | [README](../README.md) | [操作](guides/usage.md) |
 | 要件を変更する | [目的と範囲](product/scope.md) | [要件台帳](requirements/catalog.toml) |
 | コードを変更する | [開発規約](../AGENTS.md) | [現在の構成](current/architecture.md)、[変更・検証](development/workflow.md) |
+| 過去の生成を評価する | [評価の操作](guides/evaluations.md) | [評価の契約](current/evaluations.md) |
 | 生成条件を変える | [プリセット](current/presets.md) | [モデル準備](guides/preparation.md) |
 | 接続・保存を調査する | [障害対応](operations/diagnostics.md) | [保存と整理](operations/artifacts.md) |
 | 設計判断を確認する | [設計判断](decisions/0001-native-interfaces.md) | [契約](current/contracts.md) |

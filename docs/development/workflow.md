@@ -14,12 +14,12 @@
 | L2 | L1に加え、各言語のテスト、GPU依存ロック、カバレッジ、実プロセスでの基本操作 |
 | L3 | L2に加え、隔離ビルド、配布物、隔離wheelの基本操作、Git履歴の秘密情報 |
 
-~~~powershell
+```powershell
 python scripts/check.py --level 2
 python scripts/check.py --level 3
 python scripts/check.py --level 3 --plan --json
 python scripts/check.py --level 3 --status --json
-~~~
+```
 
 既定はL2です。上位レベルは下位の全検査を含みます。GPU、Google認証、有料APIは要求しません。依存導入には配布元への通信が必要です。生成操作の検査はlocalhostの代替サーバーを使用します。
 
@@ -39,10 +39,10 @@ latest-attempt-lN.jsonは最新実行、latest-success-lN.jsonは最新の全工
 
 pyproject.tomlとuv.lockを更新した後、GPU用の固定依存を明示的に書き出します。
 
-~~~powershell
+```powershell
 python -m bootstrap.update_worker_lock
 python scripts/check.py --level 3
-~~~
+```
 
 品質検査は追跡対象ファイルを書き換えません。GPU用依存はworkerグループから出力し、ローカルへ導入しません。公開ハッシュの検査除外には理由を残します。
 

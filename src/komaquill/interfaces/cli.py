@@ -28,6 +28,7 @@ from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import run_dir
 from komaquill.infrastructure.views import open_view
 from komaquill.infrastructure.workflows import assets, prepare, select
+from komaquill.interfaces.evaluations import bind
 from komaquill.messages import error_message, message
 
 APP_HELP = message("text.generate_images_with_comfyui_and_save_them_locally")
@@ -451,7 +452,18 @@ def clean_command(
                     result=message("cleanup." + (item.result or item.reason or "eligible")),
                 )
             )
+            if item.after_file_count is not None and item.after_size_bytes is not None:
+                typer.echo(
+                    message(
+                        "cleanup.removed",
+                        count=max(0, item.file_count - item.after_file_count),
+                        size=max(0, item.size_bytes - item.after_size_bytes),
+                    )
+                )
         if report_path is not None:
             typer.echo(message("cleanup.report", path=report_path))
         if failed:
             raise typer.Exit(1)
+
+
+bind(app, operation)

@@ -29,6 +29,7 @@ from komaquill.infrastructure.storage import run_dir
 from komaquill.infrastructure.views import open_view
 from komaquill.infrastructure.workflows import assets, prepare, select
 from komaquill.interfaces.evaluations import bind
+from komaquill.interfaces.stories import bind as bind_stories
 from komaquill.messages import error_message, message
 
 APP_HELP = message("text.generate_images_with_comfyui_and_save_them_locally")
@@ -171,7 +172,7 @@ def start(
     foreground: Annotated[bool, typer.Option(help=message("monitor.foreground_help"))] = False,
     open_browser: Annotated[
         bool, typer.Option("--open/--no-open", help=message("profile.open_help"))
-    ] = True,
+    ] = False,
 ) -> None:
     """Maintain the connection and automatic collection until interrupted."""
     with operation(ctx) as project:
@@ -467,3 +468,5 @@ def clean_command(
 
 
 bind(app, operation)
+
+bind_stories(app, operation)

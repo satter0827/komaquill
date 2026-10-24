@@ -1,0 +1,42 @@
+{
+  "title": "雨の日の青い傘",
+  "synopsis": "雨の日に出会った子猫を助けたミオが、親子猫の再会を見届ける物語。",
+  "characters": [
+    {
+      "key": "mio",
+      "name": "ミオ",
+      "appearance": "Mio is a young adult woman with a short dark bob, wearing a yellow raincoat and carrying a blue umbrella."
+    },
+    {
+      "key": "kitten",
+      "name": "子猫",
+      "appearance": "A tiny gray short-haired kitten with a white patch on its chest."
+    },
+    {
+      "key": "mother",
+      "name": "母猫",
+      "appearance": "An adult gray short-haired mother cat with the same white chest patch."
+    }
+  ],
+  "scenes": [
+    {
+      "title": "落ち着く子猫",
+      "narrative": "ミオは青い傘を差し、雨の帰り道を歩いていた。道端で雨に震える小さな子猫を見つけ、そっとしゃがんだ。ミオは子猫へ傘を差しかけた。自分の肩は濡れたが、子猫の震えは少しずつ落ち着いていった。落ち着いた子猫は通りの向こうへ走り出した。ミオが目で追うと、軒下で待っていた母猫のもとへ駆け寄っていた。母猫が子猫へ顔を寄せた。ミオは親子を見守って微笑み、自分の頭の上へ傘を戻して帰り道を歩き出した。",
+      "visual_description": "A small gray kitten rests calmly beneath Mio's blue umbrella, her yellow raincoat shoulder wet with rain, intimate eye-level view.",
+      "characters": [
+        "mio",
+        "kitten"
+      ],
+      "location": "雨の帰り道と通りの軒下",
+      "source_refs": [
+        "p1",
+        "p2",
+        "p3",
+        "p4"
+      ]
+    }
+  ],
+  "supplements": [
+    "ミオの髪形と黄色いレインコート、猫の毛色は描画の一貫性のために補足した。"
+  ]
+}

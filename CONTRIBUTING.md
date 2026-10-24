@@ -37,3 +37,8 @@ PRには問題、変更後の動作、検証結果、残る制約を記載しま
 バージョンと公開手順は[開発とリリース](docs/development/workflow.md#公開する)を参照してください。
 
 公開前は python scripts/check.py --level 3 を実行します。レベルと結果の確認方法は[開発とリリース](docs/development/workflow.md)を参照してください。
+
+
+## ストーリーの変更
+
+ソース用setupはllm追加依存も導入します。手動のuv syncでは--extra llmを指定してください。日常ゲートでは実LLM・GPUを使いません。FakeListLLMと擬似ComfyUIで部分失敗・中断・再開・JSON出力を検査します。実LLM検証は[検証戦略](docs/verification/strategy.md)の別入口で行います。指示・原文・可視出力をGitへ含めないことなど、[開発規約](AGENTS.md#ストーリーとllm)も確認してください。

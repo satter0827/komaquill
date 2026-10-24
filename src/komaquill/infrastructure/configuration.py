@@ -71,6 +71,8 @@ class Project(WorkspacePaths):
             return self.effective_settings
         with (self.root / "komaquill.toml").open("rb") as handle:
             defaults = tomllib.load(handle)
+        defaults.pop("story", None)
+        defaults.pop("llm_profiles", None)
         definitions = catalog(self.root)
         for section in ("assets", "presets"):
             for name, changes in defaults.pop(section, {}).items():

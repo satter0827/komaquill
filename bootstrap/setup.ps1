@@ -22,7 +22,7 @@ if (-not (Test-Path -LiteralPath $KomaquillUv)) {
     Install-VerifiedZip $uvUrl (($uvChecksum.Trim() -split '\s+')[0]) (Split-Path -Parent $KomaquillUv) 'uv.zip'
 }
 $KomaquillPythonVersion = (Get-Content -LiteralPath (Join-Path $KomaquillRoot '.python-version') -Raw).Trim()
-& $KomaquillUv sync --locked --group dev --extra colab-client --python "cpython-$KomaquillPythonVersion-windows-x86_64-none" --project $KomaquillRoot
+& $KomaquillUv sync --locked --group dev --extra colab-client --extra llm --python "cpython-$KomaquillPythonVersion-windows-x86_64-none" --project $KomaquillRoot
 if ($LASTEXITCODE -ne 0) { throw (Get-KomaquillMessage 'bootstrap.python') }
 
 git -C $KomaquillRoot config core.hooksPath .githooks

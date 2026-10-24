@@ -19,6 +19,7 @@ komaquill = "komaquill.__main__:main"
 
 [project.optional-dependencies]
 colab-client = ["google-colab-cli==0.7.5"]
+llm = ["langchain-core>=1,<2", "langchain-openai>=1,<2"]
 
 [project.urls]
 Repository = "https://github.com/satter0827/komaquill"
@@ -86,7 +87,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider"]
+addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider", "-p", "no:langsmith_plugin"]
 xfail_strict = true
 
 [tool.coverage.run]
@@ -117,13 +118,13 @@ ancestors = ["komaquill", "komaquill.domain", "komaquill.application"]
 name = "Application and domain do not import concrete adapters or presentation"
 type = "forbidden"
 source_modules = ["komaquill.application", "komaquill.domain"]
-forbidden_modules = ["komaquill.infrastructure", "komaquill.interfaces", "komaquill.gpu", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli"]
+forbidden_modules = ["komaquill.infrastructure", "komaquill.interfaces", "komaquill.gpu", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli", "langchain_core", "langchain_openai", "langsmith"]
 
 [[tool.importlinter.contracts]]
 name = "GPU code does not import local interfaces or control"
 type = "forbidden"
 source_modules = ["komaquill.gpu"]
-forbidden_modules = ["komaquill.interfaces.cli", "komaquill.interfaces.session_worker", "komaquill.infrastructure.colab", "komaquill.infrastructure.sessions", "komaquill.infrastructure.colab_entry"]
+forbidden_modules = ["komaquill.interfaces.cli", "komaquill.interfaces.session_worker", "komaquill.infrastructure.colab", "komaquill.infrastructure.sessions", "komaquill.infrastructure.colab_entry", "komaquill.infrastructure.stories", "komaquill.application.stories", "komaquill.interfaces.stories", "langchain_core", "langchain_openai", "langsmith"]
 
 [[tool.importlinter.contracts]]
 name = "Product code does not import development dependencies"

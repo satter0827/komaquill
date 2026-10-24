@@ -36,11 +36,11 @@ sources = ["src/komaquill/infrastructure/cleanup.py", "src/komaquill/application
 tests = ["tests/unit/test_cleanup.py", "tests/integration/test_cleanup_processes.py"]
 
 [requirements.REQ-STORY]
-summary = "日本語ストーリーとコマ数からLLMで生成計画を作成する"
-status = "planned"
-acceptance = ["絵コンテ・人物・場面・モデル別プロンプトを構成する"]
-sources = []
-tests = []
+summary = "ストーリーと指定枚数から本文と画像を順次保存する"
+status = "implemented"
+acceptance = ["1〜8場面の計画全体を検証する", "本文・原文参照・補足と画像を関連付ける", "計画と試行を分けて再生成・再開する", "実LLMを明示許可し日常ゲートではFakeを使う", "保存済み場面を重複生成せず部分失敗を報告する"]
+sources = ["src/komaquill/domain/stories.py", "src/komaquill/application/stories/planning.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/infrastructure/stories/llm.py", "src/komaquill/infrastructure/stories/storage.py", "src/komaquill/interfaces/stories.py"]
+tests = ["tests/unit/test_story_planning.py", "tests/unit/test_story_rendering.py", "tests/integration/test_story_cli.py", "tests/integration/test_story_llm.py", "tests/unit/test_story_structure.py"]
 
 [requirements.REQ-SESSION]
 summary = "端末終了後も一つの監視で接続と回収を維持する"

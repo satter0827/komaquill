@@ -80,6 +80,10 @@ def main(
         if name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV":
             env.pop(name)
     env.pop("PYTEST_ADDOPTS", None)
+    for name in ("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY"):
+        env.pop(name, None)
+    for name in ("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2", "LANGSMITH_TEST_TRACKING"):
+        env[name] = "false"
     env["PYTHONPYCACHEPREFIX"] = str(root / ".artifacts/cache/pycache")
     env["PYTHONUTF8"] = "1"
     env["COVERAGE_FILE"] = str(report / ".coverage")

@@ -114,8 +114,14 @@ def gpu_contents() -> Iterator[tuple[str, bytes]]:
         if name.removeprefix("komaquill/") in GPU_MODULES
         or name.startswith("komaquill/interfaces/comfyui/web/")
         or (
-            name.startswith("komaquill/resources/")
-            and not name.endswith(("messages.json", "artifacts.md"))
+            name.startswith(
+                (
+                    "komaquill/resources/models/",
+                    "komaquill/resources/presets/",
+                    "komaquill/resources/runtime/",
+                )
+            )
+            or name == "komaquill/resources/settings/defaults.toml"
         )
     ]
     anchor = files("komaquill")

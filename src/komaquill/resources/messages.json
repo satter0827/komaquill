@@ -258,5 +258,8 @@
   "assets.status": "Model preparations awaiting completion: {count}",
   "materials.shutdown": "Materials: {result}",
   "quality.source_changed": "Source files changed during verification. Run the checks again before using this result.",
-  "assets.capacity": "{size_bytes:,} bytes"
+  "assets.capacity": "{size_bytes:,} bytes",
+  "quality.report_unavailable": "The check report could not be saved; the original failure is unchanged.",
+  "storage.cleanup_failed": "The write failed and its temporary file could not be removed.",
+  "quality.inspect_security": "Inspect publishable files and Git history for secrets."
 }

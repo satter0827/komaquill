@@ -33,6 +33,8 @@ def atomic_bytes(path: Path, content: bytes) -> None:
     """Replace a file using a temporary file in the same directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    committed = False
+    primary: BaseException | None = None
     try:
         with temporary.open("xb") as handle:
             handle.write(content)
@@ -42,6 +44,7 @@ def atomic_bytes(path: Path, content: bytes) -> None:
         while True:
             try:
                 temporary.replace(path)
+                committed = True
                 break
             except PermissionError as error:
                 if (
@@ -55,8 +58,19 @@ def atomic_bytes(path: Path, content: bytes) -> None:
                 elif now >= deadline:
                     raise
                 time.sleep(REPLACE_RETRY_SECONDS)
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        temporary.unlink(missing_ok=True)
+        if not committed:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                if primary is None:
+                    raise
+                from komaquill.messages import message
+
+                print(message("storage.cleanup_failed"), file=sys.stderr)
 
 
 def atomic_json(path: Path, data: JsonObject) -> None:

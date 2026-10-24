@@ -89,7 +89,7 @@ def test_quality_gate_runs_tools_in_order_and_stops_on_failure(tmp_path, monkeyp
     assert commands[0][0][2:4] == ["ruff", "format"]
     assert any("--cov" in args for args, _ in commands)
     assert any("check_coverage.py" in " ".join(args) for args, _ in commands)
-    assert commands[-1][0][-1].endswith("security.py")
+    assert any(arg.endswith("security.py") for arg in commands[-1][0])
     assert any("check_e2e.py" in " ".join(args) for args, _ in commands)
     assert all(options["check"] and options["cwd"] == tmp_path for _, options in commands)
 
@@ -184,7 +184,9 @@ def test_security_gate_reports_scope_and_never_secret_values(tmp_path, monkeypat
         with pytest.raises(SystemExit):
             security.main()
     if case != "tracked":
-        report = (tmp_path / ".artifacts/reports/quality/security.json").read_text(encoding="utf-8")
+        report = next((tmp_path / ".artifacts/reports/quality").glob("*/security.json")).read_text(
+            encoding="utf-8"
+        )
         data = json.loads(report)
         assert data["scope"] == ["working_tree", "staged", "history"]
         assert data["source_revision"] == "test-revision"
@@ -283,6 +285,6 @@ def test_security_group_never_needs_uv_and_missing_uv_fails_quality(tmp_path, mo
         lambda args, **kw: calls.append(args) or SimpleNamespace(returncode=0),
     )
     check.main("security")
-    assert len(calls) == 1 and calls[0][-1].endswith("security.py")
+    assert len(calls) == 1 and any(arg.endswith("security.py") for arg in calls[0])
     with pytest.raises(SystemExit):
         check.main("quality")

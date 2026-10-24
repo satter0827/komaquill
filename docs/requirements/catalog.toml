@@ -1,0 +1,43 @@
+format_version = 1
+
+[requirements.REQ-GENERATE]
+summary = "CLIと標準画面から画像を生成し、実行条件と画像をローカルへ保存する"
+status = "implemented"
+acceptance = ["CLI・App Mode・Node Graphから生成できる", "保存失敗を成功として扱わず再回収できる"]
+sources = ["src/komaquill/application/generation.py", "src/komaquill/infrastructure/storage.py"]
+tests = ["tests/integration/test_generation.py", "tests/integration/test_storage.py"]
+
+[requirements.REQ-OWNERSHIP]
+summary = "所有するGPUだけを操作し、確認・回収・停止で追加確保しない"
+status = "implemented"
+acceptance = ["所有IDとアカウントを照合する", "外部ComfyUIを停止しない"]
+sources = ["src/komaquill/infrastructure/colab.py", "src/komaquill/application/lifecycle.py"]
+tests = ["tests/integration/test_colab_provider.py", "tests/unit/test_lifecycle.py"]
+
+[requirements.REQ-QUALITY]
+summary = "GPUなしで検査し、全工程が成功した場合だけ成功を確定する"
+status = "in_progress"
+acceptance = ["中断・起動失敗・入力変更で最新成功を更新しない", "行90%以上・分岐80%以上を独立判定する"]
+sources = ["scripts/check.py", "scripts/check_coverage.py"]
+tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py"]
+
+[requirements.REQ-BUNDLES]
+summary = "利用者が生成セットをフォルダー単位で追加・置換できる"
+status = "planned"
+acceptance = ["標準ワークフローと設定を一式で扱う", "GPU確保前に参照を検証する"]
+sources = []
+tests = []
+
+[requirements.REQ-CLEAN]
+summary = "保全対象を削除せず、再作成可能な生成物だけを整理する"
+status = "planned"
+acceptance = ["プレビューできる", "使用中・用途不明のデータを除外する", "削除結果を記録する"]
+sources = []
+tests = []
+
+[requirements.REQ-STORY]
+summary = "日本語ストーリーとコマ数からLLMで生成計画を作成する"
+status = "planned"
+acceptance = ["絵コンテ・人物・場面・モデル別プロンプトを構成する"]
+sources = []
+tests = []

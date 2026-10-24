@@ -270,6 +270,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "full = client.stories.export(story_id, detail='full')",
                             "assert isinstance(summary, StoryEvidence)",
                             "assert summary.format_version == 3",
+                            "assert summary.unreadable_evaluation_ids == []",
                             "assert summary.detail == 'summary' and not summary.objects",
                             "assert full.detail == 'full' and full.objects",
                             "assert summary.planning == full.planning",

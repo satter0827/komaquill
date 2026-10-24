@@ -112,6 +112,7 @@ class StoryEvidence(BaseModel):
     selected_run_ids: list[UUID]
     runs: list[EvidenceRun]
     evaluations: list[Evaluation]
+    unreadable_evaluation_ids: list[str] = Field(default_factory=list)
     assets: list[dict[str, JsonValue]]
     records: list[EvidenceRecord]
     objects: dict[str, JsonValue]

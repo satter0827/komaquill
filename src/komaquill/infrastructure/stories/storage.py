@@ -35,16 +35,56 @@ class StoredPlan(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+def render_placements(render: StoryRender, relative: str) -> Iterator[tuple[UUID, RunPlacement]]:
+    for position, scene in enumerate(render.scenes, 1):
+        for attempt, identity in enumerate(scene.run_ids, 1):
+            yield (
+                identity,
+                RunPlacement(
+                    folder=f"{relative}/runs/{identity}",
+                    images=f"{relative}/images",
+                    scene=position,
+                    attempt=attempt,
+                ),
+            )
+
+
+def invalid_story(story_id: UUID) -> KomaquillError:
+    return KomaquillError(
+        code="storage_failed",
+        stage="storage",
+        retryable=False,
+        details={"story_id": str(story_id)},
+    )
+
+
 class FileStoryRepository:
     def __init__(self, project: Project) -> None:
         self.project = project
         self.root = project.data / "stories"
 
     def ids(self) -> tuple[UUID, ...]:
-        return tuple(Locations(self.project).read().stories)
+        locations = Locations(self.project)
+        stories = locations.read().stories
+        known = {locations.path(folder) for folder in stories.values()}
+        if any(path.parent not in known for path in self.root.glob("*/request.json")):
+            raise KomaquillError(
+                code="storage_failed",
+                stage="storage",
+                retryable=False,
+                details={"record": "story-index"},
+            )
+        return tuple(stories)
 
     def request(self, story_id: UUID) -> StoryInput:
-        return StoryInput.model_validate_json((self.folder(story_id) / "request.json").read_bytes())
+        folder = self.folder(story_id)
+        try:
+            request = StoryInput.model_validate_json((folder / "request.json").read_bytes())
+            if request.story_id != story_id:
+                raise ValueError("The stored request identity does not match.")
+            return request
+        except (OSError, ValueError):
+            raise invalid_story(story_id) from None
 
     def folder(self, story_id: UUID) -> Path:
         return Locations(self.project).story(story_id)
@@ -100,29 +140,36 @@ class FileStoryRepository:
         atomic_json(path, {"format_version": 1, "plan": value, "sha256": digest(value)})
 
     def read(self, story_id: UUID) -> StoryPlan:
+        folder = self.folder(story_id)
         try:
-            value = StoredPlan.model_validate_json(
-                (self.folder(story_id) / "plan.json").read_bytes()
-            )
+            try:
+                content = (folder / "plan.json").read_bytes()
+            except FileNotFoundError:
+                outcome = folder / "planning-result.json"
+                if (
+                    outcome.is_file()
+                    and PlanningOutcome.model_validate_json(outcome.read_bytes()).status
+                    == "succeeded"
+                ):
+                    raise ValueError("The completed plan is missing.") from None
+                raise
+            value = StoredPlan.model_validate_json(content)
             if digest(value.plan) != value.sha256:
                 raise ValueError("The stored plan checksum does not match.")
             plan = StoryPlan.model_validate(value.plan)
-            if plan.request.story_id != story_id:
-                raise ValueError("The stored plan identity does not match.")
+            if plan.request != self.request(story_id):
+                raise ValueError("The plan differs from its retained request.")
             return plan
-        except ValueError:
-            raise KomaquillError(
-                code="storage_failed",
-                stage="storage",
-                retryable=False,
-                details={"story_id": str(story_id)},
-            ) from None
+        except FileNotFoundError:
+            raise
+        except (OSError, ValueError):
+            raise invalid_story(story_id) from None
 
     def planning_evidence(self, story_id: UUID) -> dict[str, object]:
         """Expose immutable inputs and outcomes, including failed planning attempts."""
         folder = self.folder(story_id)
         return {
-            "request": json.loads((folder / "request.json").read_bytes()),
+            "request": self.request(story_id).model_dump(mode="json", exclude_unset=True),
             "outcome": json.loads((folder / "planning-result.json").read_bytes())
             if (folder / "planning-result.json").is_file()
             else None,
@@ -143,17 +190,8 @@ class FileStoryRepository:
         path = self.folder(render.story_id) / "renders" / str(render.render_id) / "render.json"
         locations = Locations(self.project)
         relative = path.parent.relative_to(self.project.data).as_posix()
-        for position, scene in enumerate(render.scenes, 1):
-            for attempt, identity in enumerate(scene.run_ids, 1):
-                locations.register_run(
-                    identity,
-                    RunPlacement(
-                        folder=f"{relative}/runs/{identity}",
-                        images=f"{relative}/images",
-                        scene=position,
-                        attempt=attempt,
-                    ),
-                )
+        for identity, placement in render_placements(render, relative):
+            locations.register_run(identity, placement)
         atomic_json(path, render.model_dump(mode="json"))
 
     def render(self, render_id: UUID) -> StoryRender:
@@ -168,6 +206,17 @@ class FileStoryRepository:
             render.story_id
         ):
             raise KomaquillError(code="storage_failed", stage="story_rendering")
+        placements = Locations(self.project).read().runs
+        relative = path.parent.relative_to(self.project.data).as_posix()
+        for identity, expected in render_placements(render, relative):
+            actual = placements.get(identity)
+            if actual is None or actual.model_copy(update={"recorded": False}) != expected:
+                raise KomaquillError(
+                    code="storage_failed",
+                    stage="storage",
+                    retryable=False,
+                    details={"render_id": str(render.render_id), "run_id": str(identity)},
+                )
         return render
 
     def renders(self, story_id: UUID) -> list[StoryRender]:

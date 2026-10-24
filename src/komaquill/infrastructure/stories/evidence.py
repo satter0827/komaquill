@@ -5,8 +5,9 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
-from pydantic import JsonValue
+from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
+from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
 from komaquill.domain.stories import PlannerProvenance, PlanningAttempt, PlanningOutcome, StoryInput
 from komaquill.domain.story_evidence import (
@@ -16,6 +17,7 @@ from komaquill.domain.story_evidence import (
 )
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.evaluations import export_evidence
+from komaquill.infrastructure.locations import Locations
 from komaquill.infrastructure.stories.storage import FileStoryRepository
 
 SHARED_FIELDS = frozenset(
@@ -31,6 +33,39 @@ SHARED_FIELDS = frozenset(
         "source_text",
     }
 )
+
+
+class EvidenceNode(BaseModel):
+    """Validate fields consumed by analysis without changing the retained graph."""
+
+    class_type: str
+    inputs: dict[str, JsonValue]
+
+
+WORKFLOW = TypeAdapter(dict[str, EvidenceNode])
+
+
+def workflow_parameters(graph: JsonObject | None, run_id: UUID) -> JsonObject:
+    if graph is None:
+        return {}
+    try:
+        nodes = WORKFLOW.validate_python(graph)
+    except ValidationError:
+        raise KomaquillError(
+            code="storage_failed",
+            stage="storage",
+            retryable=False,
+            details={"run_id": str(run_id)},
+        ) from None
+    return {
+        identity: {
+            "class_type": node.class_type,
+            "inputs": {
+                key: value for key, value in node.inputs.items() if not isinstance(value, list)
+            },
+        }
+        for identity, node in nodes.items()
+    }
 
 
 def object_hash(value: JsonValue) -> str:
@@ -158,12 +193,24 @@ def story_evidence(
         else None
     )
     if render_id is not None and (render is None or render.render_id != render_id):
-        from komaquill.domain.errors import KomaquillError
-
         raise KomaquillError(code="request_not_found", stage="storage", retryable=False)
     selected = [identity for scene in render.scenes for identity in scene.run_ids] if render else []
-    # An unsent reserved request has no run yet; preserve that fact in the scene view.
-    recorded = {run.run_id for run in project.repository.load([])}
+    # A reserved request may be unsent; a missing recorded history is corruption.
+    placements = Locations(project).read().runs
+    recorded = set()
+    for identity in selected:
+        if identity not in placements:
+            raise KomaquillError(
+                code="storage_failed",
+                stage="storage",
+                retryable=False,
+                details={"run_id": str(identity)},
+            )
+        try:
+            project.repository.read(identity)
+        except FileNotFoundError:
+            continue
+        recorded.add(identity)
     common = export_evidence(project, run_ids=set(selected) & recorded)
     runs = []
     for row in common["runs"]:
@@ -171,18 +218,7 @@ def story_evidence(
             image["workspace_path"] = (
                 project.artifacts_store.path(image["key"]).relative_to(project.root).as_posix()
             )
-        graph = row["workflow_api"]
-        parameters = {}
-        if graph:
-            for node_id, node in graph.items():
-                parameters[node_id] = {
-                    "class_type": node["class_type"],
-                    "inputs": {
-                        key: value
-                        for key, value in node["inputs"].items()
-                        if not isinstance(value, list)
-                    },
-                }
+        parameters = workflow_parameters(row["workflow_api"], UUID(row["run"]["run_id"]))
         runs.append(
             {
                 "run": row["run"],
@@ -266,6 +302,7 @@ def story_evidence(
             "selected_run_ids": selected,
             "runs": runs,
             "evaluations": common["evaluations"],
+            "unreadable_evaluation_ids": common["unreadable_evaluation_ids"],
             "assets": common["assets"],
             "records": records,
             "objects": pool.objects,

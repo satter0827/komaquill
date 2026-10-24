@@ -69,3 +69,9 @@ for record in full.records:
 summaryとfullで対象・条件・集計は同じです。full.objectsは重複を省いたJSON内容、recordsは原本参照とバイト列のSHA256を保持します。画像はartifact_pathまたはworkspace_pathで解決します。
 
 completeは保存成功、finishedは失敗を含めた全場面の終了です。逐次イベントはprogressとfinishedで、終了してもcomplete=falseなら失敗した場面を確認します。
+
+## 閲覧用ファイルと任意評価の失敗
+
+StoryEvent.publication_failureは、画像の保存状態とは別の閲覧用更新の結果です。失敗しても後続の場面を生成します。最後のイベントでこの値が残った場合は、原因を解消してclient.stories.refresh(story_id, render_id=render_id)で再構築します。保存済み画像を生成し直す必要はありません。
+
+分析用出力のunreadable_evaluation_idsが空でない場合は、一部の評価記録を取得できていません。生成の原本や参照する過去の試行が破損している場合は、黙って省略せずKomaquillErrorを返します。

@@ -347,5 +347,6 @@
   "stories.planning_busy": "Another story plan is running in this workspace. Wait for it to finish and try again.",
   "stories.detail_help": "Choose summary for comparison or full for complete source records.",
   "stories.publication_status": "Story files: {status}",
-  "stories.publication_pending": "Story files need rebuilding for: {identities}. Check local records and run komaquill stories show STORY_ID --refresh."
+  "stories.publication_pending": "Story files need rebuilding for: {identities}. Check local records and run komaquill stories show STORY_ID --refresh.",
+  "stories.publication_retry": "Readable story files could not be updated. Run: komaquill stories show {story_id} --render-id {render_id} --refresh"
 }

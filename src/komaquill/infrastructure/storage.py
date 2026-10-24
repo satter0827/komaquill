@@ -61,12 +61,29 @@ def load_runs(project: WorkspacePaths, *, unreadable: list[UUID | str] | None = 
         (identity, locations.path(row.folder) / "run.json", row.recorded)
         for identity, row in placements.items()
     ]
-    for path in project.runs.glob("*/run.json"):
-        if path.parent.name not in {str(value) for value in placements}:
-            if unreadable is None:
-                raise KomaquillError(code="storage_failed", stage="history_validation")
-            unreadable.append(f"runs/{path.parent.name}")
+    known_paths = {path for _, path, _ in candidates}
+    orphan_ids: set[UUID | str] = set()
+    paths = list(project.runs.glob("*/run.json"))
+    paths.extend((project.data / "stories").glob("*/renders/*/runs/*/run.json"))
+    for path in paths:
+        if path in known_paths:
+            continue
+        try:
+            identity: UUID | str = UUID(path.parent.name)
+        except ValueError:
+            identity = path.parent.relative_to(project.data).as_posix()
+        if unreadable is None:
+            raise KomaquillError(
+                code="storage_failed",
+                stage="history_validation",
+                details={"identity": str(identity)},
+            )
+        if identity not in unreadable:
+            unreadable.append(identity)
+        orphan_ids.add(identity)
     for identity, path, recorded in candidates:
+        if identity in orphan_ids:
+            continue
         if not path.exists() and not recorded:
             continue
         try:

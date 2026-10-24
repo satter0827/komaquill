@@ -23,7 +23,11 @@ from komaquill.infrastructure.sessions.connection import connected, session_proj
 from komaquill.infrastructure.stories.configuration import StorySettings, settings
 from komaquill.infrastructure.stories.evidence import story_evidence
 from komaquill.infrastructure.stories.llm import planner, serialized_planning
-from komaquill.infrastructure.stories.publication import publish_catalog, publish_story
+from komaquill.infrastructure.stories.publication import (
+    PublicationTracker,
+    publish_catalog,
+    publish_story,
+)
 from komaquill.infrastructure.stories.storage import FileStoryRepository
 
 
@@ -191,6 +195,7 @@ class StoryService:
         self, backend: ComfyClient, session: Session, render_id: UUID, retry_failed: bool
     ) -> Iterator[StoryEvent]:
         previous = None
+        publications = PublicationTracker(self._project)
         try:
             for value in render_events(
                 self._repository,
@@ -204,10 +209,12 @@ class StoryService:
                 if snapshot == previous:
                     continue
                 previous = snapshot
-                publish_story(self._repository, self._project, UUID(value["story_id"]), render_id)
-                publish_catalog(self._repository, self._project)
+                publications.pending.add((snapshot.story_id, render_id))
+                publications.tick(())
                 yield StoryEvent(
-                    kind="finished" if snapshot.finished else "progress", snapshot=snapshot
+                    kind="finished" if snapshot.finished else "progress",
+                    snapshot=snapshot,
+                    publication_failure=next(iter(publications.failures.values()), None),
                 )
         except KeyboardInterrupt:
             raise StoryInterrupted(render_id=render_id) from None

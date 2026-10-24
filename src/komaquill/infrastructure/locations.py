@@ -1,6 +1,5 @@
 """Resolve logical storage keys using rebuildable local placement records."""
 
-import json
 import re
 import unicodedata
 from collections.abc import Iterator
@@ -34,6 +33,27 @@ class RunPlacement(BaseModel):
         if self.images is not None and (self.scene is None or self.attempt is None):
             raise ValueError("Story images require scene and attempt positions.")
         return self
+
+
+class StoredStoryIdentity(BaseModel):
+    story_id: UUID
+
+
+class StoredSceneLinks(BaseModel):
+    run_ids: list[UUID]
+
+
+class StoredRenderLinks(StoredStoryIdentity):
+    render_id: UUID
+    scenes: list[StoredSceneLinks]
+
+
+class StoredRunIdentity(BaseModel):
+    run_id: UUID
+
+
+class MigrationProgress(BaseModel):
+    status: str
 
 
 class StorageIndex(BaseModel):
@@ -93,11 +113,17 @@ class Locations:
         if not migrating and snapshots is not None and self.root in snapshots:
             return snapshots[self.root].model_copy(deep=True)
         if not migrating and self.migration_file.is_file():
-            state = json.loads(self.migration_file.read_bytes())
-            if state.get("status") != "complete":
+            try:
+                state = MigrationProgress.model_validate_json(self.migration_file.read_bytes())
+            except ValueError:
+                raise KomaquillError(code="storage_failed", stage="storage") from None
+            if state.status != "complete":
                 raise KomaquillError(code="migration_required", stage="storage")
         if self.index_file.is_file():
-            value = StorageIndex.model_validate_json(self.index_file.read_bytes())
+            try:
+                value = StorageIndex.model_validate_json(self.index_file.read_bytes())
+            except ValueError:
+                raise KomaquillError(code="storage_failed", stage="storage") from None
             for folder in value.stories.values():
                 self.path(folder)
             for row in value.runs.values():
@@ -195,11 +221,16 @@ class Locations:
         return self.path(row.folder)
 
     def recorded(self, identity: UUID) -> None:
-        if self.read().runs[identity].recorded:
+        current = self.read().runs.get(identity)
+        if current is not None and current.recorded:
             return
         with self.lock():
             index = self.read()
-            row = index.runs[identity]
+            row = index.runs.get(identity)
+            if row is None:
+                raise KomaquillError(
+                    code="storage_failed", stage="storage", details={"run_id": str(identity)}
+                )
             if not row.recorded:
                 index.runs[identity] = row.model_copy(update={"recorded": True})
                 self.save(index)
@@ -231,29 +262,27 @@ class Locations:
         """Derive placements from durable IDs, rejecting ambiguous ownership."""
         result = StorageIndex()
         for request_file in sorted((self.root / "stories").glob("*/request.json")):
-            request = json.loads(request_file.read_bytes())
-            identity = UUID(request["story_id"])
+            request = StoredStoryIdentity.model_validate_json(request_file.read_bytes())
+            identity = request.story_id
             folder = request_file.parent.relative_to(self.root).as_posix()
             if identity in result.stories:
                 raise KomaquillError(code="identity_mismatch", stage="storage")
             result.stories[identity] = folder
             for render_file in sorted(request_file.parent.glob("renders/*/render.json")):
-                render = json.loads(render_file.read_bytes())
-                if (
-                    UUID(render["story_id"]) != identity
-                    or str(render["render_id"]) != render_file.parent.name
-                ):
+                render = StoredRenderLinks.model_validate_json(render_file.read_bytes())
+                if render.story_id != identity or str(render.render_id) != render_file.parent.name:
                     raise KomaquillError(code="identity_mismatch", stage="storage")
                 render_folder = render_file.parent.relative_to(self.root).as_posix()
-                for position, scene in enumerate(render["scenes"], 1):
-                    for attempt, run_id in enumerate(scene["run_ids"], 1):
-                        run = UUID(run_id)
+                for position, scene in enumerate(render.scenes, 1):
+                    for attempt, run in enumerate(scene.run_ids, 1):
+                        run_id = str(run)
                         if run in result.runs:
                             raise KomaquillError(code="identity_mismatch", stage="storage")
                         run_file = render_file.parent / "runs" / run_id / "run.json"
                         if (
                             run_file.is_file()
-                            and json.loads(run_file.read_bytes())["run_id"] != run_id
+                            and StoredRunIdentity.model_validate_json(run_file.read_bytes()).run_id
+                            != run
                         ):
                             raise KomaquillError(code="identity_mismatch", stage="storage")
                         result.runs[run] = RunPlacement(
@@ -264,8 +293,8 @@ class Locations:
                             recorded=run_file.is_file(),
                         )
         for run_file in sorted((self.root / "runs").glob("*/run.json")):
-            value = json.loads(run_file.read_bytes())
-            identity = UUID(value["run_id"])
+            value = StoredRunIdentity.model_validate_json(run_file.read_bytes())
+            identity = value.run_id
             if str(identity) != run_file.parent.name or identity in result.runs:
                 raise KomaquillError(code="identity_mismatch", stage="storage")
             result.runs[identity] = RunPlacement(

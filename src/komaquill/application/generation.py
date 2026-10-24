@@ -276,12 +276,18 @@ def collect(
                     with suppress(OSError):
                         project.repository.save(current)
     with collection_lock(project):
+        final_unreadable: list[UUID | str] = []
         selected = [
             run
-            for run in project.repository.load([])
+            for run in project.repository.load(final_unreadable)
             if (run.runtime_id == session.runtime_id or run.run_id in related)
             and (only is None or run.run_id == only)
         ]
+    errors.extend(
+        identity
+        for identity in final_unreadable
+        if identity not in errors and (only is None or identity == only)
+    )
     pending = tuple(run.run_id for run in selected if run.pending)
     return Collection(
         saved=saved,

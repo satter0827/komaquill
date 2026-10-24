@@ -15,7 +15,8 @@ import pytest
 )
 def test_retained_originals():
     root = Path(__file__).resolve().parents[2]
-    baseline = json.loads(Path(os.environ["KOMAQUILL_PRESERVATION_BASELINE"]).read_bytes())
+    baseline_file = Path(os.environ["KOMAQUILL_PRESERVATION_BASELINE"])
+    baseline = json.loads(baseline_file.read_bytes())
     result = {
         "observed_at": datetime.now(UTC).isoformat(),
         "unchanged": [],
@@ -46,8 +47,35 @@ def test_retained_originals():
             result["changed"].append(name)
     settings = (root / ".vscode/settings.json").read_text(encoding="utf-8")
     result["personal_settings_preserved"] = settings == baseline["personal_settings"]
-    target = root / ".artifacts/records/reports/story-evidence/preservation.json"
+    from uuid import UUID
+
+    from komaquill.infrastructure.locations import Locations
+    from komaquill.infrastructure.paths import WorkspacePaths
+
+    locations = Locations(WorkspacePaths(root))
+    placement_errors = []
+    with locations.snapshot():
+        for name in baseline["files"]:
+            path = root / name
+            if not path.is_file():
+                continue
+            if path.name == "run.json":
+                identity = UUID(json.loads(path.read_bytes())["run_id"])
+                if locations.run(identity) != path.parent:
+                    placement_errors.append(name)
+            elif path.name == "request.json" and name.startswith(".artifacts/data/stories/"):
+                identity = UUID(json.loads(path.read_bytes())["story_id"])
+                if locations.story(identity) != path.parent:
+                    placement_errors.append(name)
+    result["placement_errors"] = placement_errors
+    result["baseline_sha256"] = hashlib.sha256(baseline_file.read_bytes()).hexdigest()
+    target = (
+        root
+        / ".artifacts/records/reports/story-evidence"
+        / f"{baseline_file.stem}-verification.json"
+    )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, indent=2), encoding="utf-8")
     assert not result["changed"] and not result["missing"], result
     assert result["personal_settings_preserved"]
+    assert not placement_errors

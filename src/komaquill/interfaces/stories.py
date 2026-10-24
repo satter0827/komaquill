@@ -60,8 +60,10 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
     printed: set[tuple[UUID, UUID | None, str]] = set()
     last = None
     identity = None
+    publication_failure = None
     for event in events:
         last = event.snapshot
+        publication_failure = event.publication_failure
         if identity != last.render_id:
             identity = last.render_id
             typer.echo(message("stories.render_identity", render_id=identity), err=json_output)
@@ -113,8 +115,15 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
         raise KomaquillError(code="internal_error", stage="story_rendering")
     if json_output:
         typer.echo(last.model_dump_json())
+    if publication_failure is not None:
+        typer.echo(
+            message("stories.publication_retry", story_id=last.story_id, render_id=last.render_id),
+            err=True,
+        )
     if not last.complete:
         typer.echo(message("stories.incomplete", render_id=last.render_id), err=True)
+        raise typer.Exit(1)
+    if publication_failure is not None:
         raise typer.Exit(1)
     typer.echo(message("stories.complete", render_id=last.render_id), err=json_output)
 

@@ -61,6 +61,7 @@ class StoryEvent(BaseModel):
 
     kind: Literal["progress", "finished"]
     snapshot: StorySnapshot
+    publication_failure: FailureInfo | None = None
 
 
 class StoryInterrupted(KeyboardInterrupt):

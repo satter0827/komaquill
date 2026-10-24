@@ -129,3 +129,15 @@ komaquill stories resume RENDER_ID --retry-failed
 followは失敗・回収不能を含む終端でも終了します。失敗した要求IDと再開方法を表示し、非ゼロ終了します。受付不明や未開始は終端と扱いません。Ctrl+Cで追跡を中断できます。
 
 閲覧用ファイルだけの修復にはshowの--refreshを使用します。画像と履歴の保存成功は維持されます。破損した履歴を未送信と推測して再送しません。
+
+## 閲覧用ファイルだけを再構築する
+
+画像が保存できてもREADME・story.md・manifestを更新できない場合、後続場面の生成は続き、最後に非ゼロ終了と次の操作を表示します。
+
+```powershell
+komaquill stories show STORY_ID --render-id RENDER_ID --refresh
+```
+
+ファイルの使用中状態や保存先の権限など、表示された問題を解消してから実行します。画像を生成し直す操作ではありません。--jsonでは保存状態のJSONを標準出力、再構築の案内を標準エラーへ出力します。
+
+分析用JSONのunreadable_evaluation_idsは、読めない評価記録の識別子です。空でない場合は評価が一部欠けているため、全評価を反映した比較として扱わないでください。

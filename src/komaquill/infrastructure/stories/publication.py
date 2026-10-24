@@ -197,15 +197,16 @@ class PublicationTracker:
         with self.repository.snapshot():
             for identity in self.repository.ids():
                 try:
-                    if (self.repository.folder(identity) / "plan.json").is_file():
+                    self.repository.request(identity)
+                    try:
                         self.repository.read(identity)
-                        renders = self.repository.renders(identity)
-                        if not renders:
-                            publish_story(self.repository, self.project, identity)
-                            self._recovered(identity)
-                        if renders:
-                            self._recovered(identity)
-                        self.pending.update((identity, render.render_id) for render in renders)
+                    except FileNotFoundError:
+                        continue
+                    renders = self.repository.renders(identity)
+                    if not renders:
+                        publish_story(self.repository, self.project, identity)
+                    self._recovered(identity)
+                    self.pending.update((identity, render.render_id) for render in renders)
                 except (OSError, ValueError, KomaquillError) as error:
                     self._failed(identity, error)
         return self.tick(())

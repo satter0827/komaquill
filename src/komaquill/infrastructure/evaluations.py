@@ -32,14 +32,25 @@ class FileEvaluationRepository:
         self.project.state.mkdir(parents=True, exist_ok=True)
         return FileLock(str(self.project.state / ".evaluations.lock"))
 
-    def load(self) -> list[Evaluation]:
-        return sorted(
-            (
-                Evaluation.model_validate_json(path.read_bytes())
-                for path in self.project.evaluations.glob("*.json")
-            ),
-            key=lambda row: (row.created_at, str(row.evaluation_id)),
-        )
+    def load(self, unreadable: list[str] | None = None) -> list[Evaluation]:
+        rows = []
+        for path in sorted(self.project.evaluations.glob("*.json")):
+            try:
+                evaluation = Evaluation.model_validate_json(path.read_bytes())
+                if str(evaluation.evaluation_id) != path.stem:
+                    raise ValueError("The evaluation identity differs from its storage key.")
+            except (OSError, ValueError):
+                if unreadable is None:
+                    raise KomaquillError(
+                        code="storage_failed",
+                        stage="evaluation",
+                        retryable=False,
+                        details={"evaluation_id": path.stem},
+                    ) from None
+                unreadable.append(path.stem)
+                continue
+            rows.append(evaluation)
+        return sorted(rows, key=lambda row: (row.created_at, str(row.evaluation_id)))
 
     def append(self, evaluation: Evaluation) -> None:
         path = self.project.evaluations / f"{evaluation.evaluation_id}.json"
@@ -65,9 +76,11 @@ def read_import(path: Path) -> list[Evaluation]:
     return [Evaluation.model_validate(row) for row in value]
 
 
-def select(project: Project, run_id: UUID | None = None) -> list[Evaluation]:
+def select(
+    project: Project, run_id: UUID | None = None, *, unreadable: list[str] | None = None
+) -> list[Evaluation]:
     """Filter records by either side of a comparison."""
-    rows = FileEvaluationRepository(project).load()
+    rows = FileEvaluationRepository(project).load(unreadable)
     return [row for row in rows if run_id is None or run_id in {row.run_id, row.comparison_run_id}]
 
 
@@ -75,7 +88,8 @@ def export_evidence(
     project: Project, run_id: UUID | None = None, *, run_ids: set[UUID] | None = None
 ) -> JsonObject:
     """Expose saved conditions and artifact keys without logs or credentials."""
-    rows = select(project, run_id)
+    unreadable_evaluations: list[str] = []
+    rows = select(project, run_id, unreadable=unreadable_evaluations)
     if run_ids is not None:
         rows = [row for row in rows if row.run_id in run_ids or row.comparison_run_id in run_ids]
     story_links: dict[str, list[JsonObject]] = {}
@@ -131,7 +145,7 @@ def export_evidence(
                 "license",
             },
         )
-        for asset in inventory(project.models)
+        for asset in inventory(project.models, hashes={v for v in referenced if isinstance(v, str)})
         if asset.sha256 in referenced
     ]
     return {
@@ -140,6 +154,7 @@ def export_evidence(
         "exporter": project.identity(),
         "selection": {"run_id": str(run_id) if run_id else None},
         "unreadable_story_renders": unreadable_stories,
+        "unreadable_evaluation_ids": unreadable_evaluations,
         "assets": assets,
         "evaluation_schema": Evaluation.model_json_schema(),
         "artifact_base": {

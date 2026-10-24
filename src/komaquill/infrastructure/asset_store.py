@@ -2,7 +2,11 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
+from pydantic import BaseModel, Field
+
+from komaquill.domain.errors import KomaquillError
 from komaquill.domain.presets import ModelPreset
 from komaquill.infrastructure.artifacts import file_digest as file_digest
 from komaquill.infrastructure.atomic import atomic_json
@@ -52,12 +56,24 @@ def verify_file(models: Path, model: ModelPreset) -> bool:
     return True
 
 
-def inventory(models: Path) -> list[ModelPreset]:
+class AssetRecord(BaseModel):
+    format_version: Literal[1]
+    asset: ModelPreset
+    size_bytes: int = Field(ge=0)
+    mtime_ns: int = Field(ge=0)
+
+
+def inventory(models: Path, *, hashes: set[str] | None = None) -> list[ModelPreset]:
     """Read validated model records without hashing their contents again."""
     result = []
     for path in models.glob("*/*/asset.json"):
-        record = json.loads(path.read_bytes())
-        model = ModelPreset.model_validate(record["asset"])
+        if hashes is not None and path.parent.name not in hashes:
+            continue
+        try:
+            record = AssetRecord.model_validate_json(path.read_bytes())
+        except (OSError, ValueError):
+            raise KomaquillError(code="storage_failed", stage="storage", retryable=False) from None
+        model = record.asset
         if path.parent == model_path(models, model).parent and verified_cache(models, model):
             result.append(model)
     return result

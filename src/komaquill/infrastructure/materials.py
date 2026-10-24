@@ -7,14 +7,14 @@ from pathlib import Path
 from urllib.parse import quote
 
 import keyring
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.materials import Material
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
-from komaquill.infrastructure.storage import atomic_bytes, atomic_json, load_session
+from komaquill.infrastructure.storage import atomic_json, load_session
 
 PREFIX = "/komaquill/v1"
 
@@ -54,8 +54,11 @@ class MaterialCollector:
         self.states: dict[str, str] = {}
 
     def collect(self) -> list[str]:
+        """Download independently, then acknowledge only committed material revisions."""
         data = self.client.json(PREFIX + "/files")
         failures = list(data.get("errors", []))
+        session = load_session(self.project) if self.project.session_file.is_file() else None
+        self.project.state.mkdir(parents=True, exist_ok=True)
         for index, entry in enumerate(data["files"]):
             try:
                 row = Material.model_validate(entry)
@@ -65,14 +68,26 @@ class MaterialCollector:
             path = self.project.data / row.kind / "records" / f"{row.material_id}.json"
             if row.state == "saved" and path.is_file() and blob(self.project, row).is_file():
                 continue
+            operational = self.project.state / "preservation" / f"{row.material_id}.json"
+            claim = FileLock(
+                str(self.project.state / f".material-{row.material_id}.lock"), timeout=0
+            )
             try:
-                operational = self.project.state / "preservation" / f"{row.material_id}.json"
-                if row.runtime_id is None and self.project.session_file.is_file():
-                    row.runtime_id = load_session(self.project).runtime_id
-                atomic_json(operational, row.model_dump(mode="json"))
-                with FileLock(str(self.project.state / ".materials.lock")):
-                    target = blob(self.project, row)
-                    if not path.is_file() or not target.is_file():
+                with claim:
+                    with FileLock(str(self.project.state / ".materials.lock")):
+                        if session is not None and not self.project.accepts_results(session):
+                            continue
+                        if operational.is_file():
+                            previous = Material.model_validate_json(operational.read_bytes())
+                            if previous.state == "lost":
+                                continue
+                            if previous.state == "saved":
+                                row = previous
+                        if row.runtime_id is None and session is not None:
+                            row.runtime_id = session.runtime_id
+                        atomic_json(operational, row.model_dump(mode="json"))
+                    content = None
+                    if not path.is_file() or not blob(self.project, row).is_file():
                         content = self.client.request(
                             "GET", PREFIX + f"/files/{row.material_id}"
                         ).content
@@ -81,22 +96,38 @@ class MaterialCollector:
                             or len(content) != row.size_bytes
                         ):
                             raise KomaquillError(code="invalid_output", stage="storage")
-                        atomic_bytes(target, content)
+                    with FileLock(str(self.project.state / ".materials.lock")):
+                        current = Material.model_validate_json(operational.read_bytes())
+                        if current.state == "lost" or (
+                            session is not None and not self.project.accepts_results(session)
+                        ):
+                            continue
+                        if content is not None:
+                            key = blob(self.project, row).relative_to(self.project.data).as_posix()
+                            self.project.artifacts_store.write(key, content)
                         row.state = "saved"
-                        atomic_json(path, row.model_dump(mode="json"))
+                        if not path.is_file():
+                            atomic_json(path, row.model_dump(mode="json"))
+                        atomic_json(operational, row.model_dump(mode="json"))
                     self.client.request(
                         "POST",
                         PREFIX + f"/files/{row.material_id}",
                         headers=self.headers,
                         json={"sha256": row.sha256},
                     )
-                    row.state = "saved"
-                    atomic_json(operational, row.model_dump(mode="json"))
+            except Timeout:
+                continue
             except (OSError, KomaquillError) as error:
                 failures.append(str(row.material_id))
-                row.failure = failure_info(error, "storage")
-                with contextlib.suppress(OSError):
-                    atomic_json(operational, row.model_dump(mode="json"))
+                with (
+                    contextlib.suppress(OSError),
+                    FileLock(str(self.project.state / ".materials.lock")),
+                ):
+                    if operational.is_file():
+                        row = Material.model_validate_json(operational.read_bytes())
+                    if row.state != "lost":
+                        row.failure = failure_info(error, "storage")
+                        atomic_json(operational, row.model_dump(mode="json"))
                 record_event(
                     self.project,
                     "preservation",

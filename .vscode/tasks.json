@@ -31,43 +31,38 @@
       "type": "process",
       "command": "${command:python.interpreterPath}",
       "args": [
-        "${workspaceFolder}/scripts/check.py"
+        "${workspaceFolder}/scripts/check.py",
+        "--level",
+        "${input:qualityLevel}"
       ]
     },
     {
       "label": "Build Package",
-      "dependsOrder": "sequence",
-      "dependsOn": [
-        "Build Distributions",
-        "Check Distributions"
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "${workspaceFolder}/scripts/check.py",
+        "--check",
+        "distribution"
       ],
       "problemMatcher": [],
       "group": {
         "kind": "build",
         "isDefault": true
       }
-    },
+    }
+  ],
+  "inputs": [
     {
-      "label": "Check Distributions",
-      "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": [
-        "${workspaceFolder}/scripts/check_package.py"
+      "id": "qualityLevel",
+      "type": "pickString",
+      "description": "Choose the cumulative check level",
+      "options": [
+        "2",
+        "1",
+        "3"
       ],
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Build Distributions",
-      "type": "process",
-      "command": "${workspaceFolder}/.artifacts/runtime/uv/uv.exe",
-      "args": [
-        "build",
-        "--out-dir",
-        "${workspaceFolder}/.artifacts/dist"
-      ],
-      "hide": true,
-      "problemMatcher": []
+      "default": "2"
     }
   ]
 }

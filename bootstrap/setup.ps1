@@ -1,5 +1,5 @@
 param([switch]$InstallExtensions)
-. "$PSScriptRoot/env.ps1"
+. "$PSScriptRoot/_environment.ps1"
 $uvVersion = '0.13.5'
 $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLowerInvariant()
 if ($architecture -notin @('arm64', 'x64')) { throw (Get-KomaquillMessage 'bootstrap.architecture') }

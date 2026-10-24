@@ -19,7 +19,7 @@ def test_verified_model_is_reused_without_network(project, monkeypatch):
     target.write_bytes(content)
 
     def forbidden(**_kwargs):
-        raise AssertionError("ネットワークへ接続しないこと")
+        raise AssertionError("Network access is forbidden.")
 
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", forbidden)
     assert fetch_model(project, model) == target
@@ -71,8 +71,17 @@ def test_url_asset_is_verified_before_replacing_target(project, monkeypatch, cas
         )
 
     monkeypatch.setattr(module.httpx, "stream", stream)
+    original_digest = module.file_digest
+    verified = []
+
+    def counted(path):
+        verified.append(path)
+        return original_digest(path)
+
+    monkeypatch.setattr(module, "file_digest", counted)
     if case == "valid":
         assert fetch_model(project, model).read_bytes() == content
+        assert len(verified) == 1
     else:
         with pytest.raises(KomaquillError):
             fetch_model(project, model)

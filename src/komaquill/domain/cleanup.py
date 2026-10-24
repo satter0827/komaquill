@@ -14,3 +14,5 @@ class CleanupItem:
     file_count: int
     reason: str | None = None
     result: str | None = None
+    after_size_bytes: int | None = None
+    after_file_count: int | None = None

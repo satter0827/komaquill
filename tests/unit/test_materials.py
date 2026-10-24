@@ -67,7 +67,9 @@ def test_each_file_recovers_independently_and_acknowledges_after_durable_save(
     )
     collector = module.MaterialCollector(project, client, {"control": "test"})
     if case == "storage":
-        original = module.atomic_bytes
+        from komaquill.infrastructure import artifacts
+
+        original = artifacts.atomic_bytes
 
         def fail(path, content):
             if not broken:
@@ -75,7 +77,7 @@ def test_each_file_recovers_independently_and_acknowledges_after_durable_save(
             broken.clear()
             raise OSError("private-error")
 
-        monkeypatch.setattr(module, "atomic_bytes", fail)
+        monkeypatch.setattr(artifacts, "atomic_bytes", fail)
     errors = collector.collect()
     assert bool(errors) is (case not in {"healthy", "missing_blob"})
     assert len(module.records(project, "inputs")) >= 1
@@ -215,3 +217,35 @@ def test_material_index_corruption_does_not_hide_valid_files(project):
     errors = module.MaterialCollector(project, client, {}).collect()
     assert errors == ["unreadable-remote-record", "material-index:0"]
     assert module.blob(project, row).is_file()
+
+
+def test_finalization_during_download_never_acknowledges_or_reopens_lost_material(project, session):
+    from filelock import FileLock
+
+    row = Material(
+        workspace_id=uuid4(),
+        runtime_id=session.runtime_id,
+        kind="inputs",
+        name="late.png",
+        reference="late.png",
+        sha256=hashlib.sha256(b"image").hexdigest(),
+        size_bytes=5,
+    )
+    acknowledgements = []
+
+    def request(method, path, **kwargs):
+        if method == "GET":
+            with FileLock(str(project.state / ".materials.lock"), timeout=0):
+                pass
+            assert module.finalize_materials(project, session.runtime_id) == (str(row.material_id),)
+            return httpx.Response(200, content=b"image")
+        acknowledgements.append(path)
+        return httpx.Response(200)
+
+    client = SimpleNamespace(
+        json=lambda _: {"files": [row.model_dump(mode="json")]}, request=request
+    )
+    assert module.MaterialCollector(project, client, {}).collect() == []
+    operational = project.state / "preservation" / f"{row.material_id}.json"
+    assert Material.model_validate_json(operational.read_bytes()).state == "lost"
+    assert not acknowledgements and not module.records(project, "inputs")

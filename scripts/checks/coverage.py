@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from komaquill.messages import message
+from scripts._support import message
 
 
 def check_totals(totals: dict[str, Any], line_minimum: float, branch_minimum: float) -> list[str]:
@@ -40,7 +40,7 @@ def check_totals(totals: dict[str, Any], line_minimum: float, branch_minimum: fl
 
 def main(report_path: Path | None = None) -> None:
     """Read the single quality policy and inspect both coverage and source inventory."""
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     policy = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["tool"][
         "komaquill"
     ]["coverage"]
@@ -49,7 +49,7 @@ def main(report_path: Path | None = None) -> None:
     )
     expected = {
         path.relative_to(root).as_posix()
-        for base in ("src", "scripts")
+        for base in ("src", "scripts", "bootstrap")
         for path in (root / base).rglob("*.py")
     }
     measured = {Path(name).as_posix() for name in report["files"]}

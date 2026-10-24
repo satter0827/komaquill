@@ -4,6 +4,7 @@
 
 | 記録 | 対象 |
 |---|---|
+| [品質ゲート・保存・評価](results/quality-storage-evaluations.md) | 累積検査、保存競合、AI向け評価記録とT4の生成・終了 |
 | [準備・保存機能](results/seamless-baseline.md) | 保存構成の再編前の実機結果 |
 | [統合時の保存保護](results/merge-integration.md) | 使用中の仮想環境・キャッシュ・一時ファイルの保護 |
 | [保存・セット・操作の再編](results/repository-rebuild.md) | 今回の変更の検証範囲と環境上の制約 |

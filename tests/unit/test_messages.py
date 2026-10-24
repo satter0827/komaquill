@@ -32,7 +32,11 @@ def test_catalog_keys_are_unique_and_error_categories_are_explained():
 
 def test_literal_message_references_and_named_values_match_the_catalog():
     data = messages.catalog()
-    for path in [*(ROOT / "src").rglob("*.py"), *(ROOT / "scripts").glob("*.py")]:
+    for path in [
+        *(ROOT / "src").rglob("*.py"),
+        *(ROOT / "scripts").rglob("*.py"),
+        *(ROOT / "bootstrap").rglob("*.py"),
+    ]:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call):
                 continue

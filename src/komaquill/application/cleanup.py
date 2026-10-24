@@ -3,7 +3,17 @@
 import re
 
 CACHE_NAMES = frozenset(
-    {"uv", "mypy", "pycache", "ruff", "import-linter", "huggingface", "xet", "model-metadata"}
+    {
+        "coverage",
+        "uv",
+        "mypy",
+        "pycache",
+        "ruff",
+        "import-linter",
+        "huggingface",
+        "xet",
+        "model-metadata",
+    }
 )
 TEMP_PREFIXES = ("pytest-", "quality-audit-", "atomic-audit-", "build-python-")
 

@@ -17,9 +17,9 @@ tests = ["tests/integration/test_colab_provider.py", "tests/unit/test_lifecycle.
 [requirements.REQ-QUALITY]
 summary = "GPUなしで検査し、全工程が成功した場合だけ成功を確定する"
 status = "implemented"
-acceptance = ["中断・起動失敗・入力変更で最新成功を更新しない", "行90%以上・分岐80%以上を独立判定する"]
-sources = ["scripts/check.py", "scripts/check_coverage.py"]
-tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py"]
+acceptance = ["L1・L2・L3を累積しGPUなしで実行できる", "中断・起動失敗・入力変更・個別検査で全体の最新成功を更新しない", "行90%以上・分岐80%以上を独立判定する"]
+sources = ["scripts/check.py", "scripts/checks/coverage.py"]
+tests = ["tests/unit/test_quality.py", "tests/unit/test_gate.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py"]
 
 [requirements.REQ-BUNDLES]
 summary = "利用者が生成セットをフォルダー単位で追加・置換できる"
@@ -67,12 +67,19 @@ tests = ["tests/unit/test_materials.py", "tests/integration/test_preservation.py
 summary = "リポジトリ外でもwheelから初期化・生成・GPU転送できる"
 status = "implemented"
 acceptance = ["Gitと編集可能インストールへ依存しない", "生成物と秘密情報を配布しない"]
-sources = ["src/komaquill/infrastructure/provenance.py", "scripts/check_package.py"]
+sources = ["src/komaquill/infrastructure/provenance.py", "scripts/checks/distribution.py"]
 tests = ["tests/e2e/test_wheel.py", "tests/integration/test_distribution.py"]
 
 [requirements.REQ-DOCS]
 summary = "要件から運用まで参照でき、現在設計と将来計画を区別できる"
 status = "implemented"
 acceptance = ["要件と実装・テストを対応付ける", "文書の内部リンクと参照先を検査する"]
-sources = ["scripts/check_docs.py"]
+sources = ["scripts/checks/documentation.py"]
 tests = ["tests/unit/test_docs.py"]
+
+[requirements.REQ-EVALUATIONS]
+summary = "過去の生成へ人とAIの評価を関連付け、分析用の条件と画像参照を出力する"
+status = "implemented"
+acceptance = ["採否・選好・基準・根拠・評価者とAIの版を保存する", "訂正は追記し生成条件を変更しない", "未評価の生成も分析用に出力する"]
+sources = ["src/komaquill/domain/evaluations.py", "src/komaquill/application/evaluations.py", "src/komaquill/infrastructure/evaluations.py"]
+tests = ["tests/unit/test_evaluations.py", "tests/integration/test_acceptance.py"]

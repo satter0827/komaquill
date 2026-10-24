@@ -138,7 +138,7 @@ def test_payload_allowlist_and_fixed_versions():
     assert runtime["python_version"] == (root / ".python-version").read_text().strip()
     assert not list((root / "scripts").glob("worker*"))
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    assert config["tool"]["coverage"]["run"]["source"] == ["src", "scripts"]
+    assert config["tool"]["coverage"]["run"]["source"] == ["src", "scripts", "bootstrap"]
     assert "*/tests/*" in config["tool"]["coverage"]["run"]["omit"]
 
 
@@ -148,7 +148,7 @@ def test_powershell_entrypoints_parse_and_create_only_project_artifacts(tmp_path
     assert shell
     root = Path(__file__).resolve().parents[2]
     (tmp_path / "bootstrap").mkdir()
-    shutil.copyfile(root / "bootstrap/env.ps1", tmp_path / "bootstrap/env.ps1")
+    shutil.copyfile(root / "bootstrap/_environment.ps1", tmp_path / "bootstrap/_environment.ps1")
     catalog = tmp_path / "src/komaquill/resources/messages.json"
     catalog.parent.mkdir(parents=True)
     shutil.copyfile(root / "src/komaquill/resources/messages.json", catalog)
@@ -162,7 +162,7 @@ def test_powershell_entrypoints_parse_and_create_only_project_artifacts(tmp_path
         if ($parseErrors.Count -ne 0) { throw 'PowerShell syntax is invalid.' }
       }
     }
-    . (Join-Path $args[1] 'bootstrap/env.ps1')
+    . (Join-Path $args[1] 'bootstrap/_environment.ps1')
     if ($env:TEMP -ne (Join-Path $args[1] '.artifacts/tmp')) { throw 'Unexpected temporary path.' }
     $expectedPython = Join-Path $args[1] '.artifacts/runtime/venv/Scripts/python.exe'
     if ($KomaquillPython -ne $expectedPython) { throw 'Unexpected Python path.' }

@@ -2,7 +2,7 @@
 
 import pytest
 
-from scripts import check_docs
+from scripts.checks import documentation as check_docs
 
 
 def tree(root):

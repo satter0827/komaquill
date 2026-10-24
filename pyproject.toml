@@ -90,15 +90,15 @@ addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:cacheprovider
 xfail_strict = true
 
 [tool.coverage.run]
-source = ["src", "scripts"]
+source = ["src", "scripts", "bootstrap"]
 omit = ["*/tests/*"]
 relative_files = true
 patch = ["subprocess"]
 branch = true
-data_file = ".artifacts/records/reports/quality/.coverage"
+data_file = ".artifacts/cache/coverage/.coverage"
 
 [tool.coverage.html]
-directory = ".artifacts/records/reports/quality/coverage"
+directory = ".artifacts/cache/coverage/html"
 
 [tool.komaquill.coverage]
 line_minimum = 90
@@ -143,3 +143,6 @@ explicit = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
+
+[tool.komaquill.quality]
+step_timeout = 600

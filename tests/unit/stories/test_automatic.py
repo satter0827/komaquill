@@ -130,9 +130,12 @@ def test_failed_plan_can_be_exported_without_guessing_a_successful_plan(project)
     from uuid import UUID
 
     evidence = client.stories.export(UUID(json.loads(path.read_bytes())["story_id"]))
-    assert evidence["story"] is None and evidence["plan"] is None
-    assert evidence["planning"]["provenance"]["provider"] == "fake"
-    assert evidence["planning"]["attempts"][0]["failure"]["code"] == "fake_story_mismatch"
+    assert evidence.story is None and evidence.render is None
+    assert evidence.planning.conditions["provider"] == "fake"
+    assert (
+        evidence.model_dump(mode="json")["planning"]["attempts"][0]["failure"]["code"]
+        == "fake_story_mismatch"
+    )
 
 
 def test_non_english_visual_output_is_repaired_but_historical_structure_remains_valid(project):

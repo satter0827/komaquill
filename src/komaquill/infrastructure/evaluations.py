@@ -71,14 +71,20 @@ def select(project: Project, run_id: UUID | None = None) -> list[Evaluation]:
     return [row for row in rows if run_id is None or run_id in {row.run_id, row.comparison_run_id}]
 
 
-def export_evidence(project: Project, run_id: UUID | None = None) -> JsonObject:
+def export_evidence(
+    project: Project, run_id: UUID | None = None, *, run_ids: set[UUID] | None = None
+) -> JsonObject:
     """Expose saved conditions and artifact keys without logs or credentials."""
     rows = select(project, run_id)
+    if run_ids is not None:
+        rows = [row for row in rows if row.run_id in run_ids or row.comparison_run_id in run_ids]
     story_links, unreadable_stories = story_associations(project)
     identities = {row.run_id for row in rows} | {
         row.comparison_run_id for row in rows if row.comparison_run_id is not None
     }
-    if run_id is not None:
+    if run_ids is not None:
+        identities.update(run_ids)
+    elif run_id is not None:
         identities.add(run_id)
     else:
         identities.update(run.run_id for run in project.repository.load() if not run.pending)
@@ -135,7 +141,12 @@ def export_evidence(project: Project, run_id: UUID | None = None) -> JsonObject:
         "unreadable_story_renders": unreadable_stories,
         "assets": assets,
         "evaluation_schema": Evaluation.model_json_schema(),
-        "artifact_base": {"relative_to": "workspace", "key": ".artifacts/data"},
+        "artifact_base": {
+            "relative_to": "workspace",
+            "key": ".artifacts/data",
+            "key_type": "logical",
+            "resolution": "workspace_path",
+        },
         "evaluations": [row.model_dump(mode="json") for row in rows],
         "runs": exported,
     }
@@ -165,6 +176,7 @@ def image_evidence(project: Project, key: str, metadata: object) -> JsonObject:
             observed["valid"] = False
     return {
         "key": key,
+        "workspace_path": project.artifacts_store.path(key).relative_to(project.root).as_posix(),
         "metadata": stored.model_dump(mode="json") if stored else None,
         "observed": observed,
         "matches_record": observed["sha256"] == stored.sha256 if stored and observed else None,

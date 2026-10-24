@@ -62,7 +62,7 @@ def test_migration_keeps_original_records_and_rebuilds_the_index(project, sessio
     Locations(project).index_file.unlink()
     api.migrate()
     assert Locations(project).read() == before
-    assert api.stories.export(plan.request.story_id)["story"]["render_id"] == str(render.render_id)
+    assert str(api.stories.export(plan.request.story_id).story.render_id) == str(render.render_id)
 
 
 def test_copy_interruption_leaves_sources_and_can_resume(project, session, client, monkeypatch):

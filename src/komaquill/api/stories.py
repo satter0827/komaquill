@@ -3,7 +3,6 @@
 import hashlib
 import time
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -13,14 +12,16 @@ from komaquill.application.stories.listing import list_stories
 from komaquill.application.stories.planning import plan_story
 from komaquill.application.stories.rendering import create_render, render_events, story_view
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage, failure_info
-from komaquill.domain.models import JsonObject, Session
+from komaquill.domain.models import Session
 from komaquill.domain.stories import StoryInput, StoryPlan
+from komaquill.domain.story_evidence import EvidenceDetail, StoryEvidence
 from komaquill.domain.story_views import StoryEvent, StoryInterrupted, StoryListing, StorySnapshot
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import operation_scope, record_event
 from komaquill.infrastructure.sessions.connection import connected, session_project
 from komaquill.infrastructure.stories.configuration import StorySettings, settings
+from komaquill.infrastructure.stories.evidence import story_evidence
 from komaquill.infrastructure.stories.llm import planner, serialized_planning
 from komaquill.infrastructure.stories.publication import publish_catalog, publish_story
 from komaquill.infrastructure.stories.storage import FileStoryRepository
@@ -161,31 +162,30 @@ class StoryService:
                 return
             time.sleep(interval)
 
-    def export(self, story_id: UUID, *, render_id: UUID | None = None) -> JsonObject:
+    def export(
+        self,
+        story_id: UUID,
+        *,
+        render_id: UUID | None = None,
+        detail: EvidenceDetail = "summary",
+    ) -> StoryEvidence:
         with api_operation(OperationStage.STORAGE), self._repository.snapshot():
-            evidence = self._repository.planning_evidence(story_id)
+            if detail not in {"summary", "full"}:
+                raise KomaquillError(code="invalid_request", stage="storage", retryable=False)
             try:
-                plan = self._repository.read(story_id)
+                self._repository.read(story_id)
             except FileNotFoundError:
-                plan = None
-            return {
-                "format_version": 2,
-                "exported_at": datetime.now(UTC).isoformat(),
-                "exporter": self._project.identity(),
-                "story": self.show(story_id, render_id=render_id).model_dump(mode="json")
-                if plan
-                else None,
-                "plan": plan.model_dump(mode="json", exclude_unset=True) if plan else None,
-                "planning": evidence,
-                "data_roles": {
-                    "source": "original",
-                    "narrative": "llm_retelling",
-                    "character_appearance": "illustration_design",
-                    "visual_description": "illustration_direction",
-                    "supplements": "llm_declared_additions",
-                    "source_fact_verification": "not_performed",
-                },
-            }
+                snapshot = None
+            else:
+                snapshot = story_view(self._repository, self._project, story_id, render_id)
+            return story_evidence(
+                self._project,
+                self._repository,
+                story_id,
+                snapshot,
+                render_id=render_id,
+                detail=detail,
+            )
 
     def _events(
         self, backend: ComfyClient, session: Session, render_id: UUID, retry_failed: bool

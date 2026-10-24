@@ -266,7 +266,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "for scene in snapshot.scenes:",
                             "    assert scene.primary_image is not None",
                             "    assert client.artifact_path(scene.primary_image.key).is_file()",
-                            "assert client.stories.export(story_id)['format_version'] == 2",
+                            "assert client.stories.export(story_id).format_version == 3",
                             "client.stories.refresh(story_id)",
                             "assert client.sessions.status().collector_running",
                         ]

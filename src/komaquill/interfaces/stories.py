@@ -296,10 +296,15 @@ def bind(
         render_id: Annotated[
             UUID | None, typer.Option(help=message("stories.render_id_help"))
         ] = None,
+        detail: Annotated[
+            Literal["summary", "full"], typer.Option(help=message("stories.detail_help"))
+        ] = "summary",
     ) -> None:
         with story_operation(ctx) as client:
             typer.echo(
-                json.dumps(client.stories.export(story_id, render_id=render_id), ensure_ascii=False)
+                client.stories.export(
+                    story_id, render_id=render_id, detail=detail
+                ).model_dump_json()
             )
 
     @GROUP.command("show", help=message("stories.show_help"))

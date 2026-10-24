@@ -15,6 +15,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.stories import (
     PlannerProvenance,
     PlanningAttempt,
+    PlanningOutcome,
     StoryInput,
     StoryPlan,
     StoryRender,
@@ -85,6 +86,12 @@ class FileStoryRepository:
             raise KomaquillError(code="invalid_request", stage="story_planning")
         atomic_json(path, attempt.model_dump(mode="json"))
 
+    def finish_planning(self, story_id: UUID, outcome: PlanningOutcome) -> None:
+        path = self.folder(story_id) / "planning-result.json"
+        if path.exists():
+            raise KomaquillError(code="invalid_request", stage="story_planning")
+        atomic_json(path, outcome.model_dump(mode="json"))
+
     def complete(self, plan: StoryPlan) -> None:
         path = self.folder(plan.request.story_id) / "plan.json"
         if path.exists():
@@ -116,6 +123,9 @@ class FileStoryRepository:
         folder = self.folder(story_id)
         return {
             "request": json.loads((folder / "request.json").read_bytes()),
+            "outcome": json.loads((folder / "planning-result.json").read_bytes())
+            if (folder / "planning-result.json").is_file()
+            else None,
             "provenance": json.loads((folder / "provenance.json").read_bytes())
             if (folder / "provenance.json").is_file()
             else None,

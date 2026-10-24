@@ -344,5 +344,6 @@
   "stories.list_help": "List saved works and their latest image results.",
   "stories.catalog_row": "{story_id}  {title}  {state}  {saved}/{total}",
   "stories.catalog_unreadable": "Story {story_id} could not be read. Inspect its records before retrying.",
-  "stories.planning_busy": "Another story plan is running in this workspace. Wait for it to finish and try again."
+  "stories.planning_busy": "Another story plan is running in this workspace. Wait for it to finish and try again.",
+  "stories.detail_help": "Choose summary for comparison or full for complete source records."
 }

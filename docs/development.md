@@ -12,7 +12,7 @@ check.pyはRuffの整形確認・lint、strict mypy、GPU依存ロックの一�
 
 security.pyは公開対象、ステージ済み差分、全Git履歴をdetect-secretsで検査します。検出値を外部送信する確認機能は無効です。レポートへはファイル、行番号、検出種類だけを保存します。公開ハッシュや試験値の除外には行単位で理由を記載します。setup.ps1は同じ検査を送信前フックへ登録します。
 
-品質結果は.artifacts/reports/quality/実行ID/へ保存します。CIは同じスクリプトの--group qualityと--group securityを使用します。自動テストは代替応答と一時フォルダーを使い、GPUやGoogle認証を要求しません。PowerShellの構文・パス・終了コードはWindowsで確認します。
+品質結果は.artifacts/records/reports/quality/実行ID/へ保存します。CIは同じスクリプトの--group qualityと--group securityを使用します。自動テストは代替応答と一時フォルダーを使い、GPUやGoogle認証を要求しません。PowerShellの構文・パス・終了コードはWindowsで確認します。
 
 ## 依存を更新する
 
@@ -30,7 +30,7 @@ python scripts/check.py
 ```powershell
 uv build --out-dir .artifacts/dist
 python scripts/check_package.py
-python scripts/check_e2e.py --wheel .artifacts/dist --report-dir .artifacts/reports/e2e
+python scripts/check_e2e.py --wheel .artifacts/dist --report-dir .artifacts/records/reports/e2e
 ```
 
 sdistとwheelのバージョン、ワークフロー、設定・起動用ファイルの同梱、生成物と資格情報の除外を確認します。隔離環境ではGitと編集可能インストールに依存せず、init、外部接続、生成・保存、終了、GPU用転送物作成を確認します。WindowsとLinuxのCIも同じ検証を実行します。

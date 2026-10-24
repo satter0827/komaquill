@@ -53,7 +53,7 @@ def test_coverage_gate_checks_source_inventory_and_configured_policy(tmp_path, m
     (tmp_path / "pyproject.toml").write_text(
         "[tool.komaquill.coverage]\nline_minimum=90\nbranch_minimum=80"
     )
-    folder = tmp_path / ".artifacts/reports/quality"
+    folder = tmp_path / ".artifacts/records/reports/quality"
     folder.mkdir(parents=True)
     totals = {
         "covered_lines": 90 if case != "threshold" else 89,
@@ -184,9 +184,9 @@ def test_security_gate_reports_scope_and_never_secret_values(tmp_path, monkeypat
         with pytest.raises(SystemExit):
             security.main()
     if case != "tracked":
-        report = next((tmp_path / ".artifacts/reports/quality").glob("*/security.json")).read_text(
-            encoding="utf-8"
-        )
+        report = next(
+            (tmp_path / ".artifacts/records/reports/quality").glob("*/security.json")
+        ).read_text(encoding="utf-8")
         data = json.loads(report)
         assert data["scope"] == ["working_tree", "staged", "history"]
         assert data["source_revision"] == "test-revision"

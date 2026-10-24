@@ -45,7 +45,7 @@ def test_watch_records_disconnect_once_and_recovers_without_new_allocation(
     assert any("Saved:" in text for text in messages)
     events = [
         json.loads(line)
-        for line in (project.artifacts / "logs" / str(session.runtime_id) / "events.jsonl")
+        for line in (project.logs / str(session.runtime_id) / "events.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -115,9 +115,7 @@ def test_external_shutdown_keeps_unfinished_requests_recoverable(project, client
     runtime.finish_external(project, client, session, True, lambda _: None)
     run = load_runs(project)[0]
     assert run.state == "queued" and run.pending
-    report = json.loads(
-        (project.artifacts / "logs" / str(session.runtime_id) / "shutdown.json").read_bytes()
-    )
+    report = json.loads((project.logs / str(session.runtime_id) / "shutdown.json").read_bytes())
     assert report["gpu"] == "not_managed" and report["pending_ids"] == [str(run.run_id)]
 
 

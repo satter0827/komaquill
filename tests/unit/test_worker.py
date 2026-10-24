@@ -85,7 +85,7 @@ def test_server_preparation_pins_source_and_registers_both_views(
         "check_output",
         lambda *args, **kwargs: "wrong" if mismatch else "revision",
     )
-    model = project.artifacts / "models/example.safetensors"
+    model = project.models / "example.safetensors"
     monkeypatch.setattr(worker, "fetch_model", lambda *args: model)
     user = project.runtime / "user"
     if mismatch:

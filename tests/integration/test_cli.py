@@ -129,7 +129,7 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
 def test_logs_display_safe_categories_without_exception_payloads(project):
     import json
 
-    folder = project.artifacts / "logs"
+    folder = project.logs
     folder.mkdir(parents=True)
     row = {
         "created_at": "time",

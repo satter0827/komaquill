@@ -29,7 +29,7 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
     monkeypatch.setattr(module, "download_asset", download)
 
     async def scenario():
-        extension = module.Extension(project.artifacts, project.artifacts, 1)
+        extension = module.Extension(project.artifacts, project.models, 1)
         app = web.Application()
         app.add_routes(extension.routes())
         async with TestClient(TestServer(app)) as client:
@@ -98,7 +98,7 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
 @pytest.mark.parametrize("case", ["cancel", "failure", "local_first", "unsupported", "stop"])
 def test_preparation_terminal_states_are_monotonic(project, monkeypatch, case):
     async def scenario():
-        extension = module.Extension(project.artifacts, project.artifacts, 1)
+        extension = module.Extension(project.artifacts, project.models, 1)
         extension.workspace_id = uuid4()
         job = Preparation(
             workspace_id=extension.workspace_id,
@@ -157,7 +157,7 @@ def test_register_uses_existing_promptserver_routes(project, monkeypatch):
 )
 def test_local_only_models_stream_to_a_confirmed_digest(project, case):
     async def scenario():
-        extension = module.Extension(project.artifacts, project.artifacts, 1)
+        extension = module.Extension(project.artifacts, project.models, 1)
         extension.control_token = "a" * 40
         local = asset().model_copy(update={"url": None, "local_only": True, "size_bytes": 5})
         job = Preparation(
@@ -183,7 +183,7 @@ def test_local_only_models_stream_to_a_confirmed_digest(project, case):
                 "unauthorized": 403,
                 "cancelled": 409,
             }.get(case, 400)
-            assert model_path(project.artifacts, local).exists() is (case == "saved")
+            assert model_path(project.models, local).exists() is (case == "saved")
             assert not list(project.artifacts.glob("models/**/*upload"))
             if case == "saved":
                 assert extension.read(job.request_id).phase == "ready"

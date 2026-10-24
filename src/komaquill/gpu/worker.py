@@ -17,7 +17,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
 from komaquill.domain.presets import MODEL_ROLES
 from komaquill.gpu.progress import progress
-from komaquill.infrastructure.configuration import Project
+from komaquill.infrastructure.configuration import GpuProject, Project
 from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.storage import atomic_json
 from komaquill.infrastructure.workflows import assets, prepare
@@ -74,13 +74,13 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
             atomic_json(templates / f"{name}_{view}.json", workflow)
     paths = {
         "managed": {
-            "base_path": str(project.artifacts / "models"),
+            "base_path": str(project.models),
             **{role: role for role in MODEL_ROLES},
         }
     }
     for asset in assets(settings):
         progress(project.root, "model_preparation", asset.name)
-        model = fetch_model(project.artifacts, asset)
+        model = fetch_model(project, asset)
         paths[asset.name] = {"base_path": str(model.parent.parent), asset.role: "."}
     # JSON is a YAML subset, so the model path file needs no conversion.
     atomic_json(runtime / "model-paths.json", paths)
@@ -99,7 +99,7 @@ def main(root: Path) -> None:
         if manifest.is_file()
         else None
     )
-    project = Project(root.resolve(), effective)
+    project = GpuProject(root.resolve(), effective)
     config = tomllib.loads(files("komaquill").joinpath("resources/runtime.toml").read_text())
     runtime = project.runtime
     runtime.mkdir(parents=True, exist_ok=True)
@@ -116,7 +116,7 @@ def main(root: Path) -> None:
         .sha256,
     }
     atomic_json(user / "default/komaquill/session.json", metadata)
-    logs = project.artifacts / "logs"
+    logs = project.logs
     logs.mkdir(parents=True, exist_ok=True)
     progress(root, "server")
     port = project.settings().remote_port

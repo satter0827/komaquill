@@ -51,7 +51,7 @@ komaquill doctor
 komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 ```
 
-保存先が表示されたら、.artifacts/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
+保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
 
 ## ComfyUIの画面を使う
 
@@ -108,14 +108,14 @@ komaquill start --backend external --endpoint http://127.0.0.1:8188
 
 | フォルダー | 内容 |
 |---|---|
-| .artifacts/runs/ | 画像、生成条件、履歴 |
-| .artifacts/inputs/ | 入力画像・マスクの版と参照情報 |
-| .artifacts/workflows/ | 保存したワークフローと入力の参照情報 |
-| .artifacts/models/ | モデルのローカル正本 |
+| .artifacts/data/runs/ | 画像、生成条件、履歴 |
+| .artifacts/data/inputs/ | 入力画像・マスクの版と参照情報 |
+| .artifacts/data/workflows/ | 保存したワークフローと入力の参照情報 |
+| .artifacts/data/models/ | モデルのローカル正本 |
 | .artifacts/state/ | 所有記録、接続情報、SSH鍵 |
-| .artifacts/logs/ | 実行ログ、状態変化、終了結果 |
+| .artifacts/records/logs/ | 実行ログ、状態変化、終了結果 |
 | .artifacts/runtime/ | 再構築できる実行環境と転送物 |
-| .artifacts/reports/ | 検査結果 |
+| .artifacts/records/reports/ | 検査結果 |
 | .artifacts/cache/ | 再作成可能なキャッシュ |
 | .artifacts/tmp/ | 一時ファイル |
 | .artifacts/dist/ | wheelとsdist |

@@ -30,10 +30,10 @@ tests = []
 
 [requirements.REQ-CLEAN]
 summary = "保全対象を削除せず、再作成可能な生成物だけを整理する"
-status = "planned"
+status = "implemented"
 acceptance = ["プレビューできる", "使用中・用途不明のデータを除外する", "削除結果を記録する"]
-sources = []
-tests = []
+sources = ["src/komaquill/infrastructure/cleanup.py", "src/komaquill/application/cleanup.py"]
+tests = ["tests/unit/test_cleanup.py"]
 
 [requirements.REQ-STORY]
 summary = "日本語ストーリーとコマ数からLLMで生成計画を作成する"

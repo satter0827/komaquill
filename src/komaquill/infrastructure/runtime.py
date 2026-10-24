@@ -362,7 +362,7 @@ def finish_colab(
             )
         )
 
-    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    folder = project.logs / str(receipt.runtime_id)
     actions = ShutdownActions(
         collect=collect_available,
         logs=lambda: colab.recover_diagnostics(receipt),
@@ -425,7 +425,7 @@ def finish_external(
         result.errors.append(failure_info(error, "collection"))
     result.finished_at = datetime.now(UTC)
     atomic_json(
-        project.artifacts / "logs" / str(session.runtime_id) / "shutdown.json",
+        project.logs / str(session.runtime_id) / "shutdown.json",
         result.model_dump(mode="json"),
     )
     record_event(project, "monitor", "stopped", runtime_id=session.runtime_id)
@@ -545,7 +545,7 @@ def start_colab(
             echo(message("text.downloading_and_verifying_the_model"))
             for asset in assets(project.settings()):
                 phase("model_preparation", asset=asset.name)
-                local_preparation.append(local_models.submit(fetch_model, project.artifacts, asset))
+                local_preparation.append(local_models.submit(fetch_model, project, asset))
                 check_cancel(project)
         phase("models_scheduled" if saved is None else "models_reused")
         payload = create_payload(project)
@@ -839,7 +839,7 @@ def stop(project: Project, force: bool, echo: Callable[[str], None]) -> None:
                 with connected(project) as (client, session):
                     finish_external(project, client, session, force, echo)
         if had_monitor and expected_runtime is not None:
-            path = project.artifacts / "logs" / str(expected_runtime) / "shutdown.json"
+            path = project.logs / str(expected_runtime) / "shutdown.json"
             if path.is_file() and ShutdownResult.model_validate_json(path.read_bytes()).errors:
                 raise KomaquillError(
                     display_key="text.some_shutdown_phases_failed_check_the_shutdown_report"

@@ -31,7 +31,7 @@ python scripts/check.py
 
 カバレッジは未実行ファイルも含むsrcとscriptsを対象にし、testsを除外します。行90%以上と分岐80%以上を別々に判定します。
 
-結果は.artifacts/reports/quality/実行ID/へ保存します。gate.jsonに対象コード、各検査の開始・終了時刻と終了コードを記録します。latest-all.jsonは全検査、latest-quality.jsonとlatest-security.jsonは対応する検査の最新成功を指します。検査中に対象コードが変わった結果は最新成功として扱いません。
+結果は.artifacts/records/reports/quality/実行ID/へ保存します。gate.jsonに対象コード、各検査の開始・終了時刻と終了コードを記録します。latest-all.jsonは全検査、latest-quality.jsonとlatest-security.jsonは対応する検査の最新成功を指します。検査中に対象コードが変わった結果は最新成功として扱いません。
 
 ## T4と標準画面の検証
 
@@ -82,4 +82,4 @@ logs/ランタイムID/capture.jsonで、ログごとの取得結果と最終成
 
 実機で確認したComfyUI子プロセスのimport経路と画面モジュールのキャッシュ問題は修正し、GPUなしの回帰検査へ追加しました。起動中に一度発生したPermissionErrorの正確な発生箇所は、当時の記録だけでは特定できません。Windowsの状態ファイル共有競合は実ファイルで再現して修正し、その後の起動・保存・終了を確認しました。元の起動エラーを後始末のエラーで上書きしないことも検査しています。
 
-実機の詳細は.artifacts/reports/live-seamless、データ照合は.artifacts/reports/seamless-baseline、品質記録は.artifacts/reports/qualityへ保存します。画面とColab T4の確認結果は全段階を組み合わせた構成に対するものです。他のGPUサービスでの実機結果を含みません。
+実機の詳細は.artifacts/records/reports/live-seamless、データ照合は.artifacts/records/reports/seamless-baseline、品質記録は.artifacts/records/reports/qualityへ保存します。画面とColab T4の確認結果は全段階を組み合わせた構成に対するものです。他のGPUサービスでの実機結果を含みません。

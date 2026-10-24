@@ -6,10 +6,10 @@
 
 | 保存先 | 内容 |
 |---|---|
-| .artifacts/inputs/SHA256/content | 入力画像・マスクの元のバイト列 |
-| .artifacts/inputs/records/素材ID.json | 元の名前、参照先、ハッシュ、容量、観測日時 |
-| .artifacts/workflows/SHA256/workflow.json | 明示的に保存したワークフロー |
-| .artifacts/workflows/records/素材ID.json | 保存名、版、保存時の入力画像ハッシュ |
+| .artifacts/data/inputs/SHA256/content | 入力画像・マスクの元のバイト列 |
+| .artifacts/data/inputs/records/素材ID.json | 元の名前、参照先、ハッシュ、容量、観測日時 |
+| .artifacts/data/workflows/SHA256/workflow.json | 明示的に保存したワークフロー |
+| .artifacts/data/workflows/records/素材ID.json | 保存名、版、保存時の入力画像ハッシュ |
 | .artifacts/state/preservation/素材ID.json | 回収、再試行、回収不能の状態 |
 
 同じ名前のファイルを上書きしても、以前の内容を保持します。GPU側の削除をローカルへ反映しません。未保存の画面編集、拡張ノード独自のファイル、動画・音声、環境全体の同期は対象外です。Exportでブラウザーへ直接書き出したファイルは、ブラウザーのダウンロード先を確認してください。

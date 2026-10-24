@@ -24,7 +24,7 @@ def records(project: Project, kind: str) -> list[Material]:
     return sorted(
         (
             Material.model_validate_json(p.read_bytes())
-            for p in (project.artifacts / kind / "records").glob("*.json")
+            for p in (project.data / kind / "records").glob("*.json")
         ),
         key=lambda r: r.observed_at,
     )
@@ -32,7 +32,7 @@ def records(project: Project, kind: str) -> list[Material]:
 
 def blob(project: Project, row: Material) -> Path:
     return (
-        project.artifacts
+        project.data
         / row.kind
         / row.sha256
         / ("workflow.json" if row.kind == "workflows" else "content")
@@ -62,7 +62,7 @@ class MaterialCollector:
             except ValueError:
                 failures.append(f"material-index:{index}")
                 continue
-            path = self.project.artifacts / row.kind / "records" / f"{row.material_id}.json"
+            path = self.project.data / row.kind / "records" / f"{row.material_id}.json"
             if row.state == "saved" and path.is_file() and blob(self.project, row).is_file():
                 continue
             try:

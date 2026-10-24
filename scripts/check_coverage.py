@@ -45,7 +45,7 @@ def main(report_path: Path | None = None) -> None:
         "komaquill"
     ]["coverage"]
     report = json.loads(
-        (report_path or root / ".artifacts/reports/quality/coverage.json").read_bytes()
+        (report_path or root / ".artifacts/records/reports/quality/coverage.json").read_bytes()
     )
     expected = {
         path.relative_to(root).as_posix()

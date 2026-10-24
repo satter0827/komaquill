@@ -12,6 +12,7 @@ from pathlib import Path
 
 RESOURCE_NAMES = (
     "messages.json",
+    "artifacts.md",
     "defaults.toml",
     "presets.toml",
     "sd15.json",

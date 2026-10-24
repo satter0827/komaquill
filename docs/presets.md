@@ -31,7 +31,7 @@ sample_prompt = "a quiet lake, illustration"
 
 ## 配置と準備時間
 
-ローカル正本は`.artifacts/models/資源名/`です。`models fetch --profile pony-preview`で事前取得できます。同じPonyを使う複数のプリセットでも重みは重複取得しません。正常な既存ファイルはSHA256確認後に再利用します。
+ローカル正本は`.artifacts/data/models/用途/SHA256/`です。`models fetch --profile pony-preview`で事前取得できます。同じPonyを使う複数のプリセットでも重みは重複取得しません。正常な既存ファイルはSHA256確認後に再利用します。
 
 Colabは固定した配布元から一時領域へ直接取得します。PCから毎回大きな重みを送信しません。Colab内の再接続では同じ一時キャッシュを使えますが、新しいランタイムでは取得し直します。Google Driveへコピーしません。
 

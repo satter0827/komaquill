@@ -10,27 +10,24 @@ from huggingface_hub.errors import HfHubHTTPError
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ModelPreset
+from komaquill.infrastructure.asset_store import cached_path, register
 from komaquill.infrastructure.asset_store import file_digest as file_digest
-from komaquill.infrastructure.asset_store import register
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
 
-DOWNLOAD_TIMEOUT = 60
 
-
-def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
+def fetch_model(project: Project, model: ModelPreset) -> Path:
     """Download a model and verify its SHA256."""
-    folder = artifacts / "models" / model.role / model.sha256
+    folder = project.models / model.role / model.sha256
     folder.mkdir(parents=True, exist_ok=True)
-    os.environ["HF_HOME"] = str(artifacts / "cache" / "huggingface")
-    os.environ["HF_XET_CACHE"] = str(artifacts / "cache" / "xet")
+    os.environ["HF_HOME"] = str(project.cache / "huggingface")
+    os.environ["HF_XET_CACHE"] = str(project.cache / "xet")
     from huggingface_hub import hf_hub_download
 
     started = time.monotonic()
-    project = Project(artifacts.parent)
     with FileLock(str(folder / ".download.lock")):
         existing = folder / model.filename
-        if existing.is_file() and file_digest(existing) == model.sha256:
+        if cached_path(project.models, model) is not None:
             record_event(
                 project,
                 "model",
@@ -38,7 +35,7 @@ def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
                 asset=model.name,
                 elapsed_seconds=round(time.monotonic() - started, 3),
             )
-            register(artifacts, model, existing)
+            register(project.models, model, existing)
             return existing
         record_event(project, "model", "download_started", asset=model.name)
         try:
@@ -47,7 +44,10 @@ def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
                 temporary = existing.with_suffix(existing.suffix + ".part")
                 try:
                     with httpx.stream(
-                        "GET", model.url, follow_redirects=True, timeout=DOWNLOAD_TIMEOUT
+                        "GET",
+                        model.url,
+                        follow_redirects=True,
+                        timeout=project.settings().request_timeout,
                     ) as response:
                         response.raise_for_status()
                         with temporary.open("wb") as handle:
@@ -65,7 +65,7 @@ def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
                         filename=model.filename,
                         revision=model.revision,
                         local_dir=folder,
-                        cache_dir=artifacts / "cache" / "huggingface" / "hub",
+                        cache_dir=project.cache / "huggingface" / "hub",
                         force_download=existing.is_file(),
                     )
                 )
@@ -88,5 +88,5 @@ def fetch_model(artifacts: Path, model: ModelPreset) -> Path:
             asset=model.name,
             elapsed_seconds=round(time.monotonic() - started, 3),
         )
-        register(artifacts, model, target)
+        register(project.models, model, target)
         return target

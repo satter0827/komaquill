@@ -56,7 +56,7 @@ def test_live_owned_shutdown(mode):
         args, cwd=project.root, capture_output=True, text=True, encoding="utf-8", timeout=240
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    folder = project.artifacts / "logs" / str(receipt.runtime_id)
+    folder = project.logs / str(receipt.runtime_id)
     summary = json.loads((folder / "shutdown.json").read_bytes())
     assert summary["gpu"] == "stopped" and summary["logs"] == "ok"
     assert summary["connections"] == "ok" and summary["history"] == "ok"

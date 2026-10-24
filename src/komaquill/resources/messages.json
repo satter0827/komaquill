@@ -261,5 +261,19 @@
   "assets.capacity": "{size_bytes:,} bytes",
   "quality.report_unavailable": "The check report could not be saved; the original failure is unchanged.",
   "storage.cleanup_failed": "The write failed and its temporary file could not be removed.",
-  "quality.inspect_security": "Inspect publishable files and Git history for secrets."
+  "quality.inspect_security": "Inspect publishable files and Git history for secrets.",
+  "cleanup.help": "Remove only eligible caches, temporary files and intermediate distributions.",
+  "cleanup.preview_help": "Show candidates and exclusions without deleting files.",
+  "cleanup.busy": "Stop the session and finish runtime cleanup before removing generated files.",
+  "cleanup.migration": "Storage migration is incomplete. Finish verification before starting or cleaning.",
+  "cleanup.item": "{path}: {size} bytes - {result}",
+  "cleanup.report": "Cleanup record: {path}",
+  "cleanup.eligible": "eligible",
+  "cleanup.retained": "retained by a latest successful check",
+  "cleanup.unknown": "unrecognized; retained",
+  "cleanup.in_use": "workspace runtime in use; retained",
+  "cleanup.protected": "protected",
+  "cleanup.linked": "contains a link or junction; retained",
+  "cleanup.completed": "completed",
+  "cleanup.failed": "failed; see the cleanup record"
 }

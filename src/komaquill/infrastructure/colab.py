@@ -403,7 +403,7 @@ class Colab:
 
     def recover_diagnostics(self, receipt: Receipt) -> tuple[str, ...]:
         """Download independent snapshots and preserve the last successful capture."""
-        folder = self.project.artifacts / "logs" / str(receipt.runtime_id)
+        folder = self.project.logs / str(receipt.runtime_id)
         folder.mkdir(parents=True, exist_ok=True)
         remote = f"content/komaquill-{receipt.runtime_id}/.artifacts"
         failed: list[str] = []
@@ -461,10 +461,10 @@ class Colab:
                 except OSError as error:
                     if name not in failed:
                         failed.append(name)
-                    item.update(
-                        result="failed",
-                        failure=failure_info(error, "log_cleanup").model_dump(mode="json"),
+                    item["cleanup_failure"] = failure_info(error, "log_cleanup").model_dump(
+                        mode="json"
                     )
+                    item["result"] = "failed"
             if (folder / name).is_file():
                 item["size_bytes"] = (folder / name).stat().st_size
             files[name] = item

@@ -32,7 +32,7 @@ def input_fingerprint(root: Path) -> str:
 def main(group: str = "all") -> None:
     """Run selected gates, preserving a report even if a command fails."""
     root = Path(__file__).resolve().parents[1]
-    report = root / ".artifacts/reports/quality" / uuid4().hex
+    report = root / ".artifacts/records/reports/quality" / uuid4().hex
     report.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     for name in list(env):

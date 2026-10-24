@@ -9,7 +9,7 @@ from komaquill.infrastructure.storage import atomic_json
 def progress(root: Path, phase: str, asset: str | None = None) -> None:
     """Publish the current phase without capturing command output or credentials."""
     atomic_json(
-        root / ".artifacts/logs/progress.json",
+        root / ".artifacts/records/logs/progress.json",
         {
             "phase": phase,
             "asset": asset,

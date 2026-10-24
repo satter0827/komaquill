@@ -255,7 +255,7 @@ class Extension:
 
 def register(server: Any, root: Path, timeout: float) -> Extension:
     """Install on PromptServer before it freezes its routes."""
-    extension = Extension(root, root, timeout)
+    extension = Extension(root, root / "models", timeout)
     folders = importlib.import_module("folder_paths")
     for role in MODEL_ROLES:
         destination = root / "models" / role

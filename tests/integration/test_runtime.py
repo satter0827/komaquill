@@ -299,7 +299,7 @@ def test_unexpected_shutdown_error_still_stops_gpu_and_retains_receipt(
         runtime.finish_colab(project, colab, receipt, client, session, True, lambda _: None, [])
     assert stopped == [True]
     assert colab.receipt() is not None
-    diagnostic = project.artifacts / "logs" / str(receipt.runtime_id) / "shutdown.json"
+    diagnostic = project.logs / str(receipt.runtime_id) / "shutdown.json"
     assert "private-response-sentinel" not in str(error.value) + diagnostic.read_text()
     assert "ValueError" in diagnostic.read_text()
 

@@ -214,8 +214,8 @@ def test_stop_and_log_reader_handle_absent_and_active_sessions(project, monkeypa
     monkeypatch.setattr(supervisor, "alive", lambda _: True)
     monkeypatch.setattr(supervisor, "wait_stopped", lambda *args: None)
     assert supervisor.stop(project, True, lambda _: None)
-    folder = project.artifacts / "logs"
-    folder.mkdir(exist_ok=True)
+    folder = project.logs
+    folder.mkdir(parents=True, exist_ok=True)
     (folder / "cli.jsonl").write_text('{"operation":"test"}\ninvalid\n[]\n')
     (folder / "ignored.jsonl").write_text('{"operation":"private"}')
     assert list(supervisor.events(project, False)) == [{"operation": "test"}]
@@ -370,5 +370,5 @@ def test_progress_cleanup_failure_does_not_abort_startup(project, session, monke
     with monkeypatch.context() as patch:
         patch.setattr(Path, "unlink", remove)
         assert control.progress(receipt) == {"phase": "dependencies", "asset": None}
-    event = (project.artifacts / "logs" / str(session.runtime_id) / "events.jsonl").read_text()
+    event = (project.logs / str(session.runtime_id) / "events.jsonl").read_text()
     assert "progress_cleanup" in event and "private-path" not in event

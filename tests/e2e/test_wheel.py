@@ -178,7 +178,7 @@ def test_installed_wheel_generates_and_prepares_payload_without_git():
                     if monitor.poll() is None:
                         monitor.terminate()
                         monitor.wait(timeout=10)
-            runs = list((workspace / ".artifacts/runs").glob("*/run.json"))
+            runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
             assert len(runs) == 1
             run = json.loads(runs[0].read_bytes())
             assert run["state"] == "saved" and run["source_revision"] is None

@@ -29,7 +29,7 @@ komaquill collect
 komaquill collect 実行ID
 ```
 
-`.artifacts/runs/実行ID/`にrun.json、workflow-api.json、画像を保存します。画面用のworkflow.jsonは取得できる場合に保存します。
+`.artifacts/data/runs/実行ID/`にrun.json、workflow-api.json、画像を保存します。画面用のworkflow.jsonは取得できる場合に保存します。
 CLIの要求は送信前、画面の要求は監視で確認した時点で記録します。受付不明の要求は自動再送せず、キューと履歴を照合します。
 
 1件の取得失敗があっても、ほかの正常な画像の保存を続けます。今回の回収失敗がある場合、collectは対象IDを表示して終了コード1を返します。
@@ -75,7 +75,7 @@ Colabの終了確認後、未回収要求はlostになります。外部接続�
 
 1. statusでColab、自動回収、未回収の状態を確認します。
 2. 接続可能ならcollectで結果を回収します。
-3. `.artifacts/logs/ランタイムID/`の準備ログ・実行ログ・capture.jsonを確認します。shutdown.jsonで画像回収・ログ取得・GPU終了の結果を確認します。
+3. `.artifacts/records/logs/ランタイムID/`の準備ログ・実行ログ・capture.jsonを確認します。shutdown.jsonで画像回収・ログ取得・GPU終了の結果を確認します。
 4. 起動または終了に失敗した場合はstopを再実行し、所有するColabの終了を確認します。
 
 操作の経緯はevents.jsonl、ログの取得日時と最終成功日時はcapture.jsonへ保存します。

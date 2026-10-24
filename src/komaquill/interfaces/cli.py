@@ -152,7 +152,7 @@ def models_fetch(
             settings = settings.model_copy(update={"profiles": tuple(profile)})
             settings = type(settings).model_validate(settings.model_dump())
         for asset in assets(settings):
-            typer.echo(str(fetch_model(project.artifacts, asset)))
+            typer.echo(str(fetch_model(project, asset)))
 
 
 @app.command(help=message("text.start_comfyui_and_collect_results_automatically_press_ctrl"))
@@ -460,3 +460,30 @@ def prepare_command(
         prepare_workflow(
             project.configured(session.settings), client, workflow, typer.echo, typer.confirm
         )
+
+
+@app.command("clean", help=message("cleanup.help"))
+def clean_command(
+    ctx: typer.Context,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run/--no-dry-run", help=message("cleanup.preview_help"))
+    ] = False,
+) -> None:
+    """Preview or remove only eligible recreatable directories."""
+    from komaquill.infrastructure.cleanup import execute
+
+    with operation(ctx) as project:
+        items, report_path, failed = execute(project, dry_run)
+        for item in items:
+            typer.echo(
+                message(
+                    "cleanup.item",
+                    path=item.relative_path,
+                    size=item.size_bytes,
+                    result=message("cleanup." + (item.result or item.reason or "eligible")),
+                )
+            )
+        if report_path is not None:
+            typer.echo(message("cleanup.report", path=report_path))
+        if failed:
+            raise typer.Exit(1)

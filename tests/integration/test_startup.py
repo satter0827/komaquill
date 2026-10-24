@@ -107,7 +107,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         runtime.start_colab(project, lambda _: None)
         assert load_session(project).settings == receipt.settings
         summary = ShutdownResult.model_validate_json(
-            (project.artifacts / "logs" / str(receipt.runtime_id) / "shutdown.json").read_bytes()
+            (project.logs / str(receipt.runtime_id) / "shutdown.json").read_bytes()
         )
         assert summary.gpu == "stopped" and summary.history == "ok"
     assert not control.receipt_file.exists()

@@ -48,7 +48,7 @@ def test_each_file_recovers_independently_and_acknowledges_after_durable_save(
         ):
             raise KomaquillError(code="connection_failed")
         if method == "POST":
-            assert (project.artifacts / "inputs/records" / f"{identity}.json").is_file()
+            assert (project.inputs / "records" / f"{identity}.json").is_file()
             return httpx.Response(200, json={})
         return httpx.Response(
             200,
@@ -86,10 +86,7 @@ def test_each_file_recovers_independently_and_acknowledges_after_durable_save(
         module.blob(project, rows[0]).unlink()
         assert not collector.collect()
         assert module.blob(project, rows[0]).read_bytes() == b"image"
-    assert all(
-        "private-error" not in p.read_text()
-        for p in (project.artifacts / "logs").glob("**/*.jsonl")
-    )
+    assert all("private-error" not in p.read_text() for p in (project.logs).glob("**/*.jsonl"))
 
 
 @pytest.mark.parametrize("case", ["credential", "missing"])
@@ -110,7 +107,7 @@ def store(project, row, content):
     row.state = "saved"
     atomic_bytes(module.blob(project, row), content)
     atomic_json(
-        project.artifacts / row.kind / "records" / f"{row.material_id}.json",
+        project.data / row.kind / "records" / f"{row.material_id}.json",
         row.model_dump(mode="json"),
     )
 

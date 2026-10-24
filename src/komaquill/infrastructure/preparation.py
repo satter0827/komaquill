@@ -85,7 +85,7 @@ class Coordinator:
 
     def plan(self, job: Preparation) -> None:
         hints, unsupported = requirements(job.workflow, self.client.json("/object_info"))
-        registered = inventory(self.project.artifacts)
+        registered = inventory(self.project.models)
         assets = []
         node_models: dict[str, dict[str, str]] = {}
         for reference in list(unsupported):
@@ -121,9 +121,9 @@ class Coordinator:
                 unsupported.append(str(hint.get("name", "unknown")))
         assets = [
             model.model_copy(
-                update={"size_bytes": model_path(self.project.artifacts, model).stat().st_size}
+                update={"size_bytes": model_path(self.project.models, model).stat().st_size}
             )
-            if model.size_bytes is None and verified_cache(self.project.artifacts, model)
+            if model.size_bytes is None and verified_cache(self.project.models, model)
             else model
             for model in assets
         ]
@@ -133,7 +133,7 @@ class Coordinator:
             assets=[a.model_dump(mode="json") for a in assets],
             node_models=node_models,
             unsupported=sorted(set(unsupported)),
-            reused=[a.reference for a in assets if verified_cache(self.project.artifacts, a)],
+            reused=[a.reference for a in assets if verified_cache(self.project.models, a)],
         )
 
     def run(self, job: Preparation) -> None:
@@ -144,7 +144,7 @@ class Coordinator:
                 return
             for asset in job.assets:
                 download_asset(
-                    self.project.artifacts,
+                    self.project.models,
                     asset,
                     self.project.settings().request_timeout,
                     lambda: (
@@ -153,7 +153,7 @@ class Coordinator:
                     ),
                 )
                 if asset.local_only:
-                    path = model_path(self.project.artifacts, asset)
+                    path = model_path(self.project.models, asset)
                     with path.open("rb") as handle:
                         self.client.request(
                             "POST",

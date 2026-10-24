@@ -30,29 +30,29 @@ def asset(content=b"model", **changes):
 @pytest.mark.parametrize("case", ["absent", "verified", "changed", "corrupt", "invalid"])
 def test_verified_evidence_is_bound_to_bytes_and_file_identity(project, case):
     model = asset()
-    path = model_path(project.artifacts, model)
+    path = model_path(project.models, model)
     if case == "absent":
-        assert not verified_cache(project.artifacts, model)
-        assert not verify_file(project.artifacts, model)
+        assert not verified_cache(project.models, model)
+        assert not verify_file(project.models, model)
         return
     path.parent.mkdir(parents=True)
     path.write_bytes(b"model")
-    register(project.artifacts, model, path)
-    assert verified_cache(project.artifacts, model)
+    register(project.models, model, path)
+    assert verified_cache(project.models, model)
     if case == "changed":
         path.write_bytes(b"different")
     if case == "corrupt":
         (path.parent / "asset.json").write_text("{}")
     if case == "invalid":
         (path.parent / "asset.json").write_text("{broken")
-    assert verified_cache(project.artifacts, model) is (case == "verified")
-    assert verify_file(project.artifacts, model) is (case != "changed")
+    assert verified_cache(project.models, model) is (case == "verified")
+    assert verify_file(project.models, model) is (case != "changed")
 
 
 def test_equal_names_with_different_bytes_have_distinct_comfy_references(project):
     first, second = asset(b"first"), asset(b"second")
     assert first.filename == second.filename and first.reference != second.reference
-    assert model_path(project.artifacts, first) != model_path(project.artifacts, second)
+    assert model_path(project.models, first) != model_path(project.models, second)
 
 
 @pytest.mark.parametrize(
@@ -74,13 +74,13 @@ def test_equal_names_with_different_bytes_have_distinct_comfy_references(project
 )
 def test_confirmed_downloads_publish_only_verified_bytes(project, monkeypatch, case):
     model = asset(size_bytes=5)
-    target = model_path(project.artifacts, model)
+    target = model_path(project.models, model)
     target.parent.mkdir(parents=True)
     partial = target.with_suffix(".safetensors.part")
     if case in {"cached", "existing"}:
         target.write_bytes(b"model")
         if case == "cached":
-            register(project.artifacts, model, target)
+            register(project.models, model, target)
     if case in {"resume", "ignored_range", "bad_range", "range_end"}:
         partial.write_bytes(b"mo")
     if case == "disk":
@@ -118,13 +118,13 @@ def test_confirmed_downloads_publish_only_verified_bytes(project, monkeypatch, c
         return next(cancelled) if cancelled else case == "cancel"
 
     if case in {"new", "cached", "existing", "resume", "ignored_range"}:
-        assert download.download_asset(project.artifacts, model, 1, cancel).read_bytes() == b"model"
-        assert verified_cache(project.artifacts, model)
+        assert download.download_asset(project.models, model, 1, cancel).read_bytes() == b"model"
+        assert verified_cache(project.models, model)
         assert not partial.exists()
         assert bool(calls) is (case not in {"cached", "existing"})
     else:
         with pytest.raises(KomaquillError):
-            download.download_asset(project.artifacts, model, 1, cancel)
+            download.download_asset(project.models, model, 1, cancel)
         assert not target.exists()
     if case == "resume":
         assert calls[0]["headers"] == {"Range": "bytes=2-"}
@@ -253,15 +253,15 @@ def test_model_inventory_tracks_verified_local_sources(project):
     from komaquill.infrastructure.asset_store import inventory
 
     local = asset().model_copy(update={"url": None, "local_only": True})
-    path = model_path(project.artifacts, local)
+    path = model_path(project.models, local)
     path.parent.mkdir(parents=True)
     path.write_bytes(b"model")
-    register(project.artifacts, local, path)
-    assert inventory(project.artifacts) == [local]
-    assert download.download_asset(project.artifacts, local, 1, lambda: False) == path
+    register(project.models, local, path)
+    assert inventory(project.models) == [local]
+    assert download.download_asset(project.models, local, 1, lambda: False) == path
     path.unlink()
     with pytest.raises(KomaquillError):
-        download.download_asset(project.artifacts, local, 1, lambda: False)
+        download.download_asset(project.models, local, 1, lambda: False)
     assert ModelPreset.model_validate(local.model_dump()).local_only
     with pytest.raises(ValueError):
         ModelPreset.model_validate({**local.model_dump(), "url": "https://example.com/model.sft"})

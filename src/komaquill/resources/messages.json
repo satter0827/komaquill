@@ -271,7 +271,7 @@
   "cleanup.eligible": "eligible",
   "cleanup.retained": "retained by a latest successful check",
   "cleanup.unknown": "unrecognized; retained",
-  "cleanup.in_use": "workspace runtime in use; retained",
+  "cleanup.in_use": "workspace files may be in use; retained",
   "cleanup.protected": "protected",
   "cleanup.linked": "contains a link or junction; retained",
   "cleanup.completed": "completed",

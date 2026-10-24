@@ -154,3 +154,68 @@ def test_cleanup_locates_uv_without_shell_activation(project, monkeypatch, sourc
         else "path-uv"
     )
     assert json.loads(report.read_bytes())["status"] == "completed"
+
+
+@pytest.mark.parametrize(
+    "case,expected",
+    [
+        ("executable", True),
+        ("symlink_argv", True),
+        ("script", True),
+        ("cwd", True),
+        ("open_cache", True),
+        ("open_tmp", True),
+        ("unrelated", False),
+        ("prefix_collision", False),
+        ("disappeared", False),
+        ("denied_python", True),
+        ("denied_other", False),
+        ("self", False),
+    ],
+)
+def test_cleanup_detects_workspace_use_beyond_resolved_executable(
+    project, monkeypatch, case, expected
+):
+    import os
+    from types import SimpleNamespace
+
+    import psutil
+
+    outside = project.root.parent / "unrelated"
+    executable = outside / "python3"
+    arguments = [str(executable), "-c", "pass"]
+    directory = outside
+    files = []
+    if case == "executable":
+        executable = project.runtime / "venv/bin/python"
+    elif case == "symlink_argv":
+        arguments[0] = str(project.runtime / "venv/bin/python")
+    elif case == "script":
+        arguments = [str(executable), str(project.root / "scripts/check.py")]
+    elif case == "cwd":
+        directory = project.root
+    elif case in {"open_cache", "open_tmp"}:
+        folder = project.cache if case == "open_cache" else project.temporary
+        files = [SimpleNamespace(path=str(folder / "used/file"))]
+    elif case == "prefix_collision":
+        arguments[0] = str(
+            project.root.with_name(project.root.name + "-other") / ".artifacts/runtime/bin/python"
+        )
+    process = SimpleNamespace(
+        pid=os.getpid() if case == "self" else os.getpid() + 1,
+        info={"name": "node" if case == "denied_other" else "python3"},
+        exe=lambda: str(executable),
+        cmdline=lambda: arguments,
+        cwd=lambda: str(directory),
+        open_files=lambda: files,
+    )
+    if case.startswith("denied") or case == "disappeared":
+
+        def inaccessible():
+            if case == "disappeared":
+                raise psutil.NoSuchProcess(process.pid)
+            raise psutil.AccessDenied(process.pid)
+
+        process.exe = inaccessible
+    monkeypatch.setattr(cleanup.psutil, "process_iter", lambda _: iter([process]))
+    assert cleanup.cache_in_use(project) is expected

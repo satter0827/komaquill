@@ -33,7 +33,7 @@ summary = "保全対象を削除せず、再作成可能な生成物だけを整
 status = "implemented"
 acceptance = ["プレビューできる", "使用中・用途不明のデータを除外する", "削除結果を記録する"]
 sources = ["src/komaquill/infrastructure/cleanup.py", "src/komaquill/application/cleanup.py"]
-tests = ["tests/unit/test_cleanup.py"]
+tests = ["tests/unit/test_cleanup.py", "tests/integration/test_cleanup_processes.py"]
 
 [requirements.REQ-STORY]
 summary = "日本語ストーリーとコマ数からLLMで生成計画を作成する"

@@ -49,16 +49,41 @@ def measured(path: Path) -> tuple[int, int, bool]:
 
 
 def cache_in_use(project: Project) -> bool:
-    """Treat other project Python processes and inaccessible processes conservatively."""
-    prefix = str(project.runtime).casefold()
-    for process in psutil.process_iter(["pid", "exe"]):
+    """Detect lexical venv paths and Python workspace use without logging process arguments."""
+
+    def within(value: str, root: Path) -> bool:
+        path = Path(value)
+        return path.is_absolute() and path.absolute().is_relative_to(root.absolute())
+
+    for process in psutil.process_iter(["pid", "name"]):
         if process.pid == os.getpid():
             continue
+        python = (process.info.get("name") or "").lower().startswith(("python", "pypy"))
         try:
-            if (process.info.get("exe") or "").casefold().startswith(prefix):
+            executable = process.exe()
+            arguments = process.cmdline()
+            if within(executable, project.runtime) or any(
+                within(argument, project.runtime) for argument in arguments
+            ):
                 return True
-        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            python = python or Path(executable).name.lower().startswith(("python", "pypy"))
+            if not python:
+                continue
+            if within(process.cwd(), project.root) or any(
+                within(argument, project.root) for argument in arguments
+            ):
+                return True
+            if any(
+                within(file.path, folder)
+                for file in process.open_files()
+                for folder in (project.cache, project.temporary)
+            ):
+                return True
+        except psutil.NoSuchProcess:
             continue
+        except psutil.AccessDenied:
+            if python:
+                return True
     return False
 
 

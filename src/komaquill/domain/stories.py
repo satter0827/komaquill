@@ -38,8 +38,20 @@ class Character(StoryRecord):
     )
 
 
-ActorKey = Annotated[str, Field(pattern=r"^c[1-9][0-9]*$")]
-PropKey = Annotated[str, Field(pattern=r"^o[1-9][0-9]*$")]
+ActorKey = Annotated[
+    str,
+    Field(
+        pattern=r"^[a-z]+(?:_[a-z]+)*$",
+        description="Short descriptive English identity, not a numbered placeholder.",
+    ),
+]
+PropKey = Annotated[
+    str,
+    Field(
+        pattern=r"^[a-z]+(?:_[a-z]+)*$",
+        description="Short descriptive English identity of this object.",
+    ),
+]
 
 
 class PlannedCharacter(Character):
@@ -387,20 +399,39 @@ def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
             "narrative_language",
             "Write narrative, titles and synopsis in Japanese; keep visual fields in English.",
         )
-    visible = [character.appearance for character in draft.characters] + [
-        scene.visual_description for scene in draft.scenes
+    visual_fields: list[tuple[tuple[str | int, ...], str]] = [
+        (("characters", index, "appearance"), character.appearance)
+        for index, character in enumerate(draft.characters)
     ]
-    visible += [prop.appearance for prop in draft.props]
-    visible += [subject.action for scene in draft.scenes for subject in scene.subjects]
-    visible += [state.state for scene in draft.scenes for state in scene.props]
-    visible += [scene.location for scene in draft.scenes if scene.location]
-    if any(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text) for text in visible):
-        reject(
-            "visual_language",
-            "Use English for appearance, visual_description and location, "
-            "and for subjects.action and props.state. "
-            "Keep narrative, titles and synopsis in Japanese.",
-        )
+    visual_fields += [
+        (("props", index, "appearance"), prop.appearance) for index, prop in enumerate(draft.props)
+    ]
+    for index in range(len(draft.scenes)):
+        scene = draft.scenes[index]
+        visual_fields += [
+            (("scenes", index, "visual_description"), scene.visual_description),
+            (("scenes", index, "location"), scene.location or ""),
+        ]
+        visual_fields += [
+            (("scenes", index, "subjects", n, "action"), subject.action)
+            for n, subject in enumerate(scene.subjects)
+        ]
+        visual_fields += [
+            (("scenes", index, "props", n, "state"), state.state)
+            for n, state in enumerate(scene.props)
+        ]
+    for path, text in visual_fields:
+        if re.search(r"(?<![A-Za-z0-9_])[cop][1-9][0-9]*(?![A-Za-z0-9_])", text):
+            issues.append(PlanningIssue(code="reference_in_visual_text", path=path))
+            explanations.append(
+                "Use visible English descriptions in visual prose; keep IDs in reference fields."
+            )
+    for path, text in visual_fields:
+        if re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text):
+            issues.append(PlanningIssue(code="visual_language", path=path))
+            explanations.append(
+                "Use English visual prose and Japanese narrative, titles and synopsis."
+            )
     descriptions = [
         (
             " ".join(scene.visual_description.split()).casefold(),
@@ -420,4 +451,6 @@ def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
     if {ref for scene in draft.scenes for ref in scene.source_refs} != set(request.paragraphs):
         reject("source_coverage", "Every source paragraph must be represented by the plan.")
     if issues:
-        raise PlanningValidationError(issues[0].code, " ".join(explanations), issues=issues)
+        raise PlanningValidationError(
+            issues[0].code, " ".join(dict.fromkeys(explanations)), issues=issues
+        )

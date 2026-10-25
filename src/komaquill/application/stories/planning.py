@@ -126,13 +126,17 @@ def plan_story(
                     error.errors(include_input=False, include_context=False, include_url=False)
                     if isinstance(error, ValidationError)
                     else [
-                        {"code": issue.code, "loc": list(issue.path), "message": str(error)}
-                        for issue in validation_issues
+                        {"code": issue.code, "loc": list(issue.path)} for issue in validation_issues
                     ]
                 )
                 correction = json.dumps(
                     {
                         "validation_errors": issues,
+                        **(
+                            {"requirements": str(error)}
+                            if isinstance(error, PlanningValidationError)
+                            else {}
+                        ),
                         "previous_output": response.content if response else None,
                     },
                     ensure_ascii=False,

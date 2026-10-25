@@ -57,7 +57,7 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     elif fault == "count":
         broken["scenes"].pop()
     elif fault == "character":
-        broken["scenes"][0]["subjects"][0]["character"] = "c99"
+        broken["scenes"][0]["subjects"][0]["character"] = "missing_actor"
     elif fault == "source":
         broken["scenes"][0]["source_refs"] = ["missing"]
     elif fault == "duplicate":
@@ -166,3 +166,37 @@ def test_plan_checksum_prevents_later_manual_edits(project):
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(KomaquillError):
         repository.read(result.request.story_id)
+
+
+def test_repair_preserves_all_paths_without_repeating_combined_explanation(project):
+    options = settings(project, llm_profile="fake")
+    base = planner(project, options, allow_real_llm=False)
+    valid = (
+        files("komaquill")
+        .joinpath("resources/stories/examples/rainy-cat/plan-4.json")
+        .read_text(encoding="utf-8")
+    )
+    value = json.loads(valid)
+    value["scenes"][0]["props"][0].update(holder="mother_cat", state="held above c2")
+    value["scenes"][1]["props"][0]["state"] = "held by c1"
+    fake = LangChainPlanner(base.provenance, FakeListLLM(responses=[json.dumps(value), valid]))
+    repository = FileStoryRepository(project)
+    result = plan_story(repository, fake, request(), max_images=8)
+    second = json.loads(
+        (repository.folder(result.request.story_id) / "planning/02.json").read_bytes()
+    )
+    correction = json.loads(second["correction"])
+    assert len(correction["validation_errors"]) == 3
+    assert all(set(row) == {"code", "loc"} for row in correction["validation_errors"])
+    assert correction["requirements"] and correction["previous_output"]
+    assert len(second["validation_issues"]) == 0
+
+
+@pytest.mark.parametrize("feedback", ["{", "[]", "{}", '{"previous_output":null}'])
+def test_invalid_internal_correction_never_reaches_the_model(project, feedback):
+    from komaquill.infrastructure.stories.prompts import chat_messages
+
+    base = planner(project, settings(project, llm_profile="fake"), allow_real_llm=False)
+    with pytest.raises(KomaquillError) as error:
+        chat_messages(request(), base.provenance, feedback)
+    assert error.value.code == "invalid_output"

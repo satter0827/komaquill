@@ -7,13 +7,30 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from komaquill.application.ports import GenerationBackend, Workspace
-from komaquill.domain.errors import FailureInfo, KomaquillError, SubmissionUnknown, failure_info
-from komaquill.domain.images import CompiledImageInput, compile_image_input
+from komaquill.domain.errors import (
+    FailureInfo,
+    KomaquillError,
+    OperationStage,
+    SubmissionUnknown,
+    failure_info,
+)
+from komaquill.domain.images import CompiledImageInput, ImageSeed, compile_image_input
 from komaquill.domain.models import ImageRef, JsonObject, Run, Session
 from komaquill.domain.workflow import digest
+
+_SEED_ADAPTER = TypeAdapter(ImageSeed)
+_GENERATION_INPUTS = TypeAdapter(tuple[str, str | None, ImageSeed, tuple[str, ...]])
+
+
+def checked_seed(seed: int, *, stage: OperationStage = OperationStage.GENERATION) -> int:
+    """Reject out-of-range seeds before recording or sending any request."""
+    try:
+        return _SEED_ADAPTER.validate_python(seed)
+    except ValidationError:
+        raise KomaquillError(code="invalid_request", stage=stage, retryable=False) from None
 
 
 @dataclass(frozen=True)
@@ -335,6 +352,12 @@ def submit_generation(
     subjects: tuple[str, ...] = (),
 ) -> Run:
     """Record before submission and return without waiting for image persistence."""
+    try:
+        prompt, negative, seed, subjects = _GENERATION_INPUTS.validate_python(
+            (prompt, negative, seed, subjects)
+        )
+    except ValidationError:
+        raise KomaquillError(code="invalid_request", stage="generation", retryable=False) from None
     project = project.configured(session.settings)
     verify_runtime(client, session)
     run_id = run_id or uuid4()

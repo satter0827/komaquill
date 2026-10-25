@@ -3,19 +3,19 @@
   "synopsis": "雨の日に出会った子猫を助けたミオが、親子猫の再会を見届ける物語。",
   "characters": [
     {
-      "key": "c1",
+      "key": "woman",
       "name": "ミオ",
       "appearance": "young woman, human face, short dark bob, yellow raincoat, human hands",
       "kind": "human"
     },
     {
-      "key": "c2",
+      "key": "kitten",
       "name": "子猫",
       "appearance": "tiny gray kitten, white chest patch, four legs, natural feline body",
       "kind": "animal"
     },
     {
-      "key": "c3",
+      "key": "mother_cat",
       "name": "母猫",
       "appearance": "larger adult gray mother cat, white chest patch, four legs",
       "kind": "animal"
@@ -32,18 +32,18 @@
       ],
       "subjects": [
         {
-          "character": "c1",
+          "character": "woman",
           "action": "crouches beside the kitten"
         },
         {
-          "character": "c2",
+          "character": "kitten",
           "action": "shivers beside the curb"
         }
       ],
       "props": [
         {
-          "prop": "o1",
-          "holder": "c1",
+          "prop": "umbrella",
+          "holder": "woman",
           "state": "held above her head"
         }
       ]
@@ -58,18 +58,18 @@
       ],
       "subjects": [
         {
-          "character": "c1",
+          "character": "woman",
           "action": "holds the umbrella above the kitten"
         },
         {
-          "character": "c2",
+          "character": "kitten",
           "action": "rests under the umbrella"
         }
       ],
       "props": [
         {
-          "prop": "o1",
-          "holder": "c1",
+          "prop": "umbrella",
+          "holder": "woman",
           "state": "held over the kitten"
         }
       ]
@@ -84,11 +84,11 @@
       ],
       "subjects": [
         {
-          "character": "c2",
+          "character": "kitten",
           "action": "leans toward its mother"
         },
         {
-          "character": "c3",
+          "character": "mother_cat",
           "action": "lowers her face toward the kitten"
         }
       ],
@@ -104,14 +104,14 @@
       ],
       "subjects": [
         {
-          "character": "c1",
+          "character": "woman",
           "action": "walks home holding the umbrella overhead"
         }
       ],
       "props": [
         {
-          "prop": "o1",
-          "holder": "c1",
+          "prop": "umbrella",
+          "holder": "woman",
           "state": "held above her head"
         }
       ]
@@ -122,7 +122,7 @@
   ],
   "props": [
     {
-      "key": "o1",
+      "key": "umbrella",
       "name": "青い傘",
       "appearance": "a single blue umbrella"
     }

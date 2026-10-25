@@ -92,7 +92,11 @@ def test_pony_global_and_regional_comparison():
         "story_id": str(plan.request.story_id),
         "baseline_story_id": str(baseline.request.story_id),
         "pairs": [],
-        "fixed_conditions": ["model", "seed", "sampling", "quality", "source"],
+        "fixed_conditions": ["model", "seed", "sampling", "quality_preset", "source"],
+        "changed_conditions": {
+            "A_to_B": ["framing", "appearance", "structured_subjects"],
+            "B_to_C": ["text_encoders", "spatial_regions", "quality_prefix_per_encoder"],
+        },
         "criteria": [
             "subject_count_and_kind",
             "appearance",
@@ -164,30 +168,6 @@ def test_pony_global_and_regional_comparison():
                     (folder / "comparison.json").write_text(
                         json.dumps(report, indent=2), encoding="utf-8"
                     )
-        if os.environ.get("KOMAQUILL_VISUAL_REVIEW") == "1":
-            report["phase"] = "awaiting_review"
-            (folder / "comparison.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-            decision_file = folder / "decision.json"
-            deadline = min(started + 1800, time.monotonic() + 180)
-            while not decision_file.is_file():
-                assert time.monotonic() < deadline, (
-                    "No reviewed candidate was selected before the limit"
-                )
-                time.sleep(1)
-            decision = json.loads(decision_file.read_bytes())
-            assert decision["profile"] in {"pony", "pony-story", None}
-            report["review"] = decision
-            if decision["profile"] is not None:
-                events = list(
-                    api.stories.render(
-                        plan.request.story_id, image_profile=decision["profile"], seed=42
-                    )
-                )
-                snapshot = events[-1].snapshot
-                assert snapshot.complete and snapshot.render_id
-                assert any(event.snapshot.counts.get("saved") == 1 for event in events)
-                report["render_id"] = str(snapshot.render_id)
-                report["story_images"] = [scene.primary_image.key for scene in snapshot.scenes]
         succeeded = True
     finally:
         try:

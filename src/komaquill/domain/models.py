@@ -81,8 +81,9 @@ class ImageMetadata(BaseModel):
 
 
 class Run(BaseModel):
-    compiled_input: CompiledImageInput | None = None
     """Retain generation conditions for collection after reconnecting."""
+
+    compiled_input: CompiledImageInput | None = None
 
     format_version: int = 2
     run_id: UUID

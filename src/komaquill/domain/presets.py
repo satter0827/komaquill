@@ -161,7 +161,7 @@ class GenerationPreset(BaseModel):
             "sample_subjects",
         }
         allowed.update({"prompt", "seed", "output_prefix", "upscaled_output_prefix"})
-        allowed.update({"subject_1", "subject_2", "prompt_delimiter"})
+        allowed.update({"subject_1", "subject_2", "prompt_delimiter", "negative_delimiter"})
         allowed.update(
             f"region_{index}_{key}" for index in (1, 2) for key in ConditioningRegion.model_fields
         )

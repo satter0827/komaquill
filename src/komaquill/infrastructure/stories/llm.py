@@ -13,11 +13,11 @@ import keyring
 from filelock import FileLock, Timeout
 from pydantic import SecretStr
 
-from komaquill.application.stories.ports import planner_input
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.stories import PlannerProvenance, PlanningResponse, StoryInput, TokenUsage
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.configuration import StorySettings, instructions
+from komaquill.infrastructure.stories.prompts import chat_messages
 
 
 def token_usage(value: Any) -> TokenUsage | None:
@@ -59,22 +59,12 @@ class LangChainPlanner:
     ) -> PlanningResponse:
         try:
             from langchain_core.language_models.fake import FakeListLLM
-            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.messages import convert_to_messages
             from langsmith import tracing_context
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing", stage="story_planning") from None
-        payload = planner_input(request, self.provenance, correction)
         with tracing_context(enabled=False):
-            template = ChatPromptTemplate.from_messages(
-                [
-                    ("system", "{instructions}"),
-                    ("human", "{request}"),
-                ]
-            )
-            prompt = template.format_prompt(
-                instructions=self.provenance.instructions,
-                request=json.dumps(payload, ensure_ascii=False),
-            )
+            prompt = convert_to_messages(chat_messages(request, self.provenance, correction))
             if self.provenance.provider == "fake":
                 example = files("komaquill").joinpath("resources/stories/examples/rainy-cat")
                 if self.model is None:

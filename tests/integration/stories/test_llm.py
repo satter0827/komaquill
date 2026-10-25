@@ -56,7 +56,9 @@ def model_server():
                         "finish_reason": state["finish_reason"],
                         "message": {
                             "role": "assistant",
-                            "content": state["content"],
+                            "content": state["responses"].pop(0)
+                            if state.get("responses")
+                            else state["content"],
                             "refusal": state["refusal"],
                         },
                     }
@@ -268,3 +270,35 @@ def test_model_timeout_is_recorded_without_sdk_retries(project, model_server):
     assert error.value.code == "llm_unavailable" and len(state["requests"]) == 1
     attempt = json.loads(next(repository.root.rglob("01.json")).read_bytes())
     assert attempt["failure"]["code"] == "llm_unavailable"
+
+
+def test_repair_uses_actual_chat_turns_and_preserves_exact_wire_messages(project, model_server):
+    url, state = model_server
+    valid = state["content"]
+    invalid = json.loads(valid)
+    invalid["scenes"][1]["narrative"] = invalid["scenes"][0]["narrative"]
+    previous = json.dumps(invalid, ensure_ascii=False)
+    state["responses"] = [previous, valid]
+    repository = FileStoryRepository(project)
+    value = request()
+    result = plan_story(
+        repository,
+        planner(project, options(project, url), allow_real_llm=True),
+        value,
+        allow_real_llm=True,
+        max_images=8,
+    )
+    assert len(state["requests"]) == 2
+    sent = state["requests"][1]["payload"]["messages"]
+    assert [m["role"] for m in sent] == ["system", "user", "assistant", "user"]
+    assert sent[2]["content"] == previous
+    feedback = json.loads(sent[3]["content"])
+    assert feedback["task"] == "repair" and "previous_output" not in feedback
+    assert feedback["validation_errors"][0]["code"] == "duplicate_narrative"
+    assert "correction" not in json.loads(sent[1]["content"])
+    stored = json.loads(
+        (
+            repository.folder(result.request.story_id) / "planning/inputs/attempt-02.json"
+        ).read_bytes()
+    )
+    assert stored["format_version"] == 2 and stored["messages"] == sent

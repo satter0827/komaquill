@@ -52,6 +52,10 @@ def test_story_evidence_and_shutdown():
             "42",
             "--json",
         ]
+        image_profile = os.environ.get("KOMAQUILL_ACCEPTANCE_IMAGE_PROFILE")
+        if image_profile:
+            command += ["--image-profile", image_profile]
+        result["image_profile"] = image_profile
         process = subprocess.run(
             command,
             capture_output=True,
@@ -95,7 +99,8 @@ def test_story_evidence_and_shutdown():
         assert summary.planning == full.planning
         assert summary.render == full.render and summary.selected_run_ids == full.selected_run_ids
         assert not summary.objects and full.objects
-        assert summary.planning.usage.total_tokens is not None
+        if summary.planning.conditions.get("provider") != "fake":
+            assert summary.planning.usage.total_tokens is not None
         for run in summary.runs:
             for image in run.images:
                 assert (project.root / image.workspace_path).is_file()

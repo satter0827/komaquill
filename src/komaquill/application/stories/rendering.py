@@ -6,11 +6,12 @@ from collections.abc import Callable, Iterator
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from komaquill.application.generation import submit_generation, wait_generation
+from komaquill.application.generation import checked_seed, submit_generation, wait_generation
 from komaquill.application.ports import GenerationBackend, Workspace
 from komaquill.application.stories.image_inputs import scene_input
 from komaquill.application.stories.ports import StoryRepository
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, OperationStage
+from komaquill.domain.images import MAX_SEED
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject, Run, Session
 from komaquill.domain.stories import SceneAttempts, StoryPlan, StoryRender
 from komaquill.domain.workflow import digest
@@ -29,7 +30,9 @@ def create_render(
     settings = workspace.configured(session.settings).settings()
     if image_profile not in settings.profiles:
         raise KomaquillError(code="invalid_configuration", stage="story_rendering")
-    initial_seed = seed if seed is not None else secrets.randbits(63)
+    initial_seed = checked_seed(
+        seed if seed is not None else secrets.randbits(63), stage=OperationStage.STORY_RENDERING
+    )
     render = StoryRender(
         format_version=2,
         story_id=story_id,
@@ -39,7 +42,7 @@ def create_render(
         scenes=[
             SceneAttempts(
                 scene_id=scene.scene_id,
-                seed=(initial_seed + index) % (2**64),
+                seed=(initial_seed + index) % (MAX_SEED + 1),
                 compiled_input=scene_input(plan, scene, settings.presets[image_profile]),
             )
             for index, scene in enumerate(plan.scenes)

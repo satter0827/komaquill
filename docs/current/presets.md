@@ -65,3 +65,5 @@ App ModeとNode Graphは同じ標準グラフから作成し、必要な入力�
 生成ごとのCompiledImageInputは、元の指定・品質用既定文・適用済みの正負入力・対象別入力・構図・プリセットのハッシュと変換処理の版を持ちます。過去の入力を現在の既定値で作り直しません。
 
 実画像比較では対象数・種別・小物の所有関係の基準を満たしていないため、pony-storyは選択式です。既定はponyを維持します。詳細は[検証結果](../verification/results/story-image-inputs.md)を参照してください。
+
+利用者の標準グラフで負の品質文を別に結合する場合、negative_prefixには適用する品質文、negativeには利用者の指定、negative_delimiterには必要な区切り文字を渡します。negative_prefixを独立して結合しない構成では、negativeが合成済みの負の入力です。APIと標準画面へ同じ値を設定し、品質の無効化時に品質文を残しません。

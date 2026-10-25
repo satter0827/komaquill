@@ -57,7 +57,7 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     elif fault == "count":
         broken["scenes"].pop()
     elif fault == "character":
-        broken["scenes"][0]["characters"] = ["unknown"]
+        broken["scenes"][0]["subjects"][0]["character"] = "unknown"
     elif fault == "source":
         broken["scenes"][0]["source_refs"] = ["missing"]
     elif fault == "duplicate":
@@ -137,7 +137,7 @@ def test_invalid_source_and_references_are_rejected():
     with pytest.raises(ValueError):
         validate_draft(StoryDraft.model_validate(data), value)
     data["characters"].pop()
-    data["scenes"][0]["characters"] = ["mio", "mio"]
+    data["scenes"][0]["subjects"] = [data["scenes"][0]["subjects"][0]] * 2
     with pytest.raises(ValueError):
         validate_draft(StoryDraft.model_validate(data), value)
     with pytest.raises(ValidationError):

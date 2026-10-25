@@ -148,12 +148,19 @@ def plan_story(
             if draft is not None:
                 plan = StoryPlan(
                     request=request,
+                    format_version=2,
+                    props=draft.props,
                     title=draft.title,
                     synopsis=draft.synopsis,
-                    characters=draft.characters,
+                    characters=[character for character in draft.characters],
                     supplements=draft.supplements,
                     scenes=[
-                        Scene(**scene.model_dump(), scene_id=uuid4(), position=i)
+                        Scene(
+                            **scene.model_dump(),
+                            characters=[subject.character for subject in scene.subjects],
+                            scene_id=uuid4(),
+                            position=i,
+                        )
                         for i, scene in enumerate(draft.scenes, 1)
                     ],
                     planner=provenance,

@@ -42,6 +42,8 @@ def generation_settings(
     if name not in settings.profiles:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
     profile = settings.presets[name]
+    if candidates is not None and profile.primary_output_node is None:
+        raise KomaquillError(code="unsupported_batch", stage="generation", retryable=False)
     count = profile.batch_size if candidates is None else candidates
     if (
         isinstance(count, bool)
@@ -515,6 +517,7 @@ def submit_generation(
                 run.error = "submission_failed"
                 run.failure = failure_info(error, "submission")
                 project.repository.save(run)
+        error.details.setdefault("run_id", str(run_id))
         raise
     with collection_lock(project):
         run = project.repository.read(run_id)
@@ -539,7 +542,10 @@ def wait_generation(
             return run
         if run.state in {"failed", "lost"}:
             raise KomaquillError(
-                code=run.failure.code if run.failure else "generation_failed", retryable=False
+                code=run.failure.code if run.failure else "generation_failed",
+                stage=run.failure.stage if run.failure else "generation",
+                details={"run_id": str(run_id)},
+                retryable=False,
             )
         if run_id in result.errors:
             raise KomaquillError(code="collection_failed", details={"run_id": str(run_id)})

@@ -48,6 +48,7 @@ class ErrorCode(StrEnum):
     UNSUPPORTED_ASSET = "unsupported_asset"
     EXTENSION_UNAVAILABLE = "extension_unavailable"
     UNSUPPORTED_IMAGE = "unsupported_image"
+    UNSUPPORTED_BATCH = "unsupported_batch"
 
 
 class OperationStage(StrEnum):

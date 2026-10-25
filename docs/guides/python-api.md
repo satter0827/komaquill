@@ -97,3 +97,19 @@ print(applied.positive, applied.negative)
 ```
 
 CompiledImageInputはkomaquill.apiから参照できます。利用者が渡した内容と品質プロンプトを適用した条件を確認できます。画面から生成した履歴では、対応する利用者入力を確認できないためcompiled_inputはNoneです。実行条件は保存されたグラフから確認します。
+
+## 複数候補と負プロンプト
+
+```python
+run = client.images.generate("a blue umbrella", negative="floating objects", candidates=2)
+for name in run.images:
+    metadata = run.image_metadata[name]
+    print(metadata.role, metadata.output_node, metadata.batch_index)
+
+for event in client.stories.render(story_id, candidates=2, negative="extra limbs"):
+    for scene in event.snapshot.scenes:
+        for candidate in scene.candidates:
+            image_path = client.artifact_path(candidate.key)
+```
+
+単画像生成は一つのRunに候補を保存します。Pythonからは文字列とsubjectsを渡し、ファイル読み込みを呼び出し側で行えます。CLIから読み込んだファイルの内容・元の名前・SHA256はinput_sourcesへ保存されます。明示的なcandidatesはプリセットを要求単位で上書きし、再開では保存済みの条件を維持します。

@@ -112,3 +112,12 @@ def test_extension_catalog_and_executable_resources_are_packaged():
         for key in re.findall(r'"(ui\.[a-z_]+)"', source):
             assert key in messages.catalog()
         assert "komaquill/" + name in dict(provenance.gpu_contents())
+
+
+def test_display_arguments_are_separate_from_request_context():
+    error = KomaquillError(
+        display_key="text.cannot_open_the_browser_open_this_url_url",
+        details={"url": "http://127.0.0.1:18188", "run_id": "safe-request"},
+    )
+    text = messages.error_message(error)
+    assert "http://127.0.0.1:18188" in text and "safe-request" in text

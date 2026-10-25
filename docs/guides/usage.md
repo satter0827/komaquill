@@ -109,7 +109,7 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 ## VS Codeから実行する
 
-Setup Environmentで導入し、Python: Select Interpreterで.artifacts/runtime/venvを選びます。Run and DebugのStart SessionがCLIのstartを呼び出します。Open GeneratorはApp ModeまたはNode Graphを選択でき、Generate Imageはプロンプトを入力します。
+Setup Environmentで導入し、Python: Select Interpreterで.artifacts/runtime/venvを選びます。Run and DebugのStart SessionがCLIのstartを呼び出します。Open GeneratorはApp ModeまたはNode Graphを選択でき、Generate Imageは正のプロンプトを入力し、負の条件と候補数は設定の既定値を使います。Generate Image from Fileは正負のプロンプトと対象別説明を記載したJSONのパスを入力します。
 
 Prepare WorkflowはJSONのパス、Stop Sessionは通常・強制、Clean Generated Filesはプレビュー・整理を選びます。整理の既定はプレビューです。Show Status、Check Connection、Collect Results、Show Logsも同じCLIを使います。Run CLI with Argumentsでは任意の引数、Debug Sessionでは前面監視を実行します。画面だけを閉じてもGPUは終了しないため、Stop Sessionを実行してください。
 
@@ -128,3 +128,36 @@ Googleの安定したアカウント識別子から作ったSHA256と、確保�
 公式CLIのローカル記録がなくても、対象が動作していれば既存GPUへ接続して回収・終了を試みます。認証失敗、通信失敗、アカウント不一致は不明として扱い、所有記録を保持します。認証と接続を確認して`stop`を再実行してください。`status`、回収、再接続、終了が新しいGPUを確保することはありません。
 
 GPU側のモデル準備イベントは、取得したログのworker-events.jsonlへ保存します。bootstrap.logの依存導入時間と合わせて準備の所要時間を確認できます。画像の初回生成時間は履歴の生成開始・完了時刻から確認してください。
+
+## 正負プロンプトをファイルから指定する
+
+起動済みセッションで実行します。テキストはUTF-8で保存し、BOMも使用できます。
+
+```powershell
+komaquill generate --prompt-file positive.txt --negative-file negative.txt --candidates 2
+```
+
+正負とも直接指定に対応します。
+
+```powershell
+komaquill generate --prompt "a blue umbrella" --negative "floating objects" --candidates 2
+```
+
+対象別の説明を含める場合はJSONを使用します。
+
+```json
+{
+  "format_version": 1,
+  "prompt": "rainy street",
+  "negative": "extra limbs",
+  "subjects": ["woman holding a blue umbrella", "small gray kitten"]
+}
+```
+
+```powershell
+komaquill generate --input-file image-input.json --profile pony-story --candidates 2
+```
+
+同じ正負入力で直接指定とファイル指定は併用できません。input-fileは他のプロンプト指定と併用せず、profile・seed・candidatesと組み合わせます。空の正プロンプトはエラーです。負の指定を省略するとプリセット値、空文字・空ファイルは利用者の負指定なしになります。品質用既定文は別に適用します。
+
+結果には候補数と保存先を表示します。ブラウザーや画像を自動で開きません。候補数の増加はGPUメモリを消費します。メモリ不足では条件を自動変更せず、ログを確認して少ない候補数で新しい生成を行います。

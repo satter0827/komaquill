@@ -177,8 +177,8 @@ class GenerationPreset(BaseModel):
                 {row.source for row in self.bindings}
             ):
                 raise ValueError("Regional presets require two complete subject slots.")
-        if self.primary_output_node is not None and (
-            self.api.get(self.primary_output_node, {}).get("class_type") != "SaveImage"
+        if (self.primary_output_node is not None or self.batch_size != 1) and (
+            self.api.get(self.primary_output_node or "", {}).get("class_type") != "SaveImage"
             or "batch_size" not in {row.source for row in self.bindings}
         ):
             raise ValueError("Candidate presets require a final image output and batch binding.")

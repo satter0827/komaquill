@@ -48,9 +48,16 @@ def message(key: str, **values: object) -> str:
 
 def error_message(error: "KomaquillError") -> str:
     """Render domain codes without copying arbitrary exception text."""
-    if error.display_key is not None:
-        return message(error.display_key, **error.details)
-    key = "error." + error.code.value
+    key = error.display_key or "error." + error.code.value
+    expected = {name for _, name, _, _ in Formatter().parse(catalog()[key]) if name is not None}
+    explanation = message(
+        key, **{name: value for name, value in error.details.items() if name in expected}
+    )
     if error.details.get("run_id"):
-        return message("error.run_retry", code=error.code.value, run_id=error.details["run_id"])
-    return message(key)
+        return "\n".join(
+            (
+                explanation,
+                message("error.run_retry", code=error.code.value, run_id=error.details["run_id"]),
+            )
+        )
+    return explanation

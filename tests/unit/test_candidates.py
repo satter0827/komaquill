@@ -152,3 +152,46 @@ def test_empty_positive_is_rejected_by_the_shared_generation_boundary(
     with pytest.raises(KomaquillError):
         submit_generation(project, client, session, text, None, 42)
     assert stub.submissions == 0 and not project.repository.load()
+
+
+def test_unsupported_legacy_batch_override_is_rejected_before_post(project, session, client, stub):
+    settings = project.settings()
+    legacy = settings.presets["pony"].model_copy(update={"primary_output_node": None})
+    active = session.model_copy(
+        update={
+            "settings": settings.model_copy(
+                update={"presets": {**settings.presets, "pony": legacy}}
+            )
+        }
+    )
+    with pytest.raises(KomaquillError) as error:
+        submit_generation(project, client, active, "a cabin", None, 42, candidates=2)
+    assert error.value.code == "unsupported_batch" and stub.submissions == 0
+
+
+def test_invalid_default_candidate_limit_fails_before_runtime_allocation():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(max_candidates=1)
+
+
+def test_failed_generation_keeps_request_identity_and_retry_advice(
+    project, session, client, stub, monkeypatch
+):
+    from komaquill.application.generation import generate
+    from komaquill.messages import error_message
+
+    original = client.submit
+
+    def submit(*args):
+        identity = original(*args)
+        stub.history[identity]["status"] = {"status_str": "error", "completed": True}
+        return identity
+
+    monkeypatch.setattr(client, "submit", submit)
+    with pytest.raises(KomaquillError) as error:
+        generate(project, client, session, "a cabin", None, 42, candidates=2)
+    assert error.value.details["run_id"] == str(project.repository.load()[0].run_id)
+    assert "fewer candidates" in error_message(error.value)
+    assert error.value.details["run_id"] in error_message(error.value)

@@ -51,7 +51,7 @@ komaquill doctor
 komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 ```
 
-保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
+候補数は`--candidates`で指定します。正負をファイルから渡す場合は`--prompt-file positive.txt --negative-file negative.txt`、対象別の説明も含める場合は`--input-file image-input.json`を使います。入力形式は[操作](docs/guides/usage.md)を参照してください。保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
 
 ## ストーリーから生成する
 
@@ -61,7 +61,7 @@ LM Studioの4BモデルとLocal Serverを準備し、UTF-8の原文ファイル�
 komaquill stories generate ./story.txt --allow-real-llm
 ```
 
-保存できた場面から本文と画像の保存先を表示します。`.artifacts/data/stories/README.md`から作品を選び、各生成試行の`story.md`で本文と画像を順番に読めます。枚数は出来事と描画方針から自動で選びます。固定する場合は`--images 4`を指定します。上限は既定で8枚です。計画だけの保存、再生成、中断後の再開、構造化出力は[ストーリーの生成](docs/guides/stories.md)を参照してください。画像やブラウザーを自動起動しません。
+保存できた候補から本文と画像の保存先を表示します。`--candidates`は各場面の候補数で、`--images`の場面数とは別です。`.artifacts/data/stories/README.md`から作品を選び、各生成試行の`story.md`で本文と画像を順番に読めます。枚数は出来事と描画方針から自動で選びます。固定する場合は`--images 4`を指定します。上限は既定で8枚です。計画だけの保存、再生成、中断後の再開、構造化出力は[ストーリーの生成](docs/guides/stories.md)を参照してください。画像やブラウザーを自動起動しません。
 
 ## ComfyUIの画面を使う
 

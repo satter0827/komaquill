@@ -111,3 +111,17 @@ status = "in_progress"
 acceptance = ["新規計画の種別・対象・動作・小物参照を検証する", "品質用の正負プロンプトを既定で適用し設定で無効化する", "生成試行の入力を固定し再開時に再合成しない", "APIと標準画面の条件を揃えて元入力と実行条件を保存する", "過去形式を推測で補わず画像と履歴を保持する", "実画像で対象の数・種別・小物の所有関係・動作の基準を満たす"]
 sources = ["src/komaquill/domain/images.py", "src/komaquill/application/stories/image_inputs.py", "src/komaquill/resources/presets/pony-story/preset.toml"]
 tests = ["tests/unit/test_image_inputs.py", "tests/unit/stories/test_visual_specification.py", "tests/integration/test_acceptance.py"]
+
+[requirements.REQ-CANDIDATES]
+summary = "標準バッチで候補を生成し、場面の送信と回収を制限付きで重ねる"
+status = "implemented"
+acceptance = ["場面数と候補数を分ける", "主出力と補助画像を区別し全候補を保存する", "部分保存を表示し再回収で状態を後退させない", "受付不明・停止・中断後に二重送信しない", "再開で条件と待機期限を維持する"]
+sources = ["src/komaquill/application/generation.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/domain/models.py"]
+tests = ["tests/unit/test_candidates.py", "tests/unit/stories/test_pipeline.py"]
+
+[requirements.REQ-PROMPT-FILES]
+summary = "正負の直接・UTF-8・JSON入力を同じ画像生成へ適用する"
+status = "implemented"
+acceptance = ["正負の入力方法を対称にする", "競合・不正入力を送信前に拒否する", "元のファイル名・内容・SHA256を保持する", "標準画面で負プロンプトと候補数を編集する"]
+sources = ["src/komaquill/interfaces/image_inputs.py", "src/komaquill/interfaces/cli.py", "src/komaquill/resources/presets/pony/workflow.json"]
+tests = ["tests/unit/test_prompt_files.py", "tests/integration/test_acceptance.py", "tests/unit/test_presets.py"]

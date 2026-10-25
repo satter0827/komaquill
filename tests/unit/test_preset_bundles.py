@@ -90,3 +90,23 @@ def test_packaged_graphs_are_independent_copies():
     second, other = prepare("two", None, 2, "second", settings=settings)
     assert second["4"]["inputs"]["ckpt_name"] != "changed"
     assert other["nodes"]
+
+
+@pytest.mark.parametrize("name", ["pony", "pony-preview", "pony-story", "pony-upscale", "sd15"])
+def test_negative_inputs_remain_visible_without_overlapping_other_nodes(name):
+    root = files("komaquill").joinpath("resources/presets", name)
+    graph = json.loads(root.joinpath("workflow.json").read_bytes())
+    nodes = graph["nodes"]
+    negative = [
+        row for row in nodes if row.get("title") in {"Negative Prompt", "Negative Conditioning"}
+    ]
+    assert len(negative) == 2
+    for node in negative:
+        x, y = node["pos"]
+        width, height = node["size"]
+        for other in nodes:
+            if other["id"] == node["id"]:
+                continue
+            ox, oy = other["pos"]
+            ow, oh = other["size"]
+            assert x + width <= ox or ox + ow <= x or y + height + 30 <= oy or oy + oh + 30 <= y

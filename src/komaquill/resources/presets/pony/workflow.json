@@ -382,12 +382,12 @@
       "id": 12,
       "type": "StringConcatenate",
       "pos": [
-        20,
+        -400,
         280
       ],
       "size": [
         340,
-        140
+        220
       ],
       "flags": {},
       "order": 9,
@@ -426,12 +426,12 @@
       "type": "RegexReplace",
       "title": "Negative Conditioning",
       "pos": [
-        390,
-        550
+        -400,
+        600
       ],
       "size": [
-        320,
-        220
+        340,
+        320
       ],
       "flags": {},
       "order": 10,

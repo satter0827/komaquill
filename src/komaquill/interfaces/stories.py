@@ -10,8 +10,9 @@ from uuid import UUID
 import typer
 
 from komaquill.api import Client, KomaquillError, StoryEvent, StoryInterrupted
-from komaquill.domain.models import JsonObject
+from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject
 from komaquill.infrastructure.configuration import Project
+from komaquill.interfaces.image_inputs import negative_input
 from komaquill.messages import message
 
 GROUP = typer.Typer(no_args_is_help=True, add_completion=False, help=message("stories.help"))
@@ -31,6 +32,18 @@ def selected_images(value: str | None) -> int | Literal["auto"] | None:
     return count
 
 
+def candidate_message(client: Client, image: JsonObject, total: int | None) -> str:
+    metadata = image.get("metadata") or {}
+    if metadata.get("role") == "candidate":
+        return message(
+            "stories.candidate_image",
+            position=metadata["batch_index"] + 1,
+            total=total,
+            path=client.artifact_path(image["key"]),
+        )
+    return message("stories.image", path=client.artifact_path(image["key"]))
+
+
 def display(client: Client, view: JsonObject) -> None:
     typer.echo(message("stories.heading", title=view["title"], story_id=view["story_id"]))
     for scene in view["scenes"]:
@@ -44,20 +57,20 @@ def display(client: Client, view: JsonObject) -> None:
                 narrative=scene["narrative"],
             )
         )
-        if scene["primary_image"]:
-            typer.echo(
-                message(
-                    "stories.image",
-                    path=client.artifact_path(scene["primary_image"]["key"]),
-                )
-            )
+        for candidate in scene.get("candidates", []) or (
+            [scene["primary_image"]] if scene["primary_image"] else []
+        ):
+            typer.echo(candidate_message(client, candidate, scene.get("requested_candidates")))
+
     if view["render_id"]:
         typer.echo(message("stories.render_identity", render_id=view["render_id"]))
 
 
 def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> None:
     """Write saved scenes once and keep diagnostics off structured output."""
-    printed: set[tuple[UUID, UUID | None, str]] = set()
+    printed: set[tuple[UUID, UUID | None, str, tuple[str, ...]]] = set()
+    narrated: set[tuple[UUID, UUID | None]] = set()
+    displayed_images: set[tuple[UUID, UUID | None, str]] = set()
     last = None
     identity = None
     publication_failure = None
@@ -68,26 +81,50 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
             identity = last.render_id
             typer.echo(message("stories.render_identity", render_id=identity), err=json_output)
         for scene in last.scenes:
-            key = (scene.scene_id, scene.run_id, scene.state)
+            key = (
+                scene.scene_id,
+                scene.run_id,
+                scene.state,
+                tuple(image.key for image in scene.candidates),
+            )
             if key in printed or scene.state == "unstarted":
                 continue
             printed.add(key)
-            if scene.state == "saved":
-                typer.echo(
-                    message(
-                        "stories.scene",
-                        position=scene.position,
-                        total=last.image_count,
-                        title=scene.title,
-                        state=scene.state,
-                        narrative=scene.narrative,
-                    ),
-                    err=json_output,
-                )
-                if scene.primary_image:
+            if scene.state == "saved" or scene.candidates:
+                attempt = (scene.scene_id, scene.run_id)
+                if attempt not in narrated:
+                    narrated.add(attempt)
                     typer.echo(
                         message(
-                            "stories.image", path=client.artifact_path(scene.primary_image.key)
+                            "stories.scene",
+                            position=scene.position,
+                            total=last.image_count,
+                            title=scene.title,
+                            state=scene.state,
+                            narrative=scene.narrative,
+                        ),
+                        err=json_output,
+                    )
+                elif scene.state in TERMINAL_RUN_STATES:
+                    typer.echo(
+                        message(
+                            "stories.progress",
+                            position=scene.position,
+                            total=last.image_count,
+                            state=scene.state,
+                        ),
+                        err=True,
+                    )
+                for candidate in scene.candidates or (
+                    [scene.primary_image] if scene.primary_image else []
+                ):
+                    image_key = (scene.scene_id, scene.run_id, candidate.key)
+                    if image_key in displayed_images:
+                        continue
+                    displayed_images.add(image_key)
+                    typer.echo(
+                        candidate_message(
+                            client, candidate.model_dump(mode="json"), scene.requested_candidates
                         ),
                         err=json_output,
                     )
@@ -183,7 +220,7 @@ def bind(
                             story_id=row.story_id,
                             title=row.title,
                             state=row.state,
-                            saved=row.saved_images,
+                            saved=row.saved_scenes,
                             total=row.image_count if row.image_count is not None else "?",
                         )
                     )
@@ -247,11 +284,19 @@ def bind(
         seed: Annotated[
             int | None, typer.Option(min=0, max=2**64 - 1, help=message("stories.seed_help"))
         ] = None,
+        candidates: Annotated[
+            int | None, typer.Option(min=1, help=message("images.candidates_help"))
+        ] = None,
+        negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
+        negative_file: Annotated[
+            Path | None, typer.Option(help=message("inputs.negative_file_help"))
+        ] = None,
         json_output: Annotated[
             bool, typer.Option("--json", help=message("stories.json_help"))
         ] = False,
     ) -> None:
         with story_operation(ctx) as client:
+            negative, sources = negative_input(negative, negative_file)
             present(
                 client,
                 client.stories.generate(
@@ -261,6 +306,9 @@ def bind(
                     llm_profile=llm_profile,
                     image_profile=image_profile,
                     seed=seed,
+                    candidates=candidates,
+                    negative=negative,
+                    input_sources=sources,
                     allow_real_llm=allow_real_llm,
                 ),
                 json_output,
@@ -276,14 +324,29 @@ def bind(
         seed: Annotated[
             int | None, typer.Option(min=0, max=2**64 - 1, help=message("stories.seed_help"))
         ] = None,
+        candidates: Annotated[
+            int | None, typer.Option(min=1, help=message("images.candidates_help"))
+        ] = None,
+        negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
+        negative_file: Annotated[
+            Path | None, typer.Option(help=message("inputs.negative_file_help"))
+        ] = None,
         json_output: Annotated[
             bool, typer.Option("--json", help=message("stories.json_help"))
         ] = False,
     ) -> None:
         with story_operation(ctx) as client:
+            negative, sources = negative_input(negative, negative_file)
             present(
                 client,
-                client.stories.render(story_id, image_profile=image_profile, seed=seed),
+                client.stories.render(
+                    story_id,
+                    image_profile=image_profile,
+                    seed=seed,
+                    candidates=candidates,
+                    negative=negative,
+                    input_sources=sources,
+                ),
                 json_output,
             )
 

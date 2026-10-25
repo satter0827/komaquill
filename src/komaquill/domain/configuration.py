@@ -36,6 +36,8 @@ class RuntimeSettings(BaseModel):
         for name in self.profiles:
             if name not in self.presets:
                 raise ValueError("The selected generation profile is undefined.")
+            if self.presets[name].batch_size > self.max_candidates:
+                raise ValueError("A selected preset exceeds the configured candidate limit.")
         for name, profile in self.presets.items():
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
                 raise ValueError("Profile names must use lowercase letters, digits and hyphens.")

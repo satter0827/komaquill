@@ -28,6 +28,7 @@ from komaquill.infrastructure.storage import run_dir
 from komaquill.infrastructure.views import open_view
 from komaquill.infrastructure.workflows import assets, prepare, select
 from komaquill.interfaces.evaluations import bind
+from komaquill.interfaces.image_inputs import image_input
 from komaquill.interfaces.stories import bind as bind_stories
 from komaquill.messages import error_message, message
 
@@ -231,24 +232,40 @@ def generate_command(
         str | None, typer.Option(help=message("text.description_of_the_image_to_generate"))
     ] = None,
     negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
+    prompt_file: Annotated[
+        Path | None, typer.Option(help=message("inputs.positive_file_help"))
+    ] = None,
+    negative_file: Annotated[
+        Path | None, typer.Option(help=message("inputs.negative_file_help"))
+    ] = None,
+    input_file: Annotated[Path | None, typer.Option(help=message("inputs.json_file_help"))] = None,
+    candidates: Annotated[
+        int | None, typer.Option(min=1, help=message("images.candidates_help"))
+    ] = None,
     seed: Annotated[
         int | None, typer.Option(min=0, max=2**64 - 1, help=message("text.random_seed"))
     ] = None,
     profile: Annotated[str | None, typer.Option(help=message("profile.select_help"))] = None,
 ) -> None:
-    """Generate an image and save its conditions."""
+    """Generate and persist one batch of image candidates."""
     with operation(ctx) as project:
-        text = (
-            prompt
-            if prompt is not None
-            else typer.prompt(message("text.describe_the_image_to_generate"))
-        )
-        if not text.strip():
-            raise KomaquillError(display_key="text.enter_a_nonempty_image_description")
+        if prompt is None and prompt_file is None and input_file is None:
+            prompt = typer.prompt(message("text.describe_the_image_to_generate"))
+        value, sources = image_input(prompt, negative, prompt_file, negative_file, input_file)
         typer.echo(message("text.generating_the_image"))
         run = Client(project.root).images.generate(
-            text, negative=negative, seed=seed, profile=profile
+            value.prompt,
+            negative=value.negative,
+            subjects=value.subjects,
+            seed=seed,
+            profile=profile,
+            candidates=candidates,
+            input_sources=sources,
         )
+        if run.output_spec is None:
+            typer.echo(message("images.saved_outputs", count=len(run.images)))
+        else:
+            typer.echo(message("images.saved_candidates", count=run.output_spec.candidates))
         typer.echo(message("text.saved_directory", directory=run_dir(project, run.run_id)))
 
 

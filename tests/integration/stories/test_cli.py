@@ -240,3 +240,33 @@ def test_follow_returns_nonzero_after_terminal_generation_failure(
     assert followed.exit_code == 1
     assert json.loads(followed.stdout)["finished"]
     assert "resume" in followed.stderr
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_partial_candidates_are_presented_once_per_request(cli_story, project, capsys, json_output):
+    from komaquill.api import Client, StoryEvent, StorySnapshot
+    from komaquill.interfaces.stories import present
+
+    file, invoke, _ = cli_story
+    result = invoke(
+        "generate", file, "--images", 1, "--llm-profile", "fake", "--candidates", 2, "--json"
+    )
+    assert result.exit_code == 0, result.output
+    saved = StorySnapshot.model_validate_json(result.stdout)
+    scene = saved.scenes[0]
+    assert len(scene.candidates) == 2
+    partials = []
+    for candidates in [scene.candidates[:1], scene.candidates, scene.candidates]:
+        updated = scene.model_copy(update={"state": "queued", "candidates": candidates})
+        partials.append(saved.model_copy(update={"scenes": (updated,), "complete": False}))
+    events = [StoryEvent(kind="progress", snapshot=item) for item in partials]
+    events.append(StoryEvent(kind="finished", snapshot=saved))
+    present(Client(project.root), iter(events), json_output)
+    captured = capsys.readouterr()
+    text = captured.err if json_output else captured.out
+    assert text.count(scene.narrative) == 1
+    assert "saved" in captured.err
+    for candidate in scene.candidates:
+        assert text.count(str(Client(project.root).artifact_path(candidate.key))) == 1
+    if json_output:
+        assert json.loads(captured.out)["complete"]

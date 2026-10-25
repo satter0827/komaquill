@@ -10,4 +10,7 @@ shutdown_timeout = 600.0
 control_timeout = 90.0
 worker_execution_timeout = 86400.0
 
+max_candidates = 4
+story_max_in_flight = 2
+
 profiles = ["pony"]

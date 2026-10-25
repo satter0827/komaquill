@@ -117,7 +117,7 @@ def test_story_resume_never_recompiles_or_applies_quality_twice(
     active = session.model_copy(update={"settings": settings})
     repository, plan = planned(project)
     render = create_render(repository, project, active, plan.request.story_id, "pony-story", 42)
-    assert render.format_version == 2
+    assert render.format_version == 3
 
     def unexpected(*args, **kwargs):
         pytest.fail("Resume recompiled a previously frozen scene")

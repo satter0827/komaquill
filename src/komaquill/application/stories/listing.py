@@ -26,7 +26,15 @@ def list_stories(repository: StoryRepository, workspace: Workspace) -> StoryList
                     requested_images=request.image_count,
                     image_count=len(plan.scenes) if plan else None,
                     render_id=view["render_id"] if view else None,
-                    saved_images=view["counts"].get("saved", 0) if view else 0,
+                    saved_scenes=view["counts"].get("saved", 0) if view else 0,
+                    saved_candidates=(
+                        sum(len(scene["candidates"]) for scene in view["scenes"])
+                        if view
+                        and all(
+                            not scene["images"] or scene["candidates"] for scene in view["scenes"]
+                        )
+                        else None
+                    ),
                     state=(
                         "unplanned"
                         if view is None

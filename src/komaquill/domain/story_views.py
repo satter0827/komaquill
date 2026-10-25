@@ -24,6 +24,8 @@ class SceneView(Scene):
     attempt_ids: list[UUID]
     primary_image: ArtifactView | None
     images: list[ArtifactView]
+    candidates: list[ArtifactView] = []
+    requested_candidates: int | None = None
     failure: FailureInfo | None
 
 
@@ -85,7 +87,8 @@ class StorySummary(BaseModel):
     requested_images: int | Literal["auto"]
     image_count: int | None
     render_id: UUID | None
-    saved_images: int
+    saved_scenes: int
+    saved_candidates: int | None = None
     state: Literal["unplanned", "planned", "incomplete", "complete"]
     purpose: str
     case_id: str | None

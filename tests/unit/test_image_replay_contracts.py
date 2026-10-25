@@ -149,47 +149,12 @@ def test_scene_limit_cannot_exceed_supported_planning_contract(project):
 
 
 def split_negative_settings(enabled):
-    """Build a standard negative concatenation from declared positive bindings."""
-    from copy import deepcopy
-
-    settings = Settings(profiles=["pony"])
-    data = settings.presets["pony"].model_dump(mode="json")
-    bindings = {row["source"]: row for row in data["bindings"]}
-    prefix = bindings["positive_prefix"]
-    negative = bindings["negative"]
-    identity = max(node["id"] for node in data["ui"]["nodes"]) + 1
-    link = max(row[0] for row in data["ui"]["links"]) + 1
-    data["api"][str(identity)] = deepcopy(data["api"][prefix["api_node"]])
-    ui_node = deepcopy(next(n for n in data["ui"]["nodes"] if n["id"] == prefix["ui_node"]))
-    ui_node.update(id=identity, title="Negative Prompt")
-    for output in ui_node["outputs"]:
-        output["links"] = [link]
-    data["ui"]["nodes"].append(ui_node)
-    target = next(n for n in data["ui"]["nodes"] if n["id"] == negative["ui_node"])
-    target["inputs"].append(
-        {
-            "name": negative["api_input"],
-            "type": "STRING",
-            "link": link,
-            "widget": {"name": negative["api_input"]},
-        }
+    settings = Settings()
+    profile = settings.presets["pony"].model_copy(
+        update={"quality_enabled": enabled, "negative": "extra limbs"}
     )
-    data["ui"]["links"].append(
-        [link, identity, 0, target["id"], len(target["inputs"]) - 1, "STRING"]
-    )
-    data["api"][negative["api_node"]]["inputs"][negative["api_input"]] = [str(identity), 0]
-    data["bindings"] = [r for r in data["bindings"] if r["source"] != "negative"]
-    for source, base in (
-        ("negative_prefix", prefix),
-        ("negative", bindings["prompt"]),
-        ("negative_delimiter", bindings["prompt_delimiter"]),
-    ):
-        data["bindings"].append(
-            {**base, "source": source, "api_node": str(identity), "ui_node": identity}
-        )
-    data.update(quality_enabled=enabled, negative="extra limbs")
-    profile = GenerationPreset.model_validate(data)
-    return settings.model_copy(update={"presets": {"pony": profile}}), str(identity)
+    negative = next(row for row in profile.bindings if row.source == "negative")
+    return settings.model_copy(update={"presets": {"pony": profile}}), negative.api_node
 
 
 @pytest.mark.parametrize("enabled", [True, False])
@@ -202,12 +167,19 @@ def test_split_negative_quality_is_applied_once_and_disabled_consistently(enable
     body = profile.negative if negative is None else negative
     assert values["string_a"] == (profile.negative_prefix if enabled else "")
     assert values["string_b"] == body
-    assert values["delimiter"] == (", " if enabled and body else "")
+    assert values["delimiter"] == ", "
     expected = compile_image_input(profile, "a cat", negative)
-    assert (
-        values["delimiter"].join(filter(None, (values["string_a"], values["string_b"])))
-        == expected.negative
+    import re
+
+    cleaner = next(node for node in graph.values() if node["class_type"] == "RegexReplace")
+    assert cleaner["inputs"]["string"] == [identity, 0]
+    actual = re.sub(
+        cleaner["inputs"]["regex_pattern"],
+        cleaner["inputs"]["replace"],
+        values["delimiter"].join((values["string_a"], values["string_b"])),
     )
+    assert actual == expected.negative
+    assert actual.count("text, watermark, signature") == (1 if enabled else 0)
     for row in profile.bindings:
         node = next(n for n in ui["nodes"] if n["id"] == row.ui_node)
         assert graph[row.api_node]["inputs"][row.api_input] == node["widgets_values"][row.ui_widget]

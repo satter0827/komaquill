@@ -11,6 +11,7 @@ from komaquill.application.evaluations import register
 from komaquill.application.generation import Collection, collect, generate
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.evaluations import Evaluation
+from komaquill.domain.images import PromptSource
 from komaquill.domain.models import JsonObject, Run
 from komaquill.domain.status import SessionStatus
 from komaquill.infrastructure import inspection, supervisor
@@ -37,6 +38,8 @@ class ImageService:
         seed: int | None = None,
         profile: str | None = None,
         subjects: tuple[str, ...] = (),
+        candidates: int | None = None,
+        input_sources: tuple[PromptSource, ...] = (),
     ) -> Run:
         with (
             operation_scope(),
@@ -52,6 +55,8 @@ class ImageService:
                 seed if seed is not None else secrets.randbits(63),
                 profile,
                 subjects=subjects,
+                candidates=candidates,
+                input_sources=input_sources,
             )
 
     def collect(self, run_id: UUID | None = None) -> Collection:

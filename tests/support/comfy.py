@@ -40,7 +40,16 @@ class ComfyStub:
                 "outputs": {
                     "9": {
                         "images": [
-                            {"filename": "../../outside.png", "subfolder": "", "type": "output"}
+                            {
+                                "filename": "../../outside.png"
+                                if index == 0
+                                else f"candidate-{index}.png",
+                                "subfolder": "",
+                                "type": "output",
+                            }
+                            for index in range(
+                                data["prompt"].get("5", {}).get("inputs", {}).get("batch_size", 1)
+                            )
                         ]
                     }
                 },

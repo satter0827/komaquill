@@ -99,3 +99,11 @@ def test_real_story_launches_follow_the_workspace_profile():
     ]
     assert entries
     assert all("--llm-profile" not in entry["args"] for entry in entries)
+
+
+def test_image_entry_preserves_preset_defaults_and_file_entry_accepts_both_prompts():
+    config = json.loads((ROOT / ".vscode/launch.json").read_bytes())
+    entries = {entry["name"]: entry["args"] for entry in config["configurations"]}
+    assert "--prompt" in entries["Generate Image"]
+    assert "--negative" not in entries["Generate Image"]
+    assert "--input-file" in entries["Generate Image from File"]

@@ -69,7 +69,12 @@ def run_acceptance(wheel: Path | None = None) -> None:
             history[identity] = {
                 "prompt": [0, identity, data["prompt"], data["extra_data"], ["9"]],
                 "outputs": {
-                    "9": {"images": [{"filename": "result.png", "subfolder": "", "type": "output"}]}
+                    "9": {
+                        "images": [
+                            {"filename": f"result-{index}.png", "subfolder": "", "type": "output"}
+                            for index in range(data["prompt"]["5"]["inputs"]["batch_size"])
+                        ]
+                    }
                 },
                 "status": {"status_str": "success", "completed": True},
             }
@@ -231,7 +236,43 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         time.sleep(0.05)
                     assert session.is_file(), output.read_text(encoding="utf-8")
                     assert monitor.wait(timeout=30) == 0
-                    command("generate", "--prompt", "a quiet blue lake", "--seed", "5")
+                    command(
+                        "generate",
+                        "--prompt",
+                        "a quiet blue lake",
+                        "--negative",
+                        "extra trees",
+                        "--seed",
+                        "5",
+                        "--candidates",
+                        "2",
+                    )
+                    positive = workspace / "positive.txt"
+                    negative = workspace / "negative.txt"
+                    positive.write_text("a blue umbrella", encoding="utf-8-sig")
+                    negative.write_text("floating objects", encoding="utf-8-sig")
+                    command(
+                        "generate",
+                        "--prompt-file",
+                        str(positive),
+                        "--negative-file",
+                        str(negative),
+                        "--candidates",
+                        "1",
+                    )
+                    structured = workspace / "image-input.json"
+                    structured.write_text(
+                        json.dumps(
+                            {
+                                "format_version": 1,
+                                "prompt": "rainy street",
+                                "negative": "extra limbs",
+                                "subjects": ["woman", "kitten"],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    command("generate", "--input-file", str(structured), "--candidates", "2")
                     illustrated = json.loads(
                         command(
                             "stories",
@@ -243,10 +284,19 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "fake",
                             "--image-profile",
                             "custom",
+                            "--candidates",
+                            "2",
+                            "--negative-file",
+                            str(negative),
                             "--json",
                         ).stdout
                     )
                     assert illustrated["complete"] and illustrated["image_count"] == 4
+                    assert all(len(scene["candidates"]) == 2 for scene in illustrated["scenes"])
+                    assert all(
+                        scene["compiled_input"]["requested_negative"] == "floating objects"
+                        for scene in illustrated["scenes"]
+                    )
                     shown = json.loads(
                         command("stories", "show", illustrated["story_id"], "--json").stdout
                     )
@@ -337,7 +387,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         monitor.wait(timeout=10)
             runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
             runs.extend((workspace / ".artifacts/data/stories").glob("*/renders/*/runs/*/run.json"))
-            assert len(runs) == 5
+            assert len(runs) == 7
             runs = sorted(runs, key=lambda path: json.loads(path.read_bytes())["created_at"])
             run = json.loads(runs[0].read_bytes())
             assert run["state"] == "saved"

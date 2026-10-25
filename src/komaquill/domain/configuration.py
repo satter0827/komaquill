@@ -11,6 +11,8 @@ class RuntimeSettings(BaseModel):
     """Keep the effective settings shared by one connection."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
+    max_candidates: int = Field(default=4, ge=1, strict=True)
+    story_max_in_flight: int = Field(default=1, ge=1, strict=True)
     poll_interval: float = Field(gt=0)
     request_timeout: float = Field(gt=0)
     generation_timeout: float = Field(gt=0)
@@ -34,6 +36,8 @@ class RuntimeSettings(BaseModel):
         for name in self.profiles:
             if name not in self.presets:
                 raise ValueError("The selected generation profile is undefined.")
+            if self.presets[name].batch_size > self.max_candidates:
+                raise ValueError("A selected preset exceeds the configured candidate limit.")
         for name, profile in self.presets.items():
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
                 raise ValueError("Profile names must use lowercase letters, digits and hyphens.")

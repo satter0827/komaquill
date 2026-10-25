@@ -17,7 +17,13 @@ from tests.support.comfy import ComfyStub
 
 @pytest.fixture
 def project(tmp_path):
-    (tmp_path / "komaquill.toml").write_text("poll_interval = 0.001\ngeneration_timeout = 1.0\n")
+    (tmp_path / "komaquill.toml").write_text(
+        "poll_interval = 0.001\ngeneration_timeout = 1.0\nstory_max_in_flight = 1\n"
+        + "".join(
+            f"[presets.{name}]\nbatch_size = 1\n"
+            for name in ("pony", "pony-story", "pony-upscale", "pony-preview", "sd15")
+        )
+    )
     return Project(tmp_path)
 
 

@@ -63,8 +63,8 @@ def test_nested_environment_keeps_profile_defaults_and_other_profiles(project, m
 
 
 def test_runtime_profile_leaf_override_preserves_model_and_workflow(project, monkeypatch):
-    defaults = project.settings()
     (project.root / "komaquill.toml").write_text("[presets.pony]\nsteps=31\n", encoding="utf-8")
+    defaults = project.settings()
     monkeypatch.setenv("KOMAQUILL_PRESETS__PONY__CFG", "5.5")
     configured = project.settings()
     assert configured.presets["pony"].steps == 31

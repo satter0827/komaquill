@@ -1,6 +1,6 @@
 {
-  "last_node_id": 9,
-  "last_link_id": 9,
+  "last_node_id": 11,
+  "last_link_id": 11,
   "nodes": [
     {
       "id": 7,
@@ -21,6 +21,14 @@
           "name": "clip",
           "type": "CLIP",
           "link": 5
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 11,
+          "widget": {
+            "name": "text"
+          }
         }
       ],
       "outputs": [
@@ -102,7 +110,18 @@
       "widgets_values": [
         512,
         512,
-        1
+        2
+      ],
+      "inputs": [
+        {
+          "label": "Candidates",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
+        }
       ]
     },
     {
@@ -271,6 +290,95 @@
       "widgets_values": [
         "e9476a13728cd75d8279f6ec8bad753a66a1957ca375a1464dc63b37db6e3916/v1-5-pruned-emaonly-fp16.safetensors"
       ]
+    },
+    {
+      "id": 10,
+      "type": "StringConcatenate",
+      "pos": [
+        -400,
+        280
+      ],
+      "size": [
+        340,
+        220
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "Negative Prompt",
+          "name": "string_b",
+          "type": "STRING",
+          "widget": {
+            "name": "string_b"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "text, watermark, signature",
+        "",
+        ", "
+      ],
+      "title": "Negative Prompt"
+    },
+    {
+      "id": 11,
+      "type": "RegexReplace",
+      "title": "Negative Conditioning",
+      "pos": [
+        -400,
+        600
+      ],
+      "size": [
+        340,
+        320
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string",
+          "type": "STRING",
+          "link": 10,
+          "widget": {
+            "name": "string"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "",
+        "^[,\\s]+|[,\\s]+$",
+        "",
+        false,
+        false,
+        false,
+        0
+      ]
     }
   ],
   "links": [
@@ -345,6 +453,22 @@
       9,
       0,
       "IMAGE"
+    ],
+    [
+      10,
+      10,
+      0,
+      11,
+      0,
+      "STRING"
+    ],
+    [
+      11,
+      11,
+      0,
+      7,
+      1,
+      "STRING"
     ]
   ],
   "groups": [],
@@ -364,12 +488,16 @@
           "text"
         ],
         [
-          "7",
-          "text"
-        ],
-        [
           "3",
           "seed"
+        ],
+        [
+          "10",
+          "string_b"
+        ],
+        [
+          "5",
+          "batch_size"
         ]
       ],
       "outputs": [

@@ -14,6 +14,8 @@ from komaquill.domain.errors import OperationStage as OperationStage
 from komaquill.domain.evaluations import Evaluation as Evaluation
 from komaquill.domain.evaluations import Evaluator as Evaluator
 from komaquill.domain.images import CompiledImageInput as CompiledImageInput
+from komaquill.domain.images import ImageInput as ImageInput
+from komaquill.domain.images import PromptSource as PromptSource
 from komaquill.domain.models import Run as Run
 from komaquill.domain.status import SessionStatus as SessionStatus
 from komaquill.domain.storage import MigrationReport as MigrationReport
@@ -28,6 +30,8 @@ from komaquill.domain.story_views import StorySummary as StorySummary
 __all__ = [
     "Client",
     "CompiledImageInput",
+    "ImageInput",
+    "PromptSource",
     "Evaluation",
     "Evaluator",
     "MigrationReport",

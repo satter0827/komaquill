@@ -7,11 +7,12 @@ from typing import Literal
 from uuid import UUID
 
 from komaquill.api._errors import api_operation
-from komaquill.application.generation import checked_seed, verify_runtime
+from komaquill.application.generation import checked_seed, generation_settings, verify_runtime
 from komaquill.application.stories.listing import list_stories
 from komaquill.application.stories.planning import plan_story
 from komaquill.application.stories.rendering import create_render, render_events, story_view
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage, failure_info
+from komaquill.domain.images import PromptSource
 from komaquill.domain.models import Session
 from komaquill.domain.stories import StoryInput, StoryPlan
 from komaquill.domain.story_evidence import EvidenceDetail, StoryEvidence
@@ -223,7 +224,14 @@ class StoryService:
             raise
 
     def render(
-        self, story_id: UUID, *, image_profile: str | None = None, seed: int | None = None
+        self,
+        story_id: UUID,
+        *,
+        image_profile: str | None = None,
+        seed: int | None = None,
+        candidates: int | None = None,
+        negative: str | None = None,
+        input_sources: tuple[PromptSource, ...] = (),
     ) -> Iterator[StoryEvent]:
         with (
             operation_scope(),
@@ -232,7 +240,15 @@ class StoryService:
         ):
             profile = image_profile or settings(self._project).image_profile
             render = create_render(
-                self._repository, self._project, session, story_id, profile, seed
+                self._repository,
+                self._project,
+                session,
+                story_id,
+                profile,
+                seed,
+                candidates=candidates,
+                negative=negative,
+                input_sources=input_sources,
             )
             yield from self._events(backend, session, render.render_id, False)
 
@@ -253,6 +269,9 @@ class StoryService:
         llm_profile: str | None = None,
         image_profile: str | None = None,
         seed: int | None = None,
+        candidates: int | None = None,
+        negative: str | None = None,
+        input_sources: tuple[PromptSource, ...] = (),
         allow_real_llm: bool = False,
     ) -> Iterator[StoryEvent]:
         with (
@@ -281,6 +300,7 @@ class StoryService:
                     or options.image_profile not in session.settings.profiles
                 ):
                     raise KomaquillError(code="invalid_configuration", stage="story_rendering")
+                generation_settings(session.settings, options.image_profile, candidates)
                 plan = self._plan(text, source_name, options, allow_real_llm)
                 render = create_render(
                     self._repository,
@@ -289,5 +309,8 @@ class StoryService:
                     plan.request.story_id,
                     options.image_profile,
                     seed,
+                    candidates=candidates,
+                    negative=negative,
+                    input_sources=input_sources,
                 )
                 yield from self._events(backend, session, render.render_id, False)

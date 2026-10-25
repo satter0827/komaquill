@@ -11,9 +11,15 @@ MAX_SEED = 2**64 - 1
 ImageSeed = Annotated[int, Field(strict=True, ge=0, le=MAX_SEED)]
 
 
-def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 2) -> str:
+def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 3) -> str:
     """Preserve legacy fingerprints; canonicalize defaults for new snapshots."""
-    return digest(profile.model_dump(mode="json", exclude_unset=compiler_version == 1))
+    return digest(
+        profile.model_dump(
+            mode="json",
+            exclude_unset=compiler_version == 1,
+            exclude={"batch_size", "primary_output_node"} if compiler_version < 3 else set(),
+        )
+    )
 
 
 class CompiledImageInput(BaseModel):
@@ -21,7 +27,7 @@ class CompiledImageInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     format_version: Literal[1] = 1
-    compiler_version: Literal[1, 2] = 1
+    compiler_version: Literal[1, 2, 3] = 1
     preset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt: str
     requested_negative: str | None
@@ -40,7 +46,7 @@ class CompiledImageInput(BaseModel):
     def consistent(self) -> "CompiledImageInput":
         if (
             (
-                self.compiler_version == 2
+                self.compiler_version >= 2
                 and (
                     any(not subject.strip() for subject in self.subject_prompts)
                     or (
@@ -101,7 +107,7 @@ def compile_image_input(
     negative_prefix = profile.negative_prefix if profile.quality_enabled else ""
     body = prompt if profile.regions else joined(prompt, *subjects)
     return CompiledImageInput(
-        compiler_version=2,
+        compiler_version=3,
         preset_sha256=preset_fingerprint(profile),
         prompt=prompt,
         requested_negative=negative,
@@ -116,3 +122,29 @@ def compile_image_input(
         subject_positives=tuple(joined(positive_prefix, subject) for subject in subjects),
         layout=("left-right" if len(subjects) == 2 else "single") if profile.regions else "global",
     )
+
+
+class PromptSource(BaseModel):
+    """Retain original UTF-8 input without an absolute path."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    name: str = Field(min_length=1, pattern=r"^[^/\\]+$")
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content: str
+    role: Literal["positive", "negative", "input"]
+
+
+class ImageInput(BaseModel):
+    """Validate positive, negative and optional regional directions."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+    format_version: Literal[1] = 1
+    prompt: str = Field(min_length=1)
+    negative: str | None = None
+    subjects: tuple[str, ...] = Field(default=(), max_length=2)
+
+    @model_validator(mode="after")
+    def nonempty(self) -> "ImageInput":
+        if not self.prompt.strip() or any(not value.strip() for value in self.subjects):
+            raise ValueError("Image descriptions must not be empty.")
+        return self

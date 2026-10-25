@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
-from komaquill.domain.images import CompiledImageInput
+from komaquill.domain.images import CompiledImageInput, PromptSource
 from komaquill.domain.presets import ModelPreset as ModelPreset
 
 JsonObject = dict[str, Any]
@@ -70,6 +70,13 @@ class ImageRef(BaseModel):
     type: Literal["output", "temp"] = "output"
 
 
+class OutputSpec(BaseModel):
+    """Identify final candidates and their requested batch size."""
+
+    primary_node: str
+    candidates: int = Field(ge=1, strict=True)
+
+
 class ImageMetadata(BaseModel):
     """Describe bytes that were verified and written to local storage."""
 
@@ -78,6 +85,9 @@ class ImageMetadata(BaseModel):
     width: int
     height: int
     source: ImageRef
+    output_node: str | None = None
+    batch_index: int | None = Field(default=None, ge=0)
+    role: Literal["candidate", "auxiliary", "unknown"] = "unknown"
 
 
 class Run(BaseModel):
@@ -85,7 +95,9 @@ class Run(BaseModel):
 
     compiled_input: CompiledImageInput | None = None
 
-    format_version: int = 2
+    output_spec: OutputSpec | None = None
+    input_sources: tuple[PromptSource, ...] = ()
+    format_version: int = 3
     run_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     runtime_id: UUID

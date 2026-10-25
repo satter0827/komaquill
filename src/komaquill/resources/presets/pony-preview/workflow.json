@@ -1,6 +1,6 @@
 {
-  "last_node_id": 12,
-  "last_link_id": 15,
+  "last_node_id": 14,
+  "last_link_id": 17,
   "nodes": [
     {
       "id": 7,
@@ -21,6 +21,14 @@
           "name": "clip",
           "type": "CLIP",
           "link": 13
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 17,
+          "widget": {
+            "name": "text"
+          }
         }
       ],
       "outputs": [
@@ -110,7 +118,18 @@
       "widgets_values": [
         1024,
         1024,
-        1
+        2
+      ],
+      "inputs": [
+        {
+          "label": "Candidates",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
+        }
       ]
     },
     {
@@ -395,6 +414,95 @@
         "55b51334c85061afff5eff7c550b61963c8b8607a5868bbe4f26db49374719b1/Hyper-SDXL-8steps-CFG-lora.safetensors",
         1.0
       ]
+    },
+    {
+      "id": 13,
+      "type": "StringConcatenate",
+      "pos": [
+        -400,
+        280
+      ],
+      "size": [
+        340,
+        220
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "Negative Prompt",
+          "name": "string_b",
+          "type": "STRING",
+          "widget": {
+            "name": "string_b"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "text, watermark, signature",
+        "",
+        ", "
+      ],
+      "title": "Negative Prompt"
+    },
+    {
+      "id": 14,
+      "type": "RegexReplace",
+      "title": "Negative Conditioning",
+      "pos": [
+        -400,
+        600
+      ],
+      "size": [
+        340,
+        320
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string",
+          "type": "STRING",
+          "link": 16,
+          "widget": {
+            "name": "string"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "",
+        "^[,\\s]+|[,\\s]+$",
+        "",
+        false,
+        false,
+        false,
+        0
+      ]
     }
   ],
   "links": [
@@ -493,6 +601,22 @@
       3,
       3,
       "MODEL"
+    ],
+    [
+      16,
+      13,
+      0,
+      14,
+      0,
+      "STRING"
+    ],
+    [
+      17,
+      14,
+      0,
+      7,
+      1,
+      "STRING"
     ]
   ],
   "groups": [],
@@ -510,6 +634,14 @@
         [
           "10",
           "string_b"
+        ],
+        [
+          "13",
+          "string_b"
+        ],
+        [
+          "5",
+          "batch_size"
         ]
       ],
       "outputs": [

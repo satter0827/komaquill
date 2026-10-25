@@ -48,6 +48,22 @@
       "subProcess": false
     },
     {
+      "name": "Generate Image from File",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "generate",
+        "--input-file",
+        "${input:imageInputFile}"
+      ],
+      "subProcess": false
+    },
+    {
       "name": "Resume Story",
       "type": "debugpy",
       "request": "launch",
@@ -366,6 +382,11 @@
         }
       ],
       "default": "summary"
+    },
+    {
+      "id": "imageInputFile",
+      "type": "promptString",
+      "description": "Enter the image-input JSON file path"
     }
   ]
 }

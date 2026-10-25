@@ -6,7 +6,9 @@ from komaquill.domain.presets import GenerationPreset
 from komaquill.domain.stories import Scene, StoryPlan
 
 
-def scene_input(plan: StoryPlan, scene: Scene, profile: GenerationPreset) -> CompiledImageInput:
+def scene_input(
+    plan: StoryPlan, scene: Scene, profile: GenerationPreset, negative: str | None = None
+) -> CompiledImageInput:
     if plan.format_version != 2 or scene.subjects is None:
         raise KomaquillError(
             code="story_replan_required",
@@ -39,4 +41,4 @@ def scene_input(plan: StoryPlan, scene: Scene, profile: GenerationPreset) -> Com
             if state.holder is None
         ),
     )
-    return compile_image_input(profile, prompt, subjects=subjects)
+    return compile_image_input(profile, prompt, negative, subjects=subjects)

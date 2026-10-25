@@ -113,3 +113,7 @@ for event in client.stories.render(story_id, candidates=2, negative="extra limbs
 ```
 
 単画像生成は一つのRunに候補を保存します。Pythonからは文字列とsubjectsを渡し、ファイル読み込みを呼び出し側で行えます。CLIから読み込んだファイルの内容・元の名前・SHA256はinput_sourcesへ保存されます。明示的なcandidatesはプリセットを要求単位で上書きし、再開では保存済みの条件を維持します。
+
+## 素材と場面別の生成セット
+
+client.inputs.import_fileは画像または白が編集対象のマスクを保存し、InputArtifactを返します。images.generateのinputsへ渡し、parametersで宣言済みの工程設定を上書きできます。全場面の指定にはRenderConfigとSceneRenderConfigを使い、stories.renderのrender_configへ渡します。[素材入力と場面指定](story-workflows.md)に例と制約を記載しています。

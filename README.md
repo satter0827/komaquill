@@ -84,6 +84,9 @@ VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen Gen
 | pony-preview | 1024×1024、8ステップ | PonyとHyper-SDXL CFG LoRA |
 | pony-upscale | 元画像と2048×2048の拡大画像を保存 | PonyとReal-ESRGAN anime |
 | sd15 | 512×512、20ステップの比較用 | SD 1.5 FP16 |
+| story-reference | 参照画像を使った単一対象の生成（実験用） | Pony、IPAdapter、CLIP Vision |
+| story-compose | 背景・人物と傘・猫の段階生成（実験用） | Pony、IPAdapter、CLIP Vision |
+| story-inpaint | 編集範囲を切り出して局所修正（実験用） | Pony、IPAdapter、CLIP Vision、CropAndStitch |
 
 追加のプリセットを使う場合は、起動時にまとめて選びます。最初に指定したものが既定です。Pony標準以外の資源は、選択した場合だけ取得します。
 

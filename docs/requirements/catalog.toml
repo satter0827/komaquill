@@ -125,3 +125,10 @@ status = "implemented"
 acceptance = ["正負の入力方法を対称にする", "競合・不正入力を送信前に拒否する", "元のファイル名・内容・SHA256を保持する", "標準画面で負プロンプトと候補数を編集する"]
 sources = ["src/komaquill/interfaces/image_inputs.py", "src/komaquill/interfaces/cli.py", "src/komaquill/resources/presets/pony/workflow.json"]
 tests = ["tests/unit/test_prompt_files.py", "tests/integration/test_acceptance.py", "tests/unit/test_presets.py"]
+
+[requirements.REQ-WORKFLOW-INPUTS]
+summary = "画像・マスクと場面別の生成セットを固定して実行・再開する"
+status = "implemented"
+acceptance = ["素材をハッシュ付きで保全し標準APIで転送する", "全場面の入力・型・寸法・設定範囲を送信前に検証する", "素材と工程条件を保存し再開で変更しない", "失敗要求の公開済み中間出力を回収し生成失敗と区別する"]
+sources = ["src/komaquill/domain/rendering.py", "src/komaquill/infrastructure/inputs.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/application/generation.py"]
+tests = ["tests/integration/test_workflow_inputs.py", "tests/unit/test_story_workflows.py", "tests/integration/test_acceptance.py"]

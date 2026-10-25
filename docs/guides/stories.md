@@ -6,6 +6,26 @@ UTF-8のストーリーファイルとLLM追加依存を使用します。ソー
 
 既定のLLMはLM Studioの4Bです。Local Serverを起動し、[既定値](../../src/komaquill/resources/stories/defaults.toml)にあるモデルが一覧にあることを確認します。実LLMの呼び出しには毎回 `--allow-real-llm` が必要です。9BやFakeへの自動切替はありません。
 
+## LLMを選ぶ
+
+4Bと9Bは接続プロファイルで切り替えます。実LLMの利用許可は、モデル選択とは別に毎回必要です。
+
+```powershell
+komaquill stories plan ./story.txt --llm-profile lmstudio-9b --allow-real-llm
+komaquill stories plan ./story.txt --llm-profile lmstudio-4b --allow-real-llm
+```
+
+LM Studioで使用中のモデルをアンロードし、選択したモデルをロードしてから実行します。上記の引数はLM Studioの常駐モデルを管理しません。画像入力にはモデル本体と対応する画像用ファイルの両方が必要です。9Bを指定して失敗した場合も、4Bへ自動では切り替えません。
+
+作業フォルダーで選択を固定する場合は、komaquill.tomlの既存のstoryテーブルへ設定します。
+
+```toml
+[story]
+llm_profile = "lmstudio-9b"
+```
+
+優先順位はCLI／Pythonの指定、環境変数、作業設定、同梱既定値です。環境変数はKOMAQUILL_STORY_LLM_PROFILE、Python APIはllm_profileを使います。同梱既定はlmstudio-4bです。VS Codeの実LLM入口もこの選択を使います。動作条件と精度は[比較手順](llm-comparison.md)と[測定結果](../verification/results/llm-comparison.md)を確認してください。
+
 ## 本文と画像を順に作る
 
 ```powershell

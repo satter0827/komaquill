@@ -18,6 +18,12 @@ autoでは出来事と描画方針から枚数を選び、固定指定では要�
 
 LLMの具体型、資格情報、指示と接続設定はGPUへ転送しません。原文・指示・可視応答は非公開の作品データであり、診断ログへ転載しません。
 
+## LLMの接続プロファイル
+
+同梱の接続先はlmstudio-4b、lmstudio-9b、fakeです。既定値は[ストーリー設定](../../src/komaquill/resources/stories/defaults.toml)を正本とします。作業設定のstory.llm_profile、KOMAQUILL_STORY_LLM_PROFILE、CLIの--llm-profile、Python APIのllm_profileで同じ選択を使います。部分上書きでも未指定項目と他のプロファイルを保持します。
+
+モデル選択は推論要求の接続条件です。モデルのロード・アンロード、別モデルへの自動切替は製品側で行いません。LM Studio側で選択したモデルを単独ロードしてから使用します。4Bと9Bの実測は[比較手順](../guides/llm-comparison.md)の明示的な入口で行い、通常の品質ゲートには含めません。
+
 ## 生成試行と終了
 
 StoryRenderは計画ハッシュ、確定した生成条件、場面ごとのseedと生成IDを保持します。条件変更は新しい試行、再開は同じ試行です。試行単位の排他で二重実行を防ぎます。

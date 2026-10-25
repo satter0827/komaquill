@@ -88,3 +88,14 @@ def test_malformed_workspace_configuration_has_a_safe_error(project):
     result = CliRunner().invoke(app, ["--project", str(project.root), "start"])
     assert result.exit_code == 1 and "Traceback" not in result.output
     assert "configuration" in result.output
+
+
+def test_real_story_launches_follow_the_workspace_profile():
+    config = json.loads((ROOT / ".vscode/launch.json").read_bytes())
+    entries = [
+        entry
+        for entry in config["configurations"]
+        if isinstance(entry["args"], list) and "--allow-real-llm" in entry["args"]
+    ]
+    assert entries
+    assert all("--llm-profile" not in entry["args"] for entry in entries)

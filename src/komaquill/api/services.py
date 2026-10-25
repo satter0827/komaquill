@@ -21,7 +21,8 @@ from komaquill.infrastructure.materials import MaterialCollector
 from komaquill.infrastructure.preparation import capabilities
 from komaquill.infrastructure.sessions import shutdown
 from komaquill.infrastructure.sessions.connection import connected
-from komaquill.infrastructure.stories.storage import refresh_saved_stories
+from komaquill.infrastructure.stories.associations import story_associations
+from komaquill.infrastructure.stories.publication import refresh_saved_stories
 
 
 class ImageService:
@@ -63,6 +64,7 @@ class ImageService:
                         result.failed,
                         (*result.errors, *material_errors),
                         result.pending_ids,
+                        observed_versions=result.observed_versions,
                     )
             publications = refresh_saved_stories(self._project)
             if publications:
@@ -79,7 +81,8 @@ class SessionService:
         self._project = project
 
     def status(self) -> SessionStatus:
-        return inspection.inspect(self._project)
+        with api_operation(OperationStage.CHECK):
+            return inspection.inspect(self._project)
 
     def start(
         self,
@@ -141,4 +144,9 @@ class EvaluationService:
 
     def export(self, run_id: UUID | None = None) -> JsonObject:
         with api_operation(OperationStage.EVALUATION):
-            return export_evidence(self._project, run_id)
+            payload = export_evidence(self._project, run_id)
+            links, unreadable = story_associations(self._project)
+            payload["unreadable_story_renders"] = unreadable
+            for row in payload["runs"]:
+                row["story_context"] = links.get(row["run"]["run_id"], [])
+            return payload

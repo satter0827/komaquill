@@ -141,7 +141,9 @@ def failure_info(error: BaseException, stage: OperationStage | str) -> "FailureI
         code, retryable = ErrorCode.INTERNAL_ERROR, False
     return FailureInfo(
         code=ErrorCode(code),
-        stage=OperationStage(stage),
+        stage=error.stage
+        if isinstance(error, KomaquillError) and error.stage != OperationStage.OPERATION
+        else OperationStage(stage),
         exception_type=type(error).__name__,
         http_status=error.http_status if isinstance(error, KomaquillError) else None,
         retryable=retryable,

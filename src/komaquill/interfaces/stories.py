@@ -60,8 +60,10 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
     printed: set[tuple[UUID, UUID | None, str]] = set()
     last = None
     identity = None
+    publication_failure = None
     for event in events:
         last = event.snapshot
+        publication_failure = event.publication_failure
         if identity != last.render_id:
             identity = last.render_id
             typer.echo(message("stories.render_identity", render_id=identity), err=json_output)
@@ -102,7 +104,10 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
             if scene.failure:
                 typer.echo(
                     message(
-                        "stories.scene_failure", position=scene.position, code=scene.failure.code
+                        "stories.scene_failure",
+                        position=scene.position,
+                        code=scene.failure.code,
+                        run_id=scene.run_id,
                     ),
                     err=True,
                 )
@@ -110,8 +115,15 @@ def present(client: Client, events: Iterator[StoryEvent], json_output: bool) -> 
         raise KomaquillError(code="internal_error", stage="story_rendering")
     if json_output:
         typer.echo(last.model_dump_json())
+    if publication_failure is not None:
+        typer.echo(
+            message("stories.publication_retry", story_id=last.story_id, render_id=last.render_id),
+            err=True,
+        )
     if not last.complete:
         typer.echo(message("stories.incomplete", render_id=last.render_id), err=True)
+        raise typer.Exit(1)
+    if publication_failure is not None:
         raise typer.Exit(1)
     typer.echo(message("stories.complete", render_id=last.render_id), err=json_output)
 
@@ -296,10 +308,15 @@ def bind(
         render_id: Annotated[
             UUID | None, typer.Option(help=message("stories.render_id_help"))
         ] = None,
+        detail: Annotated[
+            Literal["summary", "full"], typer.Option(help=message("stories.detail_help"))
+        ] = "summary",
     ) -> None:
         with story_operation(ctx) as client:
             typer.echo(
-                json.dumps(client.stories.export(story_id, render_id=render_id), ensure_ascii=False)
+                client.stories.export(
+                    story_id, render_id=render_id, detail=detail
+                ).model_dump_json()
             )
 
     @GROUP.command("show", help=message("stories.show_help"))
@@ -323,8 +340,24 @@ def bind(
                 if follow
                 else iter([client.stories.show(story_id, render_id=render_id)])
             )
+            last = None
             for value in values:
+                last = value
                 if json_output:
                     typer.echo(value.model_dump_json())
                 else:
                     display(client, value.model_dump(mode="json"))
+            if follow and last is not None and last.finished and not last.complete:
+                typer.echo(message("stories.incomplete", render_id=last.render_id), err=True)
+                for scene in last.scenes:
+                    if scene.state in {"failed", "lost"}:
+                        typer.echo(
+                            message(
+                                "stories.scene_failure",
+                                position=scene.position,
+                                code=scene.failure.code if scene.failure else scene.state,
+                                run_id=scene.run_id,
+                            ),
+                            err=True,
+                        )
+                raise typer.Exit(1)

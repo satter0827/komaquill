@@ -25,6 +25,7 @@ class Collection:
     errors: tuple[UUID | str, ...] = ()
     pending_ids: tuple[UUID, ...] = ()
     failure: FailureInfo | None = None
+    observed_versions: tuple[tuple[UUID, str], ...] = ()
 
 
 def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObject) -> Run:
@@ -259,7 +260,7 @@ def collect(
                 with collection_lock(project):
                     try:
                         current = project.repository.read(identity)
-                    except (OSError, ValueError):
+                    except (OSError, ValueError, KomaquillError):
                         continue
                     if not current.pending or not project.accepts_results(session):
                         continue
@@ -275,12 +276,18 @@ def collect(
                     with suppress(OSError):
                         project.repository.save(current)
     with collection_lock(project):
+        final_unreadable: list[UUID | str] = []
         selected = [
             run
-            for run in project.repository.load([])
+            for run in project.repository.load(final_unreadable)
             if (run.runtime_id == session.runtime_id or run.run_id in related)
             and (only is None or run.run_id == only)
         ]
+    errors.extend(
+        identity
+        for identity in final_unreadable
+        if identity not in errors and (only is None or identity == only)
+    )
     pending = tuple(run.run_id for run in selected if run.pending)
     return Collection(
         saved=saved,
@@ -288,6 +295,9 @@ def collect(
         failed=sum(run.state == "failed" for run in selected),
         errors=tuple(errors),
         pending_ids=pending,
+        observed_versions=tuple(
+            (run.run_id, digest(run.model_dump(mode="json"))) for run in selected
+        ),
     )
 
 

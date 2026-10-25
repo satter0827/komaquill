@@ -317,7 +317,7 @@
   "stories.image": "Image: {path}",
   "stories.render_identity": "Rendering: {render_id}",
   "stories.progress": "Scene {position}/{total}: {state}",
-  "stories.scene_failure": "Scene {position} failed: {code}.",
+  "stories.scene_failure": "Scene {position}: {code} (request {run_id})",
   "stories.interrupted": "Stopped starting new scenes. The active image can still be collected. Resume with: komaquill stories resume {render_id}",
   "stories.incomplete": "Some scenes are not saved. Inspect the rendering, collect pending images, then resume: komaquill stories resume {render_id}. Use --retry-failed for failed or lost scenes.",
   "stories.complete": "All scenes are saved. Rendering: {render_id}",
@@ -344,5 +344,9 @@
   "stories.list_help": "List saved works and their latest image results.",
   "stories.catalog_row": "{story_id}  {title}  {state}  {saved}/{total}",
   "stories.catalog_unreadable": "Story {story_id} could not be read. Inspect its records before retrying.",
-  "stories.planning_busy": "Another story plan is running in this workspace. Wait for it to finish and try again."
+  "stories.planning_busy": "Another story plan is running in this workspace. Wait for it to finish and try again.",
+  "stories.detail_help": "Choose summary for comparison or full for complete source records.",
+  "stories.publication_status": "Story files: {status}",
+  "stories.publication_pending": "Story files need rebuilding for: {identities}. Check local records and run komaquill stories show STORY_ID --refresh.",
+  "stories.publication_retry": "Readable story files could not be updated. Run: komaquill stories show {story_id} --render-id {render_id} --refresh"
 }

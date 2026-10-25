@@ -72,7 +72,7 @@ komaquill open --view graph
 
 appは画像説明と結果を表示するApp Mode、graphは標準ノードを編集するNode Graphです。どちらも同じ接続とGPUを使い、openではGPUを追加確保しません。画面からの生成もstartが実際に実行されたグラフとともに自動保存します。標準の画像・マスクのアップロードとSaveしたワークフローも保全します。未保存の編集内容は対象外です。保存と復元の範囲は[素材の保全](docs/guides/preservation.md)を参照してください。openはブラウザーを起動したら端末へ戻ります。
 
-VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen GeneratorやGenerate Imageを選びます。Open GeneratorはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。どの入口も同じCLIと品質ゲートを呼び出します。
+VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen GeneratorやGenerate Imageを選びます。Open GeneratorはApp Modeが既定です。環境導入はSetup Environment、品質検査はCheck Project、配布物の作成はBuild Packageから実行できます。Export Storyは要約または完全な記録をJSONへ出力します。どの入口も同じCLIと品質ゲートを呼び出します。
 
 ## プリセットを選ぶ
 

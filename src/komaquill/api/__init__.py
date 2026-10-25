@@ -17,6 +17,7 @@ from komaquill.domain.models import Run as Run
 from komaquill.domain.status import SessionStatus as SessionStatus
 from komaquill.domain.storage import MigrationReport as MigrationReport
 from komaquill.domain.stories import StoryPlan as StoryPlan
+from komaquill.domain.story_evidence import StoryEvidence as StoryEvidence
 from komaquill.domain.story_views import StoryEvent as StoryEvent
 from komaquill.domain.story_views import StoryInterrupted as StoryInterrupted
 from komaquill.domain.story_views import StoryListing as StoryListing
@@ -37,6 +38,7 @@ __all__ = [
     "FailureInfo",
     "KomaquillError",
     "StoryEvent",
+    "StoryEvidence",
     "StoryInterrupted",
     "StoryPlan",
     "StorySnapshot",

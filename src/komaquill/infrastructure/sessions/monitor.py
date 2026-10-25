@@ -21,7 +21,7 @@ from komaquill.infrastructure.monitor_state import (
 from komaquill.infrastructure.preparation import Coordinator, capabilities
 from komaquill.infrastructure.sessions.connection import request_stop
 from komaquill.infrastructure.storage import load_runs, stop_request
-from komaquill.infrastructure.stories.storage import refresh_saved_stories
+from komaquill.infrastructure.stories.publication import PublicationTracker
 from komaquill.messages import message
 
 
@@ -38,6 +38,8 @@ def drain(
     deadline = time.monotonic() + settings.shutdown_timeout
     result = Collection(0, 0, 0)
     saved = 0
+    publications = PublicationTracker(project)
+    publications.reconcile()
     previous_errors: tuple[UUID | str, ...] = ()
     while True:
         try:
@@ -46,7 +48,7 @@ def drain(
                 request_stop(project, session, True)
             try:
                 result = collect(project, client, session)
-                refresh_saved_stories(project)
+                publications.tick(result.observed_versions)
                 material_errors = preserve(project, client) or ()
                 if material_errors:
                     result = Collection(
@@ -55,6 +57,7 @@ def drain(
                         result.failed,
                         (*result.errors, *material_errors),
                         result.pending_ids,
+                        observed_versions=result.observed_versions,
                     )
                 saved += result.saved
                 if result.saved:
@@ -91,7 +94,15 @@ def drain(
             request_stop(project, session, True)
     if result.pending_ids:
         echo(message("text.pending_results") + ", ".join(map(str, result.pending_ids)))
-    return Collection(saved, result.pending, result.failed, result.errors, result.pending_ids)
+    publications.reconcile()
+    return Collection(
+        saved,
+        result.pending,
+        result.failed,
+        result.errors,
+        result.pending_ids,
+        observed_versions=result.observed_versions,
+    )
 
 
 def watch(
@@ -107,6 +118,8 @@ def watch(
     disconnected = False
     previous_errors: tuple[UUID | str, ...] = ()
     sidecar_failures: dict[str, object] = {}
+    publications = PublicationTracker(project)
+    publications.reconcile()
     try:
         while stop_request(project, session) is None:
             if (cancel := cancel_requested(project)) is not None:
@@ -132,7 +145,7 @@ def watch(
                             )
                             sidecar_failures["preparation"] = failure
                 result = collect(project, client, session)
-                refresh_saved_stories(project)
+                publications.tick(result.observed_versions)
                 if coordinator is not None:
                     try:
                         coordinator.materials.collect()

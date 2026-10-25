@@ -151,6 +151,7 @@ def test_follow_json_changes_are_json_lines_and_do_not_open_viewers(
     def changed(*args):
         value = original(*args)
         value["complete"] = len(calls) > 0
+        value["finished"] = value["complete"]
         calls.append(value)
         return value
 
@@ -218,3 +219,24 @@ def test_planning_diagnostics_keep_safe_failure_classification(project, cli_stor
     )
     assert failed["failure"]["code"] == "fake_story_mismatch"
     assert failed["story_id"] and "Not the paired sample." not in json.dumps(events)
+
+
+def test_follow_returns_nonzero_after_terminal_generation_failure(
+    cli_story, client, stub, monkeypatch
+):
+    file, invoke, _ = cli_story
+    original = client.submit
+
+    def submit(*args):
+        prompt = original(*args)
+        stub.history[prompt]["status"] = {"status_str": "error", "completed": True}
+        return prompt
+
+    monkeypatch.setattr(client, "submit", submit)
+    generated = invoke("generate", file, "--images", 1, "--llm-profile", "fake", "--json")
+    assert generated.exit_code == 1
+    view = json.loads(generated.stdout)
+    followed = invoke("show", view["story_id"], "--follow", "--json")
+    assert followed.exit_code == 1
+    assert json.loads(followed.stdout)["finished"]
+    assert "resume" in followed.stderr

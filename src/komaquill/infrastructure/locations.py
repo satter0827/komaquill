@@ -1,8 +1,10 @@
 """Resolve logical storage keys using rebuildable local placement records."""
 
-import json
 import re
 import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
@@ -33,11 +35,37 @@ class RunPlacement(BaseModel):
         return self
 
 
+class StoredStoryIdentity(BaseModel):
+    story_id: UUID
+
+
+class StoredSceneLinks(BaseModel):
+    run_ids: list[UUID]
+
+
+class StoredRenderLinks(StoredStoryIdentity):
+    render_id: UUID
+    scenes: list[StoredSceneLinks]
+
+
+class StoredRunIdentity(BaseModel):
+    run_id: UUID
+
+
+class MigrationProgress(BaseModel):
+    status: str
+
+
 class StorageIndex(BaseModel):
     model_config = ConfigDict(extra="forbid")
     format_version: Literal[1] = 1
     stories: dict[UUID, str] = Field(default_factory=dict)
     runs: dict[UUID, RunPlacement] = Field(default_factory=dict)
+
+
+_SNAPSHOTS: ContextVar[dict[Path, StorageIndex] | None] = ContextVar(
+    "storage_snapshots", default=None
+)
 
 
 def story_folder(source_name: str, created_at: datetime, identity: UUID) -> str:
@@ -81,26 +109,63 @@ class Locations:
         return next((self.root / "stories").glob("*/request.json"), None) is not None
 
     def read(self, *, migrating: bool = False) -> StorageIndex:
+        snapshots = _SNAPSHOTS.get()
+        if not migrating and snapshots is not None and self.root in snapshots:
+            return snapshots[self.root].model_copy(deep=True)
         if not migrating and self.migration_file.is_file():
-            state = json.loads(self.migration_file.read_bytes())
-            if state.get("status") != "complete":
+            try:
+                state = MigrationProgress.model_validate_json(self.migration_file.read_bytes())
+            except ValueError:
+                raise KomaquillError(code="storage_failed", stage="storage") from None
+            if state.status != "complete":
                 raise KomaquillError(code="migration_required", stage="storage")
         if self.index_file.is_file():
-            value = StorageIndex.model_validate_json(self.index_file.read_bytes())
+            try:
+                value = StorageIndex.model_validate_json(self.index_file.read_bytes())
+            except ValueError:
+                raise KomaquillError(code="storage_failed", stage="storage") from None
             for folder in value.stories.values():
                 self.path(folder)
             for row in value.runs.values():
                 self.path(row.folder)
                 if row.images:
                     self.path(row.images)
+            if not migrating and snapshots is not None:
+                snapshots[self.root] = value.model_copy(deep=True)
             return value
         if not migrating and self.legacy_exists():
             raise KomaquillError(code="migration_required", stage="storage")
         return StorageIndex()
 
-    def lock(self) -> FileLock:
+    @contextmanager
+    def snapshot(self, *, fresh: bool = False) -> Iterator[None]:
+        """Share one validated index within a bounded read operation."""
+        previous = _SNAPSHOTS.get()
+        if previous is not None and self.root in previous and not fresh:
+            yield
+            return
+        snapshots = dict(previous or {})
+        snapshots.pop(self.root, None)
+        token = _SNAPSHOTS.set(snapshots)
+        try:
+            self.read()
+            yield
+        finally:
+            _SNAPSHOTS.reset(token)
+
+    @contextmanager
+    def lock(self) -> Iterator[None]:
+        """Invalidate read snapshots after acquiring the mutation lock."""
         self.project.state.mkdir(parents=True, exist_ok=True)
-        return FileLock(str(self.project.state / ".locations.lock"))
+        with FileLock(str(self.project.state / ".locations.lock")):
+            snapshots = _SNAPSHOTS.get()
+            if snapshots is not None:
+                snapshots.pop(self.root, None)
+            try:
+                yield
+            finally:
+                if snapshots is not None:
+                    snapshots.pop(self.root, None)
 
     def save(self, index: StorageIndex) -> None:
         atomic_json(self.index_file, index.model_dump(mode="json"))
@@ -156,9 +221,16 @@ class Locations:
         return self.path(row.folder)
 
     def recorded(self, identity: UUID) -> None:
+        current = self.read().runs.get(identity)
+        if current is not None and current.recorded:
+            return
         with self.lock():
             index = self.read()
-            row = index.runs[identity]
+            row = index.runs.get(identity)
+            if row is None:
+                raise KomaquillError(
+                    code="storage_failed", stage="storage", details={"run_id": str(identity)}
+                )
             if not row.recorded:
                 index.runs[identity] = row.model_copy(update={"recorded": True})
                 self.save(index)
@@ -190,29 +262,27 @@ class Locations:
         """Derive placements from durable IDs, rejecting ambiguous ownership."""
         result = StorageIndex()
         for request_file in sorted((self.root / "stories").glob("*/request.json")):
-            request = json.loads(request_file.read_bytes())
-            identity = UUID(request["story_id"])
+            request = StoredStoryIdentity.model_validate_json(request_file.read_bytes())
+            identity = request.story_id
             folder = request_file.parent.relative_to(self.root).as_posix()
             if identity in result.stories:
                 raise KomaquillError(code="identity_mismatch", stage="storage")
             result.stories[identity] = folder
             for render_file in sorted(request_file.parent.glob("renders/*/render.json")):
-                render = json.loads(render_file.read_bytes())
-                if (
-                    UUID(render["story_id"]) != identity
-                    or str(render["render_id"]) != render_file.parent.name
-                ):
+                render = StoredRenderLinks.model_validate_json(render_file.read_bytes())
+                if render.story_id != identity or str(render.render_id) != render_file.parent.name:
                     raise KomaquillError(code="identity_mismatch", stage="storage")
                 render_folder = render_file.parent.relative_to(self.root).as_posix()
-                for position, scene in enumerate(render["scenes"], 1):
-                    for attempt, run_id in enumerate(scene["run_ids"], 1):
-                        run = UUID(run_id)
+                for position, scene in enumerate(render.scenes, 1):
+                    for attempt, run in enumerate(scene.run_ids, 1):
+                        run_id = str(run)
                         if run in result.runs:
                             raise KomaquillError(code="identity_mismatch", stage="storage")
                         run_file = render_file.parent / "runs" / run_id / "run.json"
                         if (
                             run_file.is_file()
-                            and json.loads(run_file.read_bytes())["run_id"] != run_id
+                            and StoredRunIdentity.model_validate_json(run_file.read_bytes()).run_id
+                            != run
                         ):
                             raise KomaquillError(code="identity_mismatch", stage="storage")
                         result.runs[run] = RunPlacement(
@@ -223,8 +293,8 @@ class Locations:
                             recorded=run_file.is_file(),
                         )
         for run_file in sorted((self.root / "runs").glob("*/run.json")):
-            value = json.loads(run_file.read_bytes())
-            identity = UUID(value["run_id"])
+            value = StoredRunIdentity.model_validate_json(run_file.read_bytes())
+            identity = value.run_id
             if str(identity) != run_file.parent.name or identity in result.runs:
                 raise KomaquillError(code="identity_mismatch", stage="storage")
             result.runs[identity] = RunPlacement(

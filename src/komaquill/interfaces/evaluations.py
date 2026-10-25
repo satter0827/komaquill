@@ -9,15 +9,12 @@ from uuid import UUID
 
 import typer
 
-from komaquill.application.evaluations import register
+from komaquill.api import Client
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.evaluations import Evaluation, Evaluator
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.evaluations import (
-    FileEvaluationRepository,
-    export_evidence,
     read_import,
-    select,
     write_export,
 )
 from komaquill.messages import message
@@ -32,7 +29,7 @@ def bind(
     app.add_typer(GROUP, name="evaluations")
 
     def commit(project: Project, item: Evaluation) -> None:
-        register(project.repository, FileEvaluationRepository(project), [item])
+        Client(project.root).evaluations.add([item])
         typer.echo(message("evaluations.saved", identity=item.evaluation_id))
 
     @GROUP.command("add", help=message("evaluations.add"))
@@ -117,13 +114,20 @@ def bind(
     @GROUP.command("import", help=message("evaluations.import"))
     def import_records(ctx: typer.Context, file: Path) -> None:
         with operation(ctx) as project:
-            register(project.repository, FileEvaluationRepository(project), read_import(file))
+            Client(project.root).evaluations.add(read_import(file))
             typer.echo(message("evaluations.imported"))
 
     @GROUP.command("list", help=message("evaluations.list"))
     def list_records(ctx: typer.Context, run_id: UUID | None = None) -> None:
         with operation(ctx) as project:
-            typer.echo(json.dumps([row.model_dump(mode="json") for row in select(project, run_id)]))
+            typer.echo(
+                json.dumps(
+                    [
+                        row.model_dump(mode="json")
+                        for row in Client(project.root).evaluations.list(run_id)
+                    ]
+                )
+            )
 
     @GROUP.command("export", help=message("evaluations.export"))
     def export(
@@ -132,6 +136,6 @@ def bind(
         with operation(ctx) as project:
             if output.exists():
                 raise KomaquillError(code="invalid_evaluation", stage="evaluation")
-            payload = export_evidence(project, run_id)
+            payload = Client(project.root).evaluations.export(run_id)
             write_export(output, payload)
             typer.echo(message("evaluations.exported", path=output))

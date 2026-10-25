@@ -43,11 +43,35 @@ Clientのコンテキストを終了してもGPUは停止しません。停止�
 
 ## 一覧と分析用出力
 
-`client.stories.list()`は作品名・ID・枚数・保存状態を返し、読めない作品はunreadable_idsへ分けます。`client.stories.export(story_id)`は、原文、計画、呼び出し前の入力、成功・失敗の可視出力、使用量と生成との対応を返します。書き出しや外部AIへの送信は呼び出し側の明示操作で行います。
+`client.stories.list()`は作品名・ID・枚数・保存状態を返し、読めない作品はunreadable_idsへ分けます。`client.stories.export(story_id)`は、原文、場面、生成条件、成功・失敗、使用量と画像の対応を型付きで返します。指示・スキーマ・可視応答を含む原本はdetail="full"で取得します。書き出しや外部AIへの送信は呼び出し側の明示操作で行います。
 
 `client.stories.refresh(story_id)`は保存済みの記録からREADME・story.md・manifestを再構築します。`client.migrate(dry_run=True)`は移動対象、`client.migrate()`は停止確認と検証を伴う移行・再開を行います。どちらもGPUを新規確保しません。
 
 公開型はkomaquill.apiから必要なものだけをimportします。内部実装のモジュールやファイル配置へ依存せず、画像には保存キーとartifact_pathを使用します。wheelにはpy.typedを含めているため、利用側の型チェックから型付き結果と逐次イベントを参照できます。
 
 
-比較対象は保存済み画像のある作品だけへ絞らず、一覧のunplannedも含めてexportします。計画がない場合はplanがNoneになり、成功・失敗の呼び出し記録はplanningへ残ります。使用量を集計するときは修正呼び出しと拒否した計画を含め、不明値をゼロへ置き換えません。
+比較対象は保存済み画像のある作品だけへ絞らず、一覧のunplannedも含めてexportします。計画がない場合はstoryがNoneになり、成功・失敗の呼び出し記録はplanningへ残ります。使用量を集計するときは修正呼び出しと拒否した計画を含め、不明値をゼロへ置き換えません。
+
+## 分析用出力の詳細度
+
+戻り値は版付きのStoryEvidenceです。既定はsummaryで、完全な原本が必要な場合にfullを指定します。
+
+```python
+evidence = client.stories.export(story_id)
+print(evidence.planning.status)
+print(evidence.planning.usage.total_tokens)
+
+full = client.stories.export(story_id, detail="full")
+for record in full.records:
+    original_path = client.workspace / record.workspace_path
+```
+
+summaryとfullで対象・条件・集計は同じです。full.objectsは重複を省いたJSON内容、recordsは原本参照とバイト列のSHA256を保持します。画像はartifact_pathまたはworkspace_pathで解決します。
+
+completeは保存成功、finishedは失敗を含めた全場面の終了です。逐次イベントはprogressとfinishedで、終了してもcomplete=falseなら失敗した場面を確認します。
+
+## 閲覧用ファイルと任意評価の失敗
+
+StoryEvent.publication_failureは、画像の保存状態とは別の閲覧用更新の結果です。失敗しても後続の場面を生成します。最後のイベントでこの値が残った場合は、原因を解消してclient.stories.refresh(story_id, render_id=render_id)で再構築します。保存済み画像を生成し直す必要はありません。
+
+分析用出力のunreadable_evaluation_idsが空でない場合は、一部の評価記録を取得できていません。生成の原本や参照する過去の試行が破損している場合は、黙って省略せずKomaquillErrorを返します。

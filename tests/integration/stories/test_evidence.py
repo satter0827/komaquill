@@ -5,9 +5,9 @@ from datetime import datetime
 
 import pytest
 
+from komaquill.api import Client
 from komaquill.application.stories.rendering import create_render, render_story
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import evaluations
 from tests.support.stories import planned
 
 
@@ -16,7 +16,7 @@ def test_export_has_observation_times_and_story_context(project, session, client
     active = session.model_copy(update={"settings": project.settings()})
     render = create_render(repository, project, active, plan.request.story_id, "pony")
     render_story(repository, project, client, active, render.render_id)
-    value = evaluations.export_evidence(project)
+    value = Client(project.root).evaluations.export()
     assert datetime.fromisoformat(value["exported_at"]).tzinfo is not None
     assert value["exporter"]["code_sha256"]
     row = value["runs"][0]
@@ -27,7 +27,7 @@ def test_export_has_observation_times_and_story_context(project, session, client
         repository.folder(plan.request.story_id) / "renders" / str(render.render_id) / "render.json"
     )
     path.write_text("{", encoding="utf-8")
-    value = evaluations.export_evidence(project)
+    value = Client(project.root).evaluations.export()
     assert len(value["runs"]) == 1 and value["unreadable_story_renders"] == [str(render.render_id)]
 
 
@@ -42,7 +42,7 @@ def test_tampered_plan_is_not_used_for_association_export(project, session, clie
     value = json.loads(path.read_bytes())
     value["plan_sha256"] = "0" * 64
     path.write_text(json.dumps(value), encoding="utf-8")
-    exported = evaluations.export_evidence(project)
+    exported = Client(project.root).evaluations.export()
     assert exported["unreadable_story_renders"] == [str(render.render_id)]
     with pytest.raises(KomaquillError):
         from komaquill.application.stories.rendering import story_view

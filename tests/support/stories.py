@@ -38,4 +38,8 @@ def planned(project, count=4):
         max_images=options.max_images,
         repair_attempts=options.repair_attempts,
     )
+    from komaquill.infrastructure.stories.publication import publish_catalog, publish_story
+
+    publish_story(repository, project, result.request.story_id)
+    publish_catalog(repository, project)
     return repository, result

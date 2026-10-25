@@ -95,6 +95,24 @@
       "subProcess": false
     },
     {
+      "name": "Export Story",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "stories",
+        "export",
+        "${input:storyId}",
+        "--detail",
+        "${input:evidenceDetail}"
+      ],
+      "subProcess": false
+    },
+    {
       "name": "Plan Story (LM Studio)",
       "type": "debugpy",
       "request": "launch",
@@ -336,6 +354,22 @@
       "id": "renderId",
       "type": "promptString",
       "description": "Enter the rendering ID to resume with its original settings"
+    },
+    {
+      "id": "evidenceDetail",
+      "type": "pickString",
+      "description": "Choose summary for comparison or full for complete records",
+      "options": [
+        {
+          "label": "Summary",
+          "value": "summary"
+        },
+        {
+          "label": "Full Records",
+          "value": "full"
+        }
+      ],
+      "default": "summary"
     }
   ]
 }

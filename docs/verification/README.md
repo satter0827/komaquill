@@ -4,6 +4,7 @@
 
 | 記録 | 対象 |
 |---|---|
+| [場面入力・品質プロンプト・領域指定](results/story-image-inputs.md) | 新しい場面契約、固定入力、4Bの拒否を含む比較、T4の12枚と追加2枚、既定を維持する判断 |
 | [保存・回収・分析の再レビュー](results/story-evidence-review.md) | 原本消失・配置喪失・部分的な分析と閲覧用更新、実データ保全とT4再検証 |
 | [ストーリーの状態・保存更新・分析](results/story-evidence.md) | 終端判定、破損隔離、差分更新、要約と詳細、4B・T4、既存データ保全 |
 | [物語計画・作品保存・公開API](results/story-workflow.md) | 自動枚数、比較の成否、作品移行、Python API、T4の接続・生成・終了 |

@@ -141,3 +141,21 @@ komaquill stories show STORY_ID --render-id RENDER_ID --refresh
 ファイルの使用中状態や保存先の権限など、表示された問題を解消してから実行します。画像を生成し直す操作ではありません。--jsonでは保存状態のJSONを標準出力、再構築の案内を標準エラーへ出力します。
 
 分析用JSONのunreadable_evaluation_idsは、読めない評価記録の識別子です。空でない場合は評価が一部欠けているため、全評価を反映した比較として扱わないでください。
+
+## 物語用の画像生成セットを選ぶ
+
+作業設定で使用するセットを有効にしてからstartします。起動済みの場合はstop後にstartしてください。既存の作業設定は自動で書き換えません。
+
+```toml
+profiles = ["pony", "pony-story"]
+
+[story]
+image_profile = "pony-story"
+
+[presets.pony-story]
+quality_enabled = true
+```
+
+ストーリー操作の`--image-profile pony-story`でも選べます。品質用の正負プロンプトは既定で有効です。無効にする場合はquality_enabledをfalseへ変更して接続を開始し直します。生成試行を再開するときは、作成時に保存した品質設定が維持されます。
+
+通常の全体プロンプトと領域指定の画質は実画像で比較します。領域指定だけで顔の完全な同一性や複雑な接触を保証するものではありません。

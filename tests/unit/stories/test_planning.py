@@ -57,11 +57,12 @@ def test_invalid_response_repairs_once_through_same_pipeline(project, fault):
     elif fault == "count":
         broken["scenes"].pop()
     elif fault == "character":
-        broken["scenes"][0]["subjects"][0]["character"] = "unknown"
+        broken["scenes"][0]["subjects"][0]["character"] = "c99"
     elif fault == "source":
         broken["scenes"][0]["source_refs"] = ["missing"]
     elif fault == "duplicate":
-        broken["scenes"][1]["visual_description"] = broken["scenes"][0]["visual_description"]
+        for key in ("visual_description", "location", "subjects", "props"):
+            broken["scenes"][1][key] = broken["scenes"][0][key]
     elif fault == "coverage":
         broken["scenes"][-1]["source_refs"] = ["p3"]
     elif fault == "blank":

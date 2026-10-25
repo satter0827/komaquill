@@ -89,7 +89,7 @@ def plan_story(
                     "story_planning",
                 )
                 if isinstance(error, PlanningValidationError):
-                    validation_issues = [error.issue]
+                    validation_issues = error.issues
                 elif isinstance(error, ValidationError):
                     allowed = set(StoryDraft.model_fields) | {
                         "narrative",
@@ -99,6 +99,14 @@ def plan_story(
                         "appearance",
                         "key",
                         "name",
+                        "subjects",
+                        "props",
+                        "kind",
+                        "character",
+                        "action",
+                        "prop",
+                        "holder",
+                        "state",
                     }
                     validation_issues = [
                         PlanningIssue(
@@ -117,7 +125,10 @@ def plan_story(
                 issues = (
                     error.errors(include_input=False, include_context=False, include_url=False)
                     if isinstance(error, ValidationError)
-                    else [{"message": str(error)}]
+                    else [
+                        {"code": issue.code, "loc": list(issue.path), "message": str(error)}
+                        for issue in validation_issues
+                    ]
                 )
                 correction = json.dumps(
                     {
@@ -149,7 +160,7 @@ def plan_story(
                 plan = StoryPlan(
                     request=request,
                     format_version=2,
-                    props=draft.props,
+                    props=[*draft.props],
                     title=draft.title,
                     synopsis=draft.synopsis,
                     characters=[character for character in draft.characters],

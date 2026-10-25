@@ -1,3 +1,5 @@
+quality_enabled = true
+negative_prefix = "text, watermark, signature"
 checkpoint = "pony"
 width = 1024
 height = 1024
@@ -100,3 +102,10 @@ api_node = "11"
 api_input = "stop_at_clip_layer"
 ui_node = 11
 ui_widget = 0
+
+[[bindings]]
+source = "prompt_delimiter"
+api_node = "10"
+api_input = "delimiter"
+ui_node = 10
+ui_widget = 2

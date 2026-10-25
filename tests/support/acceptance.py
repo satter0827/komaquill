@@ -134,10 +134,12 @@ def run_acceptance(wheel: Path | None = None) -> None:
             for name in ("preset.toml", "workflow.json", "workflow-api.json"):
                 if wheel is not None:
                     with zipfile.ZipFile(wheel) as archive:
-                        content = archive.read("komaquill/resources/presets/pony/" + name)
+                        content = archive.read("komaquill/resources/presets/pony-story/" + name)
                 else:
                     content = (
-                        files("komaquill").joinpath("resources/presets/pony/" + name).read_bytes()
+                        files("komaquill")
+                        .joinpath("resources/presets/pony-story/" + name)
+                        .read_bytes()
                     )
                 (bundle / name).write_bytes(content)
             (workspace / "komaquill.toml").write_text(
@@ -262,6 +264,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             f"story_id = UUID({illustrated['story_id']!r})",
                             "snapshot = client.stories.show(story_id)",
                             "assert isinstance(snapshot, StorySnapshot) and snapshot.complete",
+                            "assert snapshot.props and snapshot.scenes[0].compiled_input",
+                            "assert snapshot.scenes[0].compiled_input.layout == 'left-right'",
                             f"assert len(client.stories.list().stories) == {2 if wheel else 1}",
                             "for scene in snapshot.scenes:",
                             "    assert scene.primary_image is not None",
@@ -271,6 +275,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "assert isinstance(summary, StoryEvidence)",
                             "assert summary.format_version == 3",
                             "assert summary.unreadable_evaluation_ids == []",
+                            "assert summary.props == snapshot.props",
+                            "assert all(row.run.compiled_input for row in summary.runs)",
                             "assert summary.detail == 'summary' and not summary.objects",
                             "assert full.detail == 'full' and full.objects",
                             "assert summary.planning == full.planning",

@@ -33,7 +33,13 @@ def open_view(
         )
     else:
         _, workflow = prepare(
-            profile.sample_prompt, None, 1, name, settings=project.settings(), profile_name=name
+            profile.sample_prompt,
+            None,
+            1,
+            name,
+            settings=project.settings(),
+            profile_name=name,
+            subject_prompts=profile.sample_subjects,
         )
         workflow["extra"]["linearMode"] = view == "app"
         path = project.runtime / "workflows" / f"{name}_{view}.json"

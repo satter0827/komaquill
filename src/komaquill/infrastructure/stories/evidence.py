@@ -287,6 +287,7 @@ def story_evidence(
             if snapshot
             else None,
             "characters": plan.characters if plan else [],
+            "props": plan.props if plan and plan.format_version == 2 else None,
             "supplements": plan.supplements if plan else [],
             "scenes": snapshot["scenes"] if snapshot else [],
             "planning": _planning(raw, plan is not None),

@@ -8,10 +8,11 @@ from pydantic import ValidationError
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.presets import ModelPreset
 from komaquill.infrastructure.configuration import Settings
+from komaquill.infrastructure.preset_catalog import catalog
 from komaquill.infrastructure.workflows import assets, prepare, resource_json, select
 
 
-@pytest.mark.parametrize("name", ["pony", "pony-preview", "pony-upscale", "sd15"])
+@pytest.mark.parametrize("name", sorted(catalog()["presets"]))
 def test_profile_exports_match_api_and_widget_values(name):
     settings = Settings(profiles=[name])
     graph, ui = prepare("a blue lake", None, 42, "request", settings=settings)
@@ -27,25 +28,33 @@ def test_profile_exports_match_api_and_widget_values(name):
             assert data["inputs"][socket["name"]] == [str(link[1]), link[2]]
             assert link[4] == nodes[key]["inputs"].index(socket)
             assert link[0] in nodes[str(link[1])]["outputs"][link[2]]["links"]
-    assert graph["3"]["inputs"]["steps"] == nodes["3"]["widgets_values"][2] == profile.steps
-    assert graph["5"]["inputs"]["width"] == nodes["5"]["widgets_values"][0] == profile.width
-    assert graph["4"]["inputs"]["ckpt_name"] == settings.assets[profile.checkpoint].reference
-    if name != "sd15":
+
+    def value(source):
+        binding = next(row for row in profile.bindings if row.source == source)
+        return graph[binding.api_node]["inputs"][binding.api_input]
+
+    for binding in profile.bindings:
         assert (
-            graph["10"]["inputs"]["string_b"] == nodes["10"]["widgets_values"][1] == "a blue lake"
+            graph[binding.api_node]["inputs"][binding.api_input]
+            == nodes[str(binding.ui_node)]["widgets_values"][binding.ui_widget]
         )
-        assert graph["10"]["inputs"]["string_a"] == profile.positive_prefix
-        assert graph["11"]["inputs"]["stop_at_clip_layer"] == -2
-        assert ui["extra"]["linearData"]["inputs"] == [["10", "string_b"]]
-    if profile.lora:
-        assert graph["12"]["inputs"]["strength_model"] == 1
-    if profile.upscaler:
-        assert graph["16"]["inputs"]["filename_prefix"] == "komaquill/request-upscaled"
-        assert graph["15"]["inputs"]["width"] == 2048
-    assert graph["7"]["inputs"]["text"] == profile.negative
-    assert (
-        prepare("other", "custom", 9, "b", settings=settings)[0]["7"]["inputs"]["text"] == "custom"
+    assert value("steps") == profile.steps
+    assert value("width") == profile.width
+    assert value("height") == profile.height
+    assert value("checkpoint") == settings.assets[profile.checkpoint].reference
+    assert value("seed") == 42
+    expected_negative = ", ".join(
+        part for part in (profile.negative_prefix, profile.negative) if part
     )
+    assert value("negative") == expected_negative
+    custom, _ = prepare("other", "custom", 9, "b", settings=settings)
+    negative_binding = next(row for row in profile.bindings if row.source == "negative")
+    assert (
+        custom[negative_binding.api_node]["inputs"][negative_binding.api_input]
+        == profile.negative_prefix + ", custom"
+    )
+    assert ui["extra"]["linearData"]["inputs"]
+    assert ui["extra"]["linearData"]["outputs"]
 
 
 def test_selected_profiles_deduplicate_shared_weights():

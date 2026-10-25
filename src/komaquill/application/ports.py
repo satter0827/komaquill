@@ -5,6 +5,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.images import CompiledImageInput
 from komaquill.domain.models import ImageMetadata, ImageRef, JsonObject, Run, Session
 from komaquill.domain.presets import ModelPreset
 
@@ -65,5 +66,7 @@ class Workspace(Protocol):
         seed: int,
         run_id: str,
         profile_name: str | None = None,
+        *,
+        compiled_input: CompiledImageInput | None = None,
     ) -> tuple[JsonObject, JsonObject]: ...
     def stop_requested(self, session: Session) -> bool | None: ...

@@ -68,7 +68,13 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
         profile = settings.presets[name]
         for view in ["graph", "app"]:
             _, workflow = prepare(
-                profile.sample_prompt, None, 1, name, settings=settings, profile_name=name
+                profile.sample_prompt,
+                None,
+                1,
+                name,
+                settings=settings,
+                profile_name=name,
+                subject_prompts=profile.sample_subjects,
             )
             workflow["extra"]["linearMode"] = view == "app"
             atomic_json(templates / f"{name}_{view}.json", workflow)

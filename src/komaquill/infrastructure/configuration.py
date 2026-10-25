@@ -5,6 +5,7 @@ import tomllib
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from komaquill.domain.images import CompiledImageInput
     from komaquill.domain.models import Session
     from komaquill.domain.presets import ModelPreset
     from komaquill.infrastructure.artifacts import LocalArtifactStore
@@ -154,11 +155,19 @@ class Project(WorkspacePaths):
         seed: int,
         run_id: str,
         profile_name: str | None = None,
+        *,
+        compiled_input: "CompiledImageInput | None" = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         from komaquill.infrastructure.workflows import prepare
 
         return prepare(
-            prompt, negative, seed, run_id, settings=self.settings(), profile_name=profile_name
+            prompt,
+            negative,
+            seed,
+            run_id,
+            settings=self.settings(),
+            profile_name=profile_name,
+            compiled_input=compiled_input,
         )
 
     def stop_requested(self, session: "Session") -> bool | None:

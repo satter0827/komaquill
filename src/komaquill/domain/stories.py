@@ -2,14 +2,16 @@
 
 import hashlib
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
+from komaquill.domain.images import CompiledImageInput
 
 
 class StoryRecord(BaseModel):
@@ -32,13 +34,18 @@ class Character(StoryRecord):
     key: str
     name: str
     appearance: str = Field(
-        description="English only: stable visible appearance, at most 25 words."
+        description="English only: stable visible appearance, at most 15 words."
     )
+
+
+ActorKey = Annotated[str, Field(pattern=r"^c[1-9][0-9]*$")]
+PropKey = Annotated[str, Field(pattern=r"^o[1-9][0-9]*$")]
 
 
 class PlannedCharacter(Character):
     """Require an explicit subject category in newly planned stories."""
 
+    key: ActorKey
     kind: Literal["human", "animal", "other"] = Field(...)
 
 
@@ -59,6 +66,19 @@ class ScenePropState(StoryRecord):
     state: str = Field(description="English: visible state and position at this instant.")
 
 
+class PlannedProp(StoryProp):
+    key: PropKey
+
+
+class PlannedSubject(SceneSubject):
+    character: ActorKey
+
+
+class PlannedPropState(ScenePropState):
+    prop: PropKey
+    holder: ActorKey | None
+
+
 MAX_VISIBLE_SUBJECTS = 2
 
 
@@ -72,8 +92,8 @@ class SceneText(StoryRecord):
     )
     visual_description: str = Field(
         description=(
-            "English only, at most 45 words. Describe one distinct still moment "
-            "with composition and visible actions. Never write Japanese here."
+            "English only, at most 20 words: framing and environment of one instant. "
+            "Do not repeat characters, appearances or actions here."
         )
     )
     location: str | None
@@ -86,8 +106,8 @@ class SceneText(StoryRecord):
 
 
 class SceneDraft(SceneText):
-    subjects: list[SceneSubject] = Field(max_length=MAX_VISIBLE_SUBJECTS)
-    props: list[ScenePropState]
+    subjects: list[PlannedSubject] = Field(max_length=MAX_VISIBLE_SUBJECTS)
+    props: list[PlannedPropState]
 
 
 class StoryDraft(StoryRecord):
@@ -96,7 +116,7 @@ class StoryDraft(StoryRecord):
     title: str
     synopsis: str
     characters: list[PlannedCharacter]
-    props: list[StoryProp]
+    props: list[PlannedProp]
     scenes: list[SceneDraft]
     supplements: list[str]
 
@@ -171,9 +191,12 @@ class PlanningIssue(StoryRecord):
 class PlanningValidationError(ValueError):
     """Carry stable acceptance categories without quoting model output."""
 
-    def __init__(self, code: str, explanation: str) -> None:
+    def __init__(
+        self, code: str, explanation: str, *, issues: list[PlanningIssue] | None = None
+    ) -> None:
         super().__init__(explanation)
         self.issue = PlanningIssue(code=code)
+        self.issues = issues if issues is not None else [self.issue]
 
 
 class PlanningOutcome(StoryRecord):
@@ -243,6 +266,7 @@ class StoryPlan(StoryRecord):
 
 
 class SceneAttempts(StoryRecord):
+    compiled_input: CompiledImageInput | None = None
     scene_id: UUID
     seed: int = Field(ge=0, le=2**64 - 1)
     run_ids: list[UUID] = Field(default_factory=list)
@@ -251,7 +275,7 @@ class SceneAttempts(StoryRecord):
 class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
-    format_version: Literal[1] = 1
+    format_version: Literal[1, 2] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     plan_sha256: str
@@ -262,6 +286,8 @@ class StoryRender(StoryRecord):
 
     @model_validator(mode="after")
     def distinct_requests(self) -> Self:
+        if self.format_version == 2 and any(scene.compiled_input is None for scene in self.scenes):
+            raise ValueError("New rendering attempts require frozen image inputs.")
         identities = [value for scene in self.scenes for value in scene.run_ids]
         if len(identities) != len(set(identities)):
             raise ValueError("Image request identifiers must be distinct.")
@@ -293,35 +319,73 @@ def validate_structure(draft: StoryDraft | StoryPlan, request: StoryInput) -> No
 
 
 def validate_visual_references(draft: StoryDraft | StoryPlan) -> None:
-    """Validate drawable references without simulating the story's world."""
+    """Locate invalid drawable references without exposing user text in errors."""
+    issues: list[PlanningIssue] = []
+    explanations: list[str] = []
+
+    def reject(path: tuple[str | int, ...], explanation: str) -> None:
+        issues.append(PlanningIssue(code="invalid_visual_reference", path=path))
+        explanations.append(explanation)
+
     prop_keys = [prop.key for prop in draft.props]
     if len(set(prop_keys)) != len(prop_keys):
-        raise ValueError("Prop keys must be distinct.")
+        reject(("props",), "Prop keys must be distinct.")
     character_keys = {character.key for character in draft.characters}
-    for scene in draft.scenes:
+    for index in range(len(draft.scenes)):
+        scene = draft.scenes[index]
+        path: tuple[str | int, ...] = ("scenes", index)
         if scene.subjects is None or len(scene.subjects) > MAX_VISIBLE_SUBJECTS:
-            raise ValueError("New scenes require bounded visible subjects.")
+            reject((*path, "subjects"), "New scenes require bounded visible subjects.")
+            continue
         visible = [subject.character for subject in scene.subjects]
         if len(set(visible)) != len(visible) or not set(visible) <= character_keys:
-            raise ValueError("Visible subject references are invalid.")
+            reject((*path, "subjects"), "Visible subject references are invalid.")
         if isinstance(scene, Scene) and visible != scene.characters:
-            raise ValueError("Visible subjects differ from retained character references.")
+            reject((*path, "characters"), "Visible subjects differ from retained references.")
         used = [state.prop for state in scene.props]
-        if len(set(used)) != len(used) or not set(used) <= set(prop_keys):
-            raise ValueError("Visible prop references are invalid.")
-        if any(state.holder is not None and state.holder not in visible for state in scene.props):
-            raise ValueError("A prop holder must be visible in the scene.")
+        if len(set(used)) != len(used):
+            reject((*path, "props"), "Visible props must be distinct.")
+        for position, state in enumerate(scene.props):
+            if state.prop not in prop_keys:
+                reject((*path, "props", position, "prop"), "Declare the referenced prop first.")
+            if state.holder is not None and state.holder not in visible:
+                reject(
+                    (*path, "props", position, "holder"),
+                    "A prop holder must be visible in the scene.",
+                )
+    if issues:
+        raise PlanningValidationError(
+            "invalid_visual_reference", " ".join(explanations), issues=issues
+        )
 
 
 def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
-    """Apply current acceptance checks only to newly planned content."""
-    validate_structure(draft, request)
-    validate_visual_references(draft)
+    """Report all deterministic defects together within the single repair budget."""
+    issues: list[PlanningIssue] = []
+    explanations: list[str] = []
+
+    def reject(code: str, explanation: str) -> None:
+        issues.append(PlanningIssue(code=code))
+        explanations.append(explanation)
+
+    checks: tuple[tuple[Callable[[], None], str], ...] = (
+        (lambda: validate_structure(draft, request), "invalid_structure"),
+        (lambda: validate_visual_references(draft), "invalid_visual_reference"),
+    )
+    for check, code in checks:
+        try:
+            check()
+        except PlanningValidationError as error:
+            issues.extend(error.issues)
+            explanations.append(str(error))
+        except ValueError as error:
+            reject(code, str(error))
     if re.search(r"[\u3040-\u30ff\u3400-\u9fff]", request.source_text) and any(
-        not re.search(r"[縺-繝ｿ辮-鯀ｿ]", scene.narrative) for scene in draft.scenes
+        not re.search(r"[\u3040-\u30ff\u3400-\u9fff]", scene.narrative) for scene in draft.scenes
     ):
-        raise PlanningValidationError(
-            "narrative_language", "Write every narrative in Japanese, not English."
+        reject(
+            "narrative_language",
+            "Write narrative, titles and synopsis in Japanese; keep visual fields in English.",
         )
     visible = [character.appearance for character in draft.characters] + [
         scene.visual_description for scene in draft.scenes
@@ -331,36 +395,29 @@ def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
     visible += [state.state for scene in draft.scenes for state in scene.props]
     visible += [scene.location for scene in draft.scenes if scene.location]
     if any(re.search(r"[\u3040-\u30ff\u3400-\u9fff]", text) for text in visible):
-        raise PlanningValidationError(
-            "visual_language", "Use English for appearance and visual_description."
+        reject(
+            "visual_language",
+            "Use English for appearance, visual_description and location, "
+            "and for subjects.action and props.state. "
+            "Keep narrative, titles and synopsis in Japanese.",
         )
-    descriptions = [" ".join(scene.visual_description.split()).casefold() for scene in draft.scenes]
+    descriptions = [
+        (
+            " ".join(scene.visual_description.split()).casefold(),
+            (scene.location or "").casefold(),
+            tuple((subject.character, subject.action.casefold()) for subject in scene.subjects),
+            tuple((state.prop, state.holder, state.state.casefold()) for state in scene.props),
+        )
+        for scene in draft.scenes
+    ]
     if len(set(descriptions)) != len(descriptions):
-        raise PlanningValidationError(
-            "duplicate_visual", "Every scene must depict a distinct visual moment."
-        )
+        reject("duplicate_visual", "Every scene must depict a distinct visual moment.")
     narratives = [" ".join(scene.narrative.split()) for scene in draft.scenes]
     if len(set(narratives)) != len(narratives):
-        raise PlanningValidationError(
+        reject(
             "duplicate_narrative", "Each scene must advance the narrative without repeated prose."
         )
     if {ref for scene in draft.scenes for ref in scene.source_refs} != set(request.paragraphs):
-        raise PlanningValidationError(
-            "source_coverage", "Every source paragraph must be represented by the plan."
-        )
-
-
-def image_prompt(plan: StoryPlan, scene: Scene) -> str:
-    """Combine scene intent and stable appearance without model-specific quality tags."""
-    characters = {character.key: character for character in plan.characters}
-    return "\n".join(
-        [
-            *(characters[key].appearance for key in scene.characters),
-            scene.visual_description,
-            *(
-                [str(plan.planner.planning_policy["style"])]
-                if plan.planner.planning_policy.get("style")
-                else []
-            ),
-        ]
-    )
+        reject("source_coverage", "Every source paragraph must be represented by the plan.")
+    if issues:
+        raise PlanningValidationError(issues[0].code, " ".join(explanations), issues=issues)

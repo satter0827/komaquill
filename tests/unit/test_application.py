@@ -111,7 +111,10 @@ def test_generation_uses_only_replaceable_contracts():
         def identity(self):
             return {"app_version": "test", "source_revision": None, "code_sha256": None}
 
-        def prepare(self, prompt, negative, seed, identity, profile_name=None):
+        def prepare(
+            self, prompt, negative, seed, identity, profile_name=None, *, compiled_input=None
+        ):
+            assert compiled_input.prompt == prompt
             return {"prompt": prompt, "seed": seed}, {}
 
         def stop_requested(self, session):

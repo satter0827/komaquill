@@ -8,10 +8,11 @@ from uuid import UUID, uuid4
 
 from komaquill.application.generation import submit_generation, wait_generation
 from komaquill.application.ports import GenerationBackend, Workspace
+from komaquill.application.stories.image_inputs import scene_input
 from komaquill.application.stories.ports import StoryRepository
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject, Run, Session
-from komaquill.domain.stories import SceneAttempts, StoryPlan, StoryRender, image_prompt
+from komaquill.domain.stories import SceneAttempts, StoryPlan, StoryRender
 from komaquill.domain.workflow import digest
 
 
@@ -30,12 +31,17 @@ def create_render(
         raise KomaquillError(code="invalid_configuration", stage="story_rendering")
     initial_seed = seed if seed is not None else secrets.randbits(63)
     render = StoryRender(
+        format_version=2,
         story_id=story_id,
         plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),
         image_profile=image_profile,
         settings=settings,
         scenes=[
-            SceneAttempts(scene_id=scene.scene_id, seed=(initial_seed + index) % (2**64))
+            SceneAttempts(
+                scene_id=scene.scene_id,
+                seed=(initial_seed + index) % (2**64),
+                compiled_input=scene_input(plan, scene, settings.presets[image_profile]),
+            )
             for index, scene in enumerate(plan.scenes)
         ],
     )
@@ -118,7 +124,12 @@ def story_view(
         )
         scenes.append(
             {
-                **scene.model_dump(mode="json"),
+                **scene.model_dump(mode="json", exclude_unset=True),
+                **(
+                    {"compiled_input": link.compiled_input.model_dump(mode="json")}
+                    if link and link.compiled_input
+                    else {}
+                ),
                 "state": run.state if run else "unstarted",
                 "run_id": str(run.run_id) if run else None,
                 "attempt_ids": [str(value) for value in link.run_ids] if link else [],
@@ -148,8 +159,15 @@ def story_view(
             "provider": plan.planner.provider,
             "configured_model": plan.planner.configured_model,
         },
-        "characters": [item.model_dump(mode="json") for item in plan.characters],
+        "characters": [
+            item.model_dump(mode="json", exclude_unset=True) for item in plan.characters
+        ],
         "supplements": plan.supplements,
+        **(
+            {"props": [prop.model_dump(mode="json") for prop in plan.props]}
+            if plan.format_version == 2
+            else {}
+        ),
         "image_profile": render.image_profile if render else None,
         "updated_at": max(updated).isoformat(),
         "complete": counts.get("saved", 0) == len(plan.scenes),
@@ -177,12 +195,18 @@ def render_events(
         compatible(plan, render, session)
         bound = workspace.configured(render.settings)
         bound_session = session.model_copy(update={"settings": render.settings})
-        for index, scene in enumerate(plan.scenes):
+        for index, _scene in enumerate(plan.scenes):
             render = repository.render(render_id)
             link = render.scenes[index]
             run = latest_run(bound, link)
             if run is not None and run.state == "saved":
                 continue
+            if link.compiled_input is None and (
+                run is None or (retry_failed and run.state in {"failed", "lost"})
+            ):
+                raise KomaquillError(
+                    code="story_replan_required", stage="story_rendering", retryable=False
+                )
             if run is not None and run.state in {"failed", "lost"}:
                 if not retry_failed:
                     continue
@@ -198,15 +222,17 @@ def render_events(
             repository.save_render(render)
             try:
                 if run is None:
+                    assert link.compiled_input is not None
                     run = submit_generation(
                         bound,
                         client,
                         bound_session,
-                        image_prompt(plan, scene),
+                        link.compiled_input.prompt,
                         None,
                         link.seed,
                         render.image_profile,
                         run_id=link.run_ids[-1],
+                        compiled_input=link.compiled_input,
                     )
                 yield story_view(repository, bound, render.story_id, render_id)
                 if run.state != "saved":

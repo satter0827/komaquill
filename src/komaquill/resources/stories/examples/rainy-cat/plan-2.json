@@ -3,19 +3,19 @@
   "synopsis": "雨の日に出会った子猫を助けたミオが、親子猫の再会を見届ける物語。",
   "characters": [
     {
-      "key": "mio",
+      "key": "c1",
       "name": "ミオ",
       "appearance": "young woman, human face, short dark bob, yellow raincoat, human hands",
       "kind": "human"
     },
     {
-      "key": "kitten",
+      "key": "c2",
       "name": "子猫",
       "appearance": "tiny gray kitten, white chest patch, four legs, natural feline body",
       "kind": "animal"
     },
     {
-      "key": "mother",
+      "key": "c3",
       "name": "母猫",
       "appearance": "larger adult gray mother cat, white chest patch, four legs",
       "kind": "animal"
@@ -33,18 +33,18 @@
       ],
       "subjects": [
         {
-          "character": "mio",
+          "character": "c1",
           "action": "holds the umbrella above the kitten"
         },
         {
-          "character": "kitten",
+          "character": "c2",
           "action": "rests under the umbrella"
         }
       ],
       "props": [
         {
-          "prop": "umbrella",
-          "holder": "mio",
+          "prop": "o1",
+          "holder": "c1",
           "state": "held over the kitten"
         }
       ]
@@ -60,14 +60,14 @@
       ],
       "subjects": [
         {
-          "character": "mio",
+          "character": "c1",
           "action": "walks home holding the umbrella overhead"
         }
       ],
       "props": [
         {
-          "prop": "umbrella",
-          "holder": "mio",
+          "prop": "o1",
+          "holder": "c1",
           "state": "held above her head"
         }
       ]
@@ -78,7 +78,7 @@
   ],
   "props": [
     {
-      "key": "umbrella",
+      "key": "o1",
       "name": "青い傘",
       "appearance": "a single blue umbrella"
     }

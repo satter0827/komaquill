@@ -60,8 +60,9 @@ def _publish_story(
         lines.append(f"## {scene['position']:03d} — {prose(scene['title'])}")
         lines.append(prose(scene["narrative"]))
         lines.append(message("stories.document_state", state=scene["state"]))
-        image = scene["primary_image"]
-        if image is not None:
+        for image in scene["candidates"] or (
+            [scene["primary_image"]] if scene["primary_image"] else []
+        ):
             target = project.artifacts_store.path(image["key"])
             if not target.is_file():
                 raise KomaquillError(
@@ -70,6 +71,14 @@ def _publish_story(
                     details={"render_id": str(snapshot["render_id"])},
                 )
             relative = target.relative_to(render_folder).as_posix()
+            if image.get("metadata") and image["metadata"].get("role") == "candidate":
+                lines.append(
+                    message(
+                        "images.candidate_heading",
+                        position=image["metadata"]["batch_index"] + 1,
+                        total=scene["requested_candidates"],
+                    )
+                )
             lines.append(f"![{scene['position']:03d}]({quote(relative, safe='/')})")
     path = render_folder / "manifest.json"
     try:
@@ -96,7 +105,7 @@ def publish_listing(repository: PublicationSource, project: Project) -> None:
         count = row.image_count if row.image_count is not None else "?"
         lines.append(
             f"- [{prose(row.title)}]({quote(key, safe='/')}) — {row.created_at.isoformat()}"
-            f" — {row.state} — {row.saved_images}/{count} — {row.purpose}"
+            f" — {row.state} — {row.saved_scenes}/{count} — {row.purpose}"
         )
     for identity in listing.unreadable_ids:
         lines.append(message("stories.catalog_unreadable", story_id=identity))

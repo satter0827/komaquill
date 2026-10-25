@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
-from komaquill.domain.images import CompiledImageInput
+from komaquill.domain.images import CompiledImageInput, PromptSource
 
 
 class StoryRecord(BaseModel):
@@ -287,7 +287,8 @@ class SceneAttempts(StoryRecord):
 class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
-    format_version: Literal[1, 2] = 1
+    input_sources: tuple[PromptSource, ...] = ()
+    format_version: Literal[1, 2, 3] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     plan_sha256: str
@@ -298,7 +299,7 @@ class StoryRender(StoryRecord):
 
     @model_validator(mode="after")
     def distinct_requests(self) -> Self:
-        if self.format_version == 2 and any(scene.compiled_input is None for scene in self.scenes):
+        if self.format_version >= 2 and any(scene.compiled_input is None for scene in self.scenes):
             raise ValueError("New rendering attempts require frozen image inputs.")
         identities = [value for scene in self.scenes for value in scene.run_ids]
         if len(identities) != len(set(identities)):

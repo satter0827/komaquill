@@ -16,7 +16,10 @@ from komaquill.domain.evaluations import Evaluator as Evaluator
 from komaquill.domain.images import CompiledImageInput as CompiledImageInput
 from komaquill.domain.images import ImageInput as ImageInput
 from komaquill.domain.images import PromptSource as PromptSource
+from komaquill.domain.materials import InputArtifact as InputArtifact
 from komaquill.domain.models import Run as Run
+from komaquill.domain.rendering import RenderConfig as RenderConfig
+from komaquill.domain.rendering import SceneRenderConfig as SceneRenderConfig
 from komaquill.domain.status import SessionStatus as SessionStatus
 from komaquill.domain.storage import MigrationReport as MigrationReport
 from komaquill.domain.stories import StoryPlan as StoryPlan
@@ -31,6 +34,9 @@ __all__ = [
     "Client",
     "CompiledImageInput",
     "ImageInput",
+    "InputArtifact",
+    "RenderConfig",
+    "SceneRenderConfig",
     "PromptSource",
     "Evaluation",
     "Evaluator",

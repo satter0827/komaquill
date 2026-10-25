@@ -14,6 +14,7 @@ from komaquill.application.stories.rendering import create_render, render_events
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage, failure_info
 from komaquill.domain.images import PromptSource
 from komaquill.domain.models import Session
+from komaquill.domain.rendering import RenderConfig
 from komaquill.domain.stories import StoryInput, StoryPlan
 from komaquill.domain.story_evidence import EvidenceDetail, StoryEvidence
 from komaquill.domain.story_views import StoryEvent, StoryInterrupted, StoryListing, StorySnapshot
@@ -232,13 +233,18 @@ class StoryService:
         candidates: int | None = None,
         negative: str | None = None,
         input_sources: tuple[PromptSource, ...] = (),
+        render_config: RenderConfig | None = None,
     ) -> Iterator[StoryEvent]:
         with (
             operation_scope(),
             api_operation(OperationStage.STORY_RENDERING),
             connected(self._project) as (backend, session),
         ):
-            profile = image_profile or settings(self._project).image_profile
+            profile = image_profile or (
+                render_config.scenes[0].profile
+                if render_config
+                else settings(self._project).image_profile
+            )
             render = create_render(
                 self._repository,
                 self._project,
@@ -249,6 +255,7 @@ class StoryService:
                 candidates=candidates,
                 negative=negative,
                 input_sources=input_sources,
+                render_config=render_config,
             )
             yield from self._events(backend, session, render.render_id, False)
 

@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from PIL import Image, UnidentifiedImageError
 
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import ImageMetadata, ImageRef
 from komaquill.infrastructure.atomic import atomic_bytes
 from komaquill.infrastructure.locations import Locations
@@ -55,6 +56,24 @@ class LocalArtifactStore:
             or hashlib.sha256(content).hexdigest() != previous.sha256
         ):
             return None
+        return content
+
+    def input_content(self, item: InputArtifact) -> bytes:
+        """Verify retained bytes and mask semantics again at the point of use."""
+        content = self.read(item.key)
+        metadata = self.inspect_image(content, ImageRef(filename=item.name))
+        if (metadata.sha256, metadata.size_bytes, metadata.width, metadata.height) != (
+            item.sha256,
+            item.size_bytes,
+            item.width,
+            item.height,
+        ):
+            raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
+        with Image.open(io.BytesIO(content)) as image:
+            if image.format not in {"PNG", "JPEG", "WEBP"} or getattr(image, "n_frames", 1) != 1:
+                raise KomaquillError(code="unsupported_image", stage="preparation", retryable=False)
+            if item.kind == "mask" and (image.mode not in {"1", "L"} or image.format != "PNG"):
+                raise KomaquillError(code="invalid_request", stage="preparation", retryable=False)
         return content
 
     def inspect_image(self, content: bytes, source: ImageRef) -> ImageMetadata:

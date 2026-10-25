@@ -28,7 +28,7 @@ from komaquill.infrastructure.storage import run_dir
 from komaquill.infrastructure.views import open_view
 from komaquill.infrastructure.workflows import assets, prepare, select
 from komaquill.interfaces.evaluations import bind
-from komaquill.interfaces.image_inputs import image_input
+from komaquill.interfaces.image_inputs import image_input, material_inputs
 from komaquill.interfaces.stories import bind as bind_stories
 from komaquill.messages import error_message, message
 
@@ -253,7 +253,11 @@ def generate_command(
             prompt = typer.prompt(message("text.describe_the_image_to_generate"))
         value, sources = image_input(prompt, negative, prompt_file, negative_file, input_file)
         typer.echo(message("text.generating_the_image"))
-        run = Client(project.root).images.generate(
+        api = Client(project.root)
+        inputs = material_inputs(
+            api, profile, value.inputs, input_file.parent if input_file else project.root
+        )
+        run = api.images.generate(
             value.prompt,
             negative=value.negative,
             subjects=value.subjects,
@@ -261,6 +265,8 @@ def generate_command(
             profile=profile,
             candidates=candidates,
             input_sources=sources,
+            inputs=inputs,
+            parameters=value.parameters,
         )
         if run.output_spec is None:
             typer.echo(message("images.saved_outputs", count=len(run.images)))
@@ -315,8 +321,14 @@ def doctor(ctx: typer.Context) -> None:
             "checkpoints": ("CheckpointLoaderSimple", "ckpt_name"),
             "loras": ("LoraLoaderModelOnly", "lora_name"),
             "upscale_models": ("UpscaleModelLoader", "model_name"),
+            "ipadapter": ("IPAdapterModelLoader", "ipadapter_file"),
+            "clip_vision": ("CLIPVisionLoader", "clip_name"),
         }
         for asset in assets(settings):
+            if asset.role not in loaders:
+                raise KomaquillError(
+                    code="invalid_configuration", stage="preparation", retryable=False
+                )
             loader, field = loaders[asset.role]
             choices = input_choices(nodes, loader, field)
             if asset.reference not in choices:

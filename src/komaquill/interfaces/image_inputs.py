@@ -1,13 +1,17 @@
 """Read portable prompt files at the terminal boundary."""
 
+import json
 from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
 from pydantic import ValidationError
 
+from komaquill.api import Client
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import ImageInput, PromptSource
+from komaquill.domain.materials import InputArtifact
+from komaquill.domain.rendering import RenderConfig
 
 
 def read_source(path: Path, role: Literal["positive", "negative", "input"]) -> PromptSource:
@@ -93,3 +97,40 @@ def image_input(
             retryable=False,
         ) from None
     return value, (*sources, *extra)
+
+
+def material_inputs(
+    client: Client, profile_name: str | None, references: dict[str, str], base: Path
+) -> dict[str, InputArtifact]:
+    """Resolve user paths at the terminal boundary and retain only saved references."""
+    if not references:
+        return {}
+    from komaquill.infrastructure.configuration import find_project
+    from komaquill.infrastructure.sessions.connection import session_project
+
+    settings = session_project(find_project(client.workspace)).settings()
+    name = profile_name or settings.profiles[0]
+    if name not in settings.presets or set(references) != set(settings.presets[name].image_inputs):
+        raise KomaquillError(code="invalid_request", stage="preparation", retryable=False)
+    return {
+        key: client.inputs.import_file(
+            base / path, kind=settings.presets[name].image_inputs[key].kind
+        )
+        for key, path in references.items()
+    }
+
+
+def render_file(client: Client, path: Path) -> tuple[RenderConfig, PromptSource]:
+    """Import every scene's materials before calling the rendering service."""
+    source = read_source(path, "input")
+    try:
+        value = json.loads(source.content.removeprefix("\ufeff"))
+        for scene in value["scenes"]:
+            scene["inputs"] = material_inputs(
+                client, scene["profile"], scene.get("inputs", {}), path.parent
+            )
+        return RenderConfig.model_validate(value), source
+    except (ValueError, KeyError, TypeError):
+        raise KomaquillError(
+            code="invalid_request", stage="story_rendering", retryable=False
+        ) from None

@@ -1,0 +1,10 @@
+# Reviewed node packages; install only when a selected preset requires them.
+[ipadapter]
+repository = "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+revision = "a0f451a5113cf9becb0847b92884cb10cbdec0ef" # pragma: allowlist secret Public immutable upstream identity.
+license = "GPL-3.0"
+
+[crop-stitch]
+repository = "https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git"
+revision = "6005efc02f7745649118edd89cdd084c2b9bd3ae" # pragma: allowlist secret Public immutable upstream identity.
+license = "GPL-3.0"

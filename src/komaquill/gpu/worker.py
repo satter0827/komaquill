@@ -16,6 +16,7 @@ from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
 from komaquill.domain.presets import MODEL_ROLES
+from komaquill.gpu.extensions import prepare_extensions
 from komaquill.gpu.progress import progress
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import GpuProject, Project
@@ -64,6 +65,7 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     os.environ["KOMAQUILL_ARTIFACTS"] = str(project.artifacts)
     os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
     settings = project.settings()
+    prepare_extensions(comfy, settings)
     for name in settings.profiles:
         profile = settings.presets[name]
         for view in ["graph", "app"]:

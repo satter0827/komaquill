@@ -1,0 +1,179 @@
+batch_size = 2
+primary_output_node = "9"
+quality_enabled = true
+negative_prefix = "text, watermark, signature"
+checkpoint = "pony"
+width = 1024
+height = 1024
+steps = 25
+cfg = 7.0
+sampler = "euler_ancestral"
+scheduler = "normal"
+clip_skip = -2
+positive_prefix = "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up"
+negative = ""
+sample_prompt = "rear view of a young woman in a yellow raincoat holding a blue umbrella, rainy street, soft storybook illustration"
+extensions = ["ipadapter"]
+separate_subjects = false
+sample_subjects = []
+
+[resources]
+ipadapter = "ipadapter-sdxl"
+clip_vision = "clip-vision-vit-h"
+
+[parameters]
+reference_weight = 0.6
+
+[parameter_bounds]
+reference_weight = [0.0, 2.0]
+
+[image_inputs.reference]
+kind = "image"
+sample = "reference.png"
+
+[[bindings]]
+source = "seed"
+api_node = "3"
+api_input = "seed"
+ui_node = 3
+ui_widget = 0
+
+[[bindings]]
+source = "steps"
+api_node = "3"
+api_input = "steps"
+ui_node = 3
+ui_widget = 2
+
+[[bindings]]
+source = "cfg"
+api_node = "3"
+api_input = "cfg"
+ui_node = 3
+ui_widget = 3
+
+[[bindings]]
+source = "sampler"
+api_node = "3"
+api_input = "sampler_name"
+ui_node = 3
+ui_widget = 4
+
+[[bindings]]
+source = "scheduler"
+api_node = "3"
+api_input = "scheduler"
+ui_node = 3
+ui_widget = 5
+
+[[bindings]]
+source = "checkpoint"
+api_node = "4"
+api_input = "ckpt_name"
+ui_node = 4
+ui_widget = 0
+
+[[bindings]]
+source = "width"
+api_node = "5"
+api_input = "width"
+ui_node = 5
+ui_widget = 0
+
+[[bindings]]
+source = "height"
+api_node = "5"
+api_input = "height"
+ui_node = 5
+ui_widget = 1
+
+[[bindings]]
+source = "negative"
+api_node = "12"
+api_input = "string_b"
+ui_node = 12
+ui_widget = 1
+
+[[bindings]]
+source = "output_prefix"
+api_node = "9"
+api_input = "filename_prefix"
+ui_node = 9
+ui_widget = 0
+
+[[bindings]]
+source = "positive_prefix"
+api_node = "10"
+api_input = "string_a"
+ui_node = 10
+ui_widget = 0
+
+[[bindings]]
+source = "prompt"
+api_node = "10"
+api_input = "string_b"
+ui_node = 10
+ui_widget = 1
+
+[[bindings]]
+source = "clip_skip"
+api_node = "11"
+api_input = "stop_at_clip_layer"
+ui_node = 11
+ui_widget = 0
+
+[[bindings]]
+source = "prompt_delimiter"
+api_node = "10"
+api_input = "delimiter"
+ui_node = 10
+ui_widget = 2
+
+[[bindings]]
+source = "negative_prefix"
+api_node = "12"
+api_input = "string_a"
+ui_node = 12
+ui_widget = 0
+
+[[bindings]]
+source = "negative_delimiter"
+api_node = "12"
+api_input = "delimiter"
+ui_node = 12
+ui_widget = 2
+
+[[bindings]]
+source = "batch_size"
+api_node = "5"
+api_input = "batch_size"
+ui_node = 5
+ui_widget = 2
+
+[[bindings]]
+source = "input_reference"
+api_node = "20"
+api_input = "image"
+ui_node = 20
+ui_widget = 0
+
+[[bindings]]
+source = "clip_vision"
+api_node = "21"
+api_input = "clip_name"
+ui_node = 21
+ui_widget = 0
+
+[[bindings]]
+source = "ipadapter"
+api_node = "22"
+api_input = "ipadapter_file"
+ui_node = 22
+ui_widget = 0
+
+[[bindings]]
+source = "reference_weight"
+api_node = "23"
+api_input = "weight"
+ui_node = 23
+ui_widget = 0

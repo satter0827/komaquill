@@ -70,7 +70,7 @@ def test_conflicting_sources_are_rejected_without_opening_any_file(kwargs):
         b'{"prompt":"ok","negative":4}',
         b'{"prompt":"ok","subjects":["1","2","3"]}',
         b'{"prompt":"ok","extra":"ignored?"}',
-        b'{"format_version":2,"prompt":"ok"}',
+        b'{"format_version":3,"prompt":"ok"}',
     ],
 )
 def test_invalid_input_files_are_safe_errors(tmp_path, content):

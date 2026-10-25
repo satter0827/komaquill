@@ -10,6 +10,21 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import CompiledImageInput, compile_image_input
 from komaquill.domain.models import JsonObject, ModelPreset
 from komaquill.domain.presets import GenerationPreset
+from komaquill.messages import message
+
+_INPUT_LABELS = {
+    "prompt": "workflow.prompt",
+    "negative": "workflow.negative",
+    "batch_size": "workflow.candidates",
+    "input_reference": "workflow.reference",
+    "input_base": "workflow.base",
+    "input_mask": "workflow.mask",
+    "input_person_mask": "workflow.person_mask",
+    "input_cat_reference": "workflow.cat_reference",
+    "input_cat_mask": "workflow.cat_mask",
+    "subject_1_body": "workflow.person",
+    "subject_2_body": "workflow.cat",
+}
 
 
 def resource_json(name: str) -> JsonObject:
@@ -102,6 +117,9 @@ def prepare(
         upscaled_output_prefix=f"komaquill/{run_id}-upscaled",
     )
     for index in (1, 2):
+        values[f"subject_{index}_body"] = (
+            applied.subject_prompts[index - 1] if index <= len(applied.subject_prompts) else ""
+        )
         values[f"subject_{index}"] = (
             applied.subject_positives[index - 1] if index <= len(applied.subject_positives) else ""
         )
@@ -115,9 +133,22 @@ def prepare(
         asset = getattr(profile, name)
         if asset is not None:
             values[name] = settings.assets[asset].reference
+    values.update(
+        {name: settings.assets[asset].reference for name, asset in profile.resources.items()}
+    )
+    values.update(profile.parameters)
+    values.update({f"input_{name}": slot.sample for name, slot in profile.image_inputs.items()})
+    values.update({f"input_{name}": item.reference for name, item in applied.inputs.items()})
+    values.update(
+        {f"seed_{name}": (seed + offset) % (2**64) for name, offset in profile.seed_offsets.items()}
+    )
     nodes = {row["id"]: row for row in ui["nodes"]}
     for binding in profile.bindings:
         value = values[binding.source]
         api[binding.api_node]["inputs"][binding.api_input] = value
         nodes[binding.ui_node]["widgets_values"][binding.ui_widget] = value
+        if binding.source in _INPUT_LABELS:
+            for slot in nodes[binding.ui_node].get("inputs", []):
+                if slot.get("name") == binding.api_input:
+                    slot["label"] = message(_INPUT_LABELS[binding.source])
     return api, ui

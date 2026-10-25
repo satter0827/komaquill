@@ -19,6 +19,7 @@ class ArtifactView(BaseModel):
 
 class SceneView(Scene):
     compiled_input: CompiledImageInput | None = None
+    image_profile: str | None = None
     state: Literal["unstarted"] | RunState
     run_id: UUID | None
     attempt_ids: list[UUID]

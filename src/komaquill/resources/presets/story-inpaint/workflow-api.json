@@ -1,0 +1,291 @@
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1,
+      "steps": 25,
+      "cfg": 7.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.85,
+      "model": [
+        "23",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "33",
+        0
+      ]
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3/v6.safetensors"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "10",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "13",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "35",
+        0
+      ],
+      "filename_prefix": "komaquill/pony"
+    }
+  },
+  "10": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up",
+      "string_b": "a small cabin in a sunny forest, illustration, warm light",
+      "delimiter": ", "
+    }
+  },
+  "11": {
+    "class_type": "CLIPSetLastLayer",
+    "inputs": {
+      "clip": [
+        "4",
+        1
+      ],
+      "stop_at_clip_layer": -2
+    }
+  },
+  "12": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "text, watermark, signature",
+      "string_b": "",
+      "delimiter": ", "
+    }
+  },
+  "13": {
+    "class_type": "RegexReplace",
+    "inputs": {
+      "string": [
+        "12",
+        0
+      ],
+      "regex_pattern": "^[,\\s]+|[,\\s]+$",
+      "replace": "",
+      "case_insensitive": false,
+      "multiline": false,
+      "dotall": false,
+      "count": 0
+    }
+  },
+  "20": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "reference.png"
+    }
+  },
+  "21": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip-vision-vit-h"
+    }
+  },
+  "22": {
+    "class_type": "IPAdapterModelLoader",
+    "inputs": {
+      "ipadapter_file": "ipadapter-sdxl"
+    }
+  },
+  "23": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "ipadapter": [
+        "22",
+        0
+      ],
+      "image": [
+        "20",
+        0
+      ],
+      "weight": 0.6,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 0.8,
+      "embeds_scaling": "V only",
+      "clip_vision": [
+        "21",
+        0
+      ]
+    }
+  },
+  "30": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "base.png"
+    }
+  },
+  "31": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "mask.png",
+      "channel": "red"
+    }
+  },
+  "40": {
+    "class_type": "RepeatImageBatch",
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "amount": 2
+    }
+  },
+  "32": {
+    "class_type": "InpaintCropImproved",
+    "inputs": {
+      "image": [
+        "40",
+        0
+      ],
+      "mask": [
+        "31",
+        0
+      ],
+      "downscale_algorithm": "bilinear",
+      "upscale_algorithm": "bicubic",
+      "preresize": false,
+      "preresize_mode": "ensure minimum resolution",
+      "preresize_min_width": 1024,
+      "preresize_min_height": 1024,
+      "preresize_max_width": 16384,
+      "preresize_max_height": 16384,
+      "mask_fill_holes": false,
+      "mask_expand_pixels": 8,
+      "mask_invert": false,
+      "mask_blend_pixels": 16,
+      "mask_hipass_filter": 0.0,
+      "extend_for_outpainting": false,
+      "extend_up_factor": 1.0,
+      "extend_down_factor": 1.0,
+      "extend_left_factor": 1.0,
+      "extend_right_factor": 1.0,
+      "context_from_mask_extend_factor": 1.4,
+      "output_resize_to_target_size": true,
+      "output_target_width": 1024,
+      "output_target_height": 1024,
+      "output_padding": "32",
+      "device_mode": "cpu (compatible)"
+    }
+  },
+  "33": {
+    "class_type": "VAEEncodeForInpaint",
+    "inputs": {
+      "pixels": [
+        "32",
+        1
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "mask": [
+        "32",
+        2
+      ],
+      "grow_mask_by": 0
+    }
+  },
+  "34": {
+    "class_type": "InpaintStitchImproved",
+    "inputs": {
+      "stitcher": [
+        "32",
+        0
+      ],
+      "inpainted_image": [
+        "8",
+        0
+      ]
+    }
+  },
+  "35": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "40",
+        0
+      ],
+      "source": [
+        "34",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "31",
+        0
+      ]
+    }
+  },
+  "36": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "32",
+        1
+      ],
+      "filename_prefix": "komaquill/crop"
+    }
+  }
+}

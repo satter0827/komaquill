@@ -39,8 +39,9 @@ def test_profile_exports_match_api_and_widget_values(name):
             == nodes[str(binding.ui_node)]["widgets_values"][binding.ui_widget]
         )
     assert value("steps") == profile.steps
-    assert value("width") == profile.width
-    assert value("height") == profile.height
+    for dimension in ("width", "height"):
+        if any(binding.source == dimension for binding in profile.bindings):
+            assert value(dimension) == getattr(profile, dimension)
     assert value("checkpoint") == settings.assets[profile.checkpoint].reference
     assert value("seed") == 42
     assert value("negative") == profile.negative

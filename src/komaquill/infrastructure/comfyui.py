@@ -1,5 +1,6 @@
 """Access the standard ComfyUI HTTP API."""
 
+import hashlib
 from json import JSONDecodeError
 from typing import Any, cast
 from urllib.parse import quote
@@ -7,6 +8,7 @@ from urllib.parse import quote
 import httpx
 
 from komaquill.domain.errors import KomaquillError, SubmissionUnknown
+from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import ImageRef, JsonObject
 
 
@@ -123,7 +125,8 @@ class ComfyClient:
             for node in graph.values()
             if isinstance(node, dict)
             for key, value in node.get("inputs", {}).items()
-            if key.endswith(("_name", "_name1", "_name2", "_name3")) and isinstance(value, str)
+            if key.endswith(("_name", "_name1", "_name2", "_name3", "_file"))
+            and isinstance(value, str)
         }
         if not any(re.match(r"^[a-f0-9]{64}/", value) for value in references):
             return graph, ui
@@ -180,6 +183,40 @@ class ComfyClient:
     def image(self, reference: ImageRef) -> bytes:
         """Download an image referenced by the server history."""
         return self.request("GET", "/view", params=reference.model_dump()).content
+
+    def upload_image(self, item: InputArtifact, content: bytes) -> None:
+        """Use immutable content-addressed standard inputs and verify remote bytes."""
+        from pathlib import PurePosixPath
+
+        reference = PurePosixPath(item.reference)
+        folder = str(reference.parent) if len(reference.parts) > 1 else ""
+        filename = reference.name
+        response = self.request(
+            "POST",
+            "/upload/image",
+            files={"image": (filename, content)},
+            data={"subfolder": folder, "type": "input", "overwrite": "true"},
+        )
+        try:
+            value = response.json()
+            if (
+                value["name"] != filename
+                or value["subfolder"] != folder
+                or value["type"] != "input"
+            ):
+                raise ValueError
+            returned = self.request(
+                "GET", "/view", params={"filename": filename, "subfolder": folder, "type": "input"}
+            ).content
+            if (
+                len(returned) != item.size_bytes
+                or hashlib.sha256(returned).hexdigest() != item.sha256
+            ):
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            raise KomaquillError(
+                code="invalid_output", stage="preparation", retryable=False
+            ) from None
 
     def checkpoints(self) -> list[str]:
         """Validate checkpoint choices without exposing the remote payload."""

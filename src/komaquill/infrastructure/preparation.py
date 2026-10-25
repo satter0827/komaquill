@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import keyring
 from filelock import FileLock
@@ -22,7 +22,7 @@ from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
-from komaquill.infrastructure.materials import MaterialCollector
+from komaquill.infrastructure.materials import MaterialCollector, workspace_identity
 from komaquill.infrastructure.model_sources import resolve_model
 from komaquill.infrastructure.storage import load_session
 from komaquill.messages import message
@@ -56,11 +56,7 @@ class Coordinator:
         self.futures: dict[UUID, Future[None]] = {}
         self.cancel_events: dict[UUID, threading.Event] = {}
         self.bound: set[UUID] = set()
-        path = project.state / "workspace.json"
-        self.workspace_id = (
-            UUID(json.loads(path.read_bytes())["workspace_id"]) if path.is_file() else uuid4()
-        )
-        atomic_json(path, {"workspace_id": str(self.workspace_id)})
+        self.workspace_id = workspace_identity(project)
         key = str(project.root)
         token = keyring.get_password("komaquill-extension", key)
         if token is None:

@@ -33,7 +33,11 @@ def test_local_preset_is_complete_and_frozen(project, monkeypatch):
     config.write_text('profiles=["custom"]\n')
     second, _ = prepare("second", "", 42, "run", settings=frozen.settings())
     assert second["3"]["inputs"]["steps"] == 31
-    assert second["7"]["inputs"]["text"] == frozen.settings().presets["custom"].negative_prefix
+    profile = frozen.settings().presets["custom"]
+    negative = next(binding for binding in profile.bindings if binding.source == "negative")
+    prefix = next(binding for binding in profile.bindings if binding.source == "negative_prefix")
+    assert second[negative.api_node]["inputs"][negative.api_input] == ""
+    assert second[prefix.api_node]["inputs"][prefix.api_input] == profile.negative_prefix
     assert project.settings().presets["custom"].steps == 40
     monkeypatch.setenv("KOMAQUILL_PRESETS", json.dumps({"custom": {"steps": 41}}))
     assert project.settings().presets["custom"].steps == 41

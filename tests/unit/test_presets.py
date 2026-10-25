@@ -43,16 +43,12 @@ def test_profile_exports_match_api_and_widget_values(name):
     assert value("height") == profile.height
     assert value("checkpoint") == settings.assets[profile.checkpoint].reference
     assert value("seed") == 42
-    expected_negative = ", ".join(
-        part for part in (profile.negative_prefix, profile.negative) if part
-    )
-    assert value("negative") == expected_negative
+    assert value("negative") == profile.negative
+    assert value("negative_prefix") == profile.negative_prefix
+    assert value("batch_size") == profile.batch_size
     custom, _ = prepare("other", "custom", 9, "b", settings=settings)
     negative_binding = next(row for row in profile.bindings if row.source == "negative")
-    assert (
-        custom[negative_binding.api_node]["inputs"][negative_binding.api_input]
-        == profile.negative_prefix + ", custom"
-    )
+    assert custom[negative_binding.api_node]["inputs"][negative_binding.api_input] == "custom"
     assert ui["extra"]["linearData"]["inputs"]
     assert ui["extra"]["linearData"]["outputs"]
 

@@ -69,7 +69,12 @@ def run_acceptance(wheel: Path | None = None) -> None:
             history[identity] = {
                 "prompt": [0, identity, data["prompt"], data["extra_data"], ["9"]],
                 "outputs": {
-                    "9": {"images": [{"filename": "result.png", "subfolder": "", "type": "output"}]}
+                    "9": {
+                        "images": [
+                            {"filename": f"result-{index}.png", "subfolder": "", "type": "output"}
+                            for index in range(data["prompt"]["5"]["inputs"]["batch_size"])
+                        ]
+                    }
                 },
                 "status": {"status_str": "success", "completed": True},
             }

@@ -39,7 +39,7 @@ Pony、Hyper-SDXL、Real-ESRGANの利用条件は各モデル定義のlicenseと
 
 構成・モデル参照・入力対応も変更する場合は、同梱のセットフォルダーを作業フォルダーのpresets/IDへコピーし、一式を編集します。変更後はstopとstartで再検証します。個々の生成でseedや正負プロンプトを変える場合はgenerateの引数、実行中の詳細編集はNode Graphを使います。
 
-単画像CLIは一つのプロンプトを扱い、Python APIのsubjectsとストーリー生成は最大2対象の入力を扱います。単画像CLIのプロンプトファイル入力は未対応です。[今後の候補](../plans/future.md)と実装済みの入力を区別してください。
+単画像CLIは正負の直接入力、UTF-8ファイル、JSON入力を扱います。JSONとPython APIのsubjects、ストーリー生成は最大2対象の入力に対応します。入力方法は[操作](../guides/usage.md)を参照してください。
 
 
 ## ストーリーの描画方針
@@ -67,3 +67,11 @@ App ModeとNode Graphは同じ標準グラフから作成し、必要な入力�
 実画像比較では対象数・種別・小物の所有関係の基準を満たしていないため、pony-storyは選択式です。既定はponyを維持します。詳細は[検証結果](../verification/results/story-image-inputs.md)を参照してください。
 
 利用者の標準グラフで負の品質文を別に結合する場合、negative_prefixには適用する品質文、negativeには利用者の指定、negative_delimiterには必要な区切り文字を渡します。negative_prefixを独立して結合しない構成では、negativeが合成済みの負の入力です。APIと標準画面へ同じ値を設定し、品質の無効化時に品質文を残しません。
+
+## 候補の標準バッチ
+
+batch_sizeは一つの要求で生成する候補数です。CLIとPythonのcandidatesは要求ごとに上書きし、起動済みセッションの既定値を変更しません。既定と要求上限の正本は[preset.toml](../../src/komaquill/resources/presets/pony/preset.toml)と[運用設定](../../src/komaquill/resources/settings/defaults.toml)です。
+
+primary_output_nodeは最終候補を出す標準SaveImageノードです。画像拡大セットは拡大後を主出力とし、拡大前も補助出力として保存します。標準画面のCandidatesは潜在画像のbatch_sizeを編集します。キューへ同じ要求を繰り返すbatch_countとは用途が異なります。
+
+正負の品質文と利用者入力は標準の文字列ノードで結合します。負の入力は標準のRegexReplaceで空入力時の区切りを除き、App Modeで入力を変更した場合も品質文との区切りを保ちます。条件はAPIと画面の両グラフへ同じ値を適用します。

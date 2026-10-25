@@ -1,3 +1,5 @@
+batch_size = 2
+primary_output_node = "9"
 quality_enabled = true
 negative_prefix = "text, watermark, signature"
 checkpoint = "pony"
@@ -70,10 +72,10 @@ ui_widget = 1
 
 [[bindings]]
 source = "negative"
-api_node = "7"
-api_input = "text"
-ui_node = 7
-ui_widget = 0
+api_node = "12"
+api_input = "string_b"
+ui_node = 12
+ui_widget = 1
 
 [[bindings]]
 source = "output_prefix"
@@ -108,4 +110,25 @@ source = "prompt_delimiter"
 api_node = "10"
 api_input = "delimiter"
 ui_node = 10
+ui_widget = 2
+
+[[bindings]]
+source = "negative_prefix"
+api_node = "12"
+api_input = "string_a"
+ui_node = 12
+ui_widget = 0
+
+[[bindings]]
+source = "negative_delimiter"
+api_node = "12"
+api_input = "delimiter"
+ui_node = 12
+ui_widget = 2
+
+[[bindings]]
+source = "batch_size"
+api_node = "5"
+api_input = "batch_size"
+ui_node = 5
 ui_widget = 2

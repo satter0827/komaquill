@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from pydantic import TypeAdapter, ValidationError
 
 from komaquill.application.ports import GenerationBackend, Workspace
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import (
     FailureInfo,
     KomaquillError,
@@ -17,8 +18,8 @@ from komaquill.domain.errors import (
     SubmissionUnknown,
     failure_info,
 )
-from komaquill.domain.images import CompiledImageInput, ImageSeed, compile_image_input
-from komaquill.domain.models import ImageRef, JsonObject, Run, Session
+from komaquill.domain.images import CompiledImageInput, ImageSeed, PromptSource, compile_image_input
+from komaquill.domain.models import ImageRef, JsonObject, OutputSpec, Run, Session
 from komaquill.domain.workflow import digest
 
 _SEED_ADAPTER = TypeAdapter(ImageSeed)
@@ -31,6 +32,72 @@ def checked_seed(seed: int, *, stage: OperationStage = OperationStage.GENERATION
         return _SEED_ADAPTER.validate_python(seed)
     except ValidationError:
         raise KomaquillError(code="invalid_request", stage=stage, retryable=False) from None
+
+
+def generation_settings(
+    settings: RuntimeSettings, profile_name: str | None, candidates: int | None = None
+) -> RuntimeSettings:
+    """Freeze a request override without mutating the active session defaults."""
+    name = profile_name or settings.profiles[0]
+    if name not in settings.profiles:
+        raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
+    profile = settings.presets[name]
+    count = profile.batch_size if candidates is None else candidates
+    if (
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or not 1 <= count <= settings.max_candidates
+    ):
+        raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
+    if count == profile.batch_size:
+        return settings
+    return settings.model_copy(
+        update={
+            "presets": {**settings.presets, name: profile.model_copy(update={"batch_size": count})}
+        }
+    )
+
+
+def output_spec(settings: RuntimeSettings | None, graph: JsonObject) -> OutputSpec | None:
+    """Identify supported output roles only when the preset topology is known."""
+    found: set[tuple[str, int]] = set()
+    if settings is None:
+        return None
+    for name in settings.profiles:
+        profile = settings.presets[name]
+        node = profile.primary_output_node
+        if not node or set(graph) != set(profile.api):
+            continue
+        matches = True
+        for key, expected in profile.api.items():
+            actual = graph[key]
+            inputs = actual.get("inputs") if isinstance(actual, dict) else None
+            if (
+                not isinstance(inputs, dict)
+                or actual.get("class_type") != expected.get("class_type")
+                or any(
+                    inputs.get(k) != v
+                    for k, v in expected.get("inputs", {}).items()
+                    if isinstance(v, list)
+                )
+            ):
+                matches = False
+                break
+        if not matches:
+            continue
+        for binding in profile.bindings:
+            if (
+                binding.source == "batch_size"
+                and graph.get(node, {}).get("class_type") == "SaveImage"
+            ):
+                count = graph[binding.api_node].get("inputs", {}).get(binding.api_input)
+                if isinstance(count, int) and not isinstance(count, bool) and count > 0:
+                    found.add((node, count))
+    return (
+        OutputSpec(primary_node=next(iter(found))[0], candidates=next(iter(found))[1])
+        if len(found) == 1
+        else None
+    )
 
 
 @dataclass(frozen=True)
@@ -79,6 +146,7 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
     ]
     return Run(
         run_id=run_id,
+        output_spec=output_spec(settings, graph),
         runtime_id=session.runtime_id,
         **project.identity(),
         remote_code_sha256=session.code_sha256,
@@ -133,23 +201,23 @@ def collection_lock(project: Workspace) -> AbstractContextManager[Any]:
     return project.repository.lock()
 
 
-def image_references(record: JsonObject) -> list[tuple[str, ImageRef]]:
+def image_references(record: JsonObject) -> list[tuple[str, ImageRef, str, int]]:
     """Validate output references without interpreting remote paths as local paths."""
     from pathlib import PurePosixPath
 
     outputs = record.get("outputs", {})
     if not isinstance(outputs, dict):
         raise KomaquillError(code="invalid_output", stage="history_validation")
-    result: list[tuple[str, ImageRef]] = []
-    for output in outputs.values():
+    result: list[tuple[str, ImageRef, str, int]] = []
+    for node, output in outputs.items():
         if not isinstance(output, dict) or not isinstance(output.get("images", []), list):
             raise KomaquillError(code="invalid_output", stage="history_validation")
-        for raw in output.get("images", []):
+        for index, raw in enumerate(output.get("images", [])):
             reference = ImageRef.model_validate(raw)
             suffix = PurePosixPath(reference.filename).suffix.lower()
             if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"}:
                 raise KomaquillError(code="unsupported_image", stage="image_validation")
-            result.append((f"images/{len(result) + 1:04d}{suffix}", reference))
+            result.append((f"images/{len(result) + 1:04d}{suffix}", reference, str(node), index))
     if not result:
         raise KomaquillError(code="missing_image", stage="image_collection")
     return result
@@ -163,31 +231,57 @@ def collect_images(
     record: JsonObject,
 ) -> bool:
     """Fetch and validate outside the shared metadata lock, committing each checkpoint."""
-    names = []
-    for name, reference in image_references(record):
+    references = image_references(record)
+    for name, reference, node, index in references:
         with collection_lock(project):
             run = project.repository.read(run_id)
             if not run.pending or not project.accepts_results(session):
                 return False
             previous = run.image_metadata.get(name)
+            if previous is not None and (
+                previous.source != reference
+                or previous.output_node not in {None, node}
+                or previous.batch_index not in {None, index}
+            ):
+                raise KomaquillError(
+                    code="invalid_output", stage="history_validation", retryable=False
+                )
         key = f"runs/{run_id}/{name}"
         content = project.artifacts_store.cached_image(key, previous)
         if content is None:
             content = client.image(reference)
         metadata = project.artifacts_store.inspect_image(content, reference)
+        metadata.output_node = node
+        metadata.batch_index = index
+        metadata.role = (
+            ("candidate" if node == run.output_spec.primary_node else "auxiliary")
+            if run.output_spec
+            else "unknown"
+        )
         with collection_lock(project):
             run = project.repository.read(run_id)
             if not run.pending or not project.accepts_results(session):
                 return False
             project.artifacts_store.write(key, content)
-            names.append(name)
-            run.images = list(names)
+            if name not in run.images:
+                run.images.append(name)
             run.image_metadata[name] = metadata
             project.repository.save(run)
     with collection_lock(project):
         run = project.repository.read(run_id)
         if not run.pending or not project.accepts_results(session):
             return False
+        if (
+            run.output_spec is not None
+            and sum(node == run.output_spec.primary_node for _, _, node, _ in references)
+            != run.output_spec.candidates
+        ):
+            raise KomaquillError(
+                code="invalid_output",
+                stage="image_collection",
+                retryable=True,
+                details={"run_id": str(run_id)},
+            )
         run.state = "saved"
         run.error = None
         run.failure = None
@@ -350,6 +444,8 @@ def submit_generation(
     run_id: UUID | None = None,
     compiled_input: CompiledImageInput | None = None,
     subjects: tuple[str, ...] = (),
+    candidates: int | None = None,
+    input_sources: tuple[PromptSource, ...] = (),
 ) -> Run:
     """Record before submission and return without waiting for image persistence."""
     try:
@@ -358,7 +454,13 @@ def submit_generation(
         )
     except ValidationError:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False) from None
-    project = project.configured(session.settings)
+    if not prompt.strip():
+        raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
+    settings = generation_settings(
+        project.configured(session.settings).settings(), profile_name, candidates
+    )
+    project = project.configured(settings)
+    session = session.model_copy(update={"settings": settings})
     verify_runtime(client, session)
     run_id = run_id or uuid4()
     if compiled_input is None:
@@ -381,6 +483,7 @@ def submit_generation(
         graph, ui = client.resolve_models(graph, ui)
     run = new_run(project, session, run_id, graph)
     run.compiled_input = compiled_input
+    run.input_sources = input_sources
     run.state = "unknown"
     with collection_lock(project):
         if project.stop_requested(session) is not None:
@@ -454,9 +557,20 @@ def generate(
     profile_name: str | None = None,
     *,
     subjects: tuple[str, ...] = (),
+    candidates: int | None = None,
+    input_sources: tuple[PromptSource, ...] = (),
 ) -> Run:
     """Share request submission and recovery with story generation."""
     run = submit_generation(
-        project, client, session, prompt, negative, seed, profile_name, subjects=subjects
+        project,
+        client,
+        session,
+        prompt,
+        negative,
+        seed,
+        profile_name,
+        subjects=subjects,
+        candidates=candidates,
+        input_sources=input_sources,
     )
     return wait_generation(project, client, session, run.run_id)

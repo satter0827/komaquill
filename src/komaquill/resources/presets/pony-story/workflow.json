@@ -1,6 +1,6 @@
 {
-  "last_node_id": 17,
-  "last_link_id": 19,
+  "last_node_id": 19,
+  "last_link_id": 21,
   "nodes": [
     {
       "id": 7,
@@ -21,6 +21,14 @@
           "name": "clip",
           "type": "CLIP",
           "link": 7
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 21,
+          "widget": {
+            "name": "text"
+          }
         }
       ],
       "outputs": [
@@ -110,7 +118,18 @@
       "widgets_values": [
         1024,
         1024,
-        1
+        2
+      ],
+      "inputs": [
+        {
+          "label": "Candidates",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
+        }
       ]
     },
     {
@@ -626,6 +645,95 @@
       },
       "widgets_values": [],
       "title": "Combine Scene"
+    },
+    {
+      "id": 18,
+      "type": "StringConcatenate",
+      "pos": [
+        20,
+        280
+      ],
+      "size": [
+        340,
+        140
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "Negative Prompt",
+          "name": "string_b",
+          "type": "STRING",
+          "widget": {
+            "name": "string_b"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            20
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "text, watermark, signature",
+        "",
+        ", "
+      ],
+      "title": "Negative Prompt"
+    },
+    {
+      "id": 19,
+      "type": "RegexReplace",
+      "title": "Negative Conditioning",
+      "pos": [
+        390,
+        550
+      ],
+      "size": [
+        320,
+        220
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string",
+          "type": "STRING",
+          "link": 20,
+          "widget": {
+            "name": "string"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            21
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "",
+        "^[,\\s]+|[,\\s]+$",
+        "",
+        false,
+        false,
+        false,
+        0
+      ]
     }
   ],
   "links": [
@@ -780,6 +888,22 @@
       11,
       0,
       "CLIP"
+    ],
+    [
+      20,
+      18,
+      0,
+      19,
+      0,
+      "STRING"
+    ],
+    [
+      21,
+      19,
+      0,
+      7,
+      1,
+      "STRING"
     ]
   ],
   "groups": [],
@@ -805,6 +929,14 @@
         [
           "13",
           "text"
+        ],
+        [
+          "18",
+          "string_b"
+        ],
+        [
+          "5",
+          "batch_size"
         ]
       ],
       "outputs": [

@@ -11,6 +11,8 @@ class RuntimeSettings(BaseModel):
     """Keep the effective settings shared by one connection."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
+    max_candidates: int = Field(default=4, ge=1, strict=True)
+    story_max_in_flight: int = Field(default=1, ge=1, strict=True)
     poll_interval: float = Field(gt=0)
     request_timeout: float = Field(gt=0)
     generation_timeout: float = Field(gt=0)

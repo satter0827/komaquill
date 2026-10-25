@@ -65,7 +65,7 @@ def test_partial_images_are_reused_and_tampered_images_are_repaired(project, cli
     stub.invalid_images.clear()
     assert collect(project, client, session).saved == 1
     saved = load_runs(project)[0]
-    assert len(saved.images) == 2 and saved.failure is None
+    assert len(saved.images) == len(record["outputs"]["9"]["images"]) and saved.failure is None
     assert (
         hashlib.sha256(target.read_bytes()).hexdigest()
         == saved.image_metadata[saved.images[0]].sha256
@@ -103,7 +103,7 @@ def test_parallel_collectors_commit_each_image_once(project, client, session, st
     with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(lambda _: collect(project, client, session), range(3)))
     assert sum(result.saved for result in results) == 1
-    assert stub.image_requests == 1
+    assert stub.image_requests == len(next(iter(stub.history.values()))["outputs"]["9"]["images"])
     assert len(load_runs(project)) == 1
     assert load_runs(project)[0].state == "saved"
 

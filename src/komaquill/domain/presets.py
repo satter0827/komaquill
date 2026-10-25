@@ -137,6 +137,8 @@ class GenerationPreset(BaseModel):
     regions: tuple[ConditioningRegion, ...] = Field(default=(), max_length=2)
     single_region: ConditioningRegion = Field(default_factory=ConditioningRegion)
     sample_subjects: tuple[str, ...] = Field(default=(), max_length=2)
+    batch_size: int = Field(default=1, ge=1, strict=True)
+    primary_output_node: str | None = None
     negative: str = ""
     sample_prompt: str
     lora_strength: float = Field(default=1.0, ge=-10, le=10)
@@ -175,6 +177,11 @@ class GenerationPreset(BaseModel):
                 {row.source for row in self.bindings}
             ):
                 raise ValueError("Regional presets require two complete subject slots.")
+        if self.primary_output_node is not None and (
+            self.api.get(self.primary_output_node, {}).get("class_type") != "SaveImage"
+            or "batch_size" not in {row.source for row in self.bindings}
+        ):
+            raise ValueError("Candidate presets require a final image output and batch binding.")
         required = {"prompt", "negative", "seed", "checkpoint", "output_prefix"}
         if not required.issubset({row.source for row in self.bindings}):
             raise ValueError("The preset is missing required input bindings.")

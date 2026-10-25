@@ -31,7 +31,7 @@
     "inputs": {
       "width": 1024,
       "height": 1024,
-      "batch_size": 1
+      "batch_size": 2
     }
   },
   "6": {
@@ -50,7 +50,10 @@
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "",
+      "text": [
+        "19",
+        0
+      ],
       "clip": [
         "11",
         0
@@ -176,6 +179,29 @@
       "string_a": "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up",
       "string_b": "rainy street beside a shop awning, blue umbrella, soft colored illustration",
       "delimiter": ", "
+    }
+  },
+  "18": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "text, watermark, signature",
+      "string_b": "",
+      "delimiter": ", "
+    }
+  },
+  "19": {
+    "class_type": "RegexReplace",
+    "inputs": {
+      "string": [
+        "18",
+        0
+      ],
+      "regex_pattern": "^[,\\s]+|[,\\s]+$",
+      "replace": "",
+      "case_insensitive": false,
+      "multiline": false,
+      "dotall": false,
+      "count": 0
     }
   }
 }

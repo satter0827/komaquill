@@ -80,6 +80,13 @@ def prepare(
     if not applied.matches(profile):
         raise KomaquillError(code="invalid_configuration", stage="generation")
     sources = {row.source for row in profile.bindings}
+    negative_cleaned = any(
+        node.get("class_type") == "RegexReplace"
+        and node.get("inputs", {}).get("string") == [row.api_node, 0]
+        for row in profile.bindings
+        if row.source == "negative"
+        for node in profile.api.values()
+    )
     values = profile.model_dump()
     values.update(
         prompt=applied.body if "positive_prefix" in sources else applied.positive,
@@ -87,7 +94,9 @@ def prepare(
         prompt_delimiter=", " if applied.positive_prefix and applied.body else "",
         negative=applied.negative_body if "negative_prefix" in sources else applied.negative,
         negative_prefix=applied.negative_prefix,
-        negative_delimiter=", " if applied.negative_prefix and applied.negative_body else "",
+        negative_delimiter=", "
+        if negative_cleaned or (applied.negative_prefix and applied.negative_body)
+        else "",
         seed=seed,
         output_prefix=f"komaquill/{run_id}",
         upscaled_output_prefix=f"komaquill/{run_id}-upscaled",

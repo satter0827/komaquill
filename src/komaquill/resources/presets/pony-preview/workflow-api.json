@@ -37,7 +37,7 @@
     "inputs": {
       "width": 1024,
       "height": 1024,
-      "batch_size": 1
+      "batch_size": 2
     }
   },
   "6": {
@@ -56,7 +56,10 @@
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "",
+      "text": [
+        "14",
+        0
+      ],
       "clip": [
         "11",
         0
@@ -113,6 +116,29 @@
       ],
       "lora_name": "55b51334c85061afff5eff7c550b61963c8b8607a5868bbe4f26db49374719b1/Hyper-SDXL-8steps-CFG-lora.safetensors",
       "strength_model": 1.0
+    }
+  },
+  "13": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "text, watermark, signature",
+      "string_b": "",
+      "delimiter": ", "
+    }
+  },
+  "14": {
+    "class_type": "RegexReplace",
+    "inputs": {
+      "string": [
+        "13",
+        0
+      ],
+      "regex_pattern": "^[,\\s]+|[,\\s]+$",
+      "replace": "",
+      "case_insensitive": false,
+      "multiline": false,
+      "dotall": false,
+      "count": 0
     }
   }
 }

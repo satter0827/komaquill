@@ -37,7 +37,7 @@
     "inputs": {
       "width": 1024,
       "height": 1024,
-      "batch_size": 1
+      "batch_size": 2
     }
   },
   "6": {
@@ -56,7 +56,10 @@
   "7": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "",
+      "text": [
+        "13",
+        0
+      ],
       "clip": [
         "11",
         0
@@ -102,6 +105,29 @@
         1
       ],
       "stop_at_clip_layer": -2
+    }
+  },
+  "12": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "text, watermark, signature",
+      "string_b": "",
+      "delimiter": ", "
+    }
+  },
+  "13": {
+    "class_type": "RegexReplace",
+    "inputs": {
+      "string": [
+        "12",
+        0
+      ],
+      "regex_pattern": "^[,\\s]+|[,\\s]+$",
+      "replace": "",
+      "case_insensitive": false,
+      "multiline": false,
+      "dotall": false,
+      "count": 0
     }
   }
 }

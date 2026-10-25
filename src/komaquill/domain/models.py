@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
+from komaquill.domain.images import CompiledImageInput
 from komaquill.domain.presets import ModelPreset as ModelPreset
 
 JsonObject = dict[str, Any]
@@ -81,6 +82,8 @@ class ImageMetadata(BaseModel):
 
 class Run(BaseModel):
     """Retain generation conditions for collection after reconnecting."""
+
+    compiled_input: CompiledImageInput | None = None
 
     format_version: int = 2
     run_id: UUID

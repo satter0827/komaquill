@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from komaquill.domain.errors import FailureInfo
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.models import ImageMetadata, Run
-from komaquill.domain.stories import Character, PlanningIssue, TokenUsage
+from komaquill.domain.stories import Character, PlanningIssue, StoryProp, TokenUsage
 from komaquill.domain.story_views import SceneView, StorySource
 
 EvidenceDetail = Literal["summary", "full"]
@@ -105,6 +105,7 @@ class StoryEvidence(BaseModel):
     source: StorySource
     story: EvidenceStory | None
     characters: list[Character]
+    props: list[StoryProp] | None = None
     supplements: list[str]
     scenes: list[SceneView]
     planning: PlanningEvidence

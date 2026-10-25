@@ -97,6 +97,23 @@ class WorkflowBinding(BaseModel):
     ui_widget: int = Field(ge=0)
 
 
+class ConditioningRegion(BaseModel):
+    """Use normalized rectangles independent of the selected image resolution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
+    x: float = Field(default=0, ge=0, le=1)
+    y: float = Field(default=0, ge=0, le=1)
+    width: float = Field(default=1, gt=0, le=1)
+    height: float = Field(default=1, gt=0, le=1)
+    strength: float = Field(default=1, ge=0, le=10)
+
+    @model_validator(mode="after")
+    def contained(self) -> "ConditioningRegion":
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("Conditioning regions must stay inside the image.")
+        return self
+
+
 class GenerationPreset(BaseModel):
     """Bind standard workflow files to explicit model and sampling settings."""
 
@@ -114,7 +131,12 @@ class GenerationPreset(BaseModel):
     sampler: str
     scheduler: str
     clip_skip: int = Field(default=-1, le=-1, ge=-24)
+    quality_enabled: bool = True
     positive_prefix: str = ""
+    negative_prefix: str = ""
+    regions: tuple[ConditioningRegion, ...] = Field(default=(), max_length=2)
+    single_region: ConditioningRegion = Field(default_factory=ConditioningRegion)
+    sample_subjects: tuple[str, ...] = Field(default=(), max_length=2)
     negative: str = ""
     sample_prompt: str
     lora_strength: float = Field(default=1.0, ge=-10, le=10)
@@ -130,8 +152,29 @@ class GenerationPreset(BaseModel):
     def validate_bindings(self) -> "GenerationPreset":
         """Reject incomplete or mismatched exports before GPU allocation."""
         nodes = {row.get("id"): row for row in self.ui.get("nodes", []) if isinstance(row, dict)}
-        allowed = set(type(self).model_fields) - {"api", "ui", "bindings"}
+        allowed = set(type(self).model_fields) - {
+            "api",
+            "ui",
+            "bindings",
+            "regions",
+            "single_region",
+            "sample_subjects",
+        }
         allowed.update({"prompt", "seed", "output_prefix", "upscaled_output_prefix"})
+        allowed.update({"subject_1", "subject_2", "prompt_delimiter", "negative_delimiter"})
+        allowed.update(
+            f"region_{index}_{key}" for index in (1, 2) for key in ConditioningRegion.model_fields
+        )
+        if self.regions:
+            regional = {"subject_1", "subject_2"} | {
+                f"region_{index}_{key}"
+                for index in (1, 2)
+                for key in ConditioningRegion.model_fields
+            }
+            if len(self.regions) != 2 or not regional.issubset(
+                {row.source for row in self.bindings}
+            ):
+                raise ValueError("Regional presets require two complete subject slots.")
         required = {"prompt", "negative", "seed", "checkpoint", "output_prefix"}
         if not required.issubset({row.source for row in self.bindings}):
             raise ValueError("The preset is missing required input bindings.")

@@ -89,7 +89,7 @@ def plan_story(
                     "story_planning",
                 )
                 if isinstance(error, PlanningValidationError):
-                    validation_issues = [error.issue]
+                    validation_issues = error.issues
                 elif isinstance(error, ValidationError):
                     allowed = set(StoryDraft.model_fields) | {
                         "narrative",
@@ -99,6 +99,14 @@ def plan_story(
                         "appearance",
                         "key",
                         "name",
+                        "subjects",
+                        "props",
+                        "kind",
+                        "character",
+                        "action",
+                        "prop",
+                        "holder",
+                        "state",
                     }
                     validation_issues = [
                         PlanningIssue(
@@ -117,11 +125,18 @@ def plan_story(
                 issues = (
                     error.errors(include_input=False, include_context=False, include_url=False)
                     if isinstance(error, ValidationError)
-                    else [{"message": str(error)}]
+                    else [
+                        {"code": issue.code, "loc": list(issue.path)} for issue in validation_issues
+                    ]
                 )
                 correction = json.dumps(
                     {
                         "validation_errors": issues,
+                        **(
+                            {"requirements": str(error)}
+                            if isinstance(error, PlanningValidationError)
+                            else {}
+                        ),
                         "previous_output": response.content if response else None,
                     },
                     ensure_ascii=False,
@@ -148,12 +163,19 @@ def plan_story(
             if draft is not None:
                 plan = StoryPlan(
                     request=request,
+                    format_version=2,
+                    props=[*draft.props],
                     title=draft.title,
                     synopsis=draft.synopsis,
-                    characters=draft.characters,
+                    characters=[character for character in draft.characters],
                     supplements=draft.supplements,
                     scenes=[
-                        Scene(**scene.model_dump(), scene_id=uuid4(), position=i)
+                        Scene(
+                            **scene.model_dump(),
+                            characters=[subject.character for subject in scene.subjects],
+                            scene_id=uuid4(),
+                            position=i,
+                        )
                         for i, scene in enumerate(draft.scenes, 1)
                     ],
                     planner=provenance,

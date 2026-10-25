@@ -24,6 +24,7 @@ from komaquill.domain.workflow import digest
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.locations import Locations, RunPlacement
+from komaquill.infrastructure.stories.prompts import chat_messages
 
 
 class StoredPlan(BaseModel):
@@ -114,9 +115,10 @@ class FileStoryRepository:
         atomic_json(
             folder / "planning/inputs" / f"attempt-{attempt:02d}.json",
             {
-                "format_version": 1,
+                "format_version": 2,
                 "schema": schema,
                 "input": planner_input(request, provenance, correction),
+                "messages": chat_messages(request, provenance, correction),
             },
         )
 

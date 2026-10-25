@@ -1,3 +1,5 @@
+quality_enabled = true
+negative_prefix = "text, watermark, signature"
 checkpoint = "pony"
 upscaler = "realesrgan-anime"
 width = 1024
@@ -131,3 +133,10 @@ api_node = "16"
 api_input = "filename_prefix"
 ui_node = 16
 ui_widget = 0
+
+[[bindings]]
+source = "prompt_delimiter"
+api_node = "10"
+api_input = "delimiter"
+ui_node = 10
+ui_widget = 2

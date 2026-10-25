@@ -36,6 +36,7 @@ class ImageService:
         negative: str | None = None,
         seed: int | None = None,
         profile: str | None = None,
+        subjects: tuple[str, ...] = (),
     ) -> Run:
         with (
             operation_scope(),
@@ -50,6 +51,7 @@ class ImageService:
                 negative,
                 seed if seed is not None else secrets.randbits(63),
                 profile,
+                subjects=subjects,
             )
 
     def collect(self, run_id: UUID | None = None) -> Collection:

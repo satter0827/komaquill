@@ -63,7 +63,7 @@ class StorySettings(BaseSettings):
     )
     images: int | Literal["auto"]
     planning: PlanningPolicy
-    max_images: int = Field(ge=1)
+    max_images: int = Field(ge=1, le=8)
     llm_profile: str
     image_profile: str
     request_timeout: float = Field(gt=0)

@@ -7,7 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from komaquill.api._errors import api_operation
-from komaquill.application.generation import verify_runtime
+from komaquill.application.generation import checked_seed, verify_runtime
 from komaquill.application.stories.listing import list_stories
 from komaquill.application.stories.planning import plan_story
 from komaquill.application.stories.rendering import create_render, render_events, story_view
@@ -266,6 +266,8 @@ class StoryService:
                 raise KomaquillError(
                     code="real_llm_not_allowed", stage="story_planning", retryable=False
                 )
+            if seed is not None:
+                seed = checked_seed(seed, stage=OperationStage.STORY_RENDERING)
             with connected(self._project) as (backend, session):
                 verify_runtime(backend, session)
                 devices = backend.json("/system_stats").get("devices", [])

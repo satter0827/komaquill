@@ -7,12 +7,30 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from komaquill.application.ports import GenerationBackend, Workspace
-from komaquill.domain.errors import FailureInfo, KomaquillError, SubmissionUnknown, failure_info
+from komaquill.domain.errors import (
+    FailureInfo,
+    KomaquillError,
+    OperationStage,
+    SubmissionUnknown,
+    failure_info,
+)
+from komaquill.domain.images import CompiledImageInput, ImageSeed, compile_image_input
 from komaquill.domain.models import ImageRef, JsonObject, Run, Session
 from komaquill.domain.workflow import digest
+
+_SEED_ADAPTER = TypeAdapter(ImageSeed)
+_GENERATION_INPUTS = TypeAdapter(tuple[str, str | None, ImageSeed, tuple[str, ...]])
+
+
+def checked_seed(seed: int, *, stage: OperationStage = OperationStage.GENERATION) -> int:
+    """Reject out-of-range seeds before recording or sending any request."""
+    try:
+        return _SEED_ADAPTER.validate_python(seed)
+    except ValidationError:
+        raise KomaquillError(code="invalid_request", stage=stage, retryable=False) from None
 
 
 @dataclass(frozen=True)
@@ -330,15 +348,39 @@ def submit_generation(
     profile_name: str | None = None,
     *,
     run_id: UUID | None = None,
+    compiled_input: CompiledImageInput | None = None,
+    subjects: tuple[str, ...] = (),
 ) -> Run:
     """Record before submission and return without waiting for image persistence."""
+    try:
+        prompt, negative, seed, subjects = _GENERATION_INPUTS.validate_python(
+            (prompt, negative, seed, subjects)
+        )
+    except ValidationError:
+        raise KomaquillError(code="invalid_request", stage="generation", retryable=False) from None
     project = project.configured(session.settings)
     verify_runtime(client, session)
     run_id = run_id or uuid4()
-    graph, ui = project.prepare(prompt, negative, seed, str(run_id), profile_name)
+    if compiled_input is None:
+        settings = project.settings()
+        selected = profile_name or settings.profiles[0]
+        if selected not in settings.profiles:
+            raise KomaquillError(code="invalid_request", retryable=False)
+        try:
+            compiled_input = compile_image_input(
+                settings.presets[selected], prompt, negative, subjects
+            )
+        except ValidationError:
+            raise KomaquillError(
+                code="invalid_request", stage="generation", retryable=False
+            ) from None
+    graph, ui = project.prepare(
+        prompt, negative, seed, str(run_id), profile_name, compiled_input=compiled_input
+    )
     if session.backend == "external":
         graph, ui = client.resolve_models(graph, ui)
     run = new_run(project, session, run_id, graph)
+    run.compiled_input = compiled_input
     run.state = "unknown"
     with collection_lock(project):
         if project.stop_requested(session) is not None:
@@ -410,7 +452,11 @@ def generate(
     negative: str | None,
     seed: int,
     profile_name: str | None = None,
+    *,
+    subjects: tuple[str, ...] = (),
 ) -> Run:
     """Share request submission and recovery with story generation."""
-    run = submit_generation(project, client, session, prompt, negative, seed, profile_name)
+    run = submit_generation(
+        project, client, session, prompt, negative, seed, profile_name, subjects=subjects
+    )
     return wait_generation(project, client, session, run.run_id)

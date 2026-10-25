@@ -7,8 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from komaquill.domain.errors import FailureInfo
+from komaquill.domain.images import CompiledImageInput
 from komaquill.domain.models import ImageMetadata, RunState
-from komaquill.domain.stories import Character, Scene
+from komaquill.domain.stories import Character, Scene, StoryProp
 
 
 class ArtifactView(BaseModel):
@@ -17,6 +18,7 @@ class ArtifactView(BaseModel):
 
 
 class SceneView(Scene):
+    compiled_input: CompiledImageInput | None = None
     state: Literal["unstarted"] | RunState
     run_id: UUID | None
     attempt_ids: list[UUID]
@@ -47,6 +49,7 @@ class StorySnapshot(BaseModel):
     case_id: str | None
     planner: dict[str, str]
     characters: list[Character]
+    props: list[StoryProp] | None = None
     supplements: list[str]
     image_profile: str | None
     updated_at: datetime

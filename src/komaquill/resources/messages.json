@@ -348,5 +348,6 @@
   "stories.detail_help": "Choose summary for comparison or full for complete source records.",
   "stories.publication_status": "Story files: {status}",
   "stories.publication_pending": "Story files need rebuilding for: {identities}. Check local records and run komaquill stories show STORY_ID --refresh.",
-  "stories.publication_retry": "Readable story files could not be updated. Run: komaquill stories show {story_id} --render-id {render_id} --refresh"
+  "stories.publication_retry": "Readable story files could not be updated. Run: komaquill stories show {story_id} --render-id {render_id} --refresh",
+  "error.story_replan_required": "This plan has no frozen structured image inputs. Plan its saved source.txt again before rendering; existing images and history are retained."
 }

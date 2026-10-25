@@ -81,6 +81,7 @@ GPU_MODULES = frozenset(
         "domain/errors.py",
         "domain/workflow.py",
         "domain/presets.py",
+        "domain/images.py",
         "gpu/__init__.py",
         "gpu/bootstrap.py",
         "gpu/progress.py",

@@ -104,3 +104,10 @@ status = "implemented"
 acceptance = ["保存成功と終端到達を区別する", "破損記録を未送信として再送しない", "無変更時に全作品を再構築しない", "要約と詳細の条件・集計が一致し画像を解決できる", "原文・計画・試行・配置の同一性と参照を検証する", "閲覧用更新の失敗でも後続画像を生成する", "破損した任意評価を明示して正常分を出力する"]
 sources = ["src/komaquill/domain/story_evidence.py", "src/komaquill/infrastructure/stories/evidence.py", "src/komaquill/infrastructure/stories/publication.py"]
 tests = ["tests/integration/stories/test_failures.py", "tests/integration/stories/test_publication.py", "tests/integration/stories/test_story_evidence.py", "tests/integration/stories/test_integrity.py"]
+
+[requirements.REQ-STORY-VISUALS]
+summary = "物語の役割と小物を明示し、公開グラフと固定入力で画像生成を比較する"
+status = "in_progress"
+acceptance = ["新規計画の種別・対象・動作・小物参照を検証する", "品質用の正負プロンプトを既定で適用し設定で無効化する", "生成試行の入力を固定し再開時に再合成しない", "APIと標準画面の条件を揃えて元入力と実行条件を保存する", "過去形式を推測で補わず画像と履歴を保持する", "実画像で対象の数・種別・小物の所有関係・動作の基準を満たす"]
+sources = ["src/komaquill/domain/images.py", "src/komaquill/application/stories/image_inputs.py", "src/komaquill/resources/presets/pony-story/preset.toml"]
+tests = ["tests/unit/test_image_inputs.py", "tests/unit/stories/test_visual_specification.py", "tests/integration/test_acceptance.py"]

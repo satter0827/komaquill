@@ -1,3 +1,5 @@
+quality_enabled = true
+negative_prefix = "text, watermark, signature"
 checkpoint = "pony"
 lora = "hyper-sdxl"
 width = 1024
@@ -116,3 +118,10 @@ api_node = "12"
 api_input = "strength_model"
 ui_node = 12
 ui_widget = 1
+
+[[bindings]]
+source = "prompt_delimiter"
+api_node = "10"
+api_input = "delimiter"
+ui_node = 10
+ui_widget = 2

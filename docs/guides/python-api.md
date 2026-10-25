@@ -75,3 +75,25 @@ completeは保存成功、finishedは失敗を含めた全場面の終了です�
 StoryEvent.publication_failureは、画像の保存状態とは別の閲覧用更新の結果です。失敗しても後続の場面を生成します。最後のイベントでこの値が残った場合は、原因を解消してclient.stories.refresh(story_id, render_id=render_id)で再構築します。保存済み画像を生成し直す必要はありません。
 
 分析用出力のunreadable_evaluation_idsが空でない場合は、一部の評価記録を取得できていません。生成の原本や参照する過去の試行が破損している場合は、黙って省略せずKomaquillErrorを返します。
+
+## 対象別の画像入力
+
+起動済みセッションでpony-storyを有効にしてから実行します。本文を伴う作品はstoriesを使い、単画像の対象別入力はimages.generateのsubjectsへ左から右の順に指定します。
+
+```python
+run = client.images.generate(
+    "rainy street beside a shop awning",
+    profile="pony-story",
+    subjects=(
+        "human woman, yellow raincoat, holding a blue umbrella",
+        "small gray kitten, four legs, sitting under the umbrella",
+    ),
+    negative="extra limbs",
+    seed=42,
+)
+applied = run.compiled_input
+assert applied is not None
+print(applied.positive, applied.negative)
+```
+
+CompiledImageInputはkomaquill.apiから参照できます。利用者が渡した内容と品質プロンプトを適用した条件を確認できます。画面から生成した履歴では、対応する利用者入力を確認できないためcompiled_inputはNoneです。実行条件は保存されたグラフから確認します。

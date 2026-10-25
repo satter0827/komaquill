@@ -25,6 +25,7 @@ class ErrorCode(StrEnum):
     LLM_DEPENDENCIES_MISSING = "llm_dependencies_missing"
     LLM_UNAVAILABLE = "llm_unavailable"
     STORY_PLAN_INVALID = "story_plan_invalid"
+    STORY_REPLAN_REQUIRED = "story_replan_required"
     INVALID_STORY_COUNT = "invalid_story_count"
     IMAGE_BACKEND_UNAVAILABLE = "image_backend_unavailable"
     FAKE_STORY_MISMATCH = "fake_story_mismatch"

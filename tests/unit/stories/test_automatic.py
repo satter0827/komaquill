@@ -57,7 +57,8 @@ def test_repair_includes_specific_errors_and_the_previous_visible_output(project
     )
     correction = json.loads(second["input"]["correction"])
     assert correction["previous_output"] == previous
-    assert "repeated prose" in str(correction["validation_errors"])
+    assert correction["validation_errors"][0]["code"] == "duplicate_narrative"
+    assert "repeated prose" in correction["requirements"]
     assert len(list((repo.folder(value.story_id) / "planning").glob("[0-9]*.json"))) == 2
 
 

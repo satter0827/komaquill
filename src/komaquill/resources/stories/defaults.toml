@@ -16,6 +16,15 @@ require_model_match = true
 reasoning_effort = "none"
 temperature = 0.3
 
+[llm_profiles.lmstudio-9b]
+provider = "openai-compatible"
+base_url = "http://127.0.0.1:1234/v1"
+model = "qwen3.5-9b-uncensored-hauhaucs-aggressive"
+key_env = "KOMAQUILL_LLM_API_KEY"
+require_model_match = true
+reasoning_effort = "none"
+temperature = 0.3
+
 [llm_profiles.fake]
 provider = "fake"
 model = "fake-list"

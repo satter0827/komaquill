@@ -243,7 +243,13 @@ def story_evidence(
         prefix = f"runs/{row['run']['run_id']}/"
         paths += [
             project.artifacts_store.path(prefix + name)
-            for name in ("run.json", "workflow-api.json", "workflow.json")
+            for name in (
+                "run.json",
+                "workflow-api.json",
+                "workflow.json",
+                "submitted-workflow-api.json",
+                "submitted-workflow.json",
+            )
             if project.artifacts_store.path(prefix + name).is_file()
         ]
     pool = EvidenceObjects()

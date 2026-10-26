@@ -23,6 +23,48 @@ from PIL import Image
 from tests.support.comfy import batch_count, multipart_input
 
 
+def failure_snapshot(workspace: Path) -> dict:
+    """Retain allowlisted failure facts before temporary acceptance data is removed."""
+    state = workspace / ".artifacts/state"
+    result = {}
+    failure_fields = ("code", "stage", "exception_type", "http_status", "retryable")
+    for name, fields in {
+        "monitor.json": ("phase", "failure"),
+        "stop.json": ("force",),
+    }.items():
+        try:
+            value = json.loads((state / name).read_bytes())
+            if not isinstance(value, dict):
+                result[name] = {"invalid_state_type": type(value).__name__}
+                continue
+            result[name] = {field: value.get(field) for field in fields}
+            if isinstance(result[name].get("failure"), dict):
+                result[name]["failure"] = {
+                    key: result[name]["failure"].get(key) for key in failure_fields
+                }
+            elif "failure" in result[name]:
+                result[name]["failure"] = None
+        except (OSError, ValueError) as error:
+            result[name] = {"unreadable_type": type(error).__name__}
+    failures = []
+    for path in (workspace / ".artifacts/records/logs").rglob("*.jsonl"):
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                event = json.loads(line)
+                if isinstance(event, dict) and isinstance(event.get("failure"), dict):
+                    failures.append(
+                        {
+                            "operation": event.get("operation"),
+                            "result": event.get("result"),
+                            "failure": {key: event["failure"].get(key) for key in failure_fields},
+                        }
+                    )
+        except (OSError, ValueError) as error:
+            failures.append({"unreadable_type": type(error).__name__})
+    result["failures"] = failures[-12:]
+    return result
+
+
 def run_acceptance(wheel: Path | None = None) -> None:
     """Run one API acceptance scenario against local or isolated installation."""
     uv = os.environ.get("KOMAQUILL_UV") or shutil.which("uv")
@@ -157,7 +199,9 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     capture_output=True,
                     timeout=30,
                 )
-                assert result.returncode == 0, result.stdout + result.stderr
+                assert result.returncode == 0, (
+                    result.stdout + result.stderr + json.dumps(failure_snapshot(workspace))
+                )
                 return result
 
             command("init")

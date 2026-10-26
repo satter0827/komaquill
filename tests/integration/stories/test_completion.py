@@ -48,6 +48,31 @@ def test_multiple_cases_share_one_workspace_and_model_set(completion, project):
     assert live.load(report).source_plan_sha256 != live.load(second).source_plan_sha256
 
 
+def test_preparation_checkpoints_runtime_before_start_returns(completion, monkeypatch):
+    from komaquill.infrastructure.atomic import atomic_json
+
+    report, _, _ = completion
+    case = live.load(report)
+    case.gpu_started_at = None
+    live.save(report, case)
+    runtime_id = uuid4()
+
+    def starting(self, *, progress, **kwargs):
+        atomic_json(self._project.state / "monitor.json", {"runtime_id": str(runtime_id)})
+        progress("Preparing the verified model.")
+        assert live.load(report).runtime_id == runtime_id
+        raise OSError("Injected preparation interruption")
+
+    monkeypatch.setattr(services.SessionService, "start", starting)
+    with pytest.raises(OSError):
+        live.start(report)
+    assert live.load(report).runtime_id == runtime_id
+    atomic_json(live.project(report).state / "monitor.json", {"runtime_id": str(uuid4())})
+    with pytest.raises(RuntimeError):
+        live.checkpoint_runtime(report)
+    assert live.load(report).runtime_id == runtime_id
+
+
 @pytest.fixture
 def completion(project, session, client, monkeypatch):
     repository, plan = planned(project)

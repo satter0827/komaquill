@@ -253,6 +253,23 @@ def prepare(
     return case
 
 
+def checkpoint_runtime(report: Path) -> None:
+    """Retain the owned identity before model transfer or environment preparation finishes."""
+    monitor = project(report).state / "monitor.json"
+    if not monitor.is_file():
+        return
+    data = json.loads(monitor.read_bytes())
+    if not data.get("runtime_id"):
+        return
+    runtime_id = UUID(data["runtime_id"])
+    with FileLock(str(report / ".case.lock")):
+        latest = load(report)
+        if latest.runtime_id not in {None, runtime_id}:
+            raise RuntimeError("The owned runtime identity changed during preparation.")
+        latest.runtime_id = runtime_id
+        save(report, latest)
+
+
 def start(report: Path) -> None:
     with FileLock(str(report / ".case.lock")):
         case = load(report)
@@ -261,15 +278,14 @@ def start(report: Path) -> None:
         case.gpu_started_at = datetime.now(UTC)
         save(report, case)
     try:
-        Client(project(report).root).sessions.start(progress=print)
+
+        def progress(text):
+            print(text, flush=True)
+            checkpoint_runtime(report)
+
+        Client(project(report).root).sessions.start(progress=progress)
     finally:
-        monitor = project(report).state / "monitor.json"
-        if monitor.is_file():
-            data = json.loads(monitor.read_bytes())
-            with FileLock(str(report / ".case.lock")):
-                latest = load(report)
-                latest.runtime_id = UUID(data["runtime_id"]) if data.get("runtime_id") else None
-                save(report, latest)
+        checkpoint_runtime(report)
 
 
 def baseline(report: Path, *, retry_failed: bool = False) -> None:

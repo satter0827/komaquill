@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import zipfile
@@ -386,6 +387,29 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "[-1].snapshot.complete",
                             "assert client.sessions.status().collector_running",
                         ]
+                    )
+                    api_script = (
+                        "try:\n"
+                        + textwrap.indent(api_script, "    ")
+                        + "\nexcept BaseException as failure:\n"
+                        "    import json, sys\n"
+                        "    causes = []\n"
+                        "    cause = failure\n"
+                        "    while cause is not None:\n"
+                        "        if isinstance(cause, OSError):\n"
+                        "            cursor = cause.__traceback__\n"
+                        "            origin = None\n"
+                        "            while cursor is not None:\n"
+                        "                origin = {'module': "
+                        "cursor.tb_frame.f_globals.get('__name__'), "
+                        "'function': cursor.tb_frame.f_code.co_name, 'line': cursor.tb_lineno}\n"
+                        "                cursor = cursor.tb_next\n"
+                        "            causes.append({'type': type(cause).__name__, "
+                        "'errno': cause.errno, 'winerror': getattr(cause, 'winerror', None), "
+                        "'origin': origin})\n"
+                        "        cause = cause.__context__\n"
+                        "    print(json.dumps({'storage_error_codes': causes}), file=sys.stderr)\n"
+                        "    raise\n"
                     )
                     api_result = subprocess.run(
                         [str(python), "-B", "-c", api_script],

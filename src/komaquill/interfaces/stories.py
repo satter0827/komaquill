@@ -34,18 +34,36 @@ def selected_images(value: str | None) -> int | Literal["auto"] | None:
 
 def candidate_message(client: Client, image: JsonObject, total: int | None) -> str:
     metadata = image.get("metadata") or {}
+    duplicate = (
+        "\n" + message("images.duplicate", duplicate=image["key"], original=image["duplicate_of"])
+        if image.get("duplicate_of")
+        else ""
+    )
     if metadata.get("role") == "candidate":
-        return message(
-            "stories.candidate_image",
-            position=metadata["batch_index"] + 1,
-            total=total,
-            path=client.artifact_path(image["key"]),
+        return (
+            message(
+                "stories.candidate_image",
+                position=metadata["batch_index"] + 1,
+                total=total,
+                path=client.artifact_path(image["key"]),
+            )
+            + duplicate
         )
-    return message("stories.image", path=client.artifact_path(image["key"]))
+    return message("stories.image", path=client.artifact_path(image["key"])) + duplicate
 
 
 def display(client: Client, view: JsonObject) -> None:
     typer.echo(message("stories.heading", title=view["title"], story_id=view["story_id"]))
+    if view.get("evaluations") is not None:
+        typer.echo(message("stories.review_summary", count=len(view["evaluations"])))
+    if view.get("unreadable_evaluation_ids"):
+        typer.echo(
+            message(
+                "stories.unreadable_reviews",
+                identities=", ".join(view["unreadable_evaluation_ids"]),
+            ),
+            err=True,
+        )
     for scene in view["scenes"]:
         typer.echo(
             message(
@@ -61,6 +79,18 @@ def display(client: Client, view: JsonObject) -> None:
             [scene["primary_image"]] if scene["primary_image"] else []
         ):
             typer.echo(candidate_message(client, candidate, scene.get("requested_candidates")))
+            for review in view.get("evaluations") or []:
+                if review["run_id"] == scene["run_id"] and (
+                    f"runs/{review['run_id']}/{review['image']}" == candidate["key"]
+                ):
+                    typer.echo(
+                        message(
+                            "stories.document_review",
+                            identity=review["evaluation_id"],
+                            decision=review["decision"],
+                            reason=review["reason"],
+                        )
+                    )
 
     if view["render_id"]:
         typer.echo(message("stories.render_identity", render_id=view["render_id"]))
@@ -219,7 +249,9 @@ def bind(
                             "stories.catalog_row",
                             story_id=row.story_id,
                             title=row.title,
-                            state=row.state,
+                            state=message("stories.images_saved")
+                            if row.state == "complete"
+                            else row.state,
                             saved=row.saved_scenes,
                             total=row.image_count if row.image_count is not None else "?",
                         )

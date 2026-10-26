@@ -163,10 +163,14 @@ def story_view(
         run = latest_run(workspace, link) if link else None
         if run:
             updated.append(run.updated_at or run.created_at)
+        duplicates = run.duplicate_candidates if run else {}
         images: list[JsonObject] = (
             [
                 {
                     "key": f"runs/{run.run_id}/{name}",
+                    "duplicate_of": f"runs/{run.run_id}/{duplicates[name]}"
+                    if name in duplicates
+                    else None,
                     "metadata": run.image_metadata[name].model_dump(mode="json")
                     if name in run.image_metadata
                     else None,
@@ -220,7 +224,7 @@ def story_view(
         )
     counts = dict(Counter(scene["state"] for scene in scenes))
     return {
-        "format_version": 2,
+        "format_version": 3,
         "story_id": str(story_id),
         "render_id": str(render.render_id) if render else None,
         "title": plan.title,

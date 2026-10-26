@@ -18,6 +18,7 @@ from komaquill.domain.stories import StoryPlan, StoryRender
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.evaluations import reviewed_snapshot
 from komaquill.infrastructure.locations import Locations
 from komaquill.infrastructure.stories.storage import FileStoryRepository
 from komaquill.messages import message
@@ -51,11 +52,19 @@ def _publish_story(
         link = f"renders/{render.render_id}/story.md"
         overview.append(f"- [{render.created_at.isoformat()} — {render.render_id}]({link})")
     write_document(root / "README.md", overview)
-    snapshot = story_view(repository, project, story_id, render_id)
+    snapshot = reviewed_snapshot(project, story_view(repository, project, story_id, render_id))
     if snapshot["render_id"] is None:
         return
     render_folder = root / "renders" / str(snapshot["render_id"])
     lines = [f"# {prose(snapshot['title'])}", prose(snapshot["synopsis"])]
+    lines.append(message("stories.review_summary", count=len(snapshot["evaluations"])))
+    if snapshot["unreadable_evaluation_ids"]:
+        lines.append(
+            message(
+                "stories.unreadable_reviews",
+                identities=", ".join(snapshot["unreadable_evaluation_ids"]),
+            )
+        )
     for scene in snapshot["scenes"]:
         lines.append(f"## {scene['position']:03d} — {prose(scene['title'])}")
         lines.append(prose(scene["narrative"]))
@@ -80,6 +89,26 @@ def _publish_story(
                     )
                 )
             lines.append(f"![{scene['position']:03d}]({quote(relative, safe='/')})")
+            if image.get("duplicate_of"):
+                lines.append(
+                    message(
+                        "images.duplicate",
+                        duplicate=prose(image["key"]),
+                        original=prose(image["duplicate_of"]),
+                    )
+                )
+            for review in snapshot["evaluations"]:
+                if review["run_id"] == scene["run_id"] and (
+                    f"runs/{review['run_id']}/{review['image']}" == image["key"]
+                ):
+                    lines.append(
+                        message(
+                            "stories.document_review",
+                            identity=review["evaluation_id"],
+                            decision=review["decision"],
+                            reason=prose(review["reason"]),
+                        )
+                    )
     path = render_folder / "manifest.json"
     try:
         unchanged = json.loads(path.read_bytes()) == snapshot
@@ -105,7 +134,8 @@ def publish_listing(repository: PublicationSource, project: Project) -> None:
         count = row.image_count if row.image_count is not None else "?"
         lines.append(
             f"- [{prose(row.title)}]({quote(key, safe='/')}) — {row.created_at.isoformat()}"
-            f" — {row.state} — {row.saved_scenes}/{count} — {row.purpose}"
+            f" — {message('stories.images_saved') if row.state == 'complete' else row.state}"
+            f" — {row.saved_scenes}/{count} — {row.purpose}"
         )
     for identity in listing.unreadable_ids:
         lines.append(message("stories.catalog_unreadable", story_id=identity))

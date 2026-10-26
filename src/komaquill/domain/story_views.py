@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from komaquill.domain.errors import FailureInfo
+from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.images import CompiledImageInput
 from komaquill.domain.models import ImageMetadata, RunState
 from komaquill.domain.stories import Character, Scene, StoryProp
@@ -14,6 +15,7 @@ from komaquill.domain.stories import Character, Scene, StoryProp
 
 class ArtifactView(BaseModel):
     key: str
+    duplicate_of: str | None = None
     metadata: ImageMetadata | None = None
 
 
@@ -40,7 +42,7 @@ class StorySnapshot(BaseModel):
     """Describe one rendering using IDs and portable artifact keys."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-    format_version: Literal[2] = 2
+    format_version: Literal[2, 3] = 3
     story_id: UUID
     render_id: UUID | None
     title: str
@@ -60,6 +62,8 @@ class StorySnapshot(BaseModel):
     finished: bool
     counts: dict[str, int]
     scenes: list[SceneView]
+    evaluations: list[Evaluation] | None = None
+    unreadable_evaluation_ids: list[str] = []
 
 
 class StoryEvent(BaseModel):

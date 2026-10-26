@@ -21,6 +21,7 @@ from komaquill.domain.story_views import StoryEvent, StoryInterrupted, StoryList
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import operation_scope, record_event
+from komaquill.infrastructure.evaluations import reviewed_snapshot
 from komaquill.infrastructure.sessions.connection import connected, session_project
 from komaquill.infrastructure.stories.configuration import StorySettings, settings
 from komaquill.infrastructure.stories.evidence import story_evidence
@@ -133,7 +134,9 @@ class StoryService:
     def show(self, story_id: UUID, *, render_id: UUID | None = None) -> StorySnapshot:
         with api_operation(OperationStage.STORAGE), self._repository.snapshot():
             return StorySnapshot.model_validate(
-                story_view(self._repository, self._project, story_id, render_id)
+                reviewed_snapshot(
+                    self._project, story_view(self._repository, self._project, story_id, render_id)
+                )
             )
 
     def refresh(self, story_id: UUID, *, render_id: UUID | None = None) -> StorySnapshot:
@@ -207,7 +210,7 @@ class StoryService:
                 render_id,
                 retry_failed=retry_failed,
             ):
-                snapshot = StorySnapshot.model_validate(value)
+                snapshot = StorySnapshot.model_validate(reviewed_snapshot(self._project, value))
                 if snapshot == previous:
                     continue
                 previous = snapshot

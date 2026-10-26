@@ -321,7 +321,7 @@
   "stories.scene_failure": "Scene {position}: {code} (request {run_id})",
   "stories.interrupted": "Stopped starting new scenes. The active image can still be collected. Resume with: komaquill stories resume {render_id}",
   "stories.incomplete": "Some scenes are not saved. Inspect the rendering, collect pending images, then resume: komaquill stories resume {render_id}. Use --retry-failed for failed or lost scenes.",
-  "stories.complete": "All scenes are saved. Rendering: {render_id}",
+  "stories.complete": "All scene images are saved. Quality approval is separate. Rendering: {render_id}",
   "stories.invalid_data": "Cannot read the story data. Check UTF-8 encoding, configuration and saved records.",
   "error.real_llm_not_allowed": "A real language model was not called. Add --allow-real-llm explicitly, or select the fake sample profile.",
   "error.llm_dependencies_missing": "Story model dependencies are unavailable. Install komaquill[llm] or run bootstrap/setup.ps1.",
@@ -376,5 +376,10 @@
   "workflow.cat_reference": "Cat Reference",
   "workflow.cat_mask": "Cat Mask",
   "workflow.person": "Person Description",
-  "workflow.cat": "Cat Description"
+  "workflow.cat": "Cat Description",
+  "stories.review_summary": "Image storage and quality reviews are separate. Recorded reviews: {count}.",
+  "stories.document_review": "Review {identity}: {decision} — {reason}",
+  "stories.unreadable_reviews": "Some reviews could not be read: {identities}.",
+  "images.duplicate": "Image {duplicate} is byte-identical to {original}; this is not an additional choice.",
+  "stories.images_saved": "images saved"
 }

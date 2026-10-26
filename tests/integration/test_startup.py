@@ -229,9 +229,9 @@ def test_external_open_exports_workflow_and_returns_to_terminal(
 ):
     session.backend = "external"
     monkeypatch.setattr(
-        views.webbrowser,
-        "open",
-        lambda _: True,
+        views.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
     )
     result = cli_connection("open", "--view", "app")
     assert result.exit_code == 0, result.output

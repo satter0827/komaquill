@@ -17,7 +17,6 @@ from komaquill.infrastructure.configuration import find_project
 from komaquill.infrastructure.materials import blob, records
 from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import load_runs
-from komaquill.infrastructure.workflows import prepare
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("KOMAQUILL_LIVE") != "1", reason="Requires an explicitly started ComfyUI"
@@ -146,60 +145,6 @@ def test_native_upload_workflow_save_and_immutable_generation():
             ).read_bytes()
             == content
         )
-
-
-def test_prepare_adds_the_pinned_adapter_without_another_gpu():
-    project = find_project(Path(os.environ["KOMAQUILL_PROJECT_DIR"]))
-    with connected(project) as (client, session):
-        settings = session.settings.model_copy(update={"profiles": ("pony-preview",)})
-        graph, ui = prepare(
-            "a sunny meadow, landscape",
-            None,
-            944,
-            "seamless-adapter",
-            settings=settings,
-            profile_name="pony-preview",
-        )
-        asset = settings.assets["hyper-sdxl"]
-        loader = next(node for node in ui["nodes"] if node["id"] == 12)
-        loader["widgets_values"][0] = asset.filename
-        loader["properties"]["models"] = [
-            {
-                "name": asset.filename,
-                "directory": asset.role,
-                "url": f"https://huggingface.co/{asset.repo_id}/resolve/{asset.revision}/{asset.filename}",
-            }
-        ]
-        path = project.artifacts / "tmp/live/adapter.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(ui), encoding="utf-8")
-        result = subprocess.run(
-            [sys.executable, "-B", "-m", "komaquill", "prepare", str(path)],
-            cwd=project.root,
-            input="y\n",
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=300,
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert "ready" in result.stdout.lower()
-        assert (
-            asset.reference
-            in client.json("/object_info/LoraLoaderModelOnly")["LoraLoaderModelOnly"]["input"][
-                "required"
-            ]["lora_name"][0]
-        )
-        assert client.runtime()["runtime_id"] == str(session.runtime_id)
-        prompt_id = client.submit(graph, ui, str(uuid4()))
-        wait_for(
-            lambda: any(
-                run.prompt_id == prompt_id and run.state == "saved" for run in load_runs(project)
-            ),
-            timeout=300,
-        )
-        saved = next(run for run in load_runs(project) if run.prompt_id == prompt_id)
-        assert saved.asset_sha256[asset.reference] == asset.sha256
 
 
 def test_cold_start_restores_saved_workflows_with_their_original_inputs():

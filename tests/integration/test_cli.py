@@ -1,6 +1,7 @@
 """Test CLI operations independently of VS Code."""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 from typer.testing import CliRunner
 
@@ -28,9 +29,9 @@ def test_open_returns_after_opening_the_selected_view(project, client, session, 
     opened = []
     monkeypatch.setattr(cli, "connected", connection)
     monkeypatch.setattr(
-        views.webbrowser,
-        "open",
-        lambda url: opened.append(url) or True,
+        views.subprocess,
+        "run",
+        lambda args, **kwargs: opened.append(args[-1]) or SimpleNamespace(returncode=0),
     )
     result = CliRunner().invoke(
         cli.app, ["--project", str(project.root), "open", "--view", "graph"]

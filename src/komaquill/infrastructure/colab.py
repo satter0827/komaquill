@@ -28,6 +28,7 @@ from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.monitor_state import check_cancel
 from komaquill.infrastructure.paths import GpuPaths
 from komaquill.infrastructure.provenance import source_revision
 from komaquill.infrastructure.workflows import assets
@@ -335,32 +336,33 @@ class Colab:
         """Transfer a verified package snapshot without depending on a Git checkout."""
         payload = payload or create_payload(self.project.configured(self.settings))
         with self.lock:
+            current = self.receipt()
+            if current is None or current.runtime_id != receipt.runtime_id:
+                raise KomaquillError(code="identity_mismatch", stage="preparation")
             if self.entry(receipt) is None:
                 raise KomaquillError(display_key="text.the_runtime_is_unavailable_check_status")
             receipt.payload_sha256 = payload.sha256
             atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
-            self.call(
-                "upload", "-s", receipt.name, str(payload.path), "content/komaquill-runtime.tar"
+        check_cancel(self.project)
+        self.call("upload", "-s", receipt.name, str(payload.path), "content/komaquill-runtime.tar")
+        transferred = []
+        for asset in assets(self.settings):
+            check_cancel(self.project)
+            if not (asset.transfer or asset.local_only):
+                continue
+            source = cached_path(self.project.models, asset)
+            if source is None:
+                raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
+            staging = f"komaquill-{receipt.runtime_id}-{asset.sha256}.part"
+            self.transfer_model(receipt, source, f"/content/{staging}")
+            transferred.append(
+                {
+                    "role": asset.role,
+                    "sha256": asset.sha256,
+                    "filename": asset.filename,
+                    "staging": staging,
+                }
             )
-            transferred = []
-            for asset in assets(self.settings):
-                if not (asset.transfer or asset.local_only):
-                    continue
-                source = cached_path(self.project.models, asset)
-                if source is None:
-                    raise KomaquillError(
-                        code="invalid_output", stage="preparation", retryable=False
-                    )
-                staging = f"komaquill-{receipt.runtime_id}-{asset.sha256}.part"
-                self.transfer_model(receipt, source, f"/content/{staging}")
-                transferred.append(
-                    {
-                        "role": asset.role,
-                        "sha256": asset.sha256,
-                        "filename": asset.filename,
-                        "staging": staging,
-                    }
-                )
         remote_root = f"/content/komaquill-{receipt.runtime_id}"
         script = self.project.runtime / "deployment/prepare.py"
         script.parent.mkdir(parents=True, exist_ok=True)
@@ -403,6 +405,10 @@ class Colab:
             encoding="utf-8",
         )
         with self.lock:
+            check_cancel(self.project)
+            current = self.receipt()
+            if current is None or current.runtime_id != receipt.runtime_id:
+                raise KomaquillError(code="identity_mismatch", stage="preparation")
             if self.entry(receipt) is None:
                 raise KomaquillError(display_key="text.the_runtime_is_unavailable_check_status")
             return subprocess.Popen(
@@ -616,8 +622,18 @@ class Colab:
         process = subprocess.Popen(
             arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
+        deadline = time.monotonic() + timeout
         try:
-            process.communicate(timeout=timeout)
+            while True:
+                check_cancel(self.project)
+                remaining_wait = deadline - time.monotonic()
+                if remaining_wait <= 0:
+                    raise subprocess.TimeoutExpired(arguments, timeout)
+                try:
+                    process.communicate(timeout=min(self.settings.poll_interval, remaining_wait))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
         except BaseException:
             terminate(process, self.settings.control_timeout)
             raise

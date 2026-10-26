@@ -8,6 +8,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -225,9 +226,9 @@ def test_browser_failure_returns_url_and_failure_exit(project, client, session, 
 
     monkeypatch.setattr(cli, "connected", connection)
     monkeypatch.setattr(
-        views.webbrowser,
-        "open",
-        lambda _: False,
+        views.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1),
     )
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "open"])
     assert result.exit_code == 1 and "http://127.0.0.1" in result.output

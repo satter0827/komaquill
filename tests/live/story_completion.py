@@ -11,7 +11,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from filelock import FileLock
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from komaquill.api import Client, RenderConfig, SceneRenderConfig
 from komaquill.domain.images import PromptSource
@@ -34,6 +34,8 @@ MAX_TECHNICAL_RETRIES = 2
 EDIT_PROFILE = "klein-edit"
 SEND_SECONDS = 70 * 60
 TOTAL_SECONDS = 90 * 60
+ADDITIONAL_SEND_SECONDS = 35 * 60
+ADDITIONAL_TOTAL_SECONDS = 45 * 60
 BASE_SEED = 424242
 COMMON_PROMPT = (
     "rain falling in the uncovered street, wet pavement, cool overcast daylight, "
@@ -103,6 +105,17 @@ class ImprovementRequest(BaseModel):
     subjects: tuple[str, ...] = Field(default=(), max_length=2)
 
 
+class AdditionalSession(BaseModel):
+    """Record one explicitly authorized extra session without resetting image budgets."""
+
+    model_config = ConfigDict(extra="forbid")
+    started_at: AwareDatetime
+    runtime_id: UUID | None = None
+    send_seconds: int = ADDITIONAL_SEND_SECONDS
+    total_seconds: int = ADDITIONAL_TOTAL_SECONDS
+    identity: dict[str, str | None]
+
+
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid")
     format_version: Literal[2] = 2
@@ -115,6 +128,7 @@ class Case(BaseModel):
     baseline_source: PromptSource
     gpu_started_at: datetime | None = None
     runtime_id: UUID | None = None
+    additional_session: AdditionalSession | None = None
     reserved_outputs: int = 0
     baseline_reserved: bool = False
     baseline_render_id: UUID | None = None
@@ -163,10 +177,19 @@ def reserve(case: Case, outputs: int) -> None:
     case.reserved_outputs += outputs
 
 
+def active_budget(case: Case) -> tuple[datetime | None, int, int]:
+    """Use the persisted clock and limits of the current authorized session."""
+    if case.additional_session is not None:
+        extra = case.additional_session
+        return extra.started_at, extra.send_seconds, extra.total_seconds
+    return case.gpu_started_at, case.send_seconds, case.total_seconds
+
+
 def sending_allowed(case: Case, *, now: datetime | None = None) -> None:
-    if case.gpu_started_at is None:
+    started_at, send_seconds, _ = active_budget(case)
+    if started_at is None:
         raise RuntimeError("Start the dedicated case explicitly before rendering.")
-    if ((now or datetime.now(UTC)) - case.gpu_started_at).total_seconds() >= case.send_seconds:
+    if ((now or datetime.now(UTC)) - started_at).total_seconds() >= send_seconds:
         raise RuntimeError("The submission deadline has been reached; collect and stop.")
 
 
@@ -297,21 +320,63 @@ def reserve_screen(report: Path) -> None:
         save(report, case)
 
 
-def start(report: Path) -> None:
+def start(report: Path, *, additional_session: bool = False) -> None:
     with FileLock(str(report / ".case.lock")):
         case = load(report)
-        if case.gpu_started_at is not None:
-            raise RuntimeError("A GPU startup was already attempted; inspect and stop this case.")
-        case.gpu_started_at = datetime.now(UTC)
+        if additional_session:
+            from komaquill.infrastructure.colab import Colab
+            from komaquill.infrastructure.monitor_state import alive, read_monitor
+
+            if (
+                case.gpu_started_at is None
+                or case.additional_session is not None
+                or Colab(project(report)).receipt() is not None
+                or alive(read_monitor(project(report)))
+            ):
+                raise RuntimeError("An additional session requires confirmed previous shutdown.")
+            case.additional_session = AdditionalSession(
+                started_at=datetime.now(UTC),
+                identity={
+                    **Project(Path(__file__).resolve().parents[2]).identity(),
+                    "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                },
+            )
+        else:
+            if case.gpu_started_at is not None:
+                raise RuntimeError(
+                    "A GPU startup was already attempted; inspect and stop this case."
+                )
+            case.gpu_started_at = datetime.now(UTC)
         save(report, case)
+    overrides = (
+        {
+            "KOMAQUILL_SUBMISSION_TIMEOUT": str(case.additional_session.send_seconds),
+            "KOMAQUILL_SESSION_TIMEOUT": str(case.additional_session.total_seconds),
+        }
+        if additional_session and case.additional_session is not None
+        else {}
+    )
+    previous = {name: os.environ.get(name) for name in overrides}
+    os.environ.update(overrides)
     try:
         Client(project(report).root).sessions.start(progress=print)
     finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
         monitor = project(report).state / "monitor.json"
         if monitor.is_file():
             data = json.loads(monitor.read_bytes())
-            case.runtime_id = UUID(data["runtime_id"]) if data.get("runtime_id") else None
-            save(report, case)
+            runtime_id = UUID(data["runtime_id"]) if data.get("runtime_id") else None
+            with FileLock(str(report / ".case.lock")):
+                latest = load(report)
+                if additional_session and latest.additional_session is not None:
+                    latest.additional_session.runtime_id = runtime_id
+                else:
+                    latest.runtime_id = runtime_id
+                save(report, latest)
 
 
 def baseline(report: Path, *, retry_failed: bool = False) -> None:
@@ -502,12 +567,9 @@ def stop(report: Path) -> None:
         raise RuntimeError("This folder is not a completion verification workspace.")
     try:
         case = Case.model_validate_json((report / "case.json").read_bytes())
-        elapsed = (
-            (datetime.now(UTC) - case.gpu_started_at).total_seconds()
-            if case.gpu_started_at
-            else case.total_seconds
-        )
-        force = elapsed >= case.total_seconds
+        started_at, _, total_seconds = active_budget(case)
+        elapsed = (datetime.now(UTC) - started_at).total_seconds() if started_at else total_seconds
+        force = elapsed >= total_seconds
     except (OSError, ValueError):
         force = True
     Client(project(report).root).sessions.stop(force=force, progress=print)
@@ -528,6 +590,7 @@ if __name__ == "__main__":
     parser.add_argument("--request", type=Path)
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--allow-gpu", action="store_true")
+    parser.add_argument("--allow-additional-session", action="store_true")
     args = parser.parse_args()
     if args.action in {"start", "baseline", "improve", "screen", "stop"} and not args.allow_gpu:
         parser.error("Use --allow-gpu only for an explicit live operation.")
@@ -538,7 +601,7 @@ if __name__ == "__main__":
     elif args.action == "screen":
         reserve_screen(args.report)
     elif args.action == "start":
-        start(args.report)
+        start(args.report, additional_session=args.allow_additional_session)
     elif args.action == "baseline":
         baseline(args.report, retry_failed=args.retry_failed)
     elif args.action == "improve":

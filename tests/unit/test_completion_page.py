@@ -3,7 +3,7 @@
 import pytest
 from PIL import Image
 
-from tests.live.completion_page import render_page
+from tests.live.completion_page import render_page, wrap_text
 
 
 def panels(tmp_path, text="The kitten is safe."):
@@ -42,3 +42,15 @@ def test_missing_scene_does_not_create_placeholder_artwork(tmp_path):
     with pytest.raises(ValueError):
         render_page(tmp_path, "A rainy day", panels(tmp_path)[:3])
     assert not (tmp_path / "comic.png").exists()
+
+
+def test_japanese_punctuation_stays_with_its_text_without_losing_characters():
+    class FixedFont:
+        def getlength(self, text):
+            return len(text)
+
+    text = "雨がやんだ。猫は「ここ」にいた。"
+    lines = wrap_text(text, FixedFont(), 5)
+    assert "".join(lines) == text
+    assert all(not line.startswith(("。", "」")) and not line.endswith("「") for line in lines)
+    assert all(len(line) <= 5 for line in lines)

@@ -77,7 +77,7 @@ def test_invalid_local_model_never_allocates_a_gpu(project, monkeypatch):
     assert Colab(project).receipt() is None
 
 
-@pytest.mark.parametrize("case", ["saved", "timeout", "failed"])
+@pytest.mark.parametrize("case", ["saved", "timeout", "failed", "cancelled"])
 def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypatch, case):
     control = Colab(project)
     receipt = Receipt(
@@ -92,8 +92,8 @@ def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypa
     calls = []
 
     def communicate(*, timeout):
-        assert 1 <= timeout <= 5
-        if case == "timeout":
+        assert 0 < timeout <= min(control.settings.poll_interval, 5)
+        if case in {"timeout", "cancelled"}:
             raise subprocess.TimeoutExpired("scp", timeout)
 
     process = SimpleNamespace(communicate=communicate, returncode=1 if case == "failed" else 0)
@@ -104,6 +104,18 @@ def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypa
         transport.subprocess, "Popen", lambda args, **kwargs: calls.append(args) or process
     )
     monkeypatch.setattr(transport, "terminate", lambda *args: calls.append("terminated"))
+    if case == "timeout":
+        ticks = iter([0.0, 1.0, 6.0])
+        monkeypatch.setattr(transport.time, "monotonic", lambda: next(ticks))
+    if case == "cancelled":
+        checks = []
+
+        def cancelled(_):
+            checks.append(True)
+            if len(checks) > 1:
+                raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+
+        monkeypatch.setattr(transport, "check_cancel", cancelled)
     if case == "saved":
         control.transfer_model(receipt, source, "/content/model.part")
     else:
@@ -111,7 +123,7 @@ def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypa
             control.transfer_model(receipt, source, "/content/model.part")
     assert str(source) in calls[0] and b"test-model" not in calls[0]
     assert control.receipt() == receipt
-    assert ("terminated" in calls) == (case == "timeout")
+    assert ("terminated" in calls) == (case in {"timeout", "cancelled"})
 
 
 def test_session_clock_requires_a_time_zone(session):

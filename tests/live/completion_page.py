@@ -19,6 +19,8 @@ BODY_FONT_SIZE = 42
 MINIMUM_FONT_SIZE = 28
 TITLE_FONT_SIZE = 64
 PDF_RESOLUTION = 300
+LINE_START_FORBIDDEN = "、。，．？！：；)]）］｝〉》」』】〕"
+LINE_END_FORBIDDEN = "([（［｛〈《「『【〔"
 
 
 def font_path(text: str, supplied: Path | None = None) -> Path:
@@ -28,8 +30,10 @@ def font_path(text: str, supplied: Path | None = None) -> Path:
         [supplied]
         if supplied
         else [
-            windows / "NotoSansJP-VF.ttf",
             windows / "meiryo.ttc",
+            windows / "NotoSansJP-VF.ttf",
+            windows / "arial.ttf",
+            windows / "segoeui.ttf",
             Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         ]
@@ -55,8 +59,13 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
         current = ""
         for char in paragraph:
             if current and font.getlength(current + char) > width:
-                lines.append(current)
-                current = ""
+                move_last = char in LINE_START_FORBIDDEN or current[-1] in LINE_END_FORBIDDEN
+                carry = current[-1] if move_last else ""
+                line = current[:-1] if move_last else current
+                if not line:
+                    raise ValueError("The caption is too narrow for punctuation wrapping.")
+                lines.append(line)
+                current = carry
             if font.getlength(char) > width:
                 raise ValueError("A character is wider than the available caption.")
             current += char

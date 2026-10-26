@@ -242,6 +242,9 @@ def publish_locked(report: Path) -> None:
         "timing": {
             "prepared_at": case.prepared_at.isoformat(),
             "gpu_started_at": case.gpu_started_at.isoformat() if case.gpu_started_at else None,
+            "additional_session": case.additional_session.model_dump(mode="json")
+            if case.additional_session
+            else None,
         },
     }
     manifest["page"] = {"complete": False}

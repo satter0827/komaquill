@@ -4,6 +4,7 @@
 
 | 記録 | 対象 |
 |---|---|
+| [Kleinによる短編漫画](results/klein-completion.md) | 指定モデル、4場面の生成、評価と組版、期限による回収と終了 |
 | [4場面の保存完了と改善比較](results/story-completion.md) | 基本8枚・改善4枚、仮選択と採否、残る品質、専用T4の終了 |
 | [4場面の完走手順](story-completion.md) | 保存済み計画、仮選択と採否、出力・時間上限、限定的な改善 |
 | [前景合成の素材確認](results/foreground-composition.md) | 素材12枚の不採用、共通条件・評価・保存時刻の契約、比較と受入の未実施範囲 |

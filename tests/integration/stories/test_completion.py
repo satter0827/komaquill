@@ -13,6 +13,42 @@ from tests.live import story_completion as live
 from tests.support.stories import planned
 
 
+def test_additional_session_is_explicit_and_keeps_the_cumulative_budget(completion, monkeypatch):
+    from komaquill.infrastructure.atomic import atomic_json
+
+    report, _, _ = completion
+    live.baseline(report)
+    before = live.load(report)
+    before.gpu_started_at = datetime.now(UTC) - timedelta(hours=2)
+    live.save(report, before)
+    runtime_id = uuid4()
+
+    def started(self, **kwargs):
+        settings = self._project.settings()
+        assert settings.submission_timeout == live.ADDITIONAL_SEND_SECONDS
+        assert settings.session_timeout == live.ADDITIONAL_TOTAL_SECONDS
+        live.reserve_screen(report)
+        atomic_json(self._project.state / "monitor.json", {"runtime_id": str(runtime_id)})
+
+    monkeypatch.setattr(services.SessionService, "start", started)
+    live.start(report, additional_session=True)
+    after = live.load(report)
+    assert after.gpu_started_at == before.gpu_started_at
+    assert before.reserved_outputs == 4 and after.reserved_outputs == 5
+    assert after.screen_outputs == 1
+    assert after.baseline_render_id == before.baseline_render_id
+    assert after.additional_session.runtime_id == runtime_id
+    live.sending_allowed(after)
+    with pytest.raises(RuntimeError):
+        live.sending_allowed(
+            after,
+            now=after.additional_session.started_at
+            + timedelta(seconds=after.additional_session.send_seconds),
+        )
+    with pytest.raises(RuntimeError):
+        live.start(report, additional_session=True)
+
+
 @pytest.fixture
 def completion(project, session, client, monkeypatch):
     repository, plan = planned(project)

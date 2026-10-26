@@ -9,32 +9,37 @@ import pytest
 from komaquill.infrastructure import atomic as storage
 
 
-@pytest.mark.parametrize("case", ["sharing", "permanent", "posix", "unknown"])
+@pytest.mark.parametrize("case", ["sharing", "sharing_twice", "permanent", "posix", "unknown"])
 def test_atomic_publication_retries_only_bounded_windows_conflicts(tmp_path, monkeypatch, case):
     target = tmp_path / "state.json"
     target.write_bytes(b"old")
     original = Path.replace
     calls = []
     ticks = [0.0]
+    sharing = case in {"sharing", "sharing_twice"}
+    injected_conflicts = 2 if case == "sharing_twice" else 1
     monkeypatch.setattr(storage.sys, "platform", "linux" if case == "posix" else "win32")
-    monkeypatch.setattr(storage.time, "monotonic", lambda: ticks[0])
-    monkeypatch.setattr(
-        storage.time, "sleep", lambda seconds: ticks.__setitem__(0, ticks[0] + seconds)
-    )
-    monkeypatch.setattr(storage, "REPLACE_TIMEOUT_SECONDS", 0.1)
+    if not sharing:
+        monkeypatch.setattr(storage.time, "monotonic", lambda: ticks[0])
+        monkeypatch.setattr(
+            storage.time, "sleep", lambda seconds: ticks.__setitem__(0, ticks[0] + seconds)
+        )
+        monkeypatch.setattr(storage, "REPLACE_TIMEOUT_SECONDS", 0.1)
 
     def replace(source, destination):
         calls.append(True)
-        if case == "sharing" and len(calls) > 1:
+        if sharing and len(calls) > injected_conflicts:
             return original(source, destination)
         error = PermissionError("not logged")
         error.winerror = 123 if case == "unknown" else 32
         raise error
 
     monkeypatch.setattr(Path, "replace", replace)
-    if case == "sharing":
+    if sharing:
+        # Real replacement can encounter additional host conflicts and needs the real clock.
         storage.atomic_bytes(target, b"new")
-        assert target.read_bytes() == b"new" and len(calls) == 2
+        assert target.read_bytes() == b"new"
+        assert len(calls) >= injected_conflicts + 1
     else:
         with pytest.raises(PermissionError):
             storage.atomic_bytes(target, b"new")

@@ -91,15 +91,17 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
     plan = api.stories.plan(source(), images=4, llm_profile="fake")
     image = api.inputs.import_file(image_file(project.root))
     config = RenderConfig(
+        common_prompt="rainy street, overcast light",
         scenes=tuple(
             SceneRenderConfig(
                 scene=i,
                 profile="story-reference",
+                prompt=f"scene {i}",
                 inputs={"reference": image},
                 parameters={"reference_weight": 0.4 + i / 20},
             )
             for i in range(1, 5)
-        )
+        ),
     )
     final = list(api.stories.render(plan.request.story_id, render_config=config, seed=80))[
         -1
@@ -115,6 +117,11 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
         ]
     )
     assert all(row.compiled_input.inputs["reference"] == image for row in saved.scenes)
+    assert all(
+        row.compiled_input.common_prompt == config.common_prompt
+        and row.compiled_input.body.startswith(config.common_prompt)
+        for row in saved.scenes
+    )
     assert list(api.stories.resume(final.render_id))[-1].snapshot.complete
     assert stub.submissions == 4
     summary = api.stories.export(plan.request.story_id)

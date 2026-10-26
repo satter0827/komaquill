@@ -72,7 +72,7 @@ def test_old_fingerprints_do_not_acquire_new_preset_fields():
     old = GenerationPreset.model_validate(original)
     assert old.batch_size == 1 and old.primary_output_node is None
     assert preset_fingerprint(old, 2) == digest(original)
-    assert compile_image_input(current, "a cabin").compiler_version == 4
+    assert compile_image_input(current, "a cabin").compiler_version == 5
 
 
 def test_partial_retry_never_hides_already_saved_candidates(

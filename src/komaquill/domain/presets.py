@@ -122,6 +122,7 @@ class WorkflowImageSlot(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     kind: Literal["image", "mask"] = "image"
     sample: str = ""
+    match_base: bool = False
 
 
 class GenerationPreset(BaseModel):

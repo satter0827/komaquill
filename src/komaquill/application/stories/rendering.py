@@ -70,6 +70,7 @@ def create_render(
             spec.negative if spec and spec.negative is not None else negative,
             spec.subjects if spec and spec.subjects is not None else original.subject_prompts,
             spec.inputs if spec else {},
+            common_prompt=render_config.common_prompt if render_config else "",
         )
         try:
             validate_inputs(profile, compiled.inputs)
@@ -89,7 +90,7 @@ def create_render(
             )
         )
     render = StoryRender(
-        format_version=4,
+        format_version=5,
         input_sources=input_sources,
         story_id=story_id,
         plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),

@@ -49,3 +49,5 @@ RenderConfigの形式2はcommon_promptを受け付けます。用途は天候・
 StorySnapshotの形式3、manifest、story.mdは生成要求に対応する既存の評価を参照します。completeは画像の保存成功です。採否や比較結果は評価記録を確認してください。訂正前の評価も履歴として残し、読めない評価IDは明示します。評価追加後の閲覧用ファイルは明示的なrefreshで再構築できます。
 
 前景合成と低denoise補正は[素材確認の結果](../verification/results/foreground-composition.md)により未採用です。配布用のstory-composeとstory-inpaintを、未検証の比較グラフへ置き換えません。
+
+保存済みの4場面を先に完走し、重大な問題だけを改善する[検証手順](../verification/story-completion.md)も用意しています。仮選択用manifestは検証資料であり、元のストーリーやレンダーを書き換えません。[実画像の結果](../verification/results/story-completion.md)では保存完了と画質の未達を分けています。

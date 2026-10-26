@@ -17,10 +17,8 @@ CHUNK_BYTES = 1024 * 1024
 DISK_RESERVE_BYTES = 64 * 1024 * 1024
 
 
-def download_hub(url: str, partial: Path, cache: Path) -> None:
+def download_hub(url: str, staging: Path) -> Path:
     """Use the standard local Hugging Face credentials for a pinned gated file."""
-    import shutil
-
     from huggingface_hub import hf_hub_download
     from huggingface_hub.errors import HfHubHTTPError
 
@@ -32,7 +30,7 @@ def download_hub(url: str, partial: Path, cache: Path) -> None:
             repo_id="/".join(parts[:2]),
             revision=parts[3],
             filename="/".join(parts[4:]),
-            cache_dir=cache,
+            local_dir=staging,
         )
     except HfHubHTTPError as error:
         raise KomaquillError(
@@ -40,7 +38,10 @@ def download_hub(url: str, partial: Path, cache: Path) -> None:
             stage="preparation",
             http_status=getattr(error.response, "status_code", None),
         ) from None
-    shutil.copyfile(source, partial)
+    path = Path(source)
+    if not path.resolve().is_relative_to(staging.resolve()):
+        raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
+    return path
 
 
 def download_asset(
@@ -60,24 +61,34 @@ def download_asset(
         if asset.local_only:
             raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
         partial = target.with_suffix(target.suffix + ".part")
-        size = partial.stat().st_size if partial.is_file() else 0
+        url = (
+            asset.url
+            or f"https://huggingface.co/{asset.repo_id}/resolve/{asset.revision}/{asset.filename}"
+        )
+        hub = asset.transfer and urlsplit(url).hostname == "huggingface.co"
+        size = partial.stat().st_size if not hub and partial.is_file() else 0
         remaining = max(0, (asset.size_bytes or 0) - size)
         if shutil.disk_usage(target.parent).free < remaining + DISK_RESERVE_BYTES:
             raise KomaquillError(code="storage_failed", stage="preparation")
         if cancelled():
             raise KomaquillError(code="stopping", stage="preparation", retryable=False)
-        url = (
-            asset.url
-            or f"https://huggingface.co/{asset.repo_id}/resolve/{asset.revision}/{asset.filename}"
-        )
-        if asset.transfer and urlsplit(url).hostname == "huggingface.co":
-            download_hub(url, partial, models.parent.parent / "cache/huggingface/hub")
+        if hub:
+            staging = target.parent / ".hub"
+            if (
+                staging.is_symlink()
+                or staging.is_junction()
+                or not staging.resolve().is_relative_to(target.parent.resolve())
+            ):
+                raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
+            source = download_hub(url, staging)
             if cancelled():
                 raise KomaquillError(code="stopping", stage="preparation", retryable=False)
-            if file_digest(partial) != asset.sha256:
-                partial.unlink(missing_ok=True)
+            if file_digest(source) != asset.sha256:
+                source.unlink(missing_ok=True)
                 raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
-            partial.replace(target)
+            source.replace(target)
+            partial.unlink(missing_ok=True)
+            shutil.rmtree(staging)
             register(models, asset, target)
             return target
         try:

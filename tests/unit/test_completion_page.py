@@ -24,6 +24,7 @@ def test_png_and_pdf_have_right_to_left_order_and_complete_captions(tmp_path):
     assert third["bounds"][1] > first["bounds"][1]
     assert third["bounds"][0] > fourth["bounds"][0]
     assert all(row["text"] == "The kitten is safe." for row in result["panels"])
+    assert len({row["font_size"] for row in result["panels"]}) == 1
     with Image.open(tmp_path / "comic.png") as image:
         assert image.size == (2480, 3508)
         x, y, _, _ = first["bounds"]
@@ -53,4 +54,16 @@ def test_japanese_punctuation_stays_with_its_text_without_losing_characters():
     lines = wrap_text(text, FixedFont(), 5)
     assert "".join(lines) == text
     assert all(not line.startswith(("。", "」")) and not line.endswith("「") for line in lines)
+    assert all(len(line) <= 5 for line in lines)
+
+
+def test_short_final_line_is_balanced_without_losing_text():
+    class FixedFont:
+        def getlength(self, text):
+            return len(text)
+
+    text = "abcdefghijk"
+    lines = wrap_text(text, FixedFont(), 5)
+    assert "".join(lines) == text
+    assert len(lines[-1]) >= 3
     assert all(len(line) <= 5 for line in lines)

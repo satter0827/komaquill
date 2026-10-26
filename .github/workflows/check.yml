@@ -39,6 +39,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends fonts-noto-cjk
           test -f /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+      - name: Install Japanese font on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: | # pragma: allowlist secret Public immutable font URL and SHA256.
+          # SIL OFL 1.1: ofl/notosansjp/OFL.txt at the pinned font revision below.
+          $fontPath = Join-Path $env:WINDIR 'Fonts/NotoSansJP-VF.ttf'
+          Get-Item -LiteralPath $fontPath -ErrorAction SilentlyContinue
+          if (-not (Test-Path -LiteralPath $fontPath)) {
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf' -OutFile $fontPath
+          }
+          if ((Get-FileHash -LiteralPath $fontPath -Algorithm SHA256).Hash -ne 'c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f') { exit 1 } # pragma: allowlist secret Public font SHA256.
       - name: Check quality and installed wheel
         run: uv run --locked --extra colab-client --extra llm python scripts/check.py --level 3
   quality:

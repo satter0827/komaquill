@@ -219,7 +219,7 @@ def test_quality_pass_requires_an_accept_review_for_every_selected_image(
     path.write_text(json.dumps(payload))
     publication.publish(report)
     manifest = json.loads((report / "manifest.json").read_bytes())
-    assert manifest["comic_complete"]
+    assert manifest["selection_complete"]
     assert manifest["quality_passed"] is (not missing_review)
     assert manifest["selected_quality"] == {
         "accept": 3 if missing_review else 4,

@@ -142,7 +142,7 @@ tests = ["tests/unit/test_composition_contracts.py", "tests/integration/stories/
 
 [requirements.REQ-STORY-COMPLETION]
 summary = "保存済みの4場面を先に保存し、仮選択と画質評価を分けて限定的に改善する"
-status = "in_progress"
+status = "implemented"
 acceptance = ["画質の不合格で後続場面を止めない", "原文・計画・生成条件を保全する", "再開で出力数と時間上限をリセットしない", "改善Runと元画像を評価付きで参照する", "専用セッションを終了し既存セッションを変更しない"]
 sources = ["src/komaquill/api/stories.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/infrastructure/stories/publication.py"]
 tests = ["tests/integration/stories/test_completion.py", "tests/live/story_completion.py", "tests/live/completion_workflow.py", "tests/live/completion_report.py"]

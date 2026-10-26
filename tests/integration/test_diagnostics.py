@@ -31,7 +31,7 @@ from tests.support.session_controls import patch_session
 
 
 def test_saved_images_record_integrity_and_server_times(project, client, session, stub):
-    prompt_id = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    prompt_id = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
     stub.history[prompt_id]["status"]["messages"] = [
         ["execution_start", {"timestamp": 1000}],
         ["execution_success", {"timestamp": 2500}],
@@ -52,7 +52,7 @@ def test_saved_images_record_integrity_and_server_times(project, client, session
 
 
 def test_partial_images_are_reused_and_tampered_images_are_repaired(project, client, session, stub):
-    prompt = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    prompt = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
     record = stub.history[prompt]
     record["outputs"]["9"]["images"].append({"filename": "broken.png"})
     stub.invalid_images.add("broken.png")
@@ -75,8 +75,8 @@ def test_partial_images_are_reused_and_tampered_images_are_repaired(project, cli
 def test_oversized_image_does_not_block_other_requests_or_retry(
     project, client, session, stub, monkeypatch
 ):
-    first = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
-    second = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    first = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
+    second = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
     stub.history[first]["outputs"]["9"]["images"] = [{"filename": "oversized.png"}]
     stub.history[second]["outputs"]["9"]["images"] = [{"filename": "small.png"}]
     contents = {}
@@ -99,7 +99,7 @@ def test_oversized_image_does_not_block_other_requests_or_retry(
 
 
 def test_parallel_collectors_commit_each_image_once(project, client, session, stub):
-    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "browser")
+    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
     with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(lambda _: collect(project, client, session), range(3)))
     assert sum(result.saved for result in results) == 1

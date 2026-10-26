@@ -30,13 +30,13 @@ def test_automatic_browser_failure_retains_connection_and_reports_url(
 
 
 def test_native_graph_uses_selected_prepared_profile(project, session, monkeypatch):
-    session.settings = project.settings().model_copy(update={"profiles": ("pony", "pony-preview")})
+    session.settings = project.settings().model_copy(update={"profiles": ("klein", "klein")})
     urls = []
     monkeypatch.setattr(views.webbrowser, "open", lambda url: urls.append(url) or True)
-    views.open_view(project, session, "graph", "pony-preview")
-    assert "template=pony-preview_graph" in urls[-1]
+    views.open_view(project, session, "graph", "klein")
+    assert "template=klein_graph" in urls[-1]
     session.backend = "external"
-    views.open_view(project, session, "graph", "pony-preview")
-    exported = json.loads((project.runtime / "workflows/pony-preview_graph.json").read_bytes())
+    views.open_view(project, session, "graph", "klein")
+    exported = json.loads((project.runtime / "workflows/klein_graph.json").read_bytes())
     assert exported["extra"]["linearMode"] is False
     assert any(n["type"] == "LoraLoaderModelOnly" for n in exported["nodes"])

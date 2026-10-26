@@ -7,14 +7,14 @@ from importlib.metadata import version
 from pathlib import Path
 
 from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.workflows import prepare, preset, resource_json
+from komaquill.infrastructure.workflows import prepare, resource_json
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_workflow_exports_have_identical_connections_and_parameters():
-    api = resource_json("presets/pony/workflow-api.json")
-    ui = resource_json("presets/pony/workflow.json")
+    api = resource_json("presets/klein/workflow-api.json")
+    ui = resource_json("presets/klein/workflow.json")
     nodes = {str(node["id"]): node for node in ui["nodes"]}
     links = {link[0]: link for link in ui["links"]}
     for key, node in api.items():
@@ -24,29 +24,24 @@ def test_workflow_exports_have_identical_connections_and_parameters():
                 continue
             link = links[socket["link"]]
             assert node["inputs"][socket["name"]] == [str(link[1]), link[2]]
-    widgets = {
-        "3": ["seed", None, "steps", "cfg", "sampler_name", "scheduler", "denoise"],
-        "4": ["ckpt_name"],
-        "5": ["width", "height", "batch_size"],
-        "6": ["text"],
-        "7": ["text"],
-        "9": ["filename_prefix"],
-    }
-    for key, names in widgets.items():
-        for index, name in enumerate(names):
-            if name and not isinstance(api[key]["inputs"][name], list):
-                assert nodes[key]["widgets_values"][index] == api[key]["inputs"][name]
-    assert api["4"]["inputs"]["ckpt_name"] == preset().reference
+    from komaquill.infrastructure.configuration import Settings
+
+    profile = Settings().presets["klein"]
+    for binding in profile.bindings:
+        assert (
+            api[binding.api_node]["inputs"][binding.api_input]
+            == nodes[binding.api_node]["widgets_values"][binding.ui_widget]
+        )
     assert ui["extra"]["linearData"]["outputs"] == ["9"]
 
 
 def test_prepared_workflow_records_the_same_requested_values():
-    api, ui = prepare("a cabin", "watermark", 123, "test-id")
+    api, ui = prepare("a cabin", None, 123, "test-id")
     nodes = {node["id"]: node for node in ui["nodes"]}
     assert api["10"]["inputs"]["string_b"] == nodes[10]["widgets_values"][1] == "a cabin"
-    assert api["3"]["inputs"]["seed"] == nodes[3]["widgets_values"][0] == 123
+    assert api["73"]["inputs"]["noise_seed"] == nodes[73]["widgets_values"][0] == 123
     assert api["9"]["inputs"]["filename_prefix"] == nodes[9]["widgets_values"][0]
-    assert resource_json("presets/pony/workflow-api.json")["3"]["inputs"]["seed"] == 1
+    assert resource_json("presets/klein/workflow-api.json")["73"]["inputs"]["noise_seed"] == 1
 
 
 def test_import_has_no_filesystem_side_effects(tmp_path):

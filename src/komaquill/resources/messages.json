@@ -381,5 +381,9 @@
   "stories.document_review": "Review {identity}: {decision} — {reason}",
   "stories.unreadable_reviews": "Some reviews could not be read: {identities}.",
   "images.duplicate": "Image {duplicate} is byte-identical to {original}; this is not an additional choice.",
-  "stories.images_saved": "images saved"
+  "stories.images_saved": "images saved",
+  "workflow.negative_unsupported": "This generation profile does not support negative prompts. Describe the desired result in the positive prompt.",
+  "stories.render_configuration_unsupported": "This saved rendering uses an unsupported generation configuration. Create a new rendering with an enabled Klein profile; the saved work is preserved.",
+  "model.transfer_checksum_failed": "A transferred model failed SHA256 verification. Verify the local asset and prepare a new session.",
+  "model.transfer_failed": "Model transfer failed. Check the owned session and OpenSSH connection, then stop the session before starting again."
 }

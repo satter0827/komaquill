@@ -16,10 +16,6 @@ from tests.support.stories import source
 
 
 def configure(project, session, client, monkeypatch):
-    path = project.root / "komaquill.toml"
-    path.write_text(
-        'profiles=["pony","story-reference","story-inpaint","story-compose"]\n' + path.read_text()
-    )
     active = session.model_copy(update={"settings": project.settings()})
 
     @contextmanager
@@ -47,9 +43,7 @@ def test_import_preserves_content_and_freezes_input_before_upload(
     assert api.artifact_path(item.key).read_bytes() == original
     assert item == api.inputs.import_file(path)
     path.write_bytes(b"changed after import")
-    run = api.images.generate(
-        "a gray kitten", profile="story-reference", inputs={"reference": item}
-    )
+    run = api.images.generate("a gray kitten", profile="klein-edit", inputs={"reference": item})
     assert run.state == "saved" and run.compiled_input.inputs == {"reference": item}
     assert stub.uploaded_inputs[item.reference] == original and stub.upload_calls == 1
     assert run.input_sha256[item.reference] == item.sha256
@@ -57,30 +51,21 @@ def test_import_preserves_content_and_freezes_input_before_upload(
     assert api.artifact_path(f"runs/{run.run_id}/workflow-api.json").is_file()
 
 
-@pytest.mark.parametrize("case", ["missing", "extra", "color-mask", "dimensions", "corrupt"])
+@pytest.mark.parametrize("case", ["missing", "extra", "corrupt"])
 def test_invalid_materials_fail_before_generation(
     project, session, client, stub, monkeypatch, case
 ):
-    api, active = configure(project, session, client, monkeypatch)
+    api, _ = configure(project, session, client, monkeypatch)
     image = api.inputs.import_file(image_file(project.root))
-    if case == "color-mask":
-        with pytest.raises(KomaquillError):
-            api.inputs.import_file(project.root / "input.png", kind="mask")
-        assert stub.submissions == 0
-        return
-    mask = api.inputs.import_file(
-        image_file(project.root, "mask.png", "L", (8, 8) if case == "dimensions" else (32, 32)),
-        kind="mask",
-    )
-    inputs = {"base": image, "reference": image, "mask": mask}
+    inputs = {"reference": image}
     if case == "missing":
-        inputs.pop("mask")
-    if case == "extra":
+        inputs.clear()
+    elif case == "extra":
         inputs["other"] = image
-    if case == "corrupt":
+    else:
         api.artifact_path(image.key).write_bytes(b"damaged")
     with pytest.raises(KomaquillError):
-        api.images.generate("kitten", profile="story-inpaint", inputs=inputs)
+        api.images.generate("kitten", profile="klein-edit", inputs=inputs)
     assert stub.submissions == stub.upload_calls == 0
 
 
@@ -95,10 +80,10 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
         scenes=tuple(
             SceneRenderConfig(
                 scene=i,
-                profile="story-reference",
+                profile="klein-edit",
                 prompt=f"scene {i}",
                 inputs={"reference": image},
-                parameters={"reference_weight": 0.4 + i / 20},
+                parameters={"party_strength": 0.4 + i / 20},
             )
             for i in range(1, 5)
         ),
@@ -108,7 +93,7 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
     ].snapshot
     assert final.complete and stub.submissions == 4
     saved = FileStoryRepository(project).render(final.render_id)
-    assert [row.preset.parameters["reference_weight"] for row in saved.scenes] == pytest.approx(
+    assert [row.preset["parameters"]["party_strength"] for row in saved.scenes] == pytest.approx(
         [
             0.45,
             0.5,
@@ -135,7 +120,7 @@ def test_all_scenes_are_validated_before_any_request(project, session, client, s
     config = RenderConfig(
         scenes=tuple(
             SceneRenderConfig(
-                scene=i, profile="story-reference", inputs={"reference": image} if i != 4 else {}
+                scene=i, profile="klein-edit", inputs={"reference": image} if i != 4 else {}
             )
             for i in range(1, 5)
         )
@@ -195,9 +180,9 @@ def test_failed_outputs_keep_names_when_an_earlier_stage_appears_later(
     "parameters",
     [
         {"missing": 1},
-        {"reference_weight": True},
-        {"reference_weight": -1},
-        {"reference_weight": 2.1},
+        {"party_strength": True},
+        {"party_strength": -11},
+        {"party_strength": 10.1},
     ],
 )
 def test_invalid_stage_parameters_fail_before_upload(
@@ -207,7 +192,7 @@ def test_invalid_stage_parameters_fail_before_upload(
     image = api.inputs.import_file(image_file(project.root))
     with pytest.raises(KomaquillError):
         api.images.generate(
-            "a cat", profile="story-reference", inputs={"reference": image}, parameters=parameters
+            "a cat", profile="klein-edit", inputs={"reference": image}, parameters=parameters
         )
     assert stub.submissions == stub.upload_calls == 0
 
@@ -226,7 +211,7 @@ def test_cli_resolves_materials_relative_to_each_input_file(
                 "format_version": 2,
                 "prompt": "a cat",
                 "inputs": {"reference": "input.png"},
-                "parameters": {"reference_weight": 0.25},
+                "parameters": {"party_strength": 0.25},
             }
         )
     )
@@ -237,7 +222,7 @@ def test_cli_resolves_materials_relative_to_each_input_file(
             str(project.root),
             "generate",
             "--profile",
-            "story-reference",
+            "klein-edit",
             "--input-file",
             str(path),
         ],
@@ -250,7 +235,7 @@ def test_cli_resolves_materials_relative_to_each_input_file(
             {
                 "format_version": 1,
                 "scenes": [
-                    {"scene": 1, "profile": "story-reference", "inputs": {"reference": "input.png"}}
+                    {"scene": 1, "profile": "klein-edit", "inputs": {"reference": "input.png"}}
                 ],
             }
         )

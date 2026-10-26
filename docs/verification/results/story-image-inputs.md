@@ -18,7 +18,7 @@ Windows、Python 3.12、LM StudioのQwen3.5 4B、Colab T4を使用しました�
 
 ## 公開ワークフロー
 
-[ComfyUI公式Area Composition](https://comfyanonymous.github.io/ComfyUI_examples/area_composition/)の2対象サンプルから第1段を再利用しました。固定版、元画像のハッシュ、利用条件、変更点は[生成セットの出典](../../../src/komaquill/resources/presets/pony-story/provenance.toml)にあります。独自の計算ノードはありません。
+[ComfyUI公式Area Composition](https://comfyanonymous.github.io/ComfyUI_examples/area_composition/)の2対象サンプルから第1段を再利用しました。固定版、元画像のハッシュ、利用条件、変更点は[対象版の生成セットの出典](https://github.com/satter0827/komaquill/blob/b1bb831/src/komaquill/resources/presets/pony-story/provenance.toml)にあります。独自の計算ノードはありません。
 
 App Modeで全体入力と2対象の入力が設定済みであること、同じグラフをNode Graphへ切り替えて編集できることを確認しました。画面からの新規生成はこの比較では実行していません。T4の実行確認はAPI経由の標準グラフです。後から追加したSubject 1・Subject 2のラベルはCPUの契約・配布物検査で確認し、T4での再表示は行っていません。
 

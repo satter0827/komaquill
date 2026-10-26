@@ -78,17 +78,16 @@ StoryEvent.publication_failureは、画像の保存状態とは別の閲覧用�
 
 ## 対象別の画像入力
 
-起動済みセッションでpony-storyを有効にしてから実行します。本文を伴う作品はstoriesを使い、単画像の対象別入力はimages.generateのsubjectsへ左から右の順に指定します。
+起動済みセッションでkleinを有効にしてから実行します。本文を伴う作品はstoriesを使い、単画像の対象別入力はimages.generateのsubjectsへ指定します。説明は全体へ結合し、空間配置を保証しません。
 
 ```python
 run = client.images.generate(
     "rainy street beside a shop awning",
-    profile="pony-story",
+    profile="klein",
     subjects=(
         "human woman, yellow raincoat, holding a blue umbrella",
         "small gray kitten, four legs, sitting under the umbrella",
     ),
-    negative="extra limbs",
     seed=42,
 )
 applied = run.compiled_input
@@ -98,15 +97,15 @@ print(applied.positive, applied.negative)
 
 CompiledImageInputはkomaquill.apiから参照できます。利用者が渡した内容と品質プロンプトを適用した条件を確認できます。画面から生成した履歴では、対応する利用者入力を確認できないためcompiled_inputはNoneです。実行条件は保存されたグラフから確認します。
 
-## 複数候補と負プロンプト
+## 複数候補
 
 ```python
-run = client.images.generate("a blue umbrella", negative="floating objects", candidates=2)
+run = client.images.generate("a blue umbrella", candidates=2)
 for name in run.images:
     metadata = run.image_metadata[name]
     print(metadata.role, metadata.output_node, metadata.batch_index)
 
-for event in client.stories.render(story_id, candidates=2, negative="extra limbs"):
+for event in client.stories.render(story_id, candidates=2):
     for scene in event.snapshot.scenes:
         for candidate in scene.candidates:
             image_path = client.artifact_path(candidate.key)
@@ -117,3 +116,5 @@ for event in client.stories.render(story_id, candidates=2, negative="extra limbs
 ## 素材と場面別の生成セット
 
 client.inputs.import_fileは画像または白が編集対象のマスクを保存し、InputArtifactを返します。images.generateのinputsへ渡し、parametersで宣言済みの工程設定を上書きできます。全場面の指定にはRenderConfigとSceneRenderConfigを使い、stories.renderのrender_configへ渡します。[素材入力と場面指定](story-workflows.md)に例と制約を記載しています。
+
+負プロンプトの非空指定は送信前に拒否します。参照画像の編集は[編集手順](story-workflows.md)を参照してください。

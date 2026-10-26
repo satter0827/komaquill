@@ -112,7 +112,7 @@ def test_transferred_workflows_use_their_complete_reduced_catalog(tmp_path):
         for name, preset in settings.presets.items():
             enabled = settings.model_copy(update={'profiles': (name,)})
             graph, view = prepare(preset.sample_prompt, None, 1, name,
-                settings=enabled, profile_name=name, subject_prompts=preset.sample_subjects)
+                settings=enabled, profile_name=name)
             assert graph and view['nodes']
         """
     )

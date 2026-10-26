@@ -9,10 +9,9 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
 from komaquill.domain.images import CompiledImageInput, PromptSource
-from komaquill.domain.presets import GenerationPreset
+from komaquill.domain.workflow import digest
 
 
 class StoryRecord(BaseModel):
@@ -281,7 +280,7 @@ class StoryPlan(StoryRecord):
 class SceneAttempts(StoryRecord):
     compiled_input: CompiledImageInput | None = None
     image_profile: str | None = None
-    preset: GenerationPreset | None = None
+    preset: dict[str, Any] | None = None
     scene_id: UUID
     seed: int = Field(ge=0, le=2**64 - 1)
     run_ids: list[UUID] = Field(default_factory=list)
@@ -291,13 +290,13 @@ class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
     input_sources: tuple[PromptSource, ...] = ()
-    format_version: Literal[1, 2, 3, 4, 5] = 1
+    format_version: Literal[1, 2, 3, 4, 5, 6] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     plan_sha256: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     image_profile: str
-    settings: RuntimeSettings
+    settings: dict[str, Any]
     scenes: list[SceneAttempts]
 
     @model_validator(mode="after")
@@ -306,9 +305,12 @@ class StoryRender(StoryRecord):
             raise ValueError("New rendering attempts require frozen image inputs.")
         if self.format_version >= 4 and any(
             scene.preset is None
-            or scene.image_profile not in self.settings.profiles
+            or scene.image_profile not in self.settings.get("profiles", [])
             or scene.compiled_input is None
-            or not scene.compiled_input.matches(scene.preset)
+            or (
+                self.format_version >= 6
+                and scene.compiled_input.preset_sha256 != digest(scene.preset)
+            )
             for scene in self.scenes
         ):
             raise ValueError("Each scene requires its frozen profile and matching image input.")

@@ -4,6 +4,7 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import httpx
 from filelock import FileLock
@@ -14,6 +15,32 @@ from komaquill.infrastructure.asset_store import cached_path, file_digest, model
 
 CHUNK_BYTES = 1024 * 1024
 DISK_RESERVE_BYTES = 64 * 1024 * 1024
+
+
+def download_hub(url: str, partial: Path, cache: Path) -> None:
+    """Use the standard local Hugging Face credentials for a pinned gated file."""
+    import shutil
+
+    from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import HfHubHTTPError
+
+    parts = unquote(urlsplit(url).path).strip("/").split("/")
+    if len(parts) < 5 or parts[2] != "resolve":
+        raise KomaquillError(code="unsupported_asset", stage="preparation", retryable=False)
+    try:
+        source = hf_hub_download(
+            repo_id="/".join(parts[:2]),
+            revision=parts[3],
+            filename="/".join(parts[4:]),
+            cache_dir=cache,
+        )
+    except HfHubHTTPError as error:
+        raise KomaquillError(
+            code="http_failed",
+            stage="preparation",
+            http_status=getattr(error.response, "status_code", None),
+        ) from None
+    shutil.copyfile(source, partial)
 
 
 def download_asset(
@@ -43,11 +70,24 @@ def download_asset(
             asset.url
             or f"https://huggingface.co/{asset.repo_id}/resolve/{asset.revision}/{asset.filename}"
         )
+        if asset.transfer and urlsplit(url).hostname == "huggingface.co":
+            download_hub(url, partial, models.parent.parent / "cache/huggingface/hub")
+            if cancelled():
+                raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+            if file_digest(partial) != asset.sha256:
+                partial.unlink(missing_ok=True)
+                raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
+            partial.replace(target)
+            register(models, asset, target)
+            return target
         try:
             with httpx.stream(
                 "GET",
                 url,
-                headers={"Range": f"bytes={size}-"} if size else {},
+                headers={
+                    "User-Agent": "Komaquill/0.1",
+                    **({"Range": f"bytes={size}-"} if size else {}),
+                },
                 timeout=timeout,
                 follow_redirects=True,
             ) as response:

@@ -1,0 +1,250 @@
+{
+  "4": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343/flux-2-klein-4b.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "90": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "lora_name": "0c4aea1ba041985d2d7e6ce655b865e0fe22ea37575b3310c4619ad57dc80a00/party_time_v2.0_klein4b.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "91": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "90",
+        0
+      ],
+      "lora_name": "fd8b9455ad344ed6c8017dbc9eefd34a4851a33e7bbb0c8d2d9a4c3632ba0320/FLUX_NSFW_Fix.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "71": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "3d6f27fd39c58c62f593ff5ef48cc734e8abb188005e6a15582876e30833ab96/model.safetensors",
+      "type": "flux2",
+      "device": "default"
+    }
+  },
+  "72": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3/flux2-vae.safetensors"
+    }
+  },
+  "10": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "clean line art, clear composition",
+      "string_b": "a small cabin in a sunny forest",
+      "delimiter": ", "
+    }
+  },
+  "74": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "10",
+        0
+      ],
+      "clip": [
+        "71",
+        0
+      ]
+    }
+  },
+  "76": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "74",
+        0
+      ]
+    }
+  },
+  "63": {
+    "class_type": "CFGGuider",
+    "inputs": {
+      "model": [
+        "91",
+        0
+      ],
+      "positive": [
+        "121",
+        0
+      ],
+      "negative": [
+        "123",
+        0
+      ],
+      "cfg": 1.0
+    }
+  },
+  "73": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 1
+    }
+  },
+  "61": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "68": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1024
+    }
+  },
+  "69": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1024
+    }
+  },
+  "62": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {
+      "steps": 4,
+      "width": [
+        "68",
+        0
+      ],
+      "height": [
+        "69",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": [
+        "68",
+        0
+      ],
+      "height": [
+        "69",
+        0
+      ],
+      "batch_size": 1
+    }
+  },
+  "3": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "73",
+        0
+      ],
+      "guider": [
+        "63",
+        0
+      ],
+      "sampler": [
+        "61",
+        0
+      ],
+      "sigmas": [
+        "62",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "72",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "komaquill"
+    }
+  },
+  "77": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    }
+  },
+  "80": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "77",
+        0
+      ],
+      "upscale_method": "nearest-exact",
+      "megapixels": 1.0,
+      "resolution_steps": 1
+    }
+  },
+  "82": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "80",
+        0
+      ],
+      "vae": [
+        "72",
+        0
+      ]
+    }
+  },
+  "121": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": [
+        "74",
+        0
+      ],
+      "latent": [
+        "82",
+        0
+      ]
+    }
+  },
+  "123": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": [
+        "76",
+        0
+      ],
+      "latent": [
+        "82",
+        0
+      ]
+    }
+  }
+}

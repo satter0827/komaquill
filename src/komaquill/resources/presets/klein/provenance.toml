@@ -1,0 +1,5 @@
+source_revision = "67984637eefcd4825dcf5c134e39034785be1682" # pragma: allowlist secret Public immutable source identity.
+source_url = "https://github.com/Comfy-Org/workflow_templates/blob/67984637eefcd4825dcf5c134e39034785be1682/templates/image_flux2_klein_text_to_image.json"
+source_sha256 = "cd4a29b0be6f71a7391f2f023e69dfc3b47d7da9f2aa215b4c8b8e17c2eea107" # pragma: allowlist secret Public immutable source identity.
+license_url = "https://github.com/Comfy-Org/workflow_templates/blob/67984637eefcd4825dcf5c134e39034785be1682/LICENSE"
+changes = ["Flatten the distilled standard graph.", "Use the pinned uncensored encoder and two serial model-only LoRAs.", "Expose explicit output dimensions and a standard candidate batch.", "Share prompt bindings between the API and App Mode."]

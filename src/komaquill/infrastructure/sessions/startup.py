@@ -3,7 +3,7 @@
 import subprocess
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import keyring
@@ -12,6 +12,7 @@ from filelock import Timeout
 from komaquill.application.generation import (
     verify_runtime,
 )
+from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import Session
 from komaquill.infrastructure.atomic import atomic_json
@@ -134,8 +135,6 @@ def start_colab(
             elapsed_seconds=time.monotonic() - started_at,
         )
 
-    local_models = ThreadPoolExecutor(max_workers=1, thread_name_prefix="startup-models")
-    local_preparation = []
     cleanup_owned = False
     ready = False
     force = True
@@ -152,9 +151,9 @@ def start_colab(
             echo(message("text.downloading_and_verifying_the_model"))
             for asset in assets(project.settings()):
                 phase("model_preparation", asset=asset.name)
-                local_preparation.append(local_models.submit(fetch_model, project, asset))
+                fetch_model(project, asset)
                 check_cancel(project)
-        phase("models_scheduled" if saved is None else "models_reused")
+        phase("models_verified" if saved is None else "models_reused")
         payload = create_payload(project)
         phase("payload_ready")
         cleanup_owned = colab.receipt() is None
@@ -187,13 +186,24 @@ def start_colab(
             endpoint=f"http://127.0.0.1:{project.settings().local_port}",
             runtime_id=receipt.runtime_id,
             settings=project.settings(),
+            started_at=receipt.started_at,
         )
         client = ComfyClient(session.endpoint, timeout=project.settings().request_timeout)
-        deadline = time.monotonic() + project.settings().preparation_timeout
+        timeout = project.settings().preparation_timeout
+        remaining = remaining_seconds(
+            receipt.started_at, project.settings().submission_timeout, datetime.now(UTC)
+        )
+        if remaining is not None:
+            timeout = min(timeout, remaining)
+        deadline = time.monotonic() + timeout
         next_progress = time.monotonic() + PROGRESS_POLL_SECONDS
         previous_progress: dict[str, str | None] = {}
         while True:
             check_cancel(project)
+            if time.monotonic() >= deadline:
+                raise KomaquillError(
+                    display_key="text.comfyui_did_not_become_ready_check_the_preparation"
+                )
             update_monitor(project)
             if time.monotonic() >= next_progress:
                 current_progress = colab.progress(receipt)
@@ -244,9 +254,9 @@ def start_colab(
                     raise KomaquillError(
                         display_key="text.comfyui_did_not_become_ready_check_the_preparation"
                     ) from None
-                time.sleep(project.settings().poll_interval)
-        for future in local_preparation:
-            future.result()
+                time.sleep(
+                    min(project.settings().poll_interval, max(0, deadline - time.monotonic()))
+                )
         phase("model_verified", receipt.runtime_id)
         check_cancel(project)
         atomic_json(project.session_file, session.model_dump(mode="json"))
@@ -298,7 +308,6 @@ def start_colab(
                     if primary_error is None:
                         raise
         finally:
-            local_models.shutdown(wait=True, cancel_futures=True)
             if client is not None:
                 client.close()
 

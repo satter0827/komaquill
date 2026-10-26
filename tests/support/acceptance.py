@@ -142,6 +142,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                 )
             else:
                 python = Path(sys.executable)
+                env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
             workspace = root / "work"
             workspace.mkdir()
 
@@ -164,16 +165,14 @@ def run_acceptance(wheel: Path | None = None) -> None:
             for name in ("preset.toml", "workflow.json", "workflow-api.json"):
                 if wheel is not None:
                     with zipfile.ZipFile(wheel) as archive:
-                        content = archive.read("komaquill/resources/presets/pony-story/" + name)
+                        content = archive.read("komaquill/resources/presets/klein/" + name)
                 else:
                     content = (
-                        files("komaquill")
-                        .joinpath("resources/presets/pony-story/" + name)
-                        .read_bytes()
+                        files("komaquill").joinpath("resources/presets/klein/" + name).read_bytes()
                     )
                 (bundle / name).write_bytes(content)
             (workspace / "komaquill.toml").write_text(
-                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom","story-reference"]\n'
+                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom","klein-edit"]\n'
                 "[presets.custom]\nsteps=27\n"
             )
             command("--help")
@@ -266,7 +265,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         "--prompt",
                         "a quiet blue lake",
                         "--negative",
-                        "extra trees",
+                        "",
                         "--seed",
                         "5",
                         "--candidates",
@@ -275,7 +274,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     positive = workspace / "positive.txt"
                     negative = workspace / "negative.txt"
                     positive.write_text("a blue umbrella", encoding="utf-8-sig")
-                    negative.write_text("floating objects", encoding="utf-8-sig")
+                    negative.write_text("", encoding="utf-8-sig")
                     command(
                         "generate",
                         "--prompt-file",
@@ -291,7 +290,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             {
                                 "format_version": 1,
                                 "prompt": "rainy street",
-                                "negative": "extra limbs",
+                                "negative": "",
                                 "subjects": ["woman", "kitten"],
                             }
                         ),
@@ -319,7 +318,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     assert illustrated["complete"] and illustrated["image_count"] == 4
                     assert all(len(scene["candidates"]) == 2 for scene in illustrated["scenes"])
                     assert all(
-                        scene["compiled_input"]["requested_negative"] == "floating objects"
+                        scene["compiled_input"]["requested_negative"] == ""
                         for scene in illustrated["scenes"]
                     )
                     shown = json.loads(
@@ -340,7 +339,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "snapshot = client.stories.show(story_id)",
                             "assert isinstance(snapshot, StorySnapshot) and snapshot.complete",
                             "assert snapshot.props and snapshot.scenes[0].compiled_input",
-                            "assert snapshot.scenes[0].compiled_input.layout == 'left-right'",
+                            "assert snapshot.scenes[0].compiled_input.layout == 'global'",
                             f"assert len(client.stories.list().stories) == {2 if wheel else 1}",
                             "for scene in snapshot.scenes:",
                             "    assert scene.primary_image is not None",
@@ -366,19 +365,19 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             f"reference_file.write_bytes({png.getvalue()!r})",
                             "reference = client.inputs.import_file(reference_file)",
                             "run = client.images.generate('a gray kitten', "
-                            "profile='story-reference', inputs={'reference': reference}, "
+                            "profile='klein-edit', inputs={'reference': reference}, "
                             "candidates=2)",
                             "assert run.state == 'saved'",
                             "assert run.input_sha256[reference.reference] == reference.sha256",
                             "config = RenderConfig(common_prompt='rainy daylight, cool light', "
                             "scenes=tuple(SceneRenderConfig(scene=i, "
-                            "prompt='a gray kitten', profile='story-reference', "
+                            "prompt='a gray kitten', profile='klein-edit', "
                             "inputs={'reference': reference}) "
                             "for i in range(1,5)))",
                             "rendered = list(client.stories.render(story_id, "
                             "render_config=config))[-1].snapshot",
                             "assert rendered.complete and all(scene.image_profile == "
-                            "'story-reference' for scene in rendered.scenes)",
+                            "'klein-edit' for scene in rendered.scenes)",
                             "assert all(scene.compiled_input.common_prompt == "
                             "'rainy daylight, cool light' for scene in rendered.scenes)",
                             "assert all(scene.compiled_input.body.startswith('rainy daylight') "
@@ -444,7 +443,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                 assert run["source_revision"] is None
             assert run["image_metadata"] and run["code_sha256"]
             graph = json.loads((runs[0].parent / "workflow-api.json").read_bytes())
-            assert graph["3"]["inputs"]["steps"] == 27
+            assert graph["62"]["inputs"]["steps"] == 27
             command(
                 "evaluations",
                 "add",

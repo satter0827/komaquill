@@ -19,7 +19,7 @@ def test_invalid_folder_does_not_block_other_runs_or_get_overwritten(project, cl
     broken.mkdir(parents=True)
     original = b"original-invalid-record"
     (broken / "run.json").write_bytes(original)
-    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "healthy")
+    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "healthy")
     report = collect(project, client, session)
     assert report.saved == 1 and len(report.errors) == 1
     assert "unexpected-folder" in str(report.errors[0])
@@ -38,7 +38,7 @@ def test_watch_records_disconnect_once_and_recovers_without_new_allocation(
         attempts.append(True)
         if len(attempts) == 1:
             raise KomaquillError("temporary", code="connection_failed")
-        client.submit(resource_json("presets/pony/workflow-api.json"), {}, "recovered")
+        client.submit(resource_json("presets/klein/workflow-api.json"), {}, "recovered")
         connection.request_stop(project, session, True)
 
     assert monitor.watch(project, client, session, messages.append, reconnect) is True
@@ -63,7 +63,7 @@ def test_watch_interrupt_requests_normal_shutdown(project, client, session):
 
 
 def test_repeated_collection_errors_are_not_spammed(project, client, session, stub, monkeypatch):
-    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "broken")
+    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "broken")
     stub.corrupt_image = True
     sleeps = []
 
@@ -111,7 +111,7 @@ def test_second_interrupt_switches_drain_to_force(project, client, session, monk
 
 def test_external_shutdown_keeps_unfinished_requests_recoverable(project, client, session, stub):
     session.backend = "external"
-    prompt = client.submit(resource_json("presets/pony/workflow-api.json"), {}, "unfinished")
+    prompt = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "unfinished")
     stub.history[prompt]["status"]["completed"] = False
     shutdown.finish_external(project, client, session, True, lambda _: None)
     run = load_runs(project)[0]

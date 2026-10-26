@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import tomllib
+from datetime import datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
 
@@ -16,7 +17,6 @@ from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject
 from komaquill.domain.presets import MODEL_ROLES
-from komaquill.gpu.extensions import prepare_extensions
 from komaquill.gpu.progress import progress
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import GpuProject, Project
@@ -65,7 +65,6 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     os.environ["KOMAQUILL_ARTIFACTS"] = str(project.artifacts)
     os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
     settings = project.settings()
-    prepare_extensions(comfy, settings)
     for name in settings.profiles:
         profile = settings.presets[name]
         for view in ["graph", "app"]:
@@ -76,7 +75,6 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
                 name,
                 settings=settings,
                 profile_name=name,
-                subject_prompts=profile.sample_subjects,
             )
             workflow["extra"]["linearMode"] = view == "app"
             atomic_json(templates / f"{name}_{view}.json", workflow)
@@ -108,6 +106,12 @@ def main(root: Path) -> None:
         else None
     )
     project = GpuProject(root.resolve(), effective)
+    started = os.environ.get("KOMAQUILL_SESSION_STARTED_AT")
+    duration = project.settings().submission_timeout
+    if started is not None and duration is not None:
+        os.environ["KOMAQUILL_SUBMIT_UNTIL"] = str(
+            (datetime.fromisoformat(started) + timedelta(seconds=duration)).timestamp()
+        )
     config = tomllib.loads(
         files("komaquill").joinpath("resources/runtime/versions.toml").read_text()
     )
@@ -121,9 +125,8 @@ def main(root: Path) -> None:
         "code_sha256": os.environ.get("KOMAQUILL_CODE_SHA256"),
         "comfy_revision": config["comfy_revision"],
         "frontend_version": config["frontend_version"],
-        "model_sha256": project.settings()
-        .assets[project.settings().presets[project.settings().profiles[0]].checkpoint]
-        .sha256,
+        "asset_sha256": {asset.reference: asset.sha256 for asset in assets(project.settings())},
+        "started_at": started,
     }
     atomic_json(user / "default/komaquill/session.json", metadata)
     logs = project.logs

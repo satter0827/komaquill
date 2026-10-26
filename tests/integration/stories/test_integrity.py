@@ -17,7 +17,7 @@ from tests.support.stories import planned, source
 def rendered(project, session, client):
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "pony", 1)
+    render = create_render(repository, project, active, plan.request.story_id, "klein", 1)
     render_story(repository, project, client, active, render.render_id)
     return repository, plan, render, active
 
@@ -175,8 +175,8 @@ def test_referenced_broken_model_metadata_is_a_safe_failure(project, session, cl
     repository, plan, render, active = rendered(project, session, client)
     run_id = repository.render(render.render_id).scenes[0].run_ids[0]
     run = project.repository.read(run_id)
-    assert run.model_sha256
-    path = project.models / "checkpoints" / run.model_sha256 / "asset.json"
+    model = next(iter(run.asset_sha256.values()))
+    path = project.models / "diffusion_models" / model / "asset.json"
     path.parent.mkdir(parents=True)
     path.write_text("null", encoding="utf-8")
     with pytest.raises(KomaquillError) as error:
@@ -232,7 +232,7 @@ def test_reserved_request_is_unsent_but_lost_placement_cannot_be_resubmitted(
 
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "pony", 1)
+    render = create_render(repository, project, active, plan.request.story_id, "klein", 1)
     identity = uuid4()
     link = render.scenes[0].model_copy(update={"run_ids": [identity]})
     render = render.model_copy(update={"scenes": [link]})

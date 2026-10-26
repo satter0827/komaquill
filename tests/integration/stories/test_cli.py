@@ -144,7 +144,7 @@ def test_follow_json_changes_are_json_lines_and_do_not_open_viewers(
 ):
     _, invoke, active = cli_story
     repository, plan = planned(project, 1)
-    create_render(repository, project, active, plan.request.story_id, "pony")
+    create_render(repository, project, active, plan.request.story_id, "klein")
     original = stories.story_view
     calls = []
 

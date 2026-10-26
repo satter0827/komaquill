@@ -14,16 +14,8 @@ from komaquill.messages import message
 
 _INPUT_LABELS = {
     "prompt": "workflow.prompt",
-    "negative": "workflow.negative",
     "batch_size": "workflow.candidates",
     "input_reference": "workflow.reference",
-    "input_base": "workflow.base",
-    "input_mask": "workflow.mask",
-    "input_person_mask": "workflow.person_mask",
-    "input_cat_reference": "workflow.cat_reference",
-    "input_cat_mask": "workflow.cat_mask",
-    "subject_1_body": "workflow.person",
-    "subject_2_body": "workflow.cat",
 }
 
 
@@ -37,13 +29,6 @@ def resource_json(name: str) -> JsonObject:
     return cast(
         JsonObject, json.loads(files("komaquill").joinpath("resources", *path.parts).read_text())
     )
-
-
-def preset(name: str = "pony") -> ModelPreset:
-    """Read one pinned asset from the packaged catalog."""
-    from komaquill.infrastructure.preset_catalog import catalog
-
-    return ModelPreset.model_validate(catalog()["assets"][name])
 
 
 def select(settings: RuntimeSettings, name: str | None = None) -> tuple[str, GenerationPreset]:
@@ -94,54 +79,20 @@ def prepare(
     applied = compiled_input or compile_image_input(profile, prompt, negative, subject_prompts)
     if not applied.matches(profile):
         raise KomaquillError(code="invalid_configuration", stage="generation")
-    sources = {row.source for row in profile.bindings}
-    negative_cleaned = any(
-        node.get("class_type") == "RegexReplace"
-        and node.get("inputs", {}).get("string") == [row.api_node, 0]
-        for row in profile.bindings
-        if row.source == "negative"
-        for node in profile.api.values()
-    )
     values = profile.model_dump()
     values.update(
-        prompt=applied.body if "positive_prefix" in sources else applied.positive,
+        prompt=applied.body,
         positive_prefix=applied.positive_prefix,
         prompt_delimiter=", " if applied.positive_prefix and applied.body else "",
-        negative=applied.negative_body if "negative_prefix" in sources else applied.negative,
-        negative_prefix=applied.negative_prefix,
-        negative_delimiter=", "
-        if negative_cleaned or (applied.negative_prefix and applied.negative_body)
-        else "",
         seed=seed,
         output_prefix=f"komaquill/{run_id}",
-        upscaled_output_prefix=f"komaquill/{run_id}-upscaled",
     )
-    for index in (1, 2):
-        values[f"subject_{index}_body"] = (
-            applied.subject_prompts[index - 1] if index <= len(applied.subject_prompts) else ""
-        )
-        values[f"subject_{index}"] = (
-            applied.subject_positives[index - 1] if index <= len(applied.subject_positives) else ""
-        )
-    for index, rectangle in enumerate(profile.regions, 1):
-        region = profile.single_region if applied.layout == "single" else rectangle
-        for key, value in region.model_dump().items():
-            values[f"region_{index}_{key}"] = (
-                0.0 if key == "strength" and index > len(applied.subject_positives) else value
-            )
-    for name in ("checkpoint", "lora", "upscaler"):
-        asset = getattr(profile, name)
-        if asset is not None:
-            values[name] = settings.assets[asset].reference
     values.update(
         {name: settings.assets[asset].reference for name, asset in profile.resources.items()}
     )
     values.update(profile.parameters)
     values.update({f"input_{name}": slot.sample for name, slot in profile.image_inputs.items()})
     values.update({f"input_{name}": item.reference for name, item in applied.inputs.items()})
-    values.update(
-        {f"seed_{name}": (seed + offset) % (2**64) for name, offset in profile.seed_offsets.items()}
-    )
     nodes = {row["id"]: row for row in ui["nodes"]}
     for binding in profile.bindings:
         value = values[binding.source]

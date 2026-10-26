@@ -107,7 +107,7 @@ def test_local_policy_replacement_and_explicit_overrides(project, monkeypatch):
     from pathlib import Path
 
     target = project.root / "presets/custom"
-    shutil.copytree(Path(str(files("komaquill").joinpath("resources/presets/pony"))), target)
+    shutil.copytree(Path(str(files("komaquill").joinpath("resources/presets/klein"))), target)
     (target / "planning.toml").write_text('style="local style"\nguidance=["Use close-ups."]\n')
     (project.root / "komaquill.toml").write_text(
         '[story]\nimage_profile="custom"\n[story.planning]\nstyle="workspace style"\n'

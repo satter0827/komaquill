@@ -1,7 +1,9 @@
 """Provide ComfyUI test boundaries without network or GPU dependencies."""
 
+import ipaddress
 import os
 import shutil
+import socket
 from contextlib import suppress
 from uuid import uuid4
 
@@ -11,18 +13,34 @@ import pytest
 from komaquill.domain.models import Session
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
-from komaquill.infrastructure.workflows import preset
 from tests.support.comfy import ComfyStub
+from tests.support.presets import asset
+
+
+@pytest.fixture(autouse=True)
+def offline_network(monkeypatch):
+    """Keep accidental real network access outside the daily test suite."""
+    connect = socket.socket.connect
+
+    def local_only(connection, address):
+        if isinstance(address, tuple):
+            try:
+                allowed = ipaddress.ip_address(address[0]).is_loopback
+            except ValueError:
+                allowed = address[0] == "localhost"
+            if not allowed:
+                raise AssertionError("External network access is disabled in offline tests.")
+        return connect(connection, address)
+
+    monkeypatch.setattr(socket.socket, "connect", local_only)
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
 
 
 @pytest.fixture
 def project(tmp_path):
     (tmp_path / "komaquill.toml").write_text(
         "poll_interval = 0.001\ngeneration_timeout = 1.0\nstory_max_in_flight = 1\n"
-        + "".join(
-            f"[presets.{name}]\nbatch_size = 1\n"
-            for name in ("pony", "pony-story", "pony-upscale", "pony-preview", "sd15")
-        )
+        + "".join(f"[presets.{name}]\nbatch_size = 1\n" for name in ("klein", "klein-edit"))
     )
     return Project(tmp_path)
 
@@ -35,7 +53,7 @@ def session():
         source_revision="a" * 40,
         comfy_revision="b" * 40,
         frontend_version="1.55.18",
-        model_sha256=preset().sha256,
+        asset_sha256={asset().name: asset().sha256},
     )
 
 

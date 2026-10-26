@@ -36,7 +36,7 @@ def test_open_returns_after_opening_the_selected_view(project, client, session, 
         cli.app, ["--project", str(project.root), "open", "--view", "graph"]
     )
     assert result.exit_code == 0, result.output
-    assert "template=pony_graph" in opened[0]
+    assert "template=klein_graph" in opened[0]
     assert "source=komaquill" in opened[0]
     assert "monitor" in result.output
 
@@ -60,8 +60,8 @@ def test_collect_reports_partial_save_and_returns_failure(
     def connection(_project):
         yield client, session
 
-    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "broken-browser")
-    client.submit(resource_json("presets/pony/workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "broken-browser")
+    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "healthy-browser")
     record = next(iter(stub.history.values()))
     record["outputs"]["9"]["images"][0]["filename"] = "broken.png"
     stub.invalid_images.add("broken.png")

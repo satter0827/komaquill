@@ -1,0 +1,44 @@
+"""Check exported panel order, complete text and bounded page layout."""
+
+import pytest
+from PIL import Image
+
+from tests.live.completion_page import render_page
+
+
+def panels(tmp_path, text="The kitten is safe."):
+    result = []
+    for scene, color in enumerate(("red", "green", "blue", "yellow"), 1):
+        path = tmp_path / f"{scene}.png"
+        Image.new("RGB", (40, 40), color).save(path)
+        result.append({"scene": scene, "key": f"saved/{scene}", "path": path, "text": text})
+    return result
+
+
+def test_png_and_pdf_have_right_to_left_order_and_complete_captions(tmp_path):
+    result = render_page(tmp_path, "A rainy day", panels(tmp_path))
+    assert result["complete"] and result["size"] == [2480, 3508]
+    first, second, third, fourth = result["panels"]
+    assert first["bounds"][0] > second["bounds"][0]
+    assert first["bounds"][1] == second["bounds"][1]
+    assert third["bounds"][1] > first["bounds"][1]
+    assert third["bounds"][0] > fourth["bounds"][0]
+    assert all(row["text"] == "The kitten is safe." for row in result["panels"])
+    with Image.open(tmp_path / "comic.png") as image:
+        assert image.size == (2480, 3508)
+        x, y, _, _ = first["bounds"]
+        assert image.getpixel((x + 100, y + 100)) == (255, 0, 0)
+    assert (tmp_path / "comic.pdf").read_bytes().startswith(b"%PDF-")
+
+
+def test_caption_overflow_does_not_publish_a_truncated_page(tmp_path):
+    with pytest.raises(ValueError):
+        render_page(tmp_path, "A rainy day", panels(tmp_path, "W" * 3000))
+    assert not (tmp_path / "comic.png").exists()
+    assert not (tmp_path / "comic.pdf").exists()
+
+
+def test_missing_scene_does_not_create_placeholder_artwork(tmp_path):
+    with pytest.raises(ValueError):
+        render_page(tmp_path, "A rainy day", panels(tmp_path)[:3])
+    assert not (tmp_path / "comic.png").exists()

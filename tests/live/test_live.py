@@ -37,7 +37,7 @@ def test_live_normal_wait_collects_a_browser_request_without_stopping_gpu():
         graph, ui = prepare(
             "a sunny forest stream, watercolor", "text, watermark", 833, str(uuid4())
         )
-        graph["3"]["inputs"]["steps"] = 100
+        graph["62"]["inputs"]["steps"] = 100
         node = next(node for node in ui["nodes"] if node["id"] == 3)
         node["widgets_values"][2] = 100
         identity = client.submit(graph, ui, str(uuid4()))

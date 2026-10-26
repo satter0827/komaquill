@@ -1,10 +1,20 @@
 """Define immutable runtime settings without reading the environment."""
 
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from komaquill.domain.presets import GenerationPreset, ModelPreset
+
+
+def remaining_seconds(
+    started_at: datetime | None, limit: float | None, now: datetime
+) -> float | None:
+    """Derive a durable time budget without resetting it after reconnection."""
+    if started_at is None or limit is None:
+        return None
+    return max(0.0, limit - (now - started_at).total_seconds())
 
 
 class RuntimeSettings(BaseModel):
@@ -20,11 +30,13 @@ class RuntimeSettings(BaseModel):
     shutdown_timeout: float = Field(gt=0)
     worker_execution_timeout: float = Field(gt=0)
     control_timeout: float = Field(gt=0)
+    submission_timeout: float | None = Field(default=None, gt=0)
+    session_timeout: float | None = Field(default=None, gt=0)
     local_port: int = Field(ge=1024, le=65535)
     remote_port: int = Field(ge=1024, le=65535)
     gpu: str = Field(pattern=r"^(T4|L4|G4|H100|A100)$")
 
-    profiles: tuple[str, ...] = ("pony",)
+    profiles: tuple[str, ...]
     presets: dict[str, GenerationPreset] = Field(default_factory=dict)
     assets: dict[str, ModelPreset] = Field(default_factory=dict)
 
@@ -33,6 +45,10 @@ class RuntimeSettings(BaseModel):
         """Fail before allocation if a preset or required asset is undefined."""
         if not self.profiles or len(set(self.profiles)) != len(self.profiles):
             raise ValueError("Select at least one distinct generation profile.")
+        if self.submission_timeout is not None and (
+            self.session_timeout is None or self.submission_timeout >= self.session_timeout
+        ):
+            raise ValueError("The submission deadline must precede the session deadline.")
         for name in self.profiles:
             if name not in self.presets:
                 raise ValueError("The selected generation profile is undefined.")
@@ -43,11 +59,13 @@ class RuntimeSettings(BaseModel):
                 raise ValueError("Profile names must use lowercase letters, digits and hyphens.")
             if any(asset not in self.assets for asset in profile.resources.values()):
                 raise ValueError("A profile resource is undefined.")
-            for asset, role in (
-                (profile.checkpoint, "checkpoints"),
-                (profile.lora, "loras"),
-                (profile.upscaler, "upscale_models"),
-            ):
-                if asset and (asset not in self.assets or self.assets[asset].role != role):
-                    raise ValueError("A profile asset is missing or has the wrong role.")
+            from komaquill.domain.presets import MODEL_INPUT_ROLES
+
+            for binding in profile.bindings:
+                if binding.source not in profile.resources:
+                    continue
+                asset = self.assets[profile.resources[binding.source]]
+                spec = MODEL_INPUT_ROLES.get(profile.api[binding.api_node]["class_type"])
+                if spec is None or binding.api_input != spec[0] or asset.role != spec[1]:
+                    raise ValueError("A profile resource does not match its standard model loader.")
         return self

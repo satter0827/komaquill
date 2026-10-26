@@ -218,22 +218,6 @@ class ComfyClient:
                 code="invalid_output", stage="preparation", retryable=False
             ) from None
 
-    def checkpoints(self) -> list[str]:
-        """Validate checkpoint choices without exposing the remote payload."""
-        nodes = self.json("/object_info")
-        try:
-            values = nodes["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
-            if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
-                raise ValueError
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise KomaquillError(
-                display_key="error.invalid_response",
-                code="invalid_response",
-                stage="response_validation",
-                retryable=False,
-            ) from None
-        return cast(list[str], values)
-
 
 def input_choices(nodes: JsonObject, loader: str, field: str) -> list[str]:
     """Read V1 list choices and V3 COMBO options from object_info."""

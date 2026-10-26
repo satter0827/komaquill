@@ -30,7 +30,7 @@ def multipart_input(content_type: str, content: bytes) -> tuple[str, str, bytes]
 
 def batch_count(graph: JsonObject) -> int:
     for node in graph.values():
-        if node["class_type"] == "EmptyLatentImage":
+        if node["class_type"] == "EmptyFlux2LatentImage":
             return node["inputs"]["batch_size"]
         if node["class_type"] == "RepeatImageBatch":
             return node["inputs"]["amount"]

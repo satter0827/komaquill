@@ -22,20 +22,24 @@ from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.storage import FileStoryRepository
 from komaquill.interfaces.stories import present
-from tests.live.completion_workflow import PROFILE, prepare_repair
 
 SCENES = 4
-CANDIDATES = 2
+CANDIDATES = 1
 MAX_OUTPUTS = 12
-MAX_IMPROVEMENTS = 2
-SEND_SECONDS = 40 * 60
-TOTAL_SECONDS = 60 * 60
+MAX_IMPROVEMENTS = 4
+MAX_IMPROVEMENT_SCENES = 2
+MAX_SCENE_ROUNDS = 2
+MAX_SCREEN_OUTPUTS = 2
+MAX_TECHNICAL_RETRIES = 2
+EDIT_PROFILE = "klein-edit"
+SEND_SECONDS = 70 * 60
+TOTAL_SECONDS = 90 * 60
 BASE_SEED = 424242
 COMMON_PROMPT = (
     "rain falling in the uncovered street, wet pavement, cool overcast daylight, "
-    "soft painted storybook illustration"
+    "manga illustration, consistent characters, clean expressive line art"
 )
-NEGATIVE = "deformed body, fused bodies, floating objects"
+NEGATIVE = ""
 DESCRIPTIONS = (
     (
         "rainy shop street, a young woman crouches beside a small kitten",
@@ -79,9 +83,9 @@ class Improvement(BaseModel):
     job_id: UUID
     scene: int = Field(ge=1, le=SCENES)
     parent_key: str
-    method: Literal["regenerate", "inpaint"]
+    method: Literal["regenerate", "edit"]
     prompt: str = Field(min_length=1)
-    negative: str = NEGATIVE
+    negative: Literal[""] = ""
     subjects: tuple[str, ...] = ()
     seed: int
     inputs: dict[str, InputArtifact] = Field(default_factory=dict)
@@ -93,16 +97,15 @@ class ImprovementRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scene: int = Field(ge=1, le=SCENES, strict=True)
     parent_key: str
-    method: Literal["regenerate", "inpaint"]
+    method: Literal["regenerate", "edit"]
     prompt: str = Field(min_length=1)
-    negative: str = NEGATIVE
+    negative: Literal[""] = ""
     subjects: tuple[str, ...] = Field(default=(), max_length=2)
-    mask: str | None = None
 
 
 class Case(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    format_version: Literal[1] = 1
+    format_version: Literal[2] = 2
     case_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     prepared_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -117,6 +120,8 @@ class Case(BaseModel):
     baseline_render_id: UUID | None = None
     retry_attempted: bool = False
     improvements: list[Improvement] = Field(default_factory=list)
+    screen_outputs: int = 0
+    selections: dict[int, str] = Field(default_factory=dict)
     output_limit: int = MAX_OUTPUTS
     improvement_limit: int = MAX_IMPROVEMENTS
     candidates: int = CANDIDATES
@@ -194,34 +199,43 @@ def prepare(source_workspace: Path, story_id: UUID, report: Path) -> Case:
         if path.is_file():
             atomic_bytes(target / path.relative_to(origin), path.read_bytes())
     assert target_repository.read(story_id) == plan
-    prepare_repair(destination.root)
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
     atomic_bytes(
         destination.root / "komaquill.toml",
-        f'profiles = ["pony-story", "{PROFILE}"]\nlocal_port = {port}\n'.encode(),
+        (
+            f'profiles = ["klein", "klein-edit"]\nlocal_port = {port}\n'
+            + "".join(
+                f"\n[assets.{name}]\n"
+                + "".join(
+                    f"{key} = {json.dumps(value)}\n"
+                    for key, value in model.model_dump(mode="json", exclude_none=True).items()
+                )
+                for name, model in source.settings().assets.items()
+            )
+        ).encode(),
     )
     destination.settings()
-    model = source.settings().assets["pony"]
-    source_model = model_path(source.models, model)
-    if not verified_cache(source.models, model):
-        from komaquill.infrastructure.artifacts import file_digest
+    for model in source.settings().assets.values():
+        source_model = model_path(source.models, model)
+        if not verified_cache(source.models, model):
+            from komaquill.infrastructure.artifacts import file_digest
 
-        if file_digest(source_model) != model.sha256:
-            raise ValueError("The retained Pony model does not match its pinned checksum.")
-    destination_model = model_path(destination.models, model)
-    destination_model.parent.mkdir(parents=True)
-    os.link(source_model, destination_model)
-    register(destination.models, model, destination_model)
+            if not source_model.is_file() or file_digest(source_model) != model.sha256:
+                raise ValueError("A required model does not match its pinned checksum.")
+        destination_model = model_path(destination.models, model)
+        destination_model.parent.mkdir(parents=True)
+        os.link(source_model, destination_model)
+        register(destination.models, model, destination_model)
     config = RenderConfig(
         common_prompt=COMMON_PROMPT,
         scenes=tuple(
             SceneRenderConfig(
                 scene=index,
-                profile="pony-story",
+                profile="klein",
                 prompt=prompt,
-                negative=NEGATIVE,
+                negative=None,
                 subjects=subjects,
             )
             for index, (prompt, subjects) in enumerate(DESCRIPTIONS, 1)
@@ -271,6 +285,18 @@ def prepare(source_workspace: Path, story_id: UUID, report: Path) -> Case:
     return case
 
 
+def reserve_screen(report: Path) -> None:
+    """Reserve one standard-screen output before its explicit browser submission."""
+    with FileLock(str(report / ".case.lock"), timeout=0):
+        case = load(report)
+        sending_allowed(case)
+        if case.screen_outputs >= MAX_SCREEN_OUTPUTS:
+            raise RuntimeError("The standard-screen verification budget is exhausted.")
+        reserve(case, 1)
+        case.screen_outputs += 1
+        save(report, case)
+
+
 def start(report: Path) -> None:
     with FileLock(str(report / ".case.lock")):
         case = load(report)
@@ -299,7 +325,7 @@ def baseline(report: Path, *, retry_failed: bool = False) -> None:
             r for r in repository.renders(case.story_id) if case.baseline_source in r.input_sources
         ]
         if len(existing) > 1:
-            raise RuntimeError("Multiple baseline renderings require manual reconciliation.")
+            raise RuntimeError("Multiple baseline renderings cannot be safely resubmitted.")
         if existing:
             case.baseline_render_id = existing[0].render_id
         elif case.baseline_reserved and case.baseline_render_id is None:
@@ -312,6 +338,8 @@ def baseline(report: Path, *, retry_failed: bool = False) -> None:
                 raise RuntimeError("Only one retry of confirmed failed scenes is allowed.")
             snapshot = api.stories.show(case.story_id, render_id=case.baseline_render_id)
             failed = sum(scene.state in {"failed", "lost"} for scene in snapshot.scenes)
+            if failed > MAX_TECHNICAL_RETRIES:
+                raise RuntimeError("The technical retry budget cannot cover every failed scene.")
             if not failed:
                 raise RuntimeError("No confirmed failed scenes are available for retry.")
             reserve(case, failed * case.candidates)
@@ -364,27 +392,37 @@ def improve(report: Path, request_path: Path) -> None:
             reconcile_job(report, case, existing)
             return
         sending_allowed(case)
-        if len(case.improvements) >= case.improvement_limit or any(
-            j.scene == data["scene"] for j in case.improvements
+        rounds = sum(job.scene == request.scene for job in case.improvements)
+        scenes = {job.scene for job in case.improvements}
+        if (
+            len(case.improvements) >= case.improvement_limit
+            or rounds >= MAX_SCENE_ROUNDS
+            or (request.scene not in scenes and len(scenes) >= MAX_IMPROVEMENT_SCENES)
         ):
-            raise RuntimeError("The improvement round is exhausted for this scene.")
+            raise RuntimeError("The improvement budget is exhausted for this scene.")
         snapshot = api.stories.show(case.story_id, render_id=case.baseline_render_id)
         if not snapshot.complete:
             raise RuntimeError("Finish all four baseline scenes before improving artwork.")
         scene = snapshot.scenes[data["scene"] - 1]
-        if data["parent_key"] not in {image.key for image in scene.candidates}:
-            raise ValueError("The parent must be a saved baseline candidate from this scene.")
-        inputs = {}
-        if data["method"] == "inpaint":
-            if not request.mask:
-                raise ValueError("Local correction requires an edit mask.")
-            inputs = {
-                "base": api.inputs.import_file(api.artifact_path(data["parent_key"])),
-                "mask": api.inputs.import_file(request_path.parent / request.mask, kind="mask"),
-            }
+        parents = {image.key for image in scene.candidates}
+        for job in case.improvements:
+            if job.scene == request.scene and job.run_id is not None:
+                run = project(report).repository.read(job.run_id)
+                parents.update(
+                    f"runs/{run.run_id}/{name}"
+                    for name in run.images
+                    if run.image_metadata.get(name) and run.image_metadata[name].role == "candidate"
+                )
+        if request.parent_key not in parents:
+            raise ValueError("The parent must be a saved candidate from this scene.")
+        inputs = (
+            {"reference": api.inputs.import_file(api.artifact_path(request.parent_key))}
+            if request.method == "edit"
+            else {}
+        )
         from komaquill.domain.images import validate_inputs
 
-        profile = PROFILE if data["method"] == "inpaint" else "pony-story"
+        profile = EDIT_PROFILE if data["method"] == "edit" else "klein"
         validate_inputs(project(report).settings().presets[profile], inputs)
         job_id = uuid4()
         content = json.dumps(
@@ -428,7 +466,6 @@ def improve(report: Path, request_path: Path) -> None:
                 candidates=case.candidates,
                 inputs=job.inputs,
                 input_sources=(job.source,),
-                parameters={"denoise": 0.55} if job.method == "inpaint" else None,
             )
             job.run_id = run.run_id
         except BaseException as error:
@@ -483,7 +520,7 @@ def stop(report: Path) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "action", choices=("prepare", "start", "baseline", "improve", "report", "stop")
+        "action", choices=("prepare", "start", "baseline", "improve", "report", "screen", "stop")
     )
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--source-workspace", type=Path)
@@ -492,12 +529,14 @@ if __name__ == "__main__":
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--allow-gpu", action="store_true")
     args = parser.parse_args()
-    if args.action in {"start", "baseline", "improve", "stop"} and not args.allow_gpu:
+    if args.action in {"start", "baseline", "improve", "screen", "stop"} and not args.allow_gpu:
         parser.error("Use --allow-gpu only for an explicit live operation.")
     if args.action == "prepare":
         if not args.source_workspace or not args.story_id:
             parser.error("Prepare requires --source-workspace and --story-id.")
         prepare(args.source_workspace, args.story_id, args.report)
+    elif args.action == "screen":
+        reserve_screen(args.report)
     elif args.action == "start":
         start(args.report)
     elif args.action == "baseline":

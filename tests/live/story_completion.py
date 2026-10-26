@@ -134,6 +134,7 @@ def prepare(
 ) -> Case:
     """Copy immutable planning evidence, without creating a new planning result."""
     source = Project(source_workspace)
+    model_source = Project(model_workspace) if model_workspace else source
     repository = FileStoryRepository(source)
     plan = repository.read(story_id)
     report.mkdir(parents=True, exist_ok=False)
@@ -186,12 +187,11 @@ def prepare(
                         f"{key} = {json.dumps(value)}\n"
                         for key, value in model.model_dump(mode="json", exclude_none=True).items()
                     )
-                    for name, model in source.settings().assets.items()
+                    for name, model in model_source.settings().assets.items()
                 )
             ).encode(),
         )
     destination.settings()
-    model_source = Project(model_workspace) if model_workspace else source
     for model in model_source.settings().assets.values():
         source_model = model_path(model_source.models, model)
         if not verified_cache(model_source.models, model):

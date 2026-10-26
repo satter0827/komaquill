@@ -52,6 +52,20 @@ def test_corpus_is_frozen_and_tampering_is_not_treated_as_a_new_suite(campaign):
         suite.load(campaign)
 
 
+@pytest.mark.parametrize("fault", ["path", "duplicate", "negative", "overspend"])
+def test_invalid_retained_identities_and_counters_are_rejected_before_use(campaign, fault):
+    value = suite.load(campaign)
+    if fault == "path":
+        value.members = ["../unrelated"]
+    elif fault == "duplicate":
+        value.members = ["rainy-cat", "rainy-cat"]
+    else:
+        value.operations = {"invalid": -1 if fault == "negative" else value.config.output_limit + 1}
+    suite.save(campaign, value)
+    with pytest.raises(ValueError):
+        suite.load(campaign)
+
+
 def test_shutdown_prevents_new_work_and_keeps_concurrent_budget_updates(campaign, monkeypatch):
     from komaquill.infrastructure.atomic import atomic_json
 

@@ -11,7 +11,7 @@ from unittest.mock import patch
 from uuid import UUID
 
 from filelock import FileLock
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictInt
 
 from komaquill.api import Client, Evaluator, KomaquillError
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
@@ -39,10 +39,10 @@ class Suite(BaseModel):
     identity: dict[str, str | None]
     corpus_sha256: str
     planning_started_at: AwareDatetime | None = None
-    planning_calls: int = 0
+    planning_calls: StrictInt = Field(default=0, ge=0)
     plans: dict[str, list[dict]] = Field(default_factory=dict)
     members: list[str] = Field(default_factory=list)
-    operations: dict[str, int] = Field(default_factory=dict)
+    operations: dict[str, StrictInt] = Field(default_factory=dict)
     gpu_started_at: AwareDatetime | None = None
     shutdown_confirmed: bool = False
     stopping: bool = False
@@ -65,8 +65,19 @@ def save(report: Path, suite: Suite) -> None:
 
 def load(report: Path) -> Suite:
     suite = Suite.model_validate_json((report / "suite.json").read_bytes())
-    if hashlib.sha256((report / "corpus.json").read_bytes()).hexdigest() != suite.corpus_sha256:
+    corpus = (report / "corpus.json").read_bytes()
+    if hashlib.sha256(corpus).hexdigest() != suite.corpus_sha256:
         raise ValueError("The frozen story corpus has changed.")
+    known = {row["id"] for row in json.loads(corpus)}
+    if (
+        not set(suite.config.live_cases) <= known
+        or not set(suite.members) <= set(suite.config.live_cases)
+        or len(suite.members) != len(set(suite.members))
+        or suite.planning_calls > suite.config.planning_calls
+        or any(value < 1 for value in suite.operations.values())
+        or sum(suite.operations.values()) > suite.config.output_limit
+    ):
+        raise ValueError("Retained case identities or budget counters are inconsistent.")
     return suite
 
 
@@ -312,6 +323,12 @@ def start(report: Path) -> None:
         suite = load(report)
         if not suite.members or suite.gpu_started_at is not None:
             raise RuntimeError("A suite may start exactly one prepared GPU session.")
+        settings = story_completion.project(report / "cases" / suite.members[0]).settings()
+        if (
+            settings.submission_timeout != suite.config.send_seconds
+            or settings.session_timeout != suite.config.total_seconds
+        ):
+            raise ValueError("Effective GPU deadlines differ from the frozen suite limits.")
         suite.gpu_started_at = datetime.now(UTC)
         save(report, suite)
     first = report / "cases" / suite.members[0]

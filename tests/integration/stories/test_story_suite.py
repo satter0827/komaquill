@@ -58,7 +58,7 @@ def test_paired_corpus_uses_common_public_pipeline(
 
 
 @pytest.mark.parametrize("case_id", cases())
-def test_reference_renaming_does_not_change_visible_conditioning(project, case_id):
+def test_reference_and_paragraph_identity_do_not_change_visible_conditioning(project, case_id):
     from komaquill.application.stories.image_inputs import scene_input
     from komaquill.domain.stories import StoryDraft
 
@@ -66,13 +66,13 @@ def test_reference_renaming_does_not_change_visible_conditioning(project, case_i
     options = settings(project, images=4, llm_profile="fake")
     base = planner(project, options, allow_real_llm=False)
 
-    def make(value):
+    def make(value, text=None):
         return plan_story(
             FileStoryRepository(project),
             LangChainPlanner(
                 base.provenance, FakeListLLM(responses=[json.dumps(value)], cache=False)
             ),
-            request(4, case.source),
+            request(4, case.source if text is None else text),
             max_images=8,
         )
 
@@ -91,4 +91,12 @@ def test_reference_renaming_does_not_change_visible_conditioning(project, case_i
     profile = project.settings().presets["klein"]
     assert [scene_input(original, scene, profile) for scene in original.scenes] == [
         scene_input(renamed, scene, profile) for scene in renamed.scenes
+    ]
+    repartitioned = case.draft.model_dump(mode="json")
+    for scene in repartitioned["scenes"]:
+        scene["source_refs"] = ["p1"]
+    merged = make(repartitioned, "".join(case.source.split("\n\n")))
+    assert original.request.source_sha256 != merged.request.source_sha256
+    assert [scene_input(original, scene, profile) for scene in original.scenes] == [
+        scene_input(merged, scene, profile) for scene in merged.scenes
     ]

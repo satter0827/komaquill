@@ -48,6 +48,18 @@ def test_multiple_cases_share_one_workspace_and_model_set(completion, project):
     assert live.load(report).source_plan_sha256 != live.load(second).source_plan_sha256
 
 
+def test_model_definitions_follow_the_shared_model_workspace(completion, project):
+    from komaquill.infrastructure.configuration import Project
+
+    report, _, _ = completion
+    planning_root = project.root / "separate-planning"
+    Client.initialize(planning_root)
+    _, plan = planned(Project(planning_root))
+    destination = report.parent / "separate-case"
+    live.prepare(planning_root, plan.request.story_id, destination, model_workspace=project.root)
+    assert live.project(destination).settings().assets == project.settings().assets
+
+
 def test_preparation_checkpoints_runtime_before_start_returns(completion, monkeypatch):
     from komaquill.infrastructure.atomic import atomic_json
 

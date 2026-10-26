@@ -125,7 +125,7 @@ def test_gated_download_cancellation_keeps_the_sdk_file_for_resume(project, monk
 def test_gated_download_rejects_corruption_without_replacing_the_existing_file(
     project, monkeypatch
 ):
-    model = asset("klein-encoder")
+    model = asset("klein-encoder").model_copy(update={"size_bytes": 16})
     target = model_path(project.models, model)
     target.parent.mkdir(parents=True)
     target.write_bytes(b"previous file")
@@ -157,6 +157,6 @@ def test_gated_download_cannot_publish_a_file_outside_its_staging_folder(
     foreign.write_bytes(b"unrelated content")
     monkeypatch.setattr("huggingface_hub.hf_hub_download", lambda **kwargs: str(foreign))
     with pytest.raises(KomaquillError) as error:
-        fetch_model(project, asset("klein-encoder"))
+        fetch_model(project, asset("klein-encoder").model_copy(update={"size_bytes": 16}))
     assert error.value.code == "invalid_output"
     assert foreign.read_bytes() == b"unrelated content"

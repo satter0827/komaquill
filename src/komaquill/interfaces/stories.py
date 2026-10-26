@@ -12,7 +12,7 @@ import typer
 from komaquill.api import Client, KomaquillError, StoryEvent, StoryInterrupted
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject
 from komaquill.infrastructure.configuration import Project
-from komaquill.interfaces.image_inputs import negative_input
+from komaquill.interfaces.image_inputs import negative_input, render_file
 from komaquill.messages import message
 
 GROUP = typer.Typer(no_args_is_help=True, add_completion=False, help=message("stories.help"))
@@ -321,6 +321,9 @@ def bind(
         image_profile: Annotated[
             str | None, typer.Option(help=message("stories.image_profile_help"))
         ] = None,
+        render_file_path: Annotated[
+            Path | None, typer.Option("--render-file", help=message("stories.render_file_help"))
+        ] = None,
         seed: Annotated[
             int | None, typer.Option(min=0, max=2**64 - 1, help=message("stories.seed_help"))
         ] = None,
@@ -337,6 +340,10 @@ def bind(
     ) -> None:
         with story_operation(ctx) as client:
             negative, sources = negative_input(negative, negative_file)
+            config = None
+            if render_file_path:
+                config, original = render_file(client, render_file_path)
+                sources = (*sources, original)
             present(
                 client,
                 client.stories.render(
@@ -346,6 +353,7 @@ def bind(
                     candidates=candidates,
                     negative=negative,
                     input_sources=sources,
+                    render_config=config,
                 ),
                 json_output,
             )

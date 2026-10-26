@@ -75,6 +75,7 @@ class OutputSpec(BaseModel):
 
     primary_node: str
     candidates: int = Field(ge=1, strict=True)
+    stages: dict[str, str] = Field(default_factory=dict)
 
 
 class ImageMetadata(BaseModel):
@@ -88,6 +89,7 @@ class ImageMetadata(BaseModel):
     output_node: str | None = None
     batch_index: int | None = Field(default=None, ge=0)
     role: Literal["candidate", "auxiliary", "unknown"] = "unknown"
+    stage: str | None = None
 
 
 class Run(BaseModel):
@@ -97,7 +99,7 @@ class Run(BaseModel):
 
     output_spec: OutputSpec | None = None
     input_sources: tuple[PromptSource, ...] = ()
-    format_version: int = 3
+    format_version: int = 4
     run_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     runtime_id: UUID
@@ -122,6 +124,7 @@ class Run(BaseModel):
     generation_completed_at: datetime | None = None
     image_metadata: dict[str, ImageMetadata] = Field(default_factory=dict)
     failure: FailureInfo | None = None
+    collection_failure: FailureInfo | None = None
 
     @property
     def pending(self) -> bool:

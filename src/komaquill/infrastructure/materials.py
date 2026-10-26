@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 from urllib.parse import quote
+from uuid import UUID, uuid4
 
 import keyring
 from filelock import FileLock, Timeout
@@ -18,6 +19,18 @@ from komaquill.infrastructure.diagnostics import record_event
 from komaquill.infrastructure.storage import load_session
 
 PREFIX = "/komaquill/v1"
+
+
+def workspace_identity(project: Project) -> UUID:
+    """Share one persisted identity across concurrent import and monitor startup."""
+    project.state.mkdir(parents=True, exist_ok=True)
+    path = project.state / "workspace.json"
+    with FileLock(str(project.state / ".workspace.lock")):
+        if path.is_file():
+            return UUID(json.loads(path.read_bytes())["workspace_id"])
+        identity = uuid4()
+        atomic_json(path, {"workspace_id": str(identity)})
+        return identity
 
 
 def records(project: Project, kind: str) -> list[Material]:

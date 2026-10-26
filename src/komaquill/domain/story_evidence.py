@@ -91,6 +91,7 @@ class EvidenceRender(BaseModel):
     plan_sha256: str
     image_profile: str
     seeds: dict[str, int]
+    profiles: dict[str, str] = Field(default_factory=dict)
 
 
 class StoryEvidence(BaseModel):

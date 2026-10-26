@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo
 from komaquill.domain.images import CompiledImageInput, PromptSource
+from komaquill.domain.presets import GenerationPreset
 
 
 class StoryRecord(BaseModel):
@@ -279,6 +280,8 @@ class StoryPlan(StoryRecord):
 
 class SceneAttempts(StoryRecord):
     compiled_input: CompiledImageInput | None = None
+    image_profile: str | None = None
+    preset: GenerationPreset | None = None
     scene_id: UUID
     seed: int = Field(ge=0, le=2**64 - 1)
     run_ids: list[UUID] = Field(default_factory=list)
@@ -288,7 +291,7 @@ class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
     input_sources: tuple[PromptSource, ...] = ()
-    format_version: Literal[1, 2, 3] = 1
+    format_version: Literal[1, 2, 3, 4] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     plan_sha256: str
@@ -301,6 +304,14 @@ class StoryRender(StoryRecord):
     def distinct_requests(self) -> Self:
         if self.format_version >= 2 and any(scene.compiled_input is None for scene in self.scenes):
             raise ValueError("New rendering attempts require frozen image inputs.")
+        if self.format_version >= 4 and any(
+            scene.preset is None
+            or scene.image_profile not in self.settings.profiles
+            or scene.compiled_input is None
+            or not scene.compiled_input.matches(scene.preset)
+            for scene in self.scenes
+        ):
+            raise ValueError("Each scene requires its frozen profile and matching image input.")
         identities = [value for scene in self.scenes for value in scene.run_ids]
         if len(identities) != len(set(identities)):
             raise ValueError("Image request identifiers must be distinct.")

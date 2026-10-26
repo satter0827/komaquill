@@ -5,7 +5,7 @@ from pathlib import Path
 from types import TracebackType
 
 from komaquill.api._errors import api_operation
-from komaquill.api.services import EvaluationService, ImageService, SessionService
+from komaquill.api.services import EvaluationService, ImageService, InputService, SessionService
 from komaquill.api.stories import StoryService
 from komaquill.domain.errors import ErrorCode, OperationStage
 from komaquill.domain.storage import MigrationReport
@@ -37,6 +37,10 @@ class Client:
     @cached_property
     def images(self) -> ImageService:
         return ImageService(self._project)
+
+    @cached_property
+    def inputs(self) -> InputService:
+        return InputService(self._project)
 
     @cached_property
     def sessions(self) -> SessionService:

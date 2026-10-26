@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from komaquill.domain.materials import InputArtifact
 from komaquill.domain.presets import GenerationPreset
 from komaquill.domain.workflow import digest
 
@@ -11,13 +12,29 @@ MAX_SEED = 2**64 - 1
 ImageSeed = Annotated[int, Field(strict=True, ge=0, le=MAX_SEED)]
 
 
-def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 3) -> str:
+def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 4) -> str:
     """Preserve legacy fingerprints; canonicalize defaults for new snapshots."""
     return digest(
         profile.model_dump(
             mode="json",
             exclude_unset=compiler_version == 1,
-            exclude={"batch_size", "primary_output_node"} if compiler_version < 3 else set(),
+            exclude=(
+                ({"batch_size", "primary_output_node"} if compiler_version < 3 else set())
+                | (
+                    {
+                        "resources",
+                        "extensions",
+                        "image_inputs",
+                        "parameters",
+                        "parameter_bounds",
+                        "seed_offsets",
+                        "output_stages",
+                        "separate_subjects",
+                    }
+                    if compiler_version < 4
+                    else set()
+                )
+            ),
         )
     )
 
@@ -26,8 +43,8 @@ class CompiledImageInput(BaseModel):
     """Retain original directions and the exact effective conditioning text."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    format_version: Literal[1] = 1
-    compiler_version: Literal[1, 2, 3] = 1
+    format_version: Literal[1, 2] = 1
+    compiler_version: Literal[1, 2, 3, 4] = 1
     preset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt: str
     requested_negative: str | None
@@ -40,7 +57,8 @@ class CompiledImageInput(BaseModel):
     negative: str
     negative_body: str
     subject_positives: tuple[str, ...] = Field(max_length=2)
-    layout: Literal["global", "single", "left-right"]
+    layout: Literal["global", "single", "left-right", "layered"]
+    inputs: dict[str, InputArtifact] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def consistent(self) -> "CompiledImageInput":
@@ -79,6 +97,8 @@ class CompiledImageInput(BaseModel):
         layout = (
             ("left-right" if len(self.subject_prompts) == 2 else "single")
             if profile.regions
+            else "layered"
+            if profile.separate_subjects
             else "global"
         )
         return (
@@ -96,18 +116,36 @@ def joined(*parts: str) -> str:
     return ", ".join(part.strip() for part in parts if part.strip())
 
 
+def validate_inputs(profile: GenerationPreset, inputs: dict[str, InputArtifact]) -> None:
+    """Reject missing, unexpected or dimensionally incompatible workflow inputs."""
+    if set(inputs) != set(profile.image_inputs) or any(
+        inputs[name].kind != slot.kind for name, slot in profile.image_inputs.items()
+    ):
+        raise ValueError("Supply every declared image and mask input.")
+    base = inputs.get("base")
+    if base is not None and any(
+        (item.width, item.height) != (base.width, base.height)
+        for item in inputs.values()
+        if item.kind == "mask"
+    ):
+        raise ValueError("Edit masks must have the base image dimensions.")
+
+
 def compile_image_input(
     profile: GenerationPreset,
     prompt: str,
     negative: str | None = None,
     subjects: tuple[str, ...] = (),
+    inputs: dict[str, InputArtifact] | None = None,
 ) -> CompiledImageInput:
     """Apply model-specific quality once and freeze global or regional inputs."""
     positive_prefix = profile.positive_prefix if profile.quality_enabled else ""
     negative_prefix = profile.negative_prefix if profile.quality_enabled else ""
-    body = prompt if profile.regions else joined(prompt, *subjects)
+    body = prompt if profile.regions or profile.separate_subjects else joined(prompt, *subjects)
     return CompiledImageInput(
-        compiler_version=3,
+        format_version=2,
+        compiler_version=4,
+        inputs=inputs or {},
         preset_sha256=preset_fingerprint(profile),
         prompt=prompt,
         requested_negative=negative,
@@ -120,7 +158,11 @@ def compile_image_input(
         negative=joined(negative_prefix, profile.negative if negative is None else negative),
         negative_body=profile.negative if negative is None else negative,
         subject_positives=tuple(joined(positive_prefix, subject) for subject in subjects),
-        layout=("left-right" if len(subjects) == 2 else "single") if profile.regions else "global",
+        layout=("left-right" if len(subjects) == 2 else "single")
+        if profile.regions
+        else "layered"
+        if profile.separate_subjects
+        else "global",
     )
 
 
@@ -138,10 +180,12 @@ class ImageInput(BaseModel):
     """Validate positive, negative and optional regional directions."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-    format_version: Literal[1] = 1
+    format_version: Literal[1, 2] = 1
     prompt: str = Field(min_length=1)
     negative: str | None = None
     subjects: tuple[str, ...] = Field(default=(), max_length=2)
+    inputs: dict[str, str] = Field(default_factory=dict)
+    parameters: dict[str, bool | int | float | str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def nonempty(self) -> "ImageInput":

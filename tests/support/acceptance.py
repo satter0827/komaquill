@@ -14,9 +14,12 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 from PIL import Image
+
+from tests.support.comfy import batch_count, multipart_input
 
 
 def run_acceptance(wheel: Path | None = None) -> None:
@@ -33,6 +36,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
     }
     png = io.BytesIO()
     Image.new("RGB", (16, 16), "blue").save(png, "PNG")
+    uploaded = {}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -41,7 +45,18 @@ def run_acceptance(wheel: Path | None = None) -> None:
         def do_GET(self):
             route = self.path.split("?", 1)[0]
             if route == "/view":
-                content = png.getvalue()
+                query = parse_qs(urlsplit(self.path).query)
+                content = (
+                    uploaded[
+                        "/".join(
+                            part
+                            for part in (query.get("subfolder", [""])[0], query["filename"][0])
+                            if part
+                        )
+                    ]
+                    if query.get("type") == ["input"]
+                    else png.getvalue()
+                )
             elif route == "/history":
                 content = json.dumps(history).encode()
             elif route == "/queue":
@@ -64,7 +79,17 @@ def run_acceptance(wheel: Path | None = None) -> None:
             self.wfile.write(content)
 
         def do_POST(self):
-            data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            if self.path == "/upload/image":
+                name, folder, content = multipart_input(self.headers["Content-Type"], body)
+                uploaded["/".join(part for part in (folder, name) if part)] = content
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"name": name, "subfolder": folder, "type": "input"}).encode()
+                )
+                return
+            data = json.loads(body)
             identity = str(uuid4())
             history[identity] = {
                 "prompt": [0, identity, data["prompt"], data["extra_data"], ["9"]],
@@ -72,7 +97,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     "9": {
                         "images": [
                             {"filename": f"result-{index}.png", "subfolder": "", "type": "output"}
-                            for index in range(data["prompt"]["5"]["inputs"]["batch_size"])
+                            for index in range(batch_count(data["prompt"]))
                         ]
                     }
                 },
@@ -148,7 +173,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     )
                 (bundle / name).write_bytes(content)
             (workspace / "komaquill.toml").write_text(
-                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom"]\n'
+                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom","story-reference"]\n'
                 "[presets.custom]\nsteps=27\n"
             )
             command("--help")
@@ -336,6 +361,24 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "    for image in run.images:",
                             "        assert (Path.cwd() / image.workspace_path).is_file()",
                             "client.stories.refresh(story_id)",
+                            "from komaquill.api import RenderConfig, SceneRenderConfig",
+                            "reference_file = Path('reference.png')",
+                            f"reference_file.write_bytes({png.getvalue()!r})",
+                            "reference = client.inputs.import_file(reference_file)",
+                            "run = client.images.generate('a gray kitten', "
+                            "profile='story-reference', inputs={'reference': reference}, "
+                            "candidates=2)",
+                            "assert run.state == 'saved'",
+                            "assert run.input_sha256[reference.reference] == reference.sha256",
+                            "config = RenderConfig(scenes=tuple(SceneRenderConfig(scene=i, "
+                            "profile='story-reference', inputs={'reference': reference}) "
+                            "for i in range(1,5)))",
+                            "rendered = list(client.stories.render(story_id, "
+                            "render_config=config))[-1].snapshot",
+                            "assert rendered.complete and all(scene.image_profile == "
+                            "'story-reference' for scene in rendered.scenes)",
+                            "assert list(client.stories.resume(rendered.render_id))"
+                            "[-1].snapshot.complete",
                             "assert client.sessions.status().collector_running",
                         ]
                     )
@@ -387,7 +430,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         monitor.wait(timeout=10)
             runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
             runs.extend((workspace / ".artifacts/data/stories").glob("*/renders/*/runs/*/run.json"))
-            assert len(runs) == 7
+            assert len(runs) == 12
             runs = sorted(runs, key=lambda path: json.loads(path.read_bytes())["created_at"])
             run = json.loads(runs[0].read_bytes())
             assert run["state"] == "saved"
@@ -415,7 +458,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
             assert all(item["workflow_integrity"] is True for item in exported["runs"])
             assert all(item["images"][0]["matches_record"] is True for item in exported["runs"])
             assert exported["exported_at"] and exported["exporter"]["code_sha256"]
-            assert sum(bool(item["story_context"]) for item in exported["runs"]) == 4
+            assert sum(bool(item["story_context"]) for item in exported["runs"]) == 8
             command("evaluations", "import", str(evidence))
             command("clean", "--dry-run")
             assert runs[0].is_file()

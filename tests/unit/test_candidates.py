@@ -54,11 +54,25 @@ def test_bundled_defaults_and_explicit_override_are_independent():
 
 def test_old_fingerprints_do_not_acquire_new_preset_fields():
     current = Settings().presets["pony"]
-    original = current.model_dump(mode="json", exclude={"batch_size", "primary_output_node"})
+    original = current.model_dump(
+        mode="json",
+        exclude={
+            "batch_size",
+            "primary_output_node",
+            "resources",
+            "extensions",
+            "image_inputs",
+            "parameters",
+            "parameter_bounds",
+            "seed_offsets",
+            "output_stages",
+            "separate_subjects",
+        },
+    )
     old = GenerationPreset.model_validate(original)
     assert old.batch_size == 1 and old.primary_output_node is None
     assert preset_fingerprint(old, 2) == digest(original)
-    assert compile_image_input(current, "a cabin").compiler_version == 3
+    assert compile_image_input(current, "a cabin").compiler_version == 4
 
 
 def test_partial_retry_never_hides_already_saved_candidates(

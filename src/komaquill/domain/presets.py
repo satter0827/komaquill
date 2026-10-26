@@ -1,5 +1,6 @@
 """Define pinned assets and generation presets independently of transport."""
 
+import re
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Literal, get_args
 
@@ -16,6 +17,7 @@ ModelRole = Literal[
     "clip_vision",
     "embeddings",
     "style_models",
+    "ipadapter",
 ]
 MODEL_ROLES: tuple[str, ...] = get_args(ModelRole)
 
@@ -114,6 +116,14 @@ class ConditioningRegion(BaseModel):
         return self
 
 
+class WorkflowImageSlot(BaseModel):
+    """Declare one image or white-edit mask required by a fixed workflow."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    kind: Literal["image", "mask"] = "image"
+    sample: str = ""
+
+
 class GenerationPreset(BaseModel):
     """Bind standard workflow files to explicit model and sampling settings."""
 
@@ -121,6 +131,14 @@ class GenerationPreset(BaseModel):
     api: dict[str, Any]
     ui: dict[str, Any]
     bindings: tuple[WorkflowBinding, ...]
+    resources: dict[str, str] = Field(default_factory=dict)
+    extensions: tuple[Literal["ipadapter", "crop-stitch"], ...] = ()
+    image_inputs: dict[str, WorkflowImageSlot] = Field(default_factory=dict)
+    parameters: dict[str, bool | int | float | str] = Field(default_factory=dict)
+    parameter_bounds: dict[str, tuple[float, float]] = Field(default_factory=dict)
+    seed_offsets: dict[str, int] = Field(default_factory=dict)
+    output_stages: dict[str, str] = Field(default_factory=dict)
+    separate_subjects: bool = False
     checkpoint: str
     lora: str | None = None
     upscaler: str | None = None
@@ -148,7 +166,31 @@ class GenerationPreset(BaseModel):
     @property
     def asset_ids(self) -> tuple[str, ...]:
         """Return only assets needed for this profile."""
-        return tuple(value for value in (self.checkpoint, self.lora, self.upscaler) if value)
+        return tuple(
+            dict.fromkeys(
+                value
+                for value in (self.checkpoint, self.lora, self.upscaler, *self.resources.values())
+                if value
+            )
+        )
+
+    def configured_parameters(
+        self, overrides: dict[str, bool | int | float | str]
+    ) -> "GenerationPreset":
+        """Apply declared values without accepting type changes or unbounded numeric inputs."""
+        if set(overrides) - set(self.parameters):
+            raise ValueError("The workflow parameter is not declared.")
+        for name, value in overrides.items():
+            expected = self.parameters[name]
+            if isinstance(expected, float):
+                valid = isinstance(value, (int, float)) and not isinstance(value, bool)
+            else:
+                valid = type(value) is type(expected)
+            if not valid:
+                raise ValueError("The workflow parameter has the wrong type.")
+        return type(self).model_validate(
+            {**self.model_dump(), "parameters": {**self.parameters, **overrides}}
+        )
 
     @model_validator(mode="after")
     def validate_bindings(self) -> "GenerationPreset":
@@ -161,9 +203,53 @@ class GenerationPreset(BaseModel):
             "regions",
             "single_region",
             "sample_subjects",
+            "resources",
+            "extensions",
+            "image_inputs",
+            "parameters",
+            "parameter_bounds",
+            "seed_offsets",
+            "output_stages",
         }
+        declared = set(self.parameters) | {f"input_{name}" for name in self.image_inputs}
+        declared.update(f"seed_{name}" for name in self.seed_offsets)
+        reserved = allowed | {
+            "prompt",
+            "seed",
+            "output_prefix",
+            "upscaled_output_prefix",
+            "subject_1",
+            "subject_2",
+            "subject_1_body",
+            "subject_2_body",
+            "prompt_delimiter",
+            "negative_delimiter",
+        }
+        if (declared & reserved) or (set(self.resources) & (declared | reserved)):
+            raise ValueError("Workflow-specific inputs must not shadow standard inputs.")
+        if any(
+            not re.fullmatch(r"[a-z][a-z0-9_]*", name) for name in declared | set(self.resources)
+        ):
+            raise ValueError("Use portable names for workflow inputs.")
+        if set(self.parameter_bounds) - set(self.parameters):
+            raise ValueError("Bounds must refer to declared parameters.")
+        for name, (lower, upper) in self.parameter_bounds.items():
+            value = self.parameters[name]
+            if (
+                not isinstance(value, (float, int))
+                or isinstance(value, bool)
+                or not lower <= value <= upper
+            ):
+                raise ValueError("A workflow parameter is outside its declared bounds.")
+        if any(
+            self.api.get(node, {}).get("class_type") != "SaveImage" for node in self.output_stages
+        ):
+            raise ValueError("An intermediate output must refer to an image output node.")
+        allowed.update(self.resources)
+        allowed.update(declared)
         allowed.update({"prompt", "seed", "output_prefix", "upscaled_output_prefix"})
         allowed.update({"subject_1", "subject_2", "prompt_delimiter", "negative_delimiter"})
+        allowed.update({"subject_1_body", "subject_2_body"})
         allowed.update(
             f"region_{index}_{key}" for index in (1, 2) for key in ConditioningRegion.model_fields
         )
@@ -183,6 +269,7 @@ class GenerationPreset(BaseModel):
         ):
             raise ValueError("Candidate presets require a final image output and batch binding.")
         required = {"prompt", "negative", "seed", "checkpoint", "output_prefix"}
+        required.update(declared | set(self.resources))
         if not required.issubset({row.source for row in self.bindings}):
             raise ValueError("The preset is missing required input bindings.")
         targets = set()

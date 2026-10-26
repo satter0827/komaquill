@@ -17,8 +17,9 @@ from komaquill.application.ports import GenerationBackend, Workspace
 from komaquill.application.stories.image_inputs import scene_input
 from komaquill.application.stories.ports import StoryRepository
 from komaquill.domain.errors import KomaquillError, OperationStage
-from komaquill.domain.images import MAX_SEED, PromptSource
+from komaquill.domain.images import MAX_SEED, PromptSource, compile_image_input, validate_inputs
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject, Run, Session
+from komaquill.domain.rendering import RenderConfig
 from komaquill.domain.stories import SceneAttempts, StoryPlan, StoryRender
 from komaquill.domain.workflow import digest
 
@@ -34,6 +35,7 @@ def create_render(
     candidates: int | None = None,
     negative: str | None = None,
     input_sources: tuple[PromptSource, ...] = (),
+    render_config: RenderConfig | None = None,
 ) -> StoryRender:
     """Capture a complete image-settings snapshot for a new independent rendering."""
     plan = repository.read(story_id)
@@ -42,24 +44,58 @@ def create_render(
     )
     if image_profile not in settings.profiles:
         raise KomaquillError(code="invalid_configuration", stage="story_rendering")
+    assigned = {row.scene: row for row in render_config.scenes} if render_config else {}
+    if render_config and set(assigned) != {scene.position for scene in plan.scenes}:
+        raise KomaquillError(code="invalid_request", stage="story_rendering", retryable=False)
     initial_seed = checked_seed(
         seed if seed is not None else secrets.randbits(63), stage=OperationStage.STORY_RENDERING
     )
+    scenes = []
+    for index, scene in enumerate(plan.scenes):
+        spec = assigned.get(scene.position)
+        selected = spec.profile if spec else image_profile
+        settings = generation_settings(settings, selected, candidates)
+        profile = settings.presets[selected]
+        if spec:
+            try:
+                profile = profile.configured_parameters(spec.parameters)
+            except ValueError:
+                raise KomaquillError(
+                    code="invalid_request", stage="story_rendering", retryable=False
+                ) from None
+        original = scene_input(plan, scene, profile, negative)
+        compiled = compile_image_input(
+            profile,
+            spec.prompt if spec and spec.prompt is not None else original.prompt,
+            spec.negative if spec and spec.negative is not None else negative,
+            spec.subjects if spec and spec.subjects is not None else original.subject_prompts,
+            spec.inputs if spec else {},
+        )
+        try:
+            validate_inputs(profile, compiled.inputs)
+        except ValueError:
+            raise KomaquillError(
+                code="invalid_request", stage="story_rendering", retryable=False
+            ) from None
+        for item in compiled.inputs.values():
+            workspace.artifacts_store.input_content(item)
+        scenes.append(
+            SceneAttempts(
+                scene_id=scene.scene_id,
+                seed=(initial_seed + index) % (MAX_SEED + 1),
+                compiled_input=compiled,
+                image_profile=selected,
+                preset=profile,
+            )
+        )
     render = StoryRender(
-        format_version=3,
+        format_version=4,
         input_sources=input_sources,
         story_id=story_id,
         plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),
         image_profile=image_profile,
         settings=settings,
-        scenes=[
-            SceneAttempts(
-                scene_id=scene.scene_id,
-                seed=(initial_seed + index) % (MAX_SEED + 1),
-                compiled_input=scene_input(plan, scene, settings.presets[image_profile], negative),
-            )
-            for index, scene in enumerate(plan.scenes)
-        ],
+        scenes=scenes,
     )
     repository.save_render(render)
     return render
@@ -69,16 +105,18 @@ def compatible(plan: StoryPlan, render: StoryRender, session: Session) -> None:
     """Reject condition changes rather than silently mixing rendering variants."""
     current = session.settings
     expected = render.settings
-    profile = render.image_profile
+    required = {
+        asset
+        for scene in render.scenes
+        for asset in (scene.preset or expected.presets[render.image_profile]).asset_ids
+    }
+    profiles = {scene.image_profile or render.image_profile for scene in render.scenes}
     if (
         digest(plan.model_dump(mode="json", exclude_unset=True)) != render.plan_sha256
         or [scene.scene_id for scene in plan.scenes] != [scene.scene_id for scene in render.scenes]
         or current is None
-        or profile not in current.profiles
-        or any(
-            current.assets.get(name) != expected.assets[name]
-            for name in expected.presets[profile].asset_ids
-        )
+        or not profiles.issubset(current.profiles)
+        or any(current.assets.get(name) != expected.assets[name] for name in required)
     ):
         raise KomaquillError(code="invalid_configuration", stage="story_rendering", retryable=False)
 
@@ -152,6 +190,9 @@ def story_view(
                     else {}
                 ),
                 "state": run.state if run else "unstarted",
+                "image_profile": (link.image_profile or render.image_profile)
+                if link and render
+                else None,
                 "run_id": str(run.run_id) if run else None,
                 "attempt_ids": [str(value) for value in link.run_ids] if link else [],
                 "primary_image": candidates[0]
@@ -165,7 +206,11 @@ def story_view(
                 "requested_candidates": run.output_spec.candidates
                 if run and run.output_spec
                 else (
-                    render.settings.presets[render.image_profile].batch_size
+                    (
+                        link.preset
+                        if link and link.preset
+                        else render.settings.presets[render.image_profile]
+                    ).batch_size
                     if render and render.format_version >= 3
                     else None
                 ),
@@ -298,14 +343,20 @@ def render_events(
                 render = render.model_copy(update={"scenes": values})
                 repository.save_render(render)
                 try:
+                    selected = link.image_profile or render.image_profile
+                    request_settings = render.settings
+                    if link.preset:
+                        request_settings = request_settings.model_copy(
+                            update={"presets": {**request_settings.presets, selected: link.preset}}
+                        )
                     submit_generation(
-                        bound,
+                        bound.configured(request_settings),
                         client,
-                        bound_session,
+                        bound_session.model_copy(update={"settings": request_settings}),
                         compiled.prompt,
                         compiled.requested_negative,
                         link.seed,
-                        render.image_profile,
+                        selected,
                         run_id=link.run_ids[-1],
                         compiled_input=compiled,
                         input_sources=render.input_sources,

@@ -41,6 +41,8 @@ class RuntimeSettings(BaseModel):
         for name, profile in self.presets.items():
             if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
                 raise ValueError("Profile names must use lowercase letters, digits and hyphens.")
+            if any(asset not in self.assets for asset in profile.resources.values()):
+                raise ValueError("A profile resource is undefined.")
             for asset, role in (
                 (profile.checkpoint, "checkpoints"),
                 (profile.lora, "loras"),

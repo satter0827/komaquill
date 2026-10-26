@@ -298,6 +298,7 @@
   "stories.plan_help": "Create and save a story plan without using an image GPU.",
   "stories.generate_help": "Plan a story and generate its scenes using the active image session.",
   "stories.render_help": "Start a new image rendering from a saved story plan.",
+  "stories.render_file_help": "Read scene profiles, materials and production settings from JSON.",
   "stories.resume_help": "Resume an existing rendering without changing its conditions.",
   "stories.show_help": "Show narrative, image references and saved scene states.",
   "stories.file_help": "UTF-8 file containing the source story.",
@@ -364,5 +365,16 @@
   "stories.candidate_image": "Candidate {position}/{total} — Image: {path}",
   "images.candidate_heading": "Candidate {position}/{total}",
   "error.unsupported_batch": "This preset has no declared candidate output and batch binding. Add them or omit --candidates.",
-  "images.saved_outputs": "Saved images: {count}. Candidate roles are unknown."
+  "images.saved_outputs": "Saved images: {count}. Candidate roles are unknown.",
+  "workflow.prompt": "Prompt",
+  "workflow.negative": "Negative Prompt",
+  "workflow.candidates": "Candidates",
+  "workflow.reference": "Appearance Reference",
+  "workflow.base": "Base Image",
+  "workflow.mask": "Edit Mask",
+  "workflow.person_mask": "Person Mask",
+  "workflow.cat_reference": "Cat Reference",
+  "workflow.cat_mask": "Cat Mask",
+  "workflow.person": "Person Description",
+  "workflow.cat": "Cat Description"
 }

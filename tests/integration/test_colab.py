@@ -180,7 +180,7 @@ def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypa
     assert json.loads(diagnostic)["failure"]["exception_type"] == "RuntimeError"
 
 
-def test_owned_child_processes_are_terminated_together(tmp_path):
+def test_owned_child_processes_are_terminated_together():
     import subprocess
     import sys
     import time
@@ -190,23 +190,21 @@ def test_owned_child_processes_are_terminated_together(tmp_path):
 
     from komaquill.infrastructure.colab import terminate
 
-    marker = tmp_path / "child.pid"
     child_code = "import time; time.sleep(60)"
     parent_code = (
-        "import subprocess,sys,time; from pathlib import Path; "
+        "import subprocess,sys,time; "
         f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}]); "
-        f"Path({str(marker) + '.tmp'!r}).write_text(str(child.pid)); "
-        f"Path({str(marker) + '.tmp'!r}).replace({str(marker)!r}); time.sleep(60)"
+        "time.sleep(60)"
     )
     process = subprocess.Popen(
         [sys.executable, "-c", parent_code], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
     )
     try:
         deadline = time.monotonic() + 10
-        while not marker.is_file():
+        while not (children := psutil.Process(process.pid).children()):
             assert time.monotonic() < deadline
             time.sleep(0.01)
-        child_id = int(marker.read_text())
+        child_id = children[0].pid
         terminate(process, 10)
         assert process.poll() is not None
         with suppress(psutil.NoSuchProcess):

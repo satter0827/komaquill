@@ -1,0 +1,431 @@
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 1,
+      "steps": 25,
+      "cfg": 7.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.95,
+      "model": [
+        "23",
+        0
+      ],
+      "positive": [
+        "60",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "33",
+        0
+      ]
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "67ab2fd8ec439a89b3fedb15cc65f54336af163c7eb5e4f2acc98f090a29b0b3/v6.safetensors"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "10",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "13",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "58",
+        0
+      ],
+      "filename_prefix": "komaquill/pony"
+    }
+  },
+  "10": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "score_9, score_8_up, score_7_up, score_6_up, score_5_up, score_4_up",
+      "string_b": "a small cabin in a sunny forest, illustration, warm light",
+      "delimiter": ", "
+    }
+  },
+  "11": {
+    "class_type": "CLIPSetLastLayer",
+    "inputs": {
+      "clip": [
+        "4",
+        1
+      ],
+      "stop_at_clip_layer": -2
+    }
+  },
+  "12": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "text, watermark, signature",
+      "string_b": "",
+      "delimiter": ", "
+    }
+  },
+  "13": {
+    "class_type": "RegexReplace",
+    "inputs": {
+      "string": [
+        "12",
+        0
+      ],
+      "regex_pattern": "^[,\\s]+|[,\\s]+$",
+      "replace": "",
+      "case_insensitive": false,
+      "multiline": false,
+      "dotall": false,
+      "count": 0
+    }
+  },
+  "20": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "reference.png"
+    }
+  },
+  "21": {
+    "class_type": "CLIPVisionLoader",
+    "inputs": {
+      "clip_name": "clip-vision-vit-h"
+    }
+  },
+  "22": {
+    "class_type": "IPAdapterModelLoader",
+    "inputs": {
+      "ipadapter_file": "ipadapter-sdxl"
+    }
+  },
+  "23": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "ipadapter": [
+        "22",
+        0
+      ],
+      "image": [
+        "20",
+        0
+      ],
+      "weight": 0.6,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 0.8,
+      "embeds_scaling": "V only",
+      "clip_vision": [
+        "21",
+        0
+      ]
+    }
+  },
+  "30": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "base.png"
+    }
+  },
+  "31": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "person_mask.png",
+      "channel": "red"
+    }
+  },
+  "40": {
+    "class_type": "RepeatImageBatch",
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "amount": 2
+    }
+  },
+  "33": {
+    "class_type": "VAEEncodeForInpaint",
+    "inputs": {
+      "pixels": [
+        "40",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "mask": [
+        "31",
+        0
+      ],
+      "grow_mask_by": 0
+    }
+  },
+  "61": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": [
+        "10",
+        0
+      ],
+      "string_b": "woman holding blue umbrella",
+      "delimiter": ", "
+    }
+  },
+  "60": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "61",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "34": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "40",
+        0
+      ],
+      "source": [
+        "8",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "31",
+        0
+      ]
+    }
+  },
+  "29": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "34",
+        0
+      ],
+      "filename_prefix": "komaquill/person"
+    }
+  },
+  "50": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "cat_reference.png"
+    }
+  },
+  "52": {
+    "class_type": "LoadImageMask",
+    "inputs": {
+      "image": "cat_mask.png",
+      "channel": "red"
+    }
+  },
+  "53": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "ipadapter": [
+        "22",
+        0
+      ],
+      "image": [
+        "50",
+        0
+      ],
+      "weight": 0.8,
+      "weight_type": "linear",
+      "combine_embeds": "concat",
+      "start_at": 0.0,
+      "end_at": 0.8,
+      "embeds_scaling": "V only",
+      "clip_vision": [
+        "21",
+        0
+      ]
+    }
+  },
+  "62": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": [
+        "10",
+        0
+      ],
+      "string_b": "feral gray kitten, four legs",
+      "delimiter": ", "
+    }
+  },
+  "51": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "62",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "63": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": [
+        "13",
+        0
+      ],
+      "string_b": "anthro, human body, clothes, biped, extra animals",
+      "delimiter": ", "
+    }
+  },
+  "56": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "63",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    }
+  },
+  "54": {
+    "class_type": "VAEEncodeForInpaint",
+    "inputs": {
+      "pixels": [
+        "34",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ],
+      "mask": [
+        "52",
+        0
+      ],
+      "grow_mask_by": 0
+    }
+  },
+  "55": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 2,
+      "steps": 25,
+      "cfg": 7.0,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.95,
+      "model": [
+        "53",
+        0
+      ],
+      "positive": [
+        "51",
+        0
+      ],
+      "negative": [
+        "56",
+        0
+      ],
+      "latent_image": [
+        "54",
+        0
+      ]
+    }
+  },
+  "57": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "55",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    }
+  },
+  "58": {
+    "class_type": "ImageCompositeMasked",
+    "inputs": {
+      "destination": [
+        "34",
+        0
+      ],
+      "source": [
+        "57",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+        "52",
+        0
+      ]
+    }
+  }
+}

@@ -80,6 +80,24 @@
       "subProcess": false
     },
     {
+      "name": "Render Saved Story",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "stories",
+        "render",
+        "${input:storyId}",
+        "--render-file",
+        "${input:renderFile}"
+      ],
+      "subProcess": false
+    },
+    {
       "name": "List Stories",
       "type": "debugpy",
       "request": "launch",
@@ -387,6 +405,12 @@
       "id": "imageInputFile",
       "type": "promptString",
       "description": "Enter the image-input JSON file path"
+    },
+    {
+      "id": "renderFile",
+      "type": "promptString",
+      "description": "Scene render settings JSON file",
+      "default": "render.json"
     }
   ]
 }

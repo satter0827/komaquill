@@ -12,6 +12,7 @@ from komaquill.application.generation import Collection, collect, generate
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.images import PromptSource
+from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import JsonObject, Run
 from komaquill.domain.status import SessionStatus
 from komaquill.infrastructure import inspection, supervisor
@@ -40,6 +41,8 @@ class ImageService:
         subjects: tuple[str, ...] = (),
         candidates: int | None = None,
         input_sources: tuple[PromptSource, ...] = (),
+        inputs: dict[str, InputArtifact] | None = None,
+        parameters: dict[str, bool | int | float | str] | None = None,
     ) -> Run:
         with (
             operation_scope(),
@@ -57,6 +60,8 @@ class ImageService:
                 subjects=subjects,
                 candidates=candidates,
                 input_sources=input_sources,
+                inputs=inputs,
+                parameters=parameters,
             )
 
     def collect(self, run_id: UUID | None = None) -> Collection:
@@ -81,6 +86,19 @@ class ImageService:
                     details={"story_id": str(publications[0])},
                 )
             return result
+
+
+class InputService:
+    def __init__(self, project: Project) -> None:
+        self._project = project
+
+    def import_file(
+        self, path: str | Path, *, kind: Literal["image", "mask"] = "image"
+    ) -> InputArtifact:
+        from komaquill.infrastructure.inputs import import_file
+
+        with api_operation(OperationStage.STORAGE):
+            return import_file(self._project, Path(path), kind)
 
 
 class SessionService:

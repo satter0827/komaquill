@@ -50,6 +50,17 @@ def save_run(project: WorkspacePaths, run: Run) -> None:
             run_id=run.run_id,
             failure=run.failure,
         )
+    if (
+        run.collection_failure is not None or (previous and previous.collection_failure is not None)
+    ) and (previous is None or previous.collection_failure != run.collection_failure):
+        record_event(
+            project,
+            "image_collection",
+            "failed" if run.collection_failure else "recovered",
+            runtime_id=run.runtime_id,
+            run_id=run.run_id,
+            failure=run.collection_failure,
+        )
 
 
 def load_runs(project: WorkspacePaths, *, unreadable: list[UUID | str] | None = None) -> list[Run]:
@@ -138,13 +149,21 @@ def save_conditions(project: WorkspacePaths, run: Run, prompt: list[Any]) -> Non
         if isinstance(supplied, dict):
             import re
 
-            run.input_sha256 = {
+            observed_inputs = {
                 name: sha
                 for name, sha in supplied.items()
                 if isinstance(name, str)
                 and isinstance(sha, str)
                 and re.fullmatch(r"[0-9a-f]{64}", sha)
             }
+            if any(
+                name in run.input_sha256 and run.input_sha256[name] != sha
+                for name, sha in observed_inputs.items()
+            ):
+                raise KomaquillError(
+                    code="invalid_output", stage="history_validation", retryable=False
+                )
+            run.input_sha256.update(observed_inputs)
         metadata = extra.get("extra_pnginfo", {})
         ui = metadata.get("workflow") if isinstance(metadata, dict) else None
         if isinstance(ui, dict) and not (folder / "workflow.json").is_file():

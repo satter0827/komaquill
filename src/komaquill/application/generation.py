@@ -18,7 +18,14 @@ from komaquill.domain.errors import (
     SubmissionUnknown,
     failure_info,
 )
-from komaquill.domain.images import CompiledImageInput, ImageSeed, PromptSource, compile_image_input
+from komaquill.domain.images import (
+    CompiledImageInput,
+    ImageSeed,
+    PromptSource,
+    compile_image_input,
+    validate_inputs,
+)
+from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import ImageRef, JsonObject, OutputSpec, Run, Session
 from komaquill.domain.workflow import digest
 
@@ -35,13 +42,23 @@ def checked_seed(seed: int, *, stage: OperationStage = OperationStage.GENERATION
 
 
 def generation_settings(
-    settings: RuntimeSettings, profile_name: str | None, candidates: int | None = None
+    settings: RuntimeSettings,
+    profile_name: str | None,
+    candidates: int | None = None,
+    parameters: dict[str, bool | int | float | str] | None = None,
 ) -> RuntimeSettings:
     """Freeze a request override without mutating the active session defaults."""
     name = profile_name or settings.profiles[0]
     if name not in settings.profiles:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
     profile = settings.presets[name]
+    if parameters:
+        try:
+            profile = profile.configured_parameters(parameters)
+        except ValueError:
+            raise KomaquillError(
+                code="invalid_request", stage="preparation", retryable=False
+            ) from None
     if candidates is not None and profile.primary_output_node is None:
         raise KomaquillError(code="unsupported_batch", stage="generation", retryable=False)
     count = profile.batch_size if candidates is None else candidates
@@ -51,7 +68,7 @@ def generation_settings(
         or not 1 <= count <= settings.max_candidates
     ):
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
-    if count == profile.batch_size:
+    if count == profile.batch_size and not parameters:
         return settings
     return settings.model_copy(
         update={
@@ -63,6 +80,7 @@ def generation_settings(
 def output_spec(settings: RuntimeSettings | None, graph: JsonObject) -> OutputSpec | None:
     """Identify supported output roles only when the preset topology is known."""
     found: set[tuple[str, int]] = set()
+    stages: dict[str, str] = {}
     if settings is None:
         return None
     for name in settings.profiles:
@@ -95,8 +113,11 @@ def output_spec(settings: RuntimeSettings | None, graph: JsonObject) -> OutputSp
                 count = graph[binding.api_node].get("inputs", {}).get(binding.api_input)
                 if isinstance(count, int) and not isinstance(count, bool) and count > 0:
                     found.add((node, count))
+                    stages = profile.output_stages
     return (
-        OutputSpec(primary_node=next(iter(found))[0], candidates=next(iter(found))[1])
+        OutputSpec(
+            primary_node=next(iter(found))[0], candidates=next(iter(found))[1], stages=stages
+        )
         if len(found) == 1
         else None
     )
@@ -136,7 +157,8 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
             filenames.update(
                 value
                 for key, value in inputs.items()
-                if key.endswith(("_name", "_name1", "_name2", "_name3")) and isinstance(value, str)
+                if key.endswith(("_name", "_name1", "_name2", "_name3", "_file"))
+                and isinstance(value, str)
             )
     used = {
         asset.reference: asset.sha256 for asset in known.values() if asset.reference in filenames
@@ -203,7 +225,9 @@ def collection_lock(project: Workspace) -> AbstractContextManager[Any]:
     return project.repository.lock()
 
 
-def image_references(record: JsonObject) -> list[tuple[str, ImageRef, str, int]]:
+def image_references(
+    record: JsonObject, previous: Run | None = None
+) -> list[tuple[str, ImageRef, str, int]]:
     """Validate output references without interpreting remote paths as local paths."""
     from pathlib import PurePosixPath
 
@@ -211,6 +235,9 @@ def image_references(record: JsonObject) -> list[tuple[str, ImageRef, str, int]]
     if not isinstance(outputs, dict):
         raise KomaquillError(code="invalid_output", stage="history_validation")
     result: list[tuple[str, ImageRef, str, int]] = []
+    retained = previous.image_metadata if previous else {}
+    occupied = set(retained) | set(previous.images if previous else ())
+    next_number = 1
     for node, output in outputs.items():
         if not isinstance(output, dict) or not isinstance(output.get("images", []), list):
             raise KomaquillError(code="invalid_output", stage="history_validation")
@@ -219,7 +246,23 @@ def image_references(record: JsonObject) -> list[tuple[str, ImageRef, str, int]]
             suffix = PurePosixPath(reference.filename).suffix.lower()
             if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif"}:
                 raise KomaquillError(code="unsupported_image", stage="image_validation")
-            result.append((f"images/{len(result) + 1:04d}{suffix}", reference, str(node), index))
+            matches = [
+                name
+                for name, metadata in retained.items()
+                if (metadata.output_node, metadata.batch_index) == (str(node), index)
+                or (metadata.output_node is None and metadata.source == reference)
+            ]
+            if len(matches) > 1:
+                raise KomaquillError(code="invalid_output", stage="history_validation")
+            if matches:
+                name = matches[0]
+            else:
+                while any(PurePosixPath(name).stem == f"{next_number:04d}" for name in occupied):
+                    next_number += 1
+                name = f"images/{next_number:04d}{suffix}"
+                occupied.add(name)
+                next_number += 1
+            result.append((name, reference, str(node), index))
     if not result:
         raise KomaquillError(code="missing_image", stage="image_collection")
     return result
@@ -231,13 +274,18 @@ def collect_images(
     session: Session,
     run_id: UUID,
     record: JsonObject,
+    *,
+    finalize: bool = True,
 ) -> bool:
     """Fetch and validate outside the shared metadata lock, committing each checkpoint."""
-    references = image_references(record)
+    with collection_lock(project):
+        references = image_references(record, project.repository.read(run_id))
     for name, reference, node, index in references:
         with collection_lock(project):
             run = project.repository.read(run_id)
-            if not run.pending or not project.accepts_results(session):
+            if (
+                not run.pending and (finalize or run.state != "failed")
+            ) or not project.accepts_results(session):
                 return False
             previous = run.image_metadata.get(name)
             if previous is not None and (
@@ -260,9 +308,16 @@ def collect_images(
             if run.output_spec
             else "unknown"
         )
+        metadata.stage = (
+            ("final" if metadata.role == "candidate" else run.output_spec.stages.get(node))
+            if run.output_spec
+            else None
+        )
         with collection_lock(project):
             run = project.repository.read(run_id)
-            if not run.pending or not project.accepts_results(session):
+            if (
+                not run.pending and (finalize or run.state != "failed")
+            ) or not project.accepts_results(session):
                 return False
             project.artifacts_store.write(key, content)
             if name not in run.images:
@@ -271,6 +326,11 @@ def collect_images(
             project.repository.save(run)
     with collection_lock(project):
         run = project.repository.read(run_id)
+        if not finalize:
+            if run.state == "failed" and project.accepts_results(session):
+                run.collection_failure = None
+                project.repository.save(run)
+            return False
         if not run.pending or not project.accepts_results(session):
             return False
         if (
@@ -343,10 +403,19 @@ def collect(
                     )
                     if run.runtime_id != session.runtime_id and not owns_request:
                         continue
-                    if not run.pending:
+                    terminal_failure = run.state == "failed" and bool(record.get("outputs"))
+                    if terminal_failure and only is None and run.collection_failure is None:
+                        references = image_references(record, run)
+                        terminal_failure = any(
+                            name not in run.image_metadata
+                            or run.image_metadata[name].source != reference
+                            for name, reference, _, _ in references
+                        )
+                    if not run.pending and not terminal_failure:
                         continue
                     run.prompt_id = prompt_id
-                    run.state = "queued"
+                    if run.pending:
+                        run.state = "queued"
                     project.repository.save(run)
                     if len(prompt) < 3:
                         raise KomaquillError(
@@ -367,7 +436,10 @@ def collect(
                         )
                     project.repository.save(run)
                     completed = status.get("completed") and run.pending
-                if completed and collect_images(project, client, session, identity, record):
+                    failed_outputs = run.state == "failed" and bool(record.get("outputs"))
+                if (completed or failed_outputs) and collect_images(
+                    project, client, session, identity, record, finalize=bool(completed)
+                ):
                     saved += 1
             except (KomaquillError, OSError, ValidationError) as error:
                 errors.append(identity)
@@ -375,6 +447,10 @@ def collect(
                     try:
                         current = project.repository.read(identity)
                     except (OSError, ValueError, KomaquillError):
+                        continue
+                    if current.state == "failed" and project.accepts_results(session):
+                        current.collection_failure = failure_info(error, "image_collection")
+                        project.repository.save(current)
                         continue
                     if not current.pending or not project.accepts_results(session):
                         continue
@@ -448,6 +524,8 @@ def submit_generation(
     subjects: tuple[str, ...] = (),
     candidates: int | None = None,
     input_sources: tuple[PromptSource, ...] = (),
+    inputs: dict[str, InputArtifact] | None = None,
+    parameters: dict[str, bool | int | float | str] | None = None,
 ) -> Run:
     """Record before submission and return without waiting for image persistence."""
     try:
@@ -459,7 +537,7 @@ def submit_generation(
     if not prompt.strip():
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
     settings = generation_settings(
-        project.configured(session.settings).settings(), profile_name, candidates
+        project.configured(session.settings).settings(), profile_name, candidates, parameters
     )
     project = project.configured(settings)
     session = session.model_copy(update={"settings": settings})
@@ -472,12 +550,22 @@ def submit_generation(
             raise KomaquillError(code="invalid_request", retryable=False)
         try:
             compiled_input = compile_image_input(
-                settings.presets[selected], prompt, negative, subjects
+                settings.presets[selected], prompt, negative, subjects, inputs
             )
         except ValidationError:
             raise KomaquillError(
                 code="invalid_request", stage="generation", retryable=False
             ) from None
+    selected = profile_name or settings.profiles[0]
+    try:
+        validate_inputs(settings.presets[selected], compiled_input.inputs)
+    except ValueError:
+        raise KomaquillError(code="invalid_request", stage="preparation", retryable=False) from None
+    contents = {}
+    for name, item in compiled_input.inputs.items():
+        contents[name] = project.artifacts_store.input_content(item)
+    for name, item in compiled_input.inputs.items():
+        client.upload_image(item, contents[name])
     graph, ui = project.prepare(
         prompt, negative, seed, str(run_id), profile_name, compiled_input=compiled_input
     )
@@ -485,6 +573,7 @@ def submit_generation(
         graph, ui = client.resolve_models(graph, ui)
     run = new_run(project, session, run_id, graph)
     run.compiled_input = compiled_input
+    run.input_sha256 = {item.reference: item.sha256 for item in compiled_input.inputs.values()}
     run.input_sources = input_sources
     run.state = "unknown"
     with collection_lock(project):
@@ -565,6 +654,8 @@ def generate(
     subjects: tuple[str, ...] = (),
     candidates: int | None = None,
     input_sources: tuple[PromptSource, ...] = (),
+    inputs: dict[str, InputArtifact] | None = None,
+    parameters: dict[str, bool | int | float | str] | None = None,
 ) -> Run:
     """Share request submission and recovery with story generation."""
     run = submit_generation(
@@ -578,5 +669,7 @@ def generate(
         subjects=subjects,
         candidates=candidates,
         input_sources=input_sources,
+        inputs=inputs,
+        parameters=parameters,
     )
     return wait_generation(project, client, session, run.run_id)

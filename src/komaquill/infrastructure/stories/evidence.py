@@ -297,6 +297,10 @@ def story_evidence(
                 "plan_sha256": render.plan_sha256,
                 "image_profile": render.image_profile,
                 "seeds": {str(scene.scene_id): scene.seed for scene in render.scenes},
+                "profiles": {
+                    str(scene.scene_id): scene.image_profile or render.image_profile
+                    for scene in render.scenes
+                },
             }
             if render
             else None,

@@ -67,7 +67,11 @@ def test_remote_failure_remains_failed(project, client, session, stub):
     record["status"] = {"status_str": "error", "completed": False}
     assert collect(project, client, session).failed == 1
     assert load_runs(project)[0].state == "failed"
-    assert stub.image_requests == 0
+    run = load_runs(project)[0]
+    assert len(run.images) == 2 and run.saved_at is None
+    fetched = stub.image_requests
+    assert collect(project, client, session).saved == 0
+    assert stub.image_requests == fetched
 
 
 def test_runtime_replacement_does_not_mix_histories(project, client, session):

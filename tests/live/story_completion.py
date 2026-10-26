@@ -567,16 +567,20 @@ def stop(report: Path) -> None:
         raise RuntimeError("This folder is not a completion verification workspace.")
     try:
         case = Case.model_validate_json((report / "case.json").read_bytes())
+        runtime_id = (
+            case.additional_session.runtime_id if case.additional_session else case.runtime_id
+        )
         started_at, _, total_seconds = active_budget(case)
         elapsed = (datetime.now(UTC) - started_at).total_seconds() if started_at else total_seconds
         force = elapsed >= total_seconds
     except (OSError, ValueError):
         force = True
+        runtime_id = None
     Client(project(report).root).sessions.stop(force=force, progress=print)
     root = project(report).logs
-    paths = list(root.glob("*/shutdown.json"))
-    if paths:
-        atomic_json(report / "shutdown.json", json.loads(paths[-1].read_bytes()))
+    path = root / str(runtime_id) / "shutdown.json"
+    if runtime_id is not None and path.is_file():
+        atomic_json(report / "shutdown.json", json.loads(path.read_bytes()))
 
 
 if __name__ == "__main__":

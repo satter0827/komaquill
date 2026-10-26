@@ -1,6 +1,7 @@
 """Publish selections and evidence without modifying canonical story or image records."""
 
 import json
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -14,7 +15,7 @@ from komaquill.api import Client, Evaluation, Evaluator
 from komaquill.infrastructure.artifacts import file_digest
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.stories.publication import prose, write_document
-from tests.live.story_completion import Case, load, project, save
+from tests.live.story_completion import SCENES, Case, load, project, save
 
 CRITERION = "story-completion-review"
 INSTRUCTION = (
@@ -121,6 +122,7 @@ def publish_locked(report: Path) -> None:
         reviewed = reviewed.model_copy(update={"reviews": []})
         review_status = "missing_evaluator"
     evaluation_ids = {}
+    decisions = {}
     existing = api.evaluations.list()
     for row in reviewed.reviews:
         if reviewed.evaluator is None:
@@ -156,6 +158,7 @@ def publish_locked(report: Path) -> None:
             api.evaluations.add([evaluation])
             existing.append(evaluation)
         evaluation_ids[key] = str(evaluation.evaluation_id)
+        decisions[key] = evaluation.decision
     selected = {}
     requested = {}
     for row in reviewed.selections if reviewed.status == "complete" else []:
@@ -216,6 +219,8 @@ def publish_locked(report: Path) -> None:
             selected_lines.append(f"![{scene.position}]({image.relative_to(report).as_posix()})")
         else:
             selected_lines.append("No provisional selection has been recorded.")
+    quality_counts = Counter(decisions.get(row.key, "unreviewed") for row in selected.values())
+    quality_counts["unreviewed"] += SCENES - len(selected)
     manifest = {
         "format_version": 2,
         "case_id": str(case.case_id),
@@ -225,6 +230,11 @@ def publish_locked(report: Path) -> None:
         "baseline_complete": snapshot.complete,
         "selection_complete": len(selected) == 4,
         "selection_is_quality_approval": False,
+        "quality_passed": review_status == "available" and quality_counts["accept"] == SCENES,
+        "selected_quality": {
+            decision: quality_counts[decision]
+            for decision in ("accept", "reject", "undecided", "unreviewed")
+        },
         "selections": [
             row.model_dump(mode="json")
             for row in sorted(selected.values(), key=lambda row: row.scene)

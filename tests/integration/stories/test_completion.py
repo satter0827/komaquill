@@ -49,6 +49,29 @@ def test_additional_session_is_explicit_and_keeps_the_cumulative_budget(completi
         live.start(report, additional_session=True)
 
 
+def test_shutdown_summary_uses_the_current_recorded_runtime(completion, monkeypatch):
+    from komaquill.infrastructure.atomic import atomic_json
+
+    report, _, _ = completion
+    case = live.load(report)
+    original, current = uuid4(), uuid4()
+    case.runtime_id = original
+    case.additional_session = live.AdditionalSession(
+        started_at=datetime.now(UTC),
+        runtime_id=current,
+        identity={},
+    )
+    live.save(report, case)
+    for identity in [current, original]:
+        atomic_json(
+            live.project(report).logs / str(identity) / "shutdown.json",
+            {"runtime_id": str(identity), "gpu": "stopped"},
+        )
+    monkeypatch.setattr(services.SessionService, "stop", lambda *args, **kwargs: None)
+    live.stop(report)
+    assert json.loads((report / "shutdown.json").read_bytes())["runtime_id"] == str(current)
+
+
 @pytest.fixture
 def completion(project, session, client, monkeypatch):
     repository, plan = planned(project)
@@ -127,6 +150,8 @@ def test_all_scenes_finish_despite_rejected_quality_and_reports_preserve_origina
     manifest = json.loads((report / "manifest.json").read_bytes())
     assert manifest["baseline_complete"] and manifest["selection_complete"]
     assert manifest["selection_is_quality_approval"] is False
+    assert manifest["quality_passed"] is False
+    assert manifest["selected_quality"]["reject"] == 4
     assert {row["decision"] for row in manifest["reviews"]} == {"reject"}
     assert original == (origin / "plan.json").read_bytes()
     assert (
@@ -176,6 +201,32 @@ def test_improvement_is_a_separate_run_with_frozen_parent_and_only_one_submissio
     assert len(manifest["selections"]) == 4
     assert (report / "baseline-selection.md").read_bytes() == original_selection
     assert (report / "before-after.md").is_file()
+
+
+@pytest.mark.parametrize("missing_review", [False, True])
+def test_quality_pass_requires_an_accept_review_for_every_selected_image(
+    completion, missing_review
+):
+    report, _, _ = completion
+    live.baseline(report)
+    reviews_for(report)
+    path = report / "reviews.json"
+    payload = json.loads(path.read_bytes())
+    for row in payload["reviews"]:
+        row["decision"] = "accept"
+    if missing_review:
+        payload["reviews"].pop()
+    path.write_text(json.dumps(payload))
+    publication.publish(report)
+    manifest = json.loads((report / "manifest.json").read_bytes())
+    assert manifest["comic_complete"]
+    assert manifest["quality_passed"] is (not missing_review)
+    assert manifest["selected_quality"] == {
+        "accept": 3 if missing_review else 4,
+        "reject": 0,
+        "undecided": 0,
+        "unreviewed": int(missing_review),
+    }
 
 
 def test_budget_and_deadline_are_not_reset_on_resume(completion):

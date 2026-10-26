@@ -24,6 +24,7 @@ from tests.support.session_controls import patch_session
     [
         "new",
         "existing",
+        "resume_preparation",
         "retry",
         "startup_failure",
         "allocation_failure",
@@ -43,8 +44,10 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         settings=project.settings(),
     )
     calls = []
-    if case == "existing":
+    if case in {"existing", "resume_preparation"}:
         atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
+    if case == "existing":
+        atomic_json(project.session_file, session.model_dump(mode="json"))
     patch_session(monkeypatch, "Colab", lambda _: control)
 
     patch_session(monkeypatch, "fetch_model", lambda *args: None)
@@ -58,7 +61,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
         if case == "allocation_failure":
             raise KomaquillError("allocation failed")
-        return receipt, case != "existing"
+        return receipt, case not in {"existing", "resume_preparation"}
 
     monkeypatch.setattr(control, "acquire", acquire)
     process = SimpleNamespace(poll=lambda: 1 if case == "startup_failure" else None)

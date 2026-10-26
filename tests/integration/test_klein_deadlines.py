@@ -10,7 +10,9 @@ from pydantic import ValidationError
 
 from komaquill.application.generation import submit_generation
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.monitor import MonitorState
 from komaquill.infrastructure import colab as transport
+from komaquill.infrastructure import supervisor
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.sessions import monitor, startup
@@ -82,7 +84,7 @@ def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypa
         name="owned",
         runtime_id=uuid4(),
         settings=project.settings(),
-        started_at=datetime.now(UTC) - timedelta(seconds=project.settings().session_timeout - 5),
+        started_at=datetime.now(UTC) - timedelta(seconds=project.settings().submission_timeout - 5),
     )
     atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
     source = project.root / "model.safetensors"
@@ -115,3 +117,36 @@ def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypa
 def test_session_clock_requires_a_time_zone(session):
     with pytest.raises(ValidationError):
         type(session).model_validate({**session.model_dump(), "started_at": datetime.now()})
+
+
+@pytest.mark.parametrize("overdue", [False, True])
+def test_startup_wait_uses_the_owned_gpu_clock(project, monkeypatch, overdue):
+    now = datetime.now(UTC)
+    row = MonitorState(
+        operation_id=uuid4(),
+        backend="colab",
+        settings=project.settings(),
+        created_at=now,
+        observed_at=now,
+        phase="runtime_owned",
+    )
+    ready = row.model_copy(update={"phase": "ready"})
+    rows = iter([row, ready])
+    receipt = SimpleNamespace(
+        started_at=now
+        - timedelta(seconds=project.settings().submission_timeout + 1 if overdue else 10)
+    )
+    ticks = iter([0, 10000])
+    cancelled = []
+    monkeypatch.setattr(supervisor, "read_monitor", lambda _: next(rows))
+    monkeypatch.setattr(supervisor, "Colab", lambda _: SimpleNamespace(receipt=lambda: receipt))
+    monkeypatch.setattr(supervisor.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(supervisor.time, "sleep", lambda _: None)
+    monkeypatch.setattr(supervisor, "request_cancel", lambda *args: cancelled.append(args))
+    if overdue:
+        with pytest.raises(KomaquillError):
+            supervisor.wait_ready(project, row.operation_id, lambda _: None)
+        assert cancelled
+    else:
+        assert supervisor.wait_ready(project, row.operation_id, lambda _: None) == ready
+        assert not cancelled

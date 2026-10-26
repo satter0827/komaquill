@@ -35,6 +35,8 @@ from komaquill.messages import message
 
 COLAB_CLI_VERSION = "0.7.5"
 PROCESS_EXIT_GRACE = 3.0
+SFTP_REQUESTS = 256
+SFTP_BUFFER_BYTES = 262144
 
 
 class Receipt(BaseModel):
@@ -595,11 +597,22 @@ class Colab:
         arguments = [
             scp,
             "-q",
+            "-X",
+            f"nrequests={SFTP_REQUESTS}",
+            "-X",
+            f"buffer={SFTP_BUFFER_BYTES}",
             *self.ssh_options(receipt, key),
             str(source),
             f"root@colab-runtime:{destination}",
         ]
-        timeout = self.bounded_timeout(self.settings.preparation_timeout)
+        remaining = remaining_seconds(
+            receipt.started_at, self.settings.submission_timeout, datetime.now(UTC)
+        )
+        if remaining is not None and remaining <= 0:
+            raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+        timeout = self.bounded_timeout(
+            remaining if remaining is not None else self.settings.preparation_timeout
+        )
         process = subprocess.Popen(
             arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )

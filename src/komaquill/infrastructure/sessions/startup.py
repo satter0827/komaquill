@@ -162,7 +162,7 @@ def start_colab(
         phase("runtime_owned", receipt.runtime_id)
         cleanup_owned = True
         worker = None
-        if created:
+        if created or not project.session_file.is_file():
             echo(message("text.preparing_the_environment_and_model_on_colab"))
             worker = colab.prepare(receipt, payload)
             processes.append(worker)

@@ -20,10 +20,20 @@ from komaquill.infrastructure.stories.publication import prose, write_document
 from tests.live.story_completion import Case, load, project, save
 
 CRITERION = "story-completion-review"
+REQUIRED_CHECKS = (
+    "source_action",
+    "subject_count",
+    "prop_color_count",
+    "ownership_state",
+    "anatomy",
+    "continuity",
+    "appearance",
+)
 INSTRUCTION = (
     "Review subject count, species and anatomy; source actions and prop ownership; weather, "
     "grounding and continuity; appearance. Keep provisional selection separate from approval. "
     "Unknown is not a pass. Preserve all candidates and original evidence."
+    " Record each required criterion once: " + ", ".join(REQUIRED_CHECKS) + "."
 )
 
 
@@ -42,10 +52,13 @@ class Review(BaseModel):
     decision: Literal["accept", "reject", "undecided"]
     reason: str = Field(min_length=1)
     issues: list[str] = Field(default_factory=list)
-    checks: list[Check] = Field(min_length=1)
+    checks: list[Check] = Field(min_length=len(REQUIRED_CHECKS))
 
     @model_validator(mode="after")
     def consistent_decision(self):
+        criteria = [row.criterion for row in self.checks]
+        if len(criteria) != len(set(criteria)) or not set(REQUIRED_CHECKS).issubset(criteria):
+            raise ValueError("A review must cover every required criterion exactly once.")
         verdicts = {row.verdict for row in self.checks}
         if self.decision == "accept" and verdicts != {"match"}:
             raise ValueError("Approval requires every recorded check to match.")

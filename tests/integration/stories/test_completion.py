@@ -126,7 +126,8 @@ def reviews_for(report):
                     "reason": "The subject does not match the scene.",
                     "issues": ["species"],
                     "checks": [
-                        {"criterion": "source", "verdict": "unclear", "reason": "Offline fixture"}
+                        {"criterion": key, "verdict": "unclear", "reason": "Offline fixture"}
+                        for key in publication.REQUIRED_CHECKS
                     ],
                 }
             )
@@ -265,7 +266,8 @@ def test_quality_pass_requires_an_accept_review_for_every_selected_image(
     payload = json.loads(path.read_bytes())
     for row in payload["reviews"]:
         row["decision"] = "accept"
-        row["checks"][0]["verdict"] = "match"
+        for check in row["checks"]:
+            check["verdict"] = "match"
     if missing_review:
         payload["reviews"].pop()
     path.write_text(json.dumps(payload))
@@ -395,11 +397,19 @@ def test_confirmed_failure_does_not_block_later_scenes_and_retry_uses_budget(
 
 
 @pytest.mark.parametrize(
-    "payload", [None, "invalid JSON", '{"format_version":2,"status":"timeout"}']
+    "payload", [None, "invalid JSON", "incomplete", '{"format_version":2,"status":"timeout"}']
 )
 def test_missing_invalid_or_timed_out_review_selects_saved_images(completion, payload):
     report, _, _ = completion
     live.baseline(report)
+    if payload == "incomplete":
+        reviews_for(report)
+        value = json.loads((report / "reviews.json").read_bytes())
+        for row in value["reviews"]:
+            row["decision"] = "accept"
+            row["checks"] = row["checks"][:1]
+            row["checks"][0]["verdict"] = "match"
+        payload = json.dumps(value)
     if payload is not None:
         (report / "reviews.json").write_text(payload, encoding="utf-8")
     publication.publish(report)

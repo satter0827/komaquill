@@ -100,3 +100,79 @@ def test_reference_and_paragraph_identity_do_not_change_visible_conditioning(pro
     assert [scene_input(original, scene, profile) for scene in original.scenes] == [
         scene_input(merged, scene, profile) for scene in merged.scenes
     ]
+
+
+@pytest.mark.parametrize("variant", ["color", "owner", "left to right", "right to left"])
+def test_changed_source_conditions_reach_the_common_compiler(project, variant):
+    from komaquill.application.stories.image_inputs import scene_input
+
+    case = cases()["flying-hat" if " to " in variant else "red-book"]
+    value = case.draft.model_dump(mode="json")
+    source = case.source
+    if variant == "color":
+        source = source.replace("赤い本", "緑の本").replace("青い鞄", "黄色い鞄")
+        value = json.loads(
+            json.dumps(value, ensure_ascii=False)
+            .replace("赤い本", "緑の本")
+            .replace("青い鞄", "黄色い鞄")
+            .replace("one red hardcover book", "one green hardcover book")
+            .replace("one blue shoulder bag", "one yellow shoulder bag")
+        )
+    elif variant == "owner":
+
+        def swap_names(text):
+            return (
+                text.replace("亜紀", "__actor__").replace("蓮", "亜紀").replace("__actor__", "蓮")
+            )
+
+        source = swap_names(source)
+        mapping = {"aki": "ren", "ren": "aki", None: None}
+        for scene in value["scenes"]:
+            scene["narrative"] = swap_names(scene["narrative"])
+            for subject in scene["subjects"]:
+                subject["character"] = mapping[subject["character"]]
+                subject["action"] = (
+                    subject["action"]
+                    .replace("Aki", "__actor__")
+                    .replace("Ren", "Aki")
+                    .replace("__actor__", "Ren")
+                )
+            for prop in scene["props"]:
+                prop["holder"] = mapping[prop["holder"]]
+    else:
+        direction = "左から右へ" if variant == "left to right" else "右から左へ"
+        source = source.replace("道を転がり", "道を" + direction + "転がり")
+        value["scenes"][2]["narrative"] = value["scenes"][2]["narrative"].replace(
+            "道を転がり", "道を" + direction + "転がり"
+        )
+        value["scenes"][2]["props"][0]["state"] = (
+            "rolling from " + variant + " on dry ground before the puddle"
+        )
+    options = settings(project, images=4, llm_profile="fake")
+    base = planner(project, options, allow_real_llm=False)
+    plan = plan_story(
+        FileStoryRepository(project),
+        LangChainPlanner(base.provenance, FakeListLLM(responses=[json.dumps(value)], cache=False)),
+        request(4, source),
+        max_images=8,
+    )
+    profile = project.settings().presets["klein"]
+    image = scene_input(plan, plan.scenes[2 if " to " in variant else 0], profile)
+    if variant == "color":
+        assert "green hardcover book" in image.positive and "yellow shoulder bag" in image.positive
+        assert (
+            "red hardcover book" not in image.positive and "blue shoulder bag" not in image.positive
+        )
+    elif variant == "owner":
+        assert (
+            "adult man" in image.subject_prompts[0] and "hardcover book" in image.subject_prompts[0]
+        )
+        assert (
+            "adult woman" in image.subject_prompts[1] and "shoulder bag" in image.subject_prompts[1]
+        )
+        assert "shoulder bag" not in image.subject_prompts[0]
+        assert "hardcover book" not in image.subject_prompts[1]
+    else:
+        assert variant in image.positive and not image.subject_prompts
+        opposite = "right to left" if variant == "left to right" else "left to right"
+        assert opposite not in image.positive

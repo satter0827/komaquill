@@ -1,8 +1,10 @@
 """Verify completion controls and evidence using FakeListLLM and the ComfyUI stub."""
 
 import json
+import re
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -92,7 +94,9 @@ def completion(project, session, client, monkeypatch):
 
     stage_models(project)
     report = project.root / "completion"
-    case = live.prepare(project.root, plan.request.story_id, report)
+    case = live.prepare(
+        project.root, plan.request.story_id, report, workspace=project.root / "shared-workspace"
+    )
     case.gpu_started_at = datetime.now(UTC)
     live.save(report, case)
     active = session.model_copy(update={"settings": live.project(report).settings()})
@@ -219,6 +223,37 @@ def test_improvement_is_a_separate_run_with_frozen_parent_and_only_one_submissio
     assert (report / "before-after.md").is_file()
 
 
+def test_relative_report_recovers_baseline_after_an_unselected_edit(completion, monkeypatch):
+    report, _, _ = completion
+    live.baseline(report)
+    snapshot = reviews_for(report)
+    request = report / "edit.json"
+    request.write_text(
+        json.dumps(
+            {
+                "scene": 1,
+                "method": "edit",
+                "parent_key": snapshot.scenes[0].candidates[0].key,
+                "prompt": "Preserve the source action and correct the visible prop connection.",
+            }
+        )
+    )
+    live.improve(report, request)
+    assert not (report / "baseline-manifest.json").exists()
+    monkeypatch.chdir(report.parent)
+    relative = Path(report.name)
+    publication.publish(relative)
+    initial = json.loads((report / "baseline-manifest.json").read_bytes())
+    current = json.loads((report / "manifest.json").read_bytes())
+    assert len(initial["images"]) == 4 and not initial["improvements"]
+    assert len(current["images"]) == 5 and len(current["improvements"]) == 1
+    assert initial["selected_quality"] == current["selected_quality"]
+    assert initial["comic_complete"]
+    for name in ["all-candidates.md", "selected.md", "baseline-selection.md", "before-after.md"]:
+        links = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", (report / name).read_text())
+        assert links and all((report / link).is_file() for link in links)
+
+
 @pytest.mark.parametrize("missing_review", [False, True])
 def test_quality_pass_requires_an_accept_review_for_every_selected_image(
     completion, missing_review
@@ -274,7 +309,7 @@ def test_unresolved_baseline_is_never_automatically_resubmitted(completion, stub
 
 def test_frozen_config_error_does_not_block_owned_gpu_shutdown(completion, monkeypatch):
     report, _, _ = completion
-    (report / "workspace/komaquill.toml").write_text("corrupt")
+    (live.project(report).root / "komaquill.toml").write_text("corrupt")
     with pytest.raises(RuntimeError):
         live.load(report)
     stopped = []

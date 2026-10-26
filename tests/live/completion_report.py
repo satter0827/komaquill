@@ -1,6 +1,7 @@
 """Publish selections and evidence without modifying canonical story or image records."""
 
 import json
+import os
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from komaquill.api import Client, Evaluation, Evaluator
 from komaquill.infrastructure.artifacts import file_digest
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
+from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.publication import prose, write_document
 from tests.live.story_completion import Case, load, project, save
 
@@ -73,7 +75,7 @@ def candidates(api: Client, case: Case):
     result = {}
     for scene in snapshot.scenes:
         for identity in scene.attempt_ids:
-            run = project(Path(api.workspace).parent).repository.read(identity)
+            run = Project(api.workspace).repository.read(identity)
             for name in run.images:
                 metadata = run.image_metadata.get(name)
                 if metadata and metadata.role == "candidate":
@@ -81,7 +83,7 @@ def candidates(api: Client, case: Case):
     for job in case.improvements:
         if job.run_id is None:
             continue
-        run = project(Path(api.workspace).parent).repository.read(job.run_id)
+        run = Project(api.workspace).repository.read(job.run_id)
         for name in run.images:
             metadata = run.image_metadata.get(name)
             if metadata and metadata.role == "candidate":
@@ -212,7 +214,7 @@ def publish_locked(report: Path) -> None:
             image = api.artifact_path(key)
             if not image.is_file():
                 raise ValueError("A saved image reference is missing.")
-            relative = image.relative_to(report).as_posix()
+            relative = Path(os.path.relpath(image, report)).as_posix()
             metadata = run.image_metadata[name]
             all_lines.extend(
                 [
@@ -231,7 +233,8 @@ def publish_locked(report: Path) -> None:
         choice = selected.get(scene.position)
         if choice:
             image = api.artifact_path(choice.key)
-            selected_lines.append(f"![{scene.position}]({image.relative_to(report).as_posix()})")
+            relative = Path(os.path.relpath(image, report)).as_posix()
+            selected_lines.append(f"![{scene.position}]({relative})")
         else:
             selected_lines.append("No provisional selection has been recorded.")
     quality_counts = Counter(decisions.get(row.key, "unreviewed") for row in selected.values())
@@ -295,12 +298,23 @@ def publish_locked(report: Path) -> None:
     atomic_json(report / "manifest.json", manifest)
     write_document(report / "all-candidates.md", all_lines)
     write_document(report / "selected.md", selected_lines)
+    baseline_keys = {candidate.key for scene in snapshot.scenes for candidate in scene.candidates}
     if (
-        not case.improvements
-        and len(selected) == case.scene_count
+        len(selected) == case.scene_count
+        and all(row.key in baseline_keys for row in selected.values())
         and not (report / "baseline-manifest.json").exists()
     ):
-        atomic_json(report / "baseline-manifest.json", manifest)
+        baseline = {
+            **manifest,
+            "images": [row for row in evidence_images if row["key"] in baseline_keys],
+            "improvements": [],
+            "reviews": [
+                row
+                for row in manifest["reviews"]
+                if f"runs/{row['run_id']}/{row['image']}" in baseline_keys
+            ],
+        }
+        atomic_json(report / "baseline-manifest.json", baseline)
         atomic_bytes(report / "baseline-selection.md", (report / "selected.md").read_bytes())
     baseline_path = report / "baseline-manifest.json"
     if baseline_path.is_file():
@@ -318,7 +332,8 @@ def publish_locked(report: Path) -> None:
                     continue
                 key = choice["key"] if isinstance(choice, dict) else choice.key
                 image = api.artifact_path(key)
-                comparison.extend([label, f"![{label}]({image.relative_to(report).as_posix()})"])
+                relative = Path(os.path.relpath(image, report)).as_posix()
+                comparison.extend([label, f"![{label}]({relative})"])
         write_document(report / "before-after.md", comparison)
     atomic_json(
         report / "story-summary.json",

@@ -2,8 +2,13 @@
 
 import ast
 import json
+import os
+import site
+import subprocess
+import sys
 from pathlib import Path
 from string import Formatter
+from textwrap import dedent
 
 import pytest
 
@@ -84,6 +89,42 @@ def test_gpu_fingerprint_ignores_cli_only_code_and_text(monkeypatch):
     assert "komaquill/infrastructure/colab.py" not in gpu
     text = json.loads(gpu["komaquill/resources/messages.json"])
     assert "text.describe_the_image_to_generate" not in text
+
+
+def test_transferred_workflows_use_their_complete_reduced_catalog(tmp_path):
+    """Prepare all packaged views without falling back to the local full catalog."""
+    root = tmp_path / "worker"
+    for name, content in provenance.gpu_contents():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    script = f"import sys; sys.path[:0]={[str(root), *site.getsitepackages()]!r}\n" + dedent(
+        """\
+        import tomllib
+        from importlib.resources import files
+        from komaquill.domain.configuration import RuntimeSettings
+        from komaquill.infrastructure.preset_catalog import catalog
+        from komaquill.infrastructure.workflows import prepare
+
+        defaults = tomllib.loads(files('komaquill').joinpath(
+            'resources/settings/defaults.toml').read_text())
+        settings = RuntimeSettings.model_validate({**defaults, **catalog()})
+        for name, preset in settings.presets.items():
+            enabled = settings.model_copy(update={'profiles': (name,)})
+            graph, view = prepare(preset.sample_prompt, None, 1, name,
+                settings=enabled, profile_name=name, subject_prompts=preset.sample_subjects)
+            assert graph and view['nodes']
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", script],
+        cwd=root,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_catalog_loader_rejects_missing_or_invalid_content(monkeypatch, tmp_path):

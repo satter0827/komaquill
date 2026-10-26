@@ -137,6 +137,12 @@ def gpu_contents() -> Iterator[tuple[str, bytes]]:
         if not name.endswith(".py"):
             continue
         for node in ast.walk(ast.parse(content)):
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and node.value in all_text
+            ):
+                keys.add(node.value)
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name) and node.func.id == "message" and node.args:
                     argument = node.args[0]

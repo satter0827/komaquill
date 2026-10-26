@@ -249,7 +249,7 @@ def test_relative_report_recovers_baseline_after_an_unselected_edit(completion, 
     assert len(initial["images"]) == 4 and not initial["improvements"]
     assert len(current["images"]) == 5 and len(current["improvements"]) == 1
     assert initial["selected_quality"] == current["selected_quality"]
-    assert initial["comic_complete"]
+    assert initial["comic_complete"], initial["page"]
     for name in ["all-candidates.md", "selected.md", "baseline-selection.md", "before-after.md"]:
         links = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", (report / name).read_text())
         assert links and all((report / link).is_file() for link in links)

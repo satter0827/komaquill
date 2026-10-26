@@ -32,6 +32,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install Japanese fonts
+        if: runner.os == 'Linux'
+        run: |
+          ls /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc || true
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends fonts-noto-cjk
+          test -f /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
       - name: Check quality and installed wheel
         run: uv run --locked --extra colab-client --extra llm python scripts/check.py --level 3
   quality:

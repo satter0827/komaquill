@@ -132,3 +132,10 @@ status = "implemented"
 acceptance = ["素材をハッシュ付きで保全し標準APIで転送する", "全場面の入力・型・寸法・設定範囲を送信前に検証する", "素材と工程条件を保存し再開で変更しない", "失敗要求の公開済み中間出力を回収し生成失敗と区別する"]
 sources = ["src/komaquill/domain/rendering.py", "src/komaquill/infrastructure/inputs.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/application/generation.py"]
 tests = ["tests/integration/test_workflow_inputs.py", "tests/unit/test_story_workflows.py", "tests/integration/test_acceptance.py"]
+
+[requirements.REQ-FOREGROUND-COMPOSITION]
+summary = "確認した前景と局所補正で背景・天候・対象・小物がつながる物語を生成する"
+status = "in_progress"
+acceptance = ["共通条件を場面別指定で失わず固定する", "配置済み素材の寸法を送信前に確認する", "保存と画質評価を分け全候補の原本へたどれる", "素材の合格後に同じ条件で合成と局所補正を比較する", "未使用seedで4場面の接触・背景・天候を満たす"]
+sources = ["src/komaquill/domain/rendering.py", "src/komaquill/domain/images.py", "src/komaquill/infrastructure/stories/publication.py"]
+tests = ["tests/unit/test_composition_contracts.py", "tests/integration/stories/test_composition_reviews.py", "tests/integration/test_workflow_inputs.py", "tests/live/composition.py"]

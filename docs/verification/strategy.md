@@ -4,7 +4,7 @@
 
 開発環境はWindows x64またはARM64とPowerShell 7です。ARM64ではx64 Pythonを使用します。CIはWindowsとLinuxで実行します。Colabの検証GPUはT4です。モデルと生成セットは[既定設定](../../src/komaquill/resources/settings/defaults.toml)、Python、ComfyUI、フロントエンド、公式Colab CLIとGPU依存はパッケージ内の固定値と依存ロックに従います。
 
-日本語の組版検査には、日本語の全使用文字を描けるフォントが必要です。LinuxのCIはfonts-noto-cjk、WindowsのCIは固定版とSHA256を照合したNoto Sans JPを準備します。取得元と照合値は[CI設定](../../.github/workflows/check.yml)を正本とします。フォント不足は組版失敗として扱い、文字を欠落させた出力や検査の省略で成功にしません。
+日本語の組版検査には、日本語の全使用文字を描けるフォントが必要です。Windows・LinuxのCIは、同じ固定版とSHA256を照合したNoto Sans JPを準備します。Linuxでは標準の利用者用フォントフォルダーを使います。取得元、照合値、取得時間の上限は[CI設定](../../.github/workflows/check.yml)を正本とします。フォント不足は組版失敗として扱い、文字を欠落させた出力や検査の省略で成功にしません。
 
 外部ComfyUIには標準APIと、使用するモデル・標準ノードが必要です。モデル準備と素材保全にはKomaquillの画面拡張も必要です。
 

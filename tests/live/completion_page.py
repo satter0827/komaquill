@@ -35,6 +35,7 @@ def font_path(text: str, supplied: Path | None = None) -> Path:
             windows / "NotoSansJP-VF.ttf",
             windows / "arial.ttf",
             windows / "segoeui.ttf",
+            Path.home() / ".local/share/fonts/NotoSansJP-VF.ttf",
             Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         ]

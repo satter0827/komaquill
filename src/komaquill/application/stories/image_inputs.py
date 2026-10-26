@@ -26,7 +26,7 @@ def scene_input(
             *(
                 joined(props[state.prop].appearance, state.state)
                 for state in scene.props
-                if state.holder == subject.character
+                if state.visible and state.holder == subject.character
             ),
         )
         for subject in scene.subjects
@@ -38,7 +38,7 @@ def scene_input(
         *(
             joined(props[state.prop].appearance, state.state)
             for state in scene.props
-            if state.holder is None
+            if state.visible and state.holder is None
         ),
     )
     return compile_image_input(profile, prompt, negative, subjects=subjects)

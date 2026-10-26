@@ -1,0 +1,1174 @@
+[
+  {
+    "id": "rainy-cat",
+    "group": "development",
+    "source": "ミオは青い傘を差し、雨の帰り道を歩いていた。道端で雨に震える小さな子猫を見つけ、そっとしゃがんだ。\n\nミオは子猫へ傘を差しかけた。自分の肩は濡れたが、子猫の震えは少しずつ落ち着いていった。\n\n落ち着いた子猫は通りの向こうへ走り出した。ミオが目で追うと、軒下で待っていた母猫のもとへ駆け寄っていた。\n\n母猫が子猫へ顔を寄せた。ミオは親子を見守って微笑み、自分の頭の上へ傘を戻して帰り道を歩き出した。",
+    "required": [
+      "ミオは青い傘を子猫へ差しかける。",
+      "子猫が母猫と再会する。",
+      "ミオは傘を頭上へ戻して歩き出す。"
+    ],
+    "forbidden": [
+      "傘や子猫を増やす。",
+      "最後の歩き出す動作をしゃがむ動作へ変える。"
+    ],
+    "visual_checks": [
+      "傘は青い1本で、持つ人物と軸・傘本体の対応が確認できる。",
+      "母猫と子猫の体格を区別する。",
+      "場面間の髪形、服装、毛色を保つ。"
+    ],
+    "draft": {
+      "title": "雨の日の青い傘",
+      "synopsis": "雨の日に出会った子猫を助けたミオが、親子猫の再会を見届ける物語。",
+      "characters": [
+        {
+          "key": "woman",
+          "name": "ミオ",
+          "appearance": "young woman, human face, short dark bob, yellow raincoat, human hands",
+          "kind": "human"
+        },
+        {
+          "key": "kitten",
+          "name": "子猫",
+          "appearance": "tiny gray kitten, white chest patch, four legs, natural feline body",
+          "kind": "animal"
+        },
+        {
+          "key": "mother_cat",
+          "name": "母猫",
+          "appearance": "larger adult gray mother cat, white chest patch, four legs",
+          "kind": "animal"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "小さな出会い",
+          "narrative": "ミオは青い傘を差し、雨の帰り道を歩いていた。道端で雨に震える小さな子猫を見つけ、そっとしゃがんだ。",
+          "visual_description": "Low eye-level view of a rainy curb.",
+          "location": "rainy street beside a shop awning",
+          "source_refs": [
+            "p1"
+          ],
+          "subjects": [
+            {
+              "character": "woman",
+              "action": "crouches beside the kitten"
+            },
+            {
+              "character": "kitten",
+              "action": "shivers beside the curb"
+            }
+          ],
+          "props": [
+            {
+              "prop": "umbrella",
+              "holder": "woman",
+              "state": "held above her head",
+              "visible": true
+            }
+          ]
+        },
+        {
+          "title": "落ち着く子猫",
+          "narrative": "ミオは子猫へ傘を差しかけた。自分の肩は濡れたが、子猫の震えは少しずつ落ち着いていった。",
+          "visual_description": "Close view from beneath the blue umbrella.",
+          "location": "rainy street beside a shop awning",
+          "source_refs": [
+            "p2"
+          ],
+          "subjects": [
+            {
+              "character": "woman",
+              "action": "holds the umbrella above the kitten"
+            },
+            {
+              "character": "kitten",
+              "action": "rests under the umbrella"
+            }
+          ],
+          "props": [
+            {
+              "prop": "umbrella",
+              "holder": "woman",
+              "state": "held over the kitten",
+              "visible": true
+            }
+          ]
+        },
+        {
+          "title": "待っていた母猫",
+          "narrative": "落ち着いた子猫は通りの向こうへ走り出した。ミオが目で追うと、軒下で待っていた母猫のもとへ駆け寄っていた。",
+          "visual_description": "Medium view across the street beneath a shop awning.",
+          "location": "rainy street beside a shop awning",
+          "source_refs": [
+            "p3"
+          ],
+          "subjects": [
+            {
+              "character": "kitten",
+              "action": "leans toward its mother"
+            },
+            {
+              "character": "mother_cat",
+              "action": "lowers her face toward the kitten"
+            }
+          ],
+          "props": []
+        },
+        {
+          "title": "あたたかな帰り道",
+          "narrative": "母猫が子猫へ顔を寄せた。ミオは親子を見守って微笑み、自分の頭の上へ傘を戻して帰り道を歩き出した。",
+          "visual_description": "Wide rear view of a wet street leading home, soft reflected light.",
+          "location": "rainy street beside a shop awning",
+          "source_refs": [
+            "p4"
+          ],
+          "subjects": [
+            {
+              "character": "woman",
+              "action": "walks home holding the umbrella overhead"
+            }
+          ],
+          "props": [
+            {
+              "prop": "umbrella",
+              "holder": "woman",
+              "state": "held above her head",
+              "visible": true
+            }
+          ]
+        }
+      ],
+      "supplements": [
+        "ミオの髪形と黄色いレインコート、猫の毛色は描画の一貫性のために補足した。"
+      ],
+      "props": [
+        {
+          "key": "umbrella",
+          "name": "青い傘",
+          "appearance": "a single blue umbrella"
+        }
+      ]
+    }
+  },
+  {
+    "id": "lost-key",
+    "group": "development",
+    "source": "家を出る前、玲は机の上で鍵を探した。\n\n玲は机の引き出しを開け、小さな封筒を見つけた。\n\n封筒を開くと、中から鍵が出てきた。\n\n玲は鍵をポケットに入れ、安心して玄関へ向かった。",
+    "required": [
+      "封筒を開けた時に初めて鍵が見つかる。",
+      "最後に鍵をポケットへ入れて玄関へ向かう。"
+    ],
+    "forbidden": [
+      "発見前の鍵を机へ描く。",
+      "最後も鍵を手に持ったままにする。"
+    ],
+    "visual_checks": [
+      "発見前の場面に鍵が見えていない。",
+      "鍵が出てくる封筒は同じ1通である。"
+    ],
+    "draft": {
+      "title": "探し物の鍵",
+      "synopsis": "探し物の鍵の出来事を順に描く。",
+      "characters": [
+        {
+          "key": "rei",
+          "name": "玲",
+          "appearance": "adult person, short black hair, white jacket, black trousers",
+          "kind": "human"
+        }
+      ],
+      "props": [
+        {
+          "key": "key",
+          "name": "鍵",
+          "appearance": "one small silver key"
+        },
+        {
+          "key": "envelope",
+          "name": "封筒",
+          "appearance": "one small cream envelope"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "家を出る前、玲は机の上で鍵を探した",
+          "narrative": "家を出る前、玲は机の上で鍵を探した。",
+          "visual_description": "Medium view of a tidy wooden desk.",
+          "location": "home study",
+          "subjects": [
+            {
+              "character": "rei",
+              "action": "looks across the desk"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "玲は机の引き出しを開け、小さな封筒を見つけた",
+          "narrative": "玲は机の引き出しを開け、小さな封筒を見つけた。",
+          "visual_description": "Close view of an open desk drawer.",
+          "location": "home study",
+          "subjects": [
+            {
+              "character": "rei",
+              "action": "looks into the open drawer"
+            }
+          ],
+          "props": [
+            {
+              "prop": "envelope",
+              "holder": null,
+              "state": "closed inside the open drawer",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "封筒を開くと、中から鍵が出てきた",
+          "narrative": "封筒を開くと、中から鍵が出てきた。",
+          "visual_description": "Close view of an opened envelope above a desk.",
+          "location": "home study",
+          "subjects": [
+            {
+              "character": "rei",
+              "action": "opens the envelope to reveal the key"
+            }
+          ],
+          "props": [
+            {
+              "prop": "envelope",
+              "holder": "rei",
+              "state": "open in one hand",
+              "visible": true
+            },
+            {
+              "prop": "key",
+              "holder": null,
+              "state": "visible inside the opened envelope",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "玲は鍵をポケットに入れ、安心して玄関へ向かった",
+          "narrative": "玲は鍵をポケットに入れ、安心して玄関へ向かった。",
+          "visual_description": "Rear view of a doorway and hallway.",
+          "location": "home entrance",
+          "subjects": [
+            {
+              "character": "rei",
+              "action": "walks toward the front door"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  },
+  {
+    "id": "shared-umbrella",
+    "group": "development",
+    "source": "雨の日、駅の軒下で妹の澪が兄の航を待っていた。\n\n航が傘を差してやって来た。澪は自分の傘を忘れたと話した。\n\n航は傘を澪へ渡し、自分は駅で雨が止むのを待つことにした。\n\n澪は傘を差して家へ向かい、玄関で兄へのお礼の手紙を書いた。",
+    "required": [
+      "傘は航から澪へ渡る。",
+      "航は駅で待ち、澪だけが帰宅する。"
+    ],
+    "forbidden": [
+      "傘を2本へ増やす。",
+      "最後に航も家へ登場させる。"
+    ],
+    "visual_checks": [
+      "受け渡し前後の傘の所有者を区別する。",
+      "家の場面に兄を追加しない。"
+    ],
+    "draft": {
+      "title": "貸した傘",
+      "synopsis": "貸した傘の出来事を順に描く。",
+      "characters": [
+        {
+          "key": "mio",
+          "name": "澪",
+          "appearance": "adult woman, short brown hair, red coat",
+          "kind": "human"
+        },
+        {
+          "key": "wataru",
+          "name": "航",
+          "appearance": "adult man, short black hair, navy jacket",
+          "kind": "human"
+        }
+      ],
+      "props": [
+        {
+          "key": "umbrella",
+          "name": "傘",
+          "appearance": "one plain green umbrella"
+        },
+        {
+          "key": "letter",
+          "name": "手紙",
+          "appearance": "one sheet of white letter paper"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "雨の日、駅の軒下で妹の澪が兄の航を待っていた",
+          "narrative": "雨の日、駅の軒下で妹の澪が兄の航を待っていた。",
+          "visual_description": "Wide view of a rainy station entrance.",
+          "location": "station awning",
+          "subjects": [
+            {
+              "character": "mio",
+              "action": "waits under the awning"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "航が傘を差してやって来た",
+          "narrative": "航が傘を差してやって来た。澪は自分の傘を忘れたと話した。",
+          "visual_description": "Eye-level view beside a station doorway.",
+          "location": "station awning",
+          "subjects": [
+            {
+              "character": "mio",
+              "action": "faces her brother"
+            },
+            {
+              "character": "wataru",
+              "action": "arrives holding an umbrella"
+            }
+          ],
+          "props": [
+            {
+              "prop": "umbrella",
+              "holder": "wataru",
+              "state": "open above his head",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "航は傘を澪へ渡し、自分は駅で雨が止むのを待つことにした",
+          "narrative": "航は傘を澪へ渡し、自分は駅で雨が止むのを待つことにした。",
+          "visual_description": "Medium view of the station shelter.",
+          "location": "station awning",
+          "subjects": [
+            {
+              "character": "mio",
+              "action": "holds the received umbrella"
+            },
+            {
+              "character": "wataru",
+              "action": "waits under the shelter"
+            }
+          ],
+          "props": [
+            {
+              "prop": "umbrella",
+              "holder": "mio",
+              "state": "open above her head",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "澪は傘を差して家へ向かい、玄関で兄へのお礼の手紙を書いた",
+          "narrative": "澪は傘を差して家へ向かい、玄関で兄へのお礼の手紙を書いた。",
+          "visual_description": "Close view of an entrance table.",
+          "location": "home entrance",
+          "subjects": [
+            {
+              "character": "mio",
+              "action": "writes a thank-you letter"
+            }
+          ],
+          "props": [
+            {
+              "prop": "umbrella",
+              "holder": null,
+              "state": "closed beside the door",
+              "visible": true
+            },
+            {
+              "prop": "letter",
+              "holder": null,
+              "state": "on the entrance table",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  },
+  {
+    "id": "morning",
+    "group": "development",
+    "source": "空は朝、部屋のカーテンを開けた。\n\n空は台所で銀色の水筒へ水を入れた。\n\n空は水筒のふたを閉め、茶色の鞄へ入れた。\n\n空は鞄を肩にかけ、玄関から外へ出た。",
+    "required": [
+      "水を入れてから水筒を閉めて鞄へ入れる。",
+      "同じ人物が最後に外へ出る。"
+    ],
+    "forbidden": [
+      "水筒を増やす。",
+      "外出前に物を別の人物へ渡す。"
+    ],
+    "visual_checks": [
+      "人物は1人で服装が一貫する。",
+      "鞄と水筒の色と状態を保つ。"
+    ],
+    "draft": {
+      "title": "朝の支度",
+      "synopsis": "朝の支度の出来事を順に描く。",
+      "characters": [
+        {
+          "key": "sora",
+          "name": "空",
+          "appearance": "adult person, short black hair, blue cardigan, beige trousers",
+          "kind": "human"
+        }
+      ],
+      "props": [
+        {
+          "key": "bottle",
+          "name": "水筒",
+          "appearance": "one silver water bottle"
+        },
+        {
+          "key": "bag",
+          "name": "鞄",
+          "appearance": "one brown shoulder bag"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "空は朝、部屋のカーテンを開けた",
+          "narrative": "空は朝、部屋のカーテンを開けた。",
+          "visual_description": "Morning light through an open curtain.",
+          "location": "home living room",
+          "subjects": [
+            {
+              "character": "sora",
+              "action": "opens the curtain"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "空は台所で銀色の水筒へ水を入れた",
+          "narrative": "空は台所で銀色の水筒へ水を入れた。",
+          "visual_description": "Close view of a kitchen sink.",
+          "location": "home kitchen",
+          "subjects": [
+            {
+              "character": "sora",
+              "action": "fills the water bottle"
+            }
+          ],
+          "props": [
+            {
+              "prop": "bottle",
+              "holder": "sora",
+              "state": "open under the tap",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "空は水筒のふたを閉め、茶色の鞄へ入れた",
+          "narrative": "空は水筒のふたを閉め、茶色の鞄へ入れた。",
+          "visual_description": "Medium view of an entrance bench.",
+          "location": "home entrance",
+          "subjects": [
+            {
+              "character": "sora",
+              "action": "places the closed bottle into the bag"
+            }
+          ],
+          "props": [
+            {
+              "prop": "bottle",
+              "holder": "sora",
+              "state": "partly visible inside the open bag",
+              "visible": true
+            },
+            {
+              "prop": "bag",
+              "holder": null,
+              "state": "open on the bench",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "空は鞄を肩にかけ、玄関から外へ出た",
+          "narrative": "空は鞄を肩にかけ、玄関から外へ出た。",
+          "visual_description": "Rear view of a front doorway.",
+          "location": "outside home entrance",
+          "subjects": [
+            {
+              "character": "sora",
+              "action": "walks outside carrying the bag"
+            }
+          ],
+          "props": [
+            {
+              "prop": "bag",
+              "holder": "sora",
+              "state": "closed over one shoulder",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  },
+  {
+    "id": "red-book",
+    "group": "confirmation",
+    "source": "亜紀は赤い本を持ち、青い鞄を持つ蓮と机を挟んで向かい合った。\n\n亜紀は赤い本を机の中央へ置いた。\n\n蓮は赤い本を受け取り、自分の青い鞄へ入れた。\n\n蓮は鞄を閉めて部屋を出て、亜紀は机のそばで見送った。",
+    "required": [
+      "本は赤く、鞄は青い。",
+      "亜紀から蓮へ本が移り、蓮が鞄へ入れて持ち帰る。"
+    ],
+    "forbidden": [
+      "本と鞄の色を交換する。",
+      "最後に亜紀へ鞄を戻す。"
+    ],
+    "visual_checks": [
+      "本と鞄の色および各場面の所有者が一致する。",
+      "最後に本は閉じた鞄の外へ重複しない。"
+    ],
+    "draft": {
+      "title": "赤い本と青い鞄",
+      "synopsis": "赤い本と青い鞄の出来事を順に描く。",
+      "characters": [
+        {
+          "key": "aki",
+          "name": "亜紀",
+          "appearance": "adult woman, short black hair, white coat",
+          "kind": "human"
+        },
+        {
+          "key": "ren",
+          "name": "蓮",
+          "appearance": "adult man, short brown hair, blue jacket",
+          "kind": "human"
+        }
+      ],
+      "props": [
+        {
+          "key": "book",
+          "name": "赤い本",
+          "appearance": "one red hardcover book"
+        },
+        {
+          "key": "bag",
+          "name": "青い鞄",
+          "appearance": "one blue shoulder bag"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "亜紀は赤い本を持ち、青い鞄を持つ蓮と机を挟んで向かい合った",
+          "narrative": "亜紀は赤い本を持ち、青い鞄を持つ蓮と机を挟んで向かい合った。",
+          "visual_description": "Medium view across a wooden table.",
+          "location": "library meeting room",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "holds a book opposite Ren"
+            },
+            {
+              "character": "ren",
+              "action": "holds a bag opposite Aki"
+            }
+          ],
+          "props": [
+            {
+              "prop": "book",
+              "holder": "aki",
+              "state": "held upright",
+              "visible": true
+            },
+            {
+              "prop": "bag",
+              "holder": "ren",
+              "state": "held at his side",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "亜紀は赤い本を机の中央へ置いた",
+          "narrative": "亜紀は赤い本を机の中央へ置いた。",
+          "visual_description": "Close view of the table center.",
+          "location": "library meeting room",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "places the book on the table"
+            },
+            {
+              "character": "ren",
+              "action": "watches across the table"
+            }
+          ],
+          "props": [
+            {
+              "prop": "book",
+              "holder": null,
+              "state": "lying closed on the table",
+              "visible": true
+            },
+            {
+              "prop": "bag",
+              "holder": "ren",
+              "state": "held beside him",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "蓮は赤い本を受け取り、自分の青い鞄へ入れた",
+          "narrative": "蓮は赤い本を受け取り、自分の青い鞄へ入れた。",
+          "visual_description": "Close view beside the table.",
+          "location": "library meeting room",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "watches Ren pack the book"
+            },
+            {
+              "character": "ren",
+              "action": "places the book into his bag"
+            }
+          ],
+          "props": [
+            {
+              "prop": "book",
+              "holder": "ren",
+              "state": "partly visible inside the open bag",
+              "visible": true
+            },
+            {
+              "prop": "bag",
+              "holder": "ren",
+              "state": "open at his waist",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "蓮は鞄を閉めて部屋を出て、亜紀は机のそばで見送った",
+          "narrative": "蓮は鞄を閉めて部屋を出て、亜紀は机のそばで見送った。",
+          "visual_description": "Wide view toward the meeting-room doorway.",
+          "location": "library meeting room",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "waves beside the table"
+            },
+            {
+              "character": "ren",
+              "action": "walks through the doorway"
+            }
+          ],
+          "props": [
+            {
+              "prop": "bag",
+              "holder": "ren",
+              "state": "closed over his shoulder",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  },
+  {
+    "id": "dog-delivery",
+    "group": "confirmation",
+    "source": "配達員は茶色の荷物を持って家の門へ来た。\n\n庭の白い犬が配達員へ近づき、門の内側で止まった。\n\n配達員は門を通り、玄関前に荷物を置いた。犬はそばで見ていた。\n\n配達員は手を振って帰り、犬は玄関のそばに残った。",
+    "required": [
+      "犬は白く人間と区別される。",
+      "荷物は玄関へ置かれ、配達員だけが帰る。"
+    ],
+    "forbidden": [
+      "犬に荷物を持たせる。",
+      "最後に荷物を配達員へ戻す。"
+    ],
+    "visual_checks": [
+      "犬の自然な四肢と人物の手を区別する。",
+      "門の内外と荷物の最終位置が一致する。"
+    ],
+    "draft": {
+      "title": "犬と配達員",
+      "synopsis": "犬と配達員の出来事を順に描く。",
+      "characters": [
+        {
+          "key": "courier",
+          "name": "配達員",
+          "appearance": "adult man, short black hair, green jacket, brown boots",
+          "kind": "human"
+        },
+        {
+          "key": "dog",
+          "name": "犬",
+          "appearance": "small white dog, brown ears, four legs",
+          "kind": "animal"
+        }
+      ],
+      "props": [
+        {
+          "key": "parcel",
+          "name": "荷物",
+          "appearance": "one brown cardboard parcel"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "配達員は茶色の荷物を持って家の門へ来た",
+          "narrative": "配達員は茶色の荷物を持って家の門へ来た。",
+          "visual_description": "Wide view of a garden gate.",
+          "location": "house front gate",
+          "subjects": [
+            {
+              "character": "courier",
+              "action": "approaches the gate carrying a parcel"
+            }
+          ],
+          "props": [
+            {
+              "prop": "parcel",
+              "holder": "courier",
+              "state": "held with both hands",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "庭の白い犬が配達員へ近づき、門の内側で止まった",
+          "narrative": "庭の白い犬が配達員へ近づき、門の内側で止まった。",
+          "visual_description": "Eye-level view beside a closed garden gate.",
+          "location": "house front gate",
+          "subjects": [
+            {
+              "character": "courier",
+              "action": "stands outside the gate"
+            },
+            {
+              "character": "dog",
+              "action": "waits inside the gate"
+            }
+          ],
+          "props": [
+            {
+              "prop": "parcel",
+              "holder": "courier",
+              "state": "held against his chest",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "配達員は門を通り、玄関前に荷物を置いた",
+          "narrative": "配達員は門を通り、玄関前に荷物を置いた。犬はそばで見ていた。",
+          "visual_description": "Medium view of a front doorstep.",
+          "location": "house doorstep",
+          "subjects": [
+            {
+              "character": "courier",
+              "action": "places the parcel on the doorstep"
+            },
+            {
+              "character": "dog",
+              "action": "watches beside the doorstep"
+            }
+          ],
+          "props": [
+            {
+              "prop": "parcel",
+              "holder": null,
+              "state": "resting on the doorstep",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "配達員は手を振って帰り、犬は玄関のそばに残った",
+          "narrative": "配達員は手を振って帰り、犬は玄関のそばに残った。",
+          "visual_description": "Wide rear view along the garden path.",
+          "location": "house garden path",
+          "subjects": [
+            {
+              "character": "courier",
+              "action": "walks away waving"
+            },
+            {
+              "character": "dog",
+              "action": "stays beside the front door"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  },
+  {
+    "id": "flying-hat",
+    "group": "confirmation",
+    "source": "公園のベンチに赤い帽子が一つ置かれていた。\n\n風が吹き、帽子はベンチから地面へ落ちた。\n\n帽子は道を転がり、水たまりの手前まで進んだ。\n\n帽子は低い石の縁に引っかかって止まった。公園には誰もいなかった。",
+    "required": [
+      "帽子は赤い一つだけで、人は登場しない。",
+      "帽子は水たまりへ入らず石の縁で止まる。"
+    ],
+    "forbidden": [
+      "帽子を拾う人物を追加する。",
+      "帽子を水へ落とす。"
+    ],
+    "visual_checks": [
+      "全場面で人物・動物を追加しない。",
+      "同じ赤い帽子の位置が順に変わる。"
+    ],
+    "draft": {
+      "title": "風に飛ばされた帽子",
+      "synopsis": "風に飛ばされた帽子の出来事を順に描く。",
+      "characters": [],
+      "props": [
+        {
+          "key": "hat",
+          "name": "赤い帽子",
+          "appearance": "one red cloth hat"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "公園のベンチに赤い帽子が一つ置かれていた",
+          "narrative": "公園のベンチに赤い帽子が一つ置かれていた。",
+          "visual_description": "Close view of an empty park bench.",
+          "location": "park beside a bench",
+          "subjects": [],
+          "props": [
+            {
+              "prop": "hat",
+              "holder": null,
+              "state": "resting on the bench",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "風が吹き、帽子はベンチから地面へ落ちた",
+          "narrative": "風が吹き、帽子はベンチから地面へ落ちた。",
+          "visual_description": "Low view beside a wooden bench.",
+          "location": "park beside a bench",
+          "subjects": [],
+          "props": [
+            {
+              "prop": "hat",
+              "holder": null,
+              "state": "lying on the ground beside the bench",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "帽子は道を転がり、水たまりの手前まで進んだ",
+          "narrative": "帽子は道を転がり、水たまりの手前まで進んだ。",
+          "visual_description": "Low view along a park path beside a puddle.",
+          "location": "park path",
+          "subjects": [],
+          "props": [
+            {
+              "prop": "hat",
+              "holder": null,
+              "state": "on dry ground just before the puddle",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "帽子は低い石の縁に引っかかって止まった",
+          "narrative": "帽子は低い石の縁に引っかかって止まった。公園には誰もいなかった。",
+          "visual_description": "Close view of a low stone edge beside a puddle.",
+          "location": "park path",
+          "subjects": [],
+          "props": [
+            {
+              "prop": "hat",
+              "holder": null,
+              "state": "caught against the stone edge outside the water",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  },
+  {
+    "id": "group-photo",
+    "group": "confirmation",
+    "source": "亜紀、蓮、結衣は公園へ集まり、亜紀がカメラを三脚へ取り付けた。\n\n三人はカメラに向かい、亜紀、蓮、結衣の順で左から並んだ。\n\nセルフタイマーの合図で、三人は同時に手を振った。\n\n撮影後、三人は一緒にカメラの画面をのぞき、写真を見て笑った。",
+    "required": [
+      "三人が同時に並び、同時に手を振る。",
+      "写真の後も三人でカメラを見る。"
+    ],
+    "forbidden": [
+      "一人を画面外へ省略する。",
+      "撮影者として四人目を追加する。"
+    ],
+    "visual_checks": [
+      "集合写真では三人全員が見え、服の色と左からの順序が一致する。",
+      "手を振る動作が三人とも確認できる。"
+    ],
+    "draft": {
+      "title": "三人の集合写真",
+      "synopsis": "三人の集合写真の出来事を順に描く。",
+      "characters": [
+        {
+          "key": "aki",
+          "name": "亜紀",
+          "appearance": "adult woman, short black hair, white coat",
+          "kind": "human"
+        },
+        {
+          "key": "ren",
+          "name": "蓮",
+          "appearance": "adult man, short brown hair, blue jacket",
+          "kind": "human"
+        },
+        {
+          "key": "yui",
+          "name": "結衣",
+          "appearance": "adult woman, long black hair, red cardigan",
+          "kind": "human"
+        }
+      ],
+      "props": [
+        {
+          "key": "camera",
+          "name": "カメラ",
+          "appearance": "one black camera"
+        },
+        {
+          "key": "tripod",
+          "name": "三脚",
+          "appearance": "one silver camera tripod"
+        }
+      ],
+      "scenes": [
+        {
+          "title": "亜紀、蓮、結衣は公園へ集まり、亜紀がカメラを三脚へ取り付けた",
+          "narrative": "亜紀、蓮、結衣は公園へ集まり、亜紀がカメラを三脚へ取り付けた。",
+          "visual_description": "Wide view of a park lawn.",
+          "location": "park lawn",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "mounts the camera on the tripod"
+            },
+            {
+              "character": "ren",
+              "action": "waits beside Yui"
+            },
+            {
+              "character": "yui",
+              "action": "waits beside Ren"
+            }
+          ],
+          "props": [
+            {
+              "prop": "camera",
+              "holder": "aki",
+              "state": "being mounted on the tripod",
+              "visible": true
+            },
+            {
+              "prop": "tripod",
+              "holder": null,
+              "state": "standing on the lawn",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p1"
+          ]
+        },
+        {
+          "title": "三人はカメラに向かい、亜紀、蓮、結衣の順で左から並んだ",
+          "narrative": "三人はカメラに向かい、亜紀、蓮、結衣の順で左から並んだ。",
+          "visual_description": "Front view of a sunny park lawn.",
+          "location": "park lawn",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "stands on the left facing the camera"
+            },
+            {
+              "character": "ren",
+              "action": "stands in the middle facing the camera"
+            },
+            {
+              "character": "yui",
+              "action": "stands on the right facing the camera"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p2"
+          ]
+        },
+        {
+          "title": "セルフタイマーの合図で、三人は同時に手を振った",
+          "narrative": "セルフタイマーの合図で、三人は同時に手を振った。",
+          "visual_description": "Front view framed like a group photograph.",
+          "location": "park lawn",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "waves toward the camera"
+            },
+            {
+              "character": "ren",
+              "action": "waves toward the camera"
+            },
+            {
+              "character": "yui",
+              "action": "waves toward the camera"
+            }
+          ],
+          "props": [],
+          "source_refs": [
+            "p3"
+          ]
+        },
+        {
+          "title": "撮影後、三人は一緒にカメラの画面をのぞき、写真を見て笑った",
+          "narrative": "撮影後、三人は一緒にカメラの画面をのぞき、写真を見て笑った。",
+          "visual_description": "Close side view beside a camera tripod.",
+          "location": "park lawn",
+          "subjects": [
+            {
+              "character": "aki",
+              "action": "looks at the camera screen smiling"
+            },
+            {
+              "character": "ren",
+              "action": "looks at the camera screen smiling"
+            },
+            {
+              "character": "yui",
+              "action": "looks at the camera screen smiling"
+            }
+          ],
+          "props": [
+            {
+              "prop": "camera",
+              "holder": "aki",
+              "state": "screen facing all three people",
+              "visible": true
+            }
+          ],
+          "source_refs": [
+            "p4"
+          ]
+        }
+      ],
+      "supplements": [
+        "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+      ]
+    }
+  }
+]

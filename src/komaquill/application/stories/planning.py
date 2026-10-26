@@ -106,6 +106,7 @@ def plan_story(
                         "action",
                         "prop",
                         "holder",
+                        "visible",
                         "state",
                     }
                     validation_issues = [

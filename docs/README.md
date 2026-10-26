@@ -26,3 +26,5 @@
 AIによる変更でも、この索引とAGENTSから対象文書を選び、実装状態と検証対象版を確認します。計画だけを根拠に実装済みと判断しません。ファイル・節へのリンクと要件の参照先は品質ゲートで確認します。
 
 Kleinのモデル構成、役割の構成図、旧構成の削除理由は[設計判断](decisions/0009-klein-completion.md)、完走の条件は[短編漫画の検証](verification/story-completion.md)を参照してください。
+
+複数題材での検証と、物語の状態・描画対象の分離は[設計判断](decisions/0010-multi-story-verification.md)を参照してください。

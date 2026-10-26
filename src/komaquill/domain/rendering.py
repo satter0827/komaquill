@@ -14,7 +14,7 @@ class SceneRenderConfig(BaseModel):
     inputs: dict[str, InputArtifact] = Field(default_factory=dict)
     prompt: str | None = None
     negative: str | None = None
-    subjects: tuple[str, ...] | None = Field(default=None, max_length=2)
+    subjects: tuple[str, ...] | None = None
     parameters: dict[str, bool | int | float | str] = Field(default_factory=dict)
 
 

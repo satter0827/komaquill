@@ -1,0 +1,11 @@
+seed = 424242
+candidates = 1
+output_limit = 20
+improvement_limit = 2
+technical_retry_limit = 2
+send_seconds = 4200
+total_seconds = 5400
+storage_limit = 2147483648
+planning_seconds = 2700
+planning_calls = 8
+live_cases = ["rainy-cat", "lost-key", "red-book", "flying-hat"]

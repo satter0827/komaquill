@@ -47,7 +47,8 @@
         {
           "prop": "umbrella",
           "holder": "woman",
-          "state": "held over the kitten"
+          "state": "held over the kitten",
+          "visible": true
         }
       ]
     }

@@ -27,7 +27,7 @@ class CompiledImageInput(BaseModel):
     prompt: str
     common_prompt: str = ""
     requested_negative: str | None
-    subject_prompts: tuple[str, ...] = Field(max_length=2)
+    subject_prompts: tuple[str, ...]
     quality_enabled: bool
     positive_prefix: str
     negative_prefix: str
@@ -35,7 +35,7 @@ class CompiledImageInput(BaseModel):
     positive: str
     negative: str
     negative_body: str
-    subject_positives: tuple[str, ...] = Field(max_length=2)
+    subject_positives: tuple[str, ...]
     layout: Literal["global", "single", "left-right", "layered"]
     inputs: dict[str, InputArtifact] = Field(default_factory=dict)
 
@@ -157,13 +157,13 @@ class PromptSource(BaseModel):
 
 
 class ImageInput(BaseModel):
-    """Validate positive, negative and optional regional directions."""
+    """Validate positive, negative and optional subject directions."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
     format_version: Literal[1, 2] = 1
     prompt: str = Field(min_length=1)
     negative: str | None = None
-    subjects: tuple[str, ...] = Field(default=(), max_length=2)
+    subjects: tuple[str, ...] = ()
     inputs: dict[str, str] = Field(default_factory=dict)
     parameters: dict[str, bool | int | float | str] = Field(default_factory=dict)
 

@@ -34,7 +34,10 @@ class Character(StoryRecord):
     key: str
     name: str
     appearance: str = Field(
-        description="English only: stable visible appearance, at most 15 words."
+        description=(
+            "English only, at most 15 words: stable anatomy, hair/fur and clothing. "
+            "Exclude actions, possessions, location and temporary states such as wetness."
+        )
     )
 
 
@@ -75,6 +78,7 @@ class SceneSubject(StoryRecord):
 class ScenePropState(StoryRecord):
     prop: str
     holder: str | None = Field(description="Visible holder's character key, or null if unheld.")
+    visible: bool = True
     state: str = Field(description="English: visible state and position at this instant.")
 
 
@@ -89,9 +93,12 @@ class PlannedSubject(SceneSubject):
 class PlannedPropState(ScenePropState):
     prop: PropKey
     holder: ActorKey | None
-
-
-MAX_VISIBLE_SUBJECTS = 2
+    visible: bool = Field(
+        description=(
+            "Whether this object is actually visible in this instant. False inside an opaque "
+            "closed container or pocket. Do not invent an unseen object's location."
+        )
+    )
 
 
 class SceneText(StoryRecord):
@@ -99,6 +106,7 @@ class SceneText(StoryRecord):
     narrative: str = Field(
         description=(
             "Japanese story prose. Together all scenes tell the whole source through its ending. "
+            "Explicitly preserve material actions; paragraph references alone are not coverage. "
             "For one scene, summarize the complete story."
         )
     )
@@ -118,7 +126,7 @@ class SceneText(StoryRecord):
 
 
 class SceneDraft(SceneText):
-    subjects: list[PlannedSubject] = Field(max_length=MAX_VISIBLE_SUBJECTS)
+    subjects: list[PlannedSubject]
     props: list[PlannedPropState]
 
 
@@ -127,10 +135,19 @@ class StoryDraft(StoryRecord):
 
     title: str
     synopsis: str
-    characters: list[PlannedCharacter]
+    characters: list[PlannedCharacter] = Field(
+        description=(
+            "Characters actually present in the source. Empty for a story containing only objects. "
+            "Do not invent a person to fill this list; moving objects belong to props."
+        )
+    )
     props: list[PlannedProp]
     scenes: list[SceneDraft]
-    supplements: list[str]
+    supplements: list[str] = Field(
+        description=(
+            "Japanese: inferred visual details absent from the source, not compliance claims."
+        )
+    )
 
 
 class StoryInput(StoryRecord):
@@ -360,8 +377,8 @@ def validate_visual_references(draft: StoryDraft | StoryPlan) -> None:
     for index in range(len(draft.scenes)):
         scene = draft.scenes[index]
         path: tuple[str | int, ...] = ("scenes", index)
-        if scene.subjects is None or len(scene.subjects) > MAX_VISIBLE_SUBJECTS:
-            reject((*path, "subjects"), "New scenes require bounded visible subjects.")
+        if scene.subjects is None:
+            reject((*path, "subjects"), "New scenes require explicit visible subjects.")
             continue
         visible = [subject.character for subject in scene.subjects]
         if len(set(visible)) != len(visible) or not set(visible) <= character_keys:
@@ -451,7 +468,10 @@ def validate_draft(draft: StoryDraft, request: StoryInput) -> None:
             " ".join(scene.visual_description.split()).casefold(),
             (scene.location or "").casefold(),
             tuple((subject.character, subject.action.casefold()) for subject in scene.subjects),
-            tuple((state.prop, state.holder, state.state.casefold()) for state in scene.props),
+            tuple(
+                (state.prop, state.holder, state.visible, state.state.casefold())
+                for state in scene.props
+            ),
         )
         for scene in draft.scenes
     ]

@@ -13,54 +13,13 @@ from tests.live import story_completion as live
 from tests.support.stories import planned
 
 
-def test_additional_session_is_explicit_and_keeps_the_cumulative_budget(completion, monkeypatch):
-    from komaquill.infrastructure.atomic import atomic_json
-
-    report, _, _ = completion
-    live.baseline(report)
-    before = live.load(report)
-    before.gpu_started_at = datetime.now(UTC) - timedelta(hours=2)
-    live.save(report, before)
-    runtime_id = uuid4()
-
-    def started(self, **kwargs):
-        settings = self._project.settings()
-        assert settings.submission_timeout == live.ADDITIONAL_SEND_SECONDS
-        assert settings.session_timeout == live.ADDITIONAL_TOTAL_SECONDS
-        live.reserve_screen(report)
-        atomic_json(self._project.state / "monitor.json", {"runtime_id": str(runtime_id)})
-
-    monkeypatch.setattr(services.SessionService, "start", started)
-    live.start(report, additional_session=True)
-    after = live.load(report)
-    assert after.gpu_started_at == before.gpu_started_at
-    assert before.reserved_outputs == 4 and after.reserved_outputs == 5
-    assert after.screen_outputs == 1
-    assert after.baseline_render_id == before.baseline_render_id
-    assert after.additional_session.runtime_id == runtime_id
-    live.sending_allowed(after)
-    with pytest.raises(RuntimeError):
-        live.sending_allowed(
-            after,
-            now=after.additional_session.started_at
-            + timedelta(seconds=after.additional_session.send_seconds),
-        )
-    with pytest.raises(RuntimeError):
-        live.start(report, additional_session=True)
-
-
 def test_shutdown_summary_uses_the_current_recorded_runtime(completion, monkeypatch):
     from komaquill.infrastructure.atomic import atomic_json
 
     report, _, _ = completion
     case = live.load(report)
     original, current = uuid4(), uuid4()
-    case.runtime_id = original
-    case.additional_session = live.AdditionalSession(
-        started_at=datetime.now(UTC),
-        runtime_id=current,
-        identity={},
-    )
+    case.runtime_id = current
     live.save(report, case)
     for identity in [current, original]:
         atomic_json(
@@ -70,6 +29,23 @@ def test_shutdown_summary_uses_the_current_recorded_runtime(completion, monkeypa
     monkeypatch.setattr(services.SessionService, "stop", lambda *args, **kwargs: None)
     live.stop(report)
     assert json.loads((report / "shutdown.json").read_bytes())["runtime_id"] == str(current)
+
+
+def test_multiple_cases_share_one_workspace_and_model_set(completion, project):
+    report, _, _ = completion
+    _, another = planned(project, count=2)
+    second = report.parent / "second-case"
+    live.prepare(
+        project.root,
+        another.request.story_id,
+        second,
+        workspace=live.project(report).root,
+    )
+    assert live.project(report).root == live.project(second).root
+    assert live.load(second).scene_count == 2
+    assert live.load(report).scene_count == 4
+    assert len(list(live.project(report).models.rglob("*.safetensors"))) == 5
+    assert live.load(report).source_plan_sha256 != live.load(second).source_plan_sha256
 
 
 @pytest.fixture
@@ -108,6 +84,9 @@ def reviews_for(report):
                     "decision": "reject",
                     "reason": "The subject does not match the scene.",
                     "issues": ["species"],
+                    "checks": [
+                        {"criterion": "source", "verdict": "unclear", "reason": "Offline fixture"}
+                    ],
                 }
             )
         selections.append(
@@ -214,6 +193,7 @@ def test_quality_pass_requires_an_accept_review_for_every_selected_image(
     payload = json.loads(path.read_bytes())
     for row in payload["reviews"]:
         row["decision"] = "accept"
+        row["checks"][0]["verdict"] = "match"
     if missing_review:
         payload["reviews"].pop()
     path.write_text(json.dumps(payload))
@@ -232,11 +212,11 @@ def test_quality_pass_requires_an_accept_review_for_every_selected_image(
 def test_budget_and_deadline_are_not_reset_on_resume(completion):
     report, _, _ = completion
     case = live.load(report)
-    live.reserve(case, 12)
+    live.reserve(case, case.config.output_limit)
     live.save(report, case)
     with pytest.raises(RuntimeError):
         live.reserve(live.load(report), 1)
-    case.gpu_started_at = datetime.now(UTC) - timedelta(seconds=case.send_seconds)
+    case.gpu_started_at = datetime.now(UTC) - timedelta(seconds=case.config.send_seconds)
     live.save(report, case)
     with pytest.raises(RuntimeError):
         live.sending_allowed(live.load(report))
@@ -411,12 +391,3 @@ def test_corrupt_image_is_ineligible_without_rewriting_saved_run(completion):
     assert not manifest["selection_complete"] and not manifest["comic_complete"]
     assert len(manifest["unavailable_images"]) == 1
     assert api.stories.show(case.story_id).complete
-
-
-def test_screen_reservations_share_the_budget_and_do_not_reset(completion):
-    report, _, _ = completion
-    live.reserve_screen(report)
-    live.reserve_screen(report)
-    assert live.load(report).reserved_outputs == 2
-    with pytest.raises(RuntimeError):
-        live.reserve_screen(report)

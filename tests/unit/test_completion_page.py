@@ -16,7 +16,7 @@ def panels(tmp_path, text="The kitten is safe."):
 
 
 def test_png_and_pdf_have_right_to_left_order_and_complete_captions(tmp_path):
-    result = render_page(tmp_path, "A rainy day", panels(tmp_path))
+    result = render_page(tmp_path, "A rainy day", panels(tmp_path), expected_scenes=4)
     assert result["complete"] and result["size"] == [2480, 3508]
     first, second, third, fourth = result["panels"]
     assert first["bounds"][0] > second["bounds"][0]
@@ -34,14 +34,14 @@ def test_png_and_pdf_have_right_to_left_order_and_complete_captions(tmp_path):
 
 def test_caption_overflow_does_not_publish_a_truncated_page(tmp_path):
     with pytest.raises(ValueError):
-        render_page(tmp_path, "A rainy day", panels(tmp_path, "W" * 3000))
+        render_page(tmp_path, "A rainy day", panels(tmp_path, "W" * 3000), expected_scenes=4)
     assert not (tmp_path / "comic.png").exists()
     assert not (tmp_path / "comic.pdf").exists()
 
 
 def test_missing_scene_does_not_create_placeholder_artwork(tmp_path):
     with pytest.raises(ValueError):
-        render_page(tmp_path, "A rainy day", panels(tmp_path)[:3])
+        render_page(tmp_path, "A rainy day", panels(tmp_path)[:3], expected_scenes=4)
     assert not (tmp_path / "comic.png").exists()
 
 
@@ -67,3 +67,15 @@ def test_short_final_line_is_balanced_without_losing_text():
     assert "".join(lines) == text
     assert len(lines[-1]) >= 3
     assert all(len(line) <= 5 for line in lines)
+
+
+@pytest.mark.parametrize("count", [1, 2, 3, 5, 8])
+def test_partial_last_page_and_multiple_pages_preserve_every_scene(tmp_path, count):
+    values = panels(tmp_path)
+    values = [{**values[index % 4], "scene": index + 1} for index in range(count)]
+    result = render_page(tmp_path, "Ordered scenes", values, expected_scenes=count)
+    assert result["reading_order"] == list(range(1, count + 1))
+    assert result["page_count"] == (count + 3) // 4
+    assert len(result["panels"]) == count
+    assert len({row["font_size"] for row in result["panels"]}) == 1
+    assert (tmp_path / "comic-2.png").exists() is (count > 4)

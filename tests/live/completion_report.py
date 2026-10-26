@@ -9,35 +9,50 @@ from uuid import UUID
 
 from filelock import FileLock
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from komaquill.api import Client, Evaluation, Evaluator
 from komaquill.infrastructure.artifacts import file_digest
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.stories.publication import prose, write_document
-from tests.live.story_completion import SCENES, Case, load, project, save
+from tests.live.story_completion import Case, load, project, save
 
 CRITERION = "story-completion-review"
 INSTRUCTION = (
-    "Review subject count, species and anatomy; action and umbrella ownership; weather, "
+    "Review subject count, species and anatomy; source actions and prop ownership; weather, "
     "grounding and continuity; appearance. Keep provisional selection separate from approval. "
     "Unknown is not a pass. Preserve all candidates and original evidence."
 )
 
 
+class Check(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    criterion: str = Field(min_length=1)
+    verdict: Literal["match", "mismatch", "unclear"]
+    reason: str = Field(min_length=1)
+
+
 class Review(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    scene: int = Field(ge=1, le=4, strict=True)
+    scene: int = Field(ge=1, le=8, strict=True)
     run_id: UUID
     image: str
     decision: Literal["accept", "reject", "undecided"]
     reason: str = Field(min_length=1)
     issues: list[str] = Field(default_factory=list)
+    checks: list[Check] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def consistent_decision(self):
+        verdicts = {row.verdict for row in self.checks}
+        if self.decision == "accept" and verdicts != {"match"}:
+            raise ValueError("Approval requires every recorded check to match.")
+        return self
 
 
 class Selection(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    scene: int = Field(ge=1, le=4, strict=True)
+    scene: int = Field(ge=1, le=8, strict=True)
     key: str
     reason: str = Field(min_length=1)
     source: Literal["llm", "rule"] = "llm"
@@ -220,7 +235,7 @@ def publish_locked(report: Path) -> None:
         else:
             selected_lines.append("No provisional selection has been recorded.")
     quality_counts = Counter(decisions.get(row.key, "unreviewed") for row in selected.values())
-    quality_counts["unreviewed"] += SCENES - len(selected)
+    quality_counts["unreviewed"] += case.scene_count - len(selected)
     manifest = {
         "format_version": 2,
         "case_id": str(case.case_id),
@@ -228,9 +243,10 @@ def publish_locked(report: Path) -> None:
         "baseline_render_id": str(snapshot.render_id) if snapshot.render_id else None,
         "observed_at": datetime.now(UTC).isoformat(),
         "baseline_complete": snapshot.complete,
-        "selection_complete": len(selected) == 4,
+        "selection_complete": len(selected) == case.scene_count,
         "selection_is_quality_approval": False,
-        "quality_passed": review_status == "available" and quality_counts["accept"] == SCENES,
+        "quality_passed": review_status == "available"
+        and quality_counts["accept"] == case.scene_count,
         "selected_quality": {
             decision: quality_counts[decision]
             for decision in ("accept", "reject", "undecided", "unreviewed")
@@ -245,20 +261,17 @@ def publish_locked(report: Path) -> None:
         ],
         "reviews": reviewed.model_dump(mode="json")["reviews"],
         "source_plan_sha256": case.source_plan_sha256,
-        "planning_llm_calls": 0,
+        "planning_llm_calls": len(api.stories.export(case.story_id).planning.attempts),
         "review_llm_calls": None,
         "review_status": review_status,
         "unavailable_images": unavailable,
         "timing": {
             "prepared_at": case.prepared_at.isoformat(),
             "gpu_started_at": case.gpu_started_at.isoformat() if case.gpu_started_at else None,
-            "additional_session": case.additional_session.model_dump(mode="json")
-            if case.additional_session
-            else None,
         },
     }
     manifest["page"] = {"complete": False}
-    if len(selected) == 4:
+    if len(selected) == case.scene_count:
         from tests.live.completion_page import render_page
 
         try:
@@ -274,6 +287,7 @@ def publish_locked(report: Path) -> None:
                     }
                     for scene in snapshot.scenes
                 ],
+                expected_scenes=case.scene_count,
             )
         except (ValueError, OSError) as error:
             manifest["page"] = {"complete": False, "failure_type": type(error).__name__}
@@ -283,7 +297,7 @@ def publish_locked(report: Path) -> None:
     write_document(report / "selected.md", selected_lines)
     if (
         not case.improvements
-        and len(selected) == 4
+        and len(selected) == case.scene_count
         and not (report / "baseline-manifest.json").exists()
     ):
         atomic_json(report / "baseline-manifest.json", manifest)
@@ -322,8 +336,8 @@ def publish_locked(report: Path) -> None:
         report / "README.md",
         [
             f"# {prose(snapshot.title)}",
-            f"Saved baseline scenes: {snapshot.counts.get('saved', 0)}/4. "
-            f"Provisional selections: {len(selected)}/4.",
+            f"Saved baseline scenes: {snapshot.counts.get('saved', 0)}/{case.scene_count}. "
+            f"Provisional selections: {len(selected)}/{case.scene_count}.",
             "Storage completion and quality approval are separate.",
             "[Selected scenes](selected.md) · [All candidates](all-candidates.md) · "
             "[Manifest](manifest.json)",

@@ -88,7 +88,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration", "tests/structure", "tests/e2e"]
 cache_dir = ".artifacts/cache/pytest"
-addopts = ["-ra", "--strict-config", "--strict-markers", "-p", "no:langsmith_plugin"]
+addopts = ["-ra", "--tb=short", "--strict-config", "--strict-markers", "-p", "no:langsmith_plugin"]
 xfail_strict = true
 
 [tool.coverage.run]

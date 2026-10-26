@@ -129,7 +129,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
             python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
             if wheel is not None:
                 subprocess.run(
-                    [uv, "venv", "--python", "3.12", str(root / "venv")],
+                    [uv, "venv", "--python", sys.executable, str(root / "venv")],
                     env=env,
                     check=True,
                     capture_output=True,
@@ -370,13 +370,19 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "candidates=2)",
                             "assert run.state == 'saved'",
                             "assert run.input_sha256[reference.reference] == reference.sha256",
-                            "config = RenderConfig(scenes=tuple(SceneRenderConfig(scene=i, "
-                            "profile='story-reference', inputs={'reference': reference}) "
+                            "config = RenderConfig(common_prompt='rainy daylight, cool light', "
+                            "scenes=tuple(SceneRenderConfig(scene=i, "
+                            "prompt='a gray kitten', profile='story-reference', "
+                            "inputs={'reference': reference}) "
                             "for i in range(1,5)))",
                             "rendered = list(client.stories.render(story_id, "
                             "render_config=config))[-1].snapshot",
                             "assert rendered.complete and all(scene.image_profile == "
                             "'story-reference' for scene in rendered.scenes)",
+                            "assert all(scene.compiled_input.common_prompt == "
+                            "'rainy daylight, cool light' for scene in rendered.scenes)",
+                            "assert all(scene.compiled_input.body.startswith('rainy daylight') "
+                            "for scene in rendered.scenes)",
                             "assert list(client.stories.resume(rendered.render_id))"
                             "[-1].snapshot.complete",
                             "assert client.sessions.status().collector_running",

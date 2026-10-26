@@ -84,6 +84,24 @@ def select(
     return [row for row in rows if run_id is None or run_id in {row.run_id, row.comparison_run_id}]
 
 
+def reviewed_snapshot(project: Project, snapshot: JsonObject) -> JsonObject:
+    """Attach append-only reviews without treating stored images as approved artwork."""
+    identities = {
+        UUID(identity) for scene in snapshot["scenes"] for identity in scene["attempt_ids"]
+    }
+    unreadable: list[str] = []
+    rows = FileEvaluationRepository(project).load(unreadable)
+    return {
+        **snapshot,
+        "evaluations": [
+            row.model_dump(mode="json")
+            for row in rows
+            if row.run_id in identities or row.comparison_run_id in identities
+        ],
+        "unreadable_evaluation_ids": unreadable,
+    }
+
+
 def export_evidence(
     project: Project, run_id: UUID | None = None, *, run_ids: set[UUID] | None = None
 ) -> JsonObject:

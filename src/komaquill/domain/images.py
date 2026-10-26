@@ -12,41 +12,44 @@ MAX_SEED = 2**64 - 1
 ImageSeed = Annotated[int, Field(strict=True, ge=0, le=MAX_SEED)]
 
 
-def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 4) -> str:
+def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 5) -> str:
     """Preserve legacy fingerprints; canonicalize defaults for new snapshots."""
-    return digest(
-        profile.model_dump(
-            mode="json",
-            exclude_unset=compiler_version == 1,
-            exclude=(
-                ({"batch_size", "primary_output_node"} if compiler_version < 3 else set())
-                | (
-                    {
-                        "resources",
-                        "extensions",
-                        "image_inputs",
-                        "parameters",
-                        "parameter_bounds",
-                        "seed_offsets",
-                        "output_stages",
-                        "separate_subjects",
-                    }
-                    if compiler_version < 4
-                    else set()
-                )
-            ),
-        )
+    value = profile.model_dump(
+        mode="json",
+        exclude_unset=compiler_version == 1,
+        exclude=(
+            ({"batch_size", "primary_output_node"} if compiler_version < 3 else set())
+            | (
+                {
+                    "resources",
+                    "extensions",
+                    "image_inputs",
+                    "parameters",
+                    "parameter_bounds",
+                    "seed_offsets",
+                    "output_stages",
+                    "separate_subjects",
+                }
+                if compiler_version < 4
+                else set()
+            )
+        ),
     )
+    if compiler_version < 5:
+        for slot in value.get("image_inputs", {}).values():
+            slot.pop("match_base", None)
+    return digest(value)
 
 
 class CompiledImageInput(BaseModel):
     """Retain original directions and the exact effective conditioning text."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    format_version: Literal[1, 2] = 1
-    compiler_version: Literal[1, 2, 3, 4] = 1
+    format_version: Literal[1, 2, 3] = 1
+    compiler_version: Literal[1, 2, 3, 4, 5] = 1
     preset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt: str
+    common_prompt: str = ""
     requested_negative: str | None
     subject_prompts: tuple[str, ...] = Field(max_length=2)
     quality_enabled: bool
@@ -63,7 +66,8 @@ class CompiledImageInput(BaseModel):
     @model_validator(mode="after")
     def consistent(self) -> "CompiledImageInput":
         if (
-            (
+            (self.compiler_version < 5 and bool(self.common_prompt))
+            or (
                 self.compiler_version >= 2
                 and (
                     any(not subject.strip() for subject in self.subject_prompts)
@@ -80,8 +84,10 @@ class CompiledImageInput(BaseModel):
             or (not self.quality_enabled and (self.positive_prefix or self.negative_prefix))
             or self.body
             != (
-                joined(self.prompt, *self.subject_prompts)
+                joined(self.common_prompt, self.prompt, *self.subject_prompts)
                 if self.layout == "global"
+                else joined(self.common_prompt, self.prompt)
+                if self.compiler_version >= 5
                 else self.prompt
             )
             or (self.layout == "left-right" and len(self.subject_prompts) != 2)
@@ -125,10 +131,12 @@ def validate_inputs(profile: GenerationPreset, inputs: dict[str, InputArtifact])
     base = inputs.get("base")
     if base is not None and any(
         (item.width, item.height) != (base.width, base.height)
-        for item in inputs.values()
-        if item.kind == "mask"
+        for name, item in inputs.items()
+        if item.kind == "mask" or profile.image_inputs[name].match_base
     ):
-        raise ValueError("Edit masks must have the base image dimensions.")
+        raise ValueError("Canvas images and masks must have the base image dimensions.")
+    if base is None and any(slot.match_base for slot in profile.image_inputs.values()):
+        raise ValueError("Canvas-relative inputs require a base image.")
 
 
 def compile_image_input(
@@ -137,17 +145,21 @@ def compile_image_input(
     negative: str | None = None,
     subjects: tuple[str, ...] = (),
     inputs: dict[str, InputArtifact] | None = None,
+    *,
+    common_prompt: str = "",
 ) -> CompiledImageInput:
     """Apply model-specific quality once and freeze global or regional inputs."""
     positive_prefix = profile.positive_prefix if profile.quality_enabled else ""
     negative_prefix = profile.negative_prefix if profile.quality_enabled else ""
-    body = prompt if profile.regions or profile.separate_subjects else joined(prompt, *subjects)
+    context = joined(common_prompt, prompt)
+    body = context if profile.regions or profile.separate_subjects else joined(context, *subjects)
     return CompiledImageInput(
-        format_version=2,
-        compiler_version=4,
+        format_version=3,
+        compiler_version=5,
         inputs=inputs or {},
         preset_sha256=preset_fingerprint(profile),
         prompt=prompt,
+        common_prompt=common_prompt,
         requested_negative=negative,
         subject_prompts=subjects,
         quality_enabled=profile.quality_enabled,

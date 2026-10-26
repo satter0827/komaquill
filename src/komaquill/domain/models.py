@@ -90,6 +90,7 @@ class ImageMetadata(BaseModel):
     batch_index: int | None = Field(default=None, ge=0)
     role: Literal["candidate", "auxiliary", "unknown"] = "unknown"
     stage: str | None = None
+    saved_at: datetime | None = None
 
 
 class Run(BaseModel):
@@ -99,7 +100,7 @@ class Run(BaseModel):
 
     output_spec: OutputSpec | None = None
     input_sources: tuple[PromptSource, ...] = ()
-    format_version: int = 4
+    format_version: int = 5
     run_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     runtime_id: UUID
@@ -120,6 +121,7 @@ class Run(BaseModel):
     error: str | None = None
     updated_at: datetime | None = None
     saved_at: datetime | None = None
+    first_candidate_available_at: datetime | None = None
     generation_started_at: datetime | None = None
     generation_completed_at: datetime | None = None
     image_metadata: dict[str, ImageMetadata] = Field(default_factory=dict)
@@ -130,6 +132,20 @@ class Run(BaseModel):
     def pending(self) -> bool:
         """Return whether the request still needs a terminal outcome."""
         return self.state not in TERMINAL_RUN_STATES
+
+    @property
+    def duplicate_candidates(self) -> dict[str, str]:
+        """Identify byte-identical candidates without rereading the stored images."""
+        seen: dict[str, str] = {}
+        duplicates: dict[str, str] = {}
+        for name in self.images:
+            metadata = self.image_metadata.get(name)
+            if metadata is None or metadata.role != "candidate":
+                continue
+            original = seen.setdefault(metadata.sha256, name)
+            if original != name:
+                duplicates[name] = original
+        return duplicates
 
 
 class RuntimeObservation(BaseModel):

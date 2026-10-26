@@ -40,6 +40,16 @@ def save_run(project: WorkspacePaths, run: Run) -> None:
     if run.state == "saved" and run.saved_at is None:
         run.saved_at = run.updated_at
     atomic_json(path, run.model_dump(mode="json"))
+    if run.first_candidate_available_at and (
+        previous is None or previous.first_candidate_available_at is None
+    ):
+        record_event(
+            project,
+            "image_availability",
+            "available",
+            runtime_id=run.runtime_id,
+            run_id=run.run_id,
+        )
     Locations(project).recorded(run.run_id)
     if previous is None or previous.state != run.state or previous.failure != run.failure:
         record_event(

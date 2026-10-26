@@ -45,7 +45,8 @@ render.jsonのscenesへ、計画のすべての場面を指定します。scene�
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 2,
+  "common_prompt": "rainy daylight, cool muted light, painted storybook illustration",
   "scenes": [
     {
       "scene": 1,
@@ -86,7 +87,10 @@ run = client.images.generate(
 
 # Assign every position in the selected saved plan.
 config = RenderConfig(
-    scenes=(SceneRenderConfig(scene=1, profile="story-reference", inputs={"reference": reference}),)
+    common_prompt="rainy daylight, cool muted light, painted storybook illustration",
+    scenes=(
+        SceneRenderConfig(scene=1, profile="story-reference", inputs={"reference": reference}),
+    ),
 )
 ```
 
@@ -104,3 +108,16 @@ komaquill stop
 App Modeでは素材・説明・負プロンプト・候補数、Node Graphでは工程の詳細を編集します。素材が未設定の場合はLoadImageで保存済み素材を選択します。保存済み実行グラフには実際の素材参照を保持します。
 
 失敗した要求でも公開された途中画像は回収できます。途中画像の保存は生成成功を意味しません。必要ならその画像を新しい編集元として取り込み、別の試行で修正します。
+
+## 画質を確認する
+
+common_promptは天候・光・画風へ使います。人物や動作は場面のprompt・subjectsへ指定します。場面のpromptを上書きしてもcommon_promptは残り、品質タグとともに試行作成時に固定されます。再開では再合成しません。
+
+保存完了と画質の合格は別です。候補を目視し、evaluations addの--imageへRun内の画像名を指定して採否と理由を記録します。評価は画像や生成条件を書き換えません。登録後は次の操作で本文と画像の横へ評価を反映できます。
+
+```powershell
+komaquill stories show STORY_ID --refresh
+komaquill stories export STORY_ID --detail summary
+```
+
+同じ内容の候補には重複の案内を表示します。すべての候補と訂正を含む評価履歴は保持します。入力素材の品質が不十分な場合、補正を繰り返す前に素材を見直してください。

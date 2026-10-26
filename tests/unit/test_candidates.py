@@ -72,7 +72,7 @@ def test_old_fingerprints_do_not_acquire_new_preset_fields():
     old = GenerationPreset.model_validate(original)
     assert old.batch_size == 1 and old.primary_output_node is None
     assert preset_fingerprint(old, 2) == digest(original)
-    assert compile_image_input(current, "a cabin").compiler_version == 4
+    assert compile_image_input(current, "a cabin").compiler_version == 5
 
 
 def test_partial_retry_never_hides_already_saved_candidates(
@@ -84,6 +84,8 @@ def test_partial_retry_never_hides_already_saved_candidates(
     assert collect(project, client, active).errors == (run.run_id,)
     partial = project.repository.read(run.run_id)
     assert len(partial.images) == 2 and partial.state == "queued"
+    available = partial.first_candidate_available_at
+    assert available and partial.image_metadata[partial.images[0]].saved_at == available
     sizes = []
     repository = project.repository
     original = type(repository).save
@@ -99,6 +101,15 @@ def test_partial_retry_never_hides_already_saved_candidates(
     stub.invalid_images.clear()
     assert collect(project, client, active).saved == 1
     assert len(project.repository.read(run.run_id).images) == 4
+    final = project.repository.read(run.run_id)
+    assert final.first_candidate_available_at == available
+    assert final.image_metadata[final.images[0]].saved_at == available
+    events = [
+        json.loads(line)
+        for path in project.logs.rglob("*.jsonl")
+        for line in path.read_text().splitlines()
+    ]
+    assert sum(row["operation"] == "image_availability" for row in events) == 1
 
 
 def test_missing_primary_images_remain_retryable_without_discarding_valid_output(
@@ -129,6 +140,19 @@ def test_upscale_base_images_are_auxiliary_not_extra_candidates(project, session
     assert len(saved.images) == 4 and saved.output_spec.primary_node == "16"
     assert sum(meta.role == "candidate" for meta in saved.image_metadata.values()) == 2
     assert sum(meta.role == "auxiliary" for meta in saved.image_metadata.values()) == 2
+    candidates = [meta for meta in saved.image_metadata.values() if meta.role == "candidate"]
+    assert saved.first_candidate_available_at == candidates[0].saved_at
+
+
+def test_legacy_collection_does_not_invent_unobserved_availability(project, session, client):
+    active = session.model_copy(update={"settings": project.settings()})
+    run = submit_generation(project, client, active, "a cabin", None, 42)
+    run.format_version = 4
+    project.repository.save(run)
+    assert collect(project, client, active).saved == 1
+    saved = project.repository.read(run.run_id)
+    assert saved.first_candidate_available_at is None
+    assert all(meta.saved_at is None for meta in saved.image_metadata.values())
 
 
 def test_mutated_remote_reference_does_not_overwrite_a_saved_checkpoint(

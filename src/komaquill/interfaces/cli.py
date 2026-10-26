@@ -272,6 +272,8 @@ def generate_command(
             typer.echo(message("images.saved_outputs", count=len(run.images)))
         else:
             typer.echo(message("images.saved_candidates", count=run.output_spec.candidates))
+        for duplicate, original in run.duplicate_candidates.items():
+            typer.echo(message("images.duplicate", original=original, duplicate=duplicate))
         typer.echo(message("text.saved_directory", directory=run_dir(project, run.run_id)))
 
 

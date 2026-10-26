@@ -322,6 +322,13 @@ def collect_images(
             project.artifacts_store.write(key, content)
             if name not in run.images:
                 run.images.append(name)
+            if run.format_version >= 5:
+                retained = run.image_metadata.get(name)
+                metadata.saved_at = (
+                    retained.saved_at if retained and retained.saved_at else datetime.now(UTC)
+                )
+                if metadata.role == "candidate" and run.first_candidate_available_at is None:
+                    run.first_candidate_available_at = metadata.saved_at
             run.image_metadata[name] = metadata
             project.repository.save(run)
     with collection_lock(project):

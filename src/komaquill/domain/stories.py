@@ -291,7 +291,7 @@ class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
     input_sources: tuple[PromptSource, ...] = ()
-    format_version: Literal[1, 2, 3, 4] = 1
+    format_version: Literal[1, 2, 3, 4, 5] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     plan_sha256: str

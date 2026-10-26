@@ -319,13 +319,9 @@ def doctor(ctx: typer.Context) -> None:
             raise KomaquillError(
                 display_key="text.required_standard_nodes_are_missing_check_the_comfyui"
             )
-        loaders = {
-            "checkpoints": ("CheckpointLoaderSimple", "ckpt_name"),
-            "loras": ("LoraLoaderModelOnly", "lora_name"),
-            "upscale_models": ("UpscaleModelLoader", "model_name"),
-            "ipadapter": ("IPAdapterModelLoader", "ipadapter_file"),
-            "clip_vision": ("CLIPVisionLoader", "clip_name"),
-        }
+        from komaquill.domain.presets import MODEL_INPUT_ROLES
+
+        loaders = {role: (node, field) for node, (field, role) in MODEL_INPUT_ROLES.items()}
         for asset in assets(settings):
             if asset.role not in loaders:
                 raise KomaquillError(

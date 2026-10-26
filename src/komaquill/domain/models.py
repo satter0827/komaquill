@@ -27,10 +27,19 @@ class Session(BaseModel):
     code_sha256: str | None = None
     comfy_revision: str | None = None
     frontend_version: str | None = None
-    model_sha256: str | None = None
+    asset_sha256: dict[str, str] = Field(default_factory=dict)
+    started_at: datetime | None = None
     username: str | None = None
     settings: RuntimeSettings | None = None
     excluded_prompt_ids: set[str] = Field(default_factory=set)
+
+    @field_validator("started_at")
+    @classmethod
+    def validate_started_at(cls, value: datetime | None) -> datetime | None:
+        """Keep deadline timestamps comparable across processes."""
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("The session start time must include a time zone.")
+        return value
 
     @field_validator("username")
     @classmethod
@@ -113,7 +122,7 @@ class Run(BaseModel):
     remote_source_revision: str | None
     comfy_revision: str | None
     frontend_version: str | None
-    model_sha256: str | None
+    model_sha256: str | None = None
     input_sha256: dict[str, str] = Field(default_factory=dict)
     asset_sha256: dict[str, str] = Field(default_factory=dict)
     workflow_sha256: str

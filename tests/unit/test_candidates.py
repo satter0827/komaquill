@@ -7,9 +7,6 @@ import pytest
 
 from komaquill.application.generation import collect, generation_settings, submit_generation
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.images import compile_image_input, preset_fingerprint
-from komaquill.domain.presets import GenerationPreset
-from komaquill.domain.workflow import digest
 from komaquill.infrastructure.configuration import Settings
 
 
@@ -18,9 +15,7 @@ def test_candidate_batch_is_one_request_with_portable_output_metadata(
     project, session, client, stub, count
 ):
     active = session.model_copy(update={"settings": project.settings()})
-    run = submit_generation(
-        project, client, active, "a blue cabin", "extra windows", 42, candidates=count
-    )
+    run = submit_generation(project, client, active, "a blue cabin", None, 42, candidates=count)
     assert stub.submissions == 1 and run.output_spec.candidates == count
     assert collect(project, client, active, run.run_id).saved == 1
     saved = project.repository.read(run.run_id)
@@ -32,7 +27,7 @@ def test_candidate_batch_is_one_request_with_portable_output_metadata(
     )
     graph = json.loads(project.artifacts_store.read(f"runs/{run.run_id}/workflow-api.json"))
     assert graph["5"]["inputs"]["batch_size"] == count
-    assert active.settings.presets["pony"].batch_size == 1
+    assert active.settings.presets["klein"].batch_size == 1
 
 
 @pytest.mark.parametrize("count", [0, -1, 5, True, 1.5, "2"])
@@ -45,34 +40,11 @@ def test_invalid_candidate_count_does_not_submit_or_record(project, session, cli
 
 def test_bundled_defaults_and_explicit_override_are_independent():
     settings = Settings()
-    assert settings.presets["pony"].batch_size == 2
+    assert settings.presets["klein"].batch_size == 1
     assert settings.story_max_in_flight == 2
-    changed = generation_settings(settings, "pony", 4)
-    assert changed.presets["pony"].batch_size == 4
-    assert settings.presets["pony"].batch_size == 2
-
-
-def test_old_fingerprints_do_not_acquire_new_preset_fields():
-    current = Settings().presets["pony"]
-    original = current.model_dump(
-        mode="json",
-        exclude={
-            "batch_size",
-            "primary_output_node",
-            "resources",
-            "extensions",
-            "image_inputs",
-            "parameters",
-            "parameter_bounds",
-            "seed_offsets",
-            "output_stages",
-            "separate_subjects",
-        },
-    )
-    old = GenerationPreset.model_validate(original)
-    assert old.batch_size == 1 and old.primary_output_node is None
-    assert preset_fingerprint(old, 2) == digest(original)
-    assert compile_image_input(current, "a cabin").compiler_version == 5
+    changed = generation_settings(settings, "klein", 4)
+    assert changed.presets["klein"].batch_size == 4
+    assert settings.presets["klein"].batch_size == 1
 
 
 def test_partial_retry_never_hides_already_saved_candidates(
@@ -127,23 +99,6 @@ def test_missing_primary_images_remain_retryable_without_discarding_valid_output
     assert collect(project, client, active).saved == 1
 
 
-def test_upscale_base_images_are_auxiliary_not_extra_candidates(project, session, client, stub):
-    settings = project.settings().model_copy(update={"profiles": ("pony-upscale",)})
-    active = session.model_copy(update={"settings": settings})
-    run = submit_generation(
-        project, client, active, "a cabin", None, 42, "pony-upscale", candidates=2
-    )
-    record = stub.history[run.prompt_id]
-    record["outputs"]["16"] = deepcopy(record["outputs"]["9"])
-    assert collect(project, client, active).saved == 1
-    saved = project.repository.read(run.run_id)
-    assert len(saved.images) == 4 and saved.output_spec.primary_node == "16"
-    assert sum(meta.role == "candidate" for meta in saved.image_metadata.values()) == 2
-    assert sum(meta.role == "auxiliary" for meta in saved.image_metadata.values()) == 2
-    candidates = [meta for meta in saved.image_metadata.values() if meta.role == "candidate"]
-    assert saved.first_candidate_available_at == candidates[0].saved_at
-
-
 def test_legacy_collection_does_not_invent_unobserved_availability(project, session, client):
     active = session.model_copy(update={"settings": project.settings()})
     run = submit_generation(project, client, active, "a cabin", None, 42)
@@ -175,10 +130,10 @@ def test_malformed_browser_topology_has_no_invented_candidate_role(project):
     from komaquill.application.generation import output_spec
 
     settings = project.settings()
-    graph = deepcopy(settings.presets["pony"].api)
+    graph = deepcopy(settings.presets["klein"].api)
     graph["3"]["inputs"] = None
     assert output_spec(settings, graph) is None
-    graph = deepcopy(settings.presets["pony"].api)
+    graph = deepcopy(settings.presets["klein"].api)
     graph["3"]["class_type"] = "UnknownSampler"
     assert output_spec(settings, graph) is None
 
@@ -192,26 +147,11 @@ def test_empty_positive_is_rejected_by_the_shared_generation_boundary(
     assert stub.submissions == 0 and not project.repository.load()
 
 
-def test_unsupported_legacy_batch_override_is_rejected_before_post(project, session, client, stub):
-    settings = project.settings()
-    legacy = settings.presets["pony"].model_copy(update={"primary_output_node": None})
-    active = session.model_copy(
-        update={
-            "settings": settings.model_copy(
-                update={"presets": {**settings.presets, "pony": legacy}}
-            )
-        }
-    )
-    with pytest.raises(KomaquillError) as error:
-        submit_generation(project, client, active, "a cabin", None, 42, candidates=2)
-    assert error.value.code == "unsupported_batch" and stub.submissions == 0
-
-
 def test_invalid_default_candidate_limit_fails_before_runtime_allocation():
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        Settings(max_candidates=1)
+        Settings(max_candidates=1, presets={"klein": {"batch_size": 2}})
 
 
 def test_failed_generation_keeps_request_identity_and_retry_advice(

@@ -127,7 +127,7 @@ def test_confirmed_downloads_publish_only_verified_bytes(project, monkeypatch, c
             download.download_asset(project.models, model, 1, cancel)
         assert not target.exists()
     if case == "resume":
-        assert calls[0]["headers"] == {"Range": "bytes=2-"}
+        assert calls[0]["headers"]["Range"] == "bytes=2-"
 
 
 @pytest.mark.parametrize(

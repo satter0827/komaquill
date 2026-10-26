@@ -80,7 +80,6 @@ def generation_settings(
 def output_spec(settings: RuntimeSettings | None, graph: JsonObject) -> OutputSpec | None:
     """Identify supported output roles only when the preset topology is known."""
     found: set[tuple[str, int]] = set()
-    stages: dict[str, str] = {}
     if settings is None:
         return None
     for name in settings.profiles:
@@ -113,11 +112,8 @@ def output_spec(settings: RuntimeSettings | None, graph: JsonObject) -> OutputSp
                 count = graph[binding.api_node].get("inputs", {}).get(binding.api_input)
                 if isinstance(count, int) and not isinstance(count, bool) and count > 0:
                     found.add((node, count))
-                    stages = profile.output_stages
     return (
-        OutputSpec(
-            primary_node=next(iter(found))[0], candidates=next(iter(found))[1], stages=stages
-        )
+        OutputSpec(primary_node=next(iter(found))[0], candidates=next(iter(found))[1])
         if len(found) == 1
         else None
     )
@@ -163,11 +159,6 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
     used = {
         asset.reference: asset.sha256 for asset in known.values() if asset.reference in filenames
     }
-    checkpoints = [
-        asset.sha256
-        for asset in known.values()
-        if asset.role == "checkpoints" and asset.reference in filenames
-    ]
     return Run(
         run_id=run_id,
         output_spec=output_spec(settings, graph),
@@ -177,7 +168,6 @@ def new_run(project: Workspace, session: Session, run_id: UUID, graph: JsonObjec
         remote_source_revision=session.source_revision,
         comfy_revision=session.comfy_revision,
         frontend_version=session.frontend_version,
-        model_sha256=checkpoints[0] if len(checkpoints) == 1 else None,
         asset_sha256=used,
         workflow_sha256=digest(graph),
     )
@@ -546,6 +536,13 @@ def submit_generation(
     settings = generation_settings(
         project.configured(session.settings).settings(), profile_name, candidates, parameters
     )
+    from komaquill.domain.configuration import remaining_seconds
+
+    remaining = remaining_seconds(
+        session.started_at, settings.submission_timeout, datetime.now(UTC)
+    )
+    if remaining is not None and remaining <= 0:
+        raise KomaquillError(code="stopping", stage="generation", retryable=False)
     project = project.configured(settings)
     session = session.model_copy(update={"settings": settings})
     verify_runtime(client, session)

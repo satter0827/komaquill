@@ -14,12 +14,12 @@ GPUへは実行中のパッケージから転送物を作成します。コー�
 ## 画像を生成する
 
 ```powershell
-komaquill generate --prompt "a small cabin" --negative "text, watermark" --seed 42
+komaquill generate --prompt "a small cabin" --seed 42
 komaquill open --view app
 komaquill open --view graph
 ```
 
-プロンプトを省略すると入力を求めます。Ponyへの画像説明には英語のタグや短文を使用します。品質タグは標準ノードで自動付加します。入力画面とノード画面はComfyUIの標準機能です。
+プロンプトを省略すると入力を求めます。Kleinへの画像説明には、対象、動作、小物の状態を自然な文章で記述します。品質用の既定文は標準ノードで付加します。入力画面とノード画面はComfyUIの標準機能です。
 外部ComfyUIでは、画面を開いた後に表示されたワークフローJSONを読み込みます。
 
 ## 結果を回収する
@@ -129,18 +129,18 @@ Googleの安定したアカウント識別子から作ったSHA256と、確保�
 
 GPU側のモデル準備イベントは、取得したログのworker-events.jsonlへ保存します。bootstrap.logの依存導入時間と合わせて準備の所要時間を確認できます。画像の初回生成時間は履歴の生成開始・完了時刻から確認してください。
 
-## 正負プロンプトをファイルから指定する
+## プロンプトをファイルから指定する
 
 起動済みセッションで実行します。テキストはUTF-8で保存し、BOMも使用できます。
 
 ```powershell
-komaquill generate --prompt-file positive.txt --negative-file negative.txt --candidates 2
+komaquill generate --prompt-file positive.txt --candidates 2
 ```
 
-正負とも直接指定に対応します。
+プロンプトは直接指定にも対応します。Kleinでは負プロンプトの非空指定を拒否します。
 
 ```powershell
-komaquill generate --prompt "a blue umbrella" --negative "floating objects" --candidates 2
+komaquill generate --prompt "a blue umbrella" --candidates 2
 ```
 
 対象別の説明を含める場合はJSONを使用します。
@@ -149,7 +149,7 @@ komaquill generate --prompt "a blue umbrella" --negative "floating objects" --ca
 {
   "format_version": 1,
   "prompt": "rainy street",
-  "negative": "extra limbs",
+  "negative": "",
   "subjects": ["woman holding a blue umbrella", "small gray kitten"]
 }
 ```

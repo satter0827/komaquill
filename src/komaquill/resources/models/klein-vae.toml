@@ -1,0 +1,8 @@
+name = "klein-vae"
+role = "vae"
+url = "https://huggingface.co/Comfy-Org/flux2-klein/resolve/533c4cbc3d3b89af1743d9466c434e89810391c0/split_files/vae/flux2-vae.safetensors"
+filename = "flux2-vae.safetensors"
+sha256 = "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3" # pragma: allowlist secret Public model SHA256.
+size_bytes = 336211292
+license = "Apache-2.0"
+license_url = "https://huggingface.co/Comfy-Org/flux2-klein"

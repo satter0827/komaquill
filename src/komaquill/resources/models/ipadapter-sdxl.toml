@@ -1,8 +1,0 @@
-name = "ipadapter-sdxl"
-role = "ipadapter"
-url = "https://huggingface.co/h94/IP-Adapter/resolve/018e402774aeeddd60609b4ecdb7e298259dc729/sdxl_models/ip-adapter-plus_sdxl_vit-h.safetensors"
-filename = "ip-adapter-plus_sdxl_vit-h.safetensors"
-sha256 = "3f5062b8400c94b7159665b21ba5c62acdcd7682262743d7f2aefedef00e6581" # pragma: allowlist secret Public immutable upstream identity.
-size_bytes = 847517512
-license = "Apache-2.0"
-license_url = "https://huggingface.co/h94/IP-Adapter/blob/018e402774aeeddd60609b4ecdb7e298259dc729/LICENSE"

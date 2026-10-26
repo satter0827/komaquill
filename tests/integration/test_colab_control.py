@@ -113,14 +113,35 @@ def test_allocation_persists_ownership_and_settings_before_request(control, monk
 
 
 def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(control, monkeypatch):
-    receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="revision")
+    from tests.support.models import stage_models
+
+    stage_models(control.project)
+    control.settings = control.project.settings()
+    receipt = Receipt(
+        name="owned",
+        runtime_id=uuid4(),
+        source_revision="revision",
+        endpoint_id="expected",
+        account_sha256="a" * 64,
+    )
     monkeypatch.setattr(control, "entry", lambda _: {})
+    atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
     commands = []
 
     from komaquill.infrastructure import deployment as deployment
 
     monkeypatch.setattr(deployment, "source_revision", lambda: "revision")
-    monkeypatch.setattr(control, "call", lambda *args, **kwargs: commands.append(args))
+
+    def uploaded(*args, **kwargs):
+        assert not control.lock.is_locked
+        commands.append(args)
+
+    def transferred(*args):
+        assert not control.lock.is_locked
+        commands.append(("scp", *args))
+
+    monkeypatch.setattr(control, "call", uploaded)
+    monkeypatch.setattr(control, "transfer_model", transferred)
     monkeypatch.setattr(control, "command", lambda *args: ["official", *args])
     process = SimpleNamespace()
     monkeypatch.setattr(
@@ -134,7 +155,25 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
 
     with tarfile.open(control.project.runtime / "deployment/payload.tar") as archive:
         assert b"poll_interval = 0.001" in archive.extractfile("komaquill.toml").read()
-    assert commands[0][0] == "upload" and "exec" in commands[1]
+    assert commands[0][0] == "upload" and "exec" in commands[-1]
+    import shutil
+
+    from komaquill.infrastructure.workflows import assets
+
+    remote = control.project.root / "remote"
+    remote.mkdir()
+    shutil.copyfile(
+        control.project.runtime / "deployment/payload.tar", remote / "komaquill-runtime.tar"
+    )
+    transferred_asset = next(asset for asset in assets(control.settings) if asset.transfer)
+    incoming = remote / f"komaquill-{receipt.runtime_id}-{transferred_asset.sha256}.part"
+    incoming.write_bytes(b"interrupted or corrupted transfer")
+    with pytest.raises(RuntimeError):
+        exec(compile(script.replace("/content", remote.as_posix()), "prepare.py", "exec"), {})
+    assert incoming.exists()
+    assert not list(
+        (remote / f"komaquill-{receipt.runtime_id}/.artifacts/models").rglob("*.safetensors")
+    )
     monkeypatch.setattr(control, "entry", lambda _: None)
     with pytest.raises(KomaquillError):
         control.prepare(receipt)

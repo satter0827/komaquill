@@ -15,6 +15,7 @@ from uuid import uuid4
 import psutil
 from filelock import FileLock
 
+from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.monitor import MonitorState
 from komaquill.infrastructure.colab import Colab
@@ -98,10 +99,22 @@ def wait_ready(project: Project, operation_id: object, echo: Callable[[str], Non
             if state.pid and not alive(state):
                 record_event(project, "monitor", "lost", runtime_id=state.runtime_id)
                 raise KomaquillError(display_key="monitor.lost", code="connection_failed")
-            if time.monotonic() >= deadline:
+            receipt = Colab(project).receipt() if state.backend == "colab" else None
+            remaining = remaining_seconds(
+                receipt.started_at if receipt else None,
+                state.settings.submission_timeout,
+                datetime.now(UTC),
+            )
+            if (remaining is not None and remaining <= 0) or (
+                remaining is None and time.monotonic() >= deadline
+            ):
                 request_cancel(project, state.operation_id, False)
                 raise KomaquillError(display_key="monitor.timeout", code="operation_failed")
-            time.sleep(state.settings.poll_interval)
+            time.sleep(
+                min(state.settings.poll_interval, remaining)
+                if remaining is not None
+                else state.settings.poll_interval
+            )
         except KeyboardInterrupt:
             state = read_monitor(project)
             if state is not None:

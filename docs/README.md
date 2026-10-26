@@ -11,7 +11,7 @@
 | ストーリーから生成する | [ストーリーの生成](guides/stories.md) | [計画・生成・保存の契約](current/stories.md) |
 | 過去の生成を評価する | [評価の操作](guides/evaluations.md) | [評価の契約](current/evaluations.md) |
 | 生成条件を変える | [プリセット](current/presets.md) | [モデル準備](guides/preparation.md) |
-| 素材を使って段階生成する | [参照画像とマスク](guides/story-workflows.md) | [段階生成の契約](current/story-workflows.md) |
+| 参照画像から編集する | [参照画像による編集](guides/story-workflows.md) | [段階生成の契約](current/story-workflows.md) |
 | 接続・保存を調査する | [障害対応](operations/diagnostics.md) | [保存と整理](operations/artifacts.md) |
 | 設計判断を確認する | [設計判断](decisions/0001-native-interfaces.md) | [契約](current/contracts.md) |
 | 受入検証を行う | [検証戦略](verification/strategy.md) | [検証記録](verification/README.md) |
@@ -24,3 +24,5 @@
 設定値・固定バージョン・エラーコードの正本はコードと設定です。文書には責務、使い方、制約、参照先を記載します。変更するときは要件ID、受入条件、実装、テスト、操作・運用手順を同じPRで対応付けます。
 
 AIによる変更でも、この索引とAGENTSから対象文書を選び、実装状態と検証対象版を確認します。計画だけを根拠に実装済みと判断しません。ファイル・節へのリンクと要件の参照先は品質ゲートで確認します。
+
+Kleinのモデル構成、役割の構成図、旧構成の削除理由は[設計判断](decisions/0009-klein-completion.md)、完走の条件は[短編漫画の検証](verification/story-completion.md)を参照してください。

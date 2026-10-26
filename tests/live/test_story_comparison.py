@@ -31,7 +31,7 @@ def comparison_report():
                 "format_version": 1,
                 "identity": project.identity(),
                 "created_at": datetime.now(UTC).isoformat(),
-                "fixed_conditions": {"llm_profile": "lmstudio-4b", "image_profile": "pony"},
+                "fixed_conditions": {"llm_profile": "lmstudio-4b", "image_profile": "klein"},
                 "changed_condition": "image_count",
                 "criteria": [
                     "source events and ending",

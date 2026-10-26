@@ -1,6 +1,0 @@
-repository = "https://github.com/comfyanonymous/ComfyUI_examples"
-revision = "f9431bb000ce792094ff345446e22cac1ea6cef3" # pragma: allowlist secret Public workflow provenance.
-source = "area_composition/square_area_for_2_subjects_first_pass.png"
-source_sha256 = "b0d72ed9ace0701edc5a3f7b8fb8b8101cc689e36554faf92cc231527ca4c5f1" # pragma: allowlist secret Public workflow provenance.
-license_file = "LICENSE.upstream"
-changes = ["Keep first-pass subject conditioning and remove the second pass", "Use Pony checkpoint, embedded VAE and pinned sampling settings", "Use normalized regions and named bindings", "Replace all sample subjects and prompts", "Expose standard App Mode inputs", "Bind native candidate batches and preserve negative quality through standard string nodes"]

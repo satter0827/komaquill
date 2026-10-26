@@ -1,17 +1,21 @@
 """Publish selections and evidence without modifying canonical story or image records."""
 
 import json
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
+from filelock import FileLock
+from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.api import Client, Evaluation, Evaluator
+from komaquill.infrastructure.artifacts import file_digest
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.stories.publication import prose, write_document
-from tests.live.story_completion import Case, load, project
+from tests.live.story_completion import SCENES, Case, load, project, save
 
 CRITERION = "story-completion-review"
 INSTRUCTION = (
@@ -36,11 +40,14 @@ class Selection(BaseModel):
     scene: int = Field(ge=1, le=4, strict=True)
     key: str
     reason: str = Field(min_length=1)
+    source: Literal["llm", "rule"] = "llm"
 
 
 class ReviewFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    format_version: Literal[1] = 1
+    format_version: Literal[2] = 2
+    evaluator: Evaluator | None = None
+    status: Literal["complete", "undecided", "timeout", "failed"] = "complete"
     reviews: list[Review] = Field(default_factory=list)
     selections: list[Selection] = Field(default_factory=list)
 
@@ -68,19 +75,61 @@ def candidates(api: Client, case: Case):
 
 
 def publish(report: Path) -> None:
+    with FileLock(str(report / ".case.lock"), timeout=0):
+        publish_locked(report)
+
+
+def publish_locked(report: Path) -> None:
     case = load(report)
     api = Client(project(report).root)
     snapshot, images = candidates(api, case)
     path = report / "reviews.json"
-    reviewed = ReviewFile.model_validate_json(path.read_bytes()) if path.exists() else ReviewFile()
-    if len({row.scene for row in reviewed.selections}) != len(reviewed.selections):
-        raise ValueError("Select at most one image per scene.")
+    if path.is_file():
+        import hashlib
+
+        raw = path.read_bytes()
+        retained = report / "reviews" / (hashlib.sha256(raw).hexdigest() + ".json")
+        if not retained.exists():
+            atomic_bytes(retained, raw)
+    review_status = "absent"
+    try:
+        reviewed = (
+            ReviewFile.model_validate_json(path.read_bytes()) if path.exists() else ReviewFile()
+        )
+        if path.exists():
+            review_status = "available" if reviewed.status == "complete" else reviewed.status
+    except (ValueError, OSError):
+        reviewed = ReviewFile()
+        review_status = "invalid"
+    unavailable = []
+    valid_images = {}
+    for key, (position, run, name) in images.items():
+        try:
+            image = api.artifact_path(key)
+            metadata = run.image_metadata[name]
+            if file_digest(image) != metadata.sha256 or image.stat().st_size != metadata.size_bytes:
+                raise ValueError
+            with Image.open(image) as opened:
+                if opened.size != (metadata.width, metadata.height):
+                    raise ValueError
+                opened.verify()
+        except (OSError, ValueError):
+            unavailable.append(key)
+        else:
+            valid_images[key] = (position, run, name)
+    images = valid_images
+    if reviewed.reviews and reviewed.evaluator is None:
+        reviewed = reviewed.model_copy(update={"reviews": []})
+        review_status = "missing_evaluator"
     evaluation_ids = {}
+    decisions = {}
     existing = api.evaluations.list()
     for row in reviewed.reviews:
+        if reviewed.evaluator is None:
+            continue
         key = f"runs/{row.run_id}/{row.image}"
         if key not in images or images[key][0] != row.scene:
-            raise ValueError("A review references an image outside its case scene.")
+            continue
         previous = next(
             (
                 item
@@ -104,22 +153,37 @@ def publish(report: Path) -> None:
                 decision=row.decision,
                 reason=row.reason,
                 supersedes=previous.evaluation_id if previous else None,
-                evaluator=Evaluator(
-                    kind="ai", name="Codex visual review", model="unknown", instruction=INSTRUCTION
-                ),
+                evaluator=reviewed.evaluator,
             )
             api.evaluations.add([evaluation])
             existing.append(evaluation)
         evaluation_ids[key] = str(evaluation.evaluation_id)
+        decisions[key] = evaluation.decision
     selected = {}
-    for row in reviewed.selections:
-        if (
-            row.key not in images
-            or images[row.key][0] != row.scene
-            or row.key not in evaluation_ids
-        ):
-            raise ValueError("A selection must reference a reviewed candidate from its scene.")
-        selected[row.scene] = row
+    requested = {}
+    for row in reviewed.selections if reviewed.status == "complete" else []:
+        if row.key in images and images[row.key][0] == row.scene:
+            requested.setdefault(row.scene, []).append(row)
+    previous = case.selections
+    for scene in snapshot.scenes:
+        choices = requested.get(scene.position, [])
+        if len(choices) == 1:
+            selected[scene.position] = choices[0].model_copy(update={"source": "llm"})
+            continue
+        old = previous.get(scene.position)
+        eligible = [key for key, (position, _, _) in images.items() if position == scene.position]
+        key = old if old in eligible else next(iter(eligible), None)
+        if key is not None:
+            selected[scene.position] = Selection(
+                scene=scene.position,
+                key=key,
+                source="rule",
+                reason="Retained the previous selection."
+                if key == old
+                else "Selected the first valid saved candidate in generation and batch order.",
+            )
+    case.selections = {scene: row.key for scene, row in selected.items()}
+    save(report, case)
     all_lines = [f"# {prose(snapshot.title)}"]
     selected_lines = [f"# {prose(snapshot.title)}"]
     evidence_images = []
@@ -155,8 +219,10 @@ def publish(report: Path) -> None:
             selected_lines.append(f"![{scene.position}]({image.relative_to(report).as_posix()})")
         else:
             selected_lines.append("No provisional selection has been recorded.")
+    quality_counts = Counter(decisions.get(row.key, "unreviewed") for row in selected.values())
+    quality_counts["unreviewed"] += SCENES - len(selected)
     manifest = {
-        "format_version": 1,
+        "format_version": 2,
         "case_id": str(case.case_id),
         "story_id": str(case.story_id),
         "baseline_render_id": str(snapshot.render_id) if snapshot.render_id else None,
@@ -164,6 +230,11 @@ def publish(report: Path) -> None:
         "baseline_complete": snapshot.complete,
         "selection_complete": len(selected) == 4,
         "selection_is_quality_approval": False,
+        "quality_passed": review_status == "available" and quality_counts["accept"] == SCENES,
+        "selected_quality": {
+            decision: quality_counts[decision]
+            for decision in ("accept", "reject", "undecided", "unreviewed")
+        },
         "selections": [
             row.model_dump(mode="json")
             for row in sorted(selected.values(), key=lambda row: row.scene)
@@ -174,12 +245,39 @@ def publish(report: Path) -> None:
         ],
         "reviews": reviewed.model_dump(mode="json")["reviews"],
         "source_plan_sha256": case.source_plan_sha256,
-        "new_llm_calls": 0,
+        "planning_llm_calls": 0,
+        "review_llm_calls": None,
+        "review_status": review_status,
+        "unavailable_images": unavailable,
         "timing": {
             "prepared_at": case.prepared_at.isoformat(),
             "gpu_started_at": case.gpu_started_at.isoformat() if case.gpu_started_at else None,
+            "additional_session": case.additional_session.model_dump(mode="json")
+            if case.additional_session
+            else None,
         },
     }
+    manifest["page"] = {"complete": False}
+    if len(selected) == 4:
+        from tests.live.completion_page import render_page
+
+        try:
+            manifest["page"] = render_page(
+                report,
+                snapshot.title,
+                [
+                    {
+                        "scene": scene.position,
+                        "key": selected[scene.position].key,
+                        "path": api.artifact_path(selected[scene.position].key),
+                        "text": scene.narrative,
+                    }
+                    for scene in snapshot.scenes
+                ],
+            )
+        except (ValueError, OSError) as error:
+            manifest["page"] = {"complete": False, "failure_type": type(error).__name__}
+    manifest["comic_complete"] = bool(manifest["page"]["complete"])
     atomic_json(report / "manifest.json", manifest)
     write_document(report / "all-candidates.md", all_lines)
     write_document(report / "selected.md", selected_lines)

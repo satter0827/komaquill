@@ -19,10 +19,10 @@ def pipeline(project, session, count=4):
         project,
         active,
         plan.request.story_id,
-        "pony",
+        "klein",
         42,
         candidates=2,
-        negative="extra umbrellas",
+        negative=None,
     )
     return repository, active, render
 
@@ -45,10 +45,7 @@ def test_two_batches_are_submitted_before_first_collection_and_never_more(
     assert submission_counts == [2, 4]
     assert max(v["counts"].get("queued", 0) for v in views) == 2
     assert all(len(scene["candidates"]) == 2 for scene in view["scenes"])
-    assert all(
-        scene["compiled_input"]["requested_negative"] == "extra umbrellas"
-        for scene in view["scenes"]
-    )
+    assert all(scene["compiled_input"]["requested_negative"] is None for scene in view["scenes"])
     assert all(scene["requested_candidates"] == 2 for scene in view["scenes"])
 
 

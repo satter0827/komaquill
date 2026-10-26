@@ -16,9 +16,11 @@ from komaquill.application.generation import (
 from komaquill.application.ports import GenerationBackend, Workspace
 from komaquill.application.stories.image_inputs import scene_input
 from komaquill.application.stories.ports import StoryRepository
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError, OperationStage
 from komaquill.domain.images import MAX_SEED, PromptSource, compile_image_input, validate_inputs
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject, Run, Session
+from komaquill.domain.presets import GenerationPreset
 from komaquill.domain.rendering import RenderConfig
 from komaquill.domain.stories import SceneAttempts, StoryPlan, StoryRender
 from komaquill.domain.workflow import digest
@@ -86,30 +88,42 @@ def create_render(
                 seed=(initial_seed + index) % (MAX_SEED + 1),
                 compiled_input=compiled,
                 image_profile=selected,
-                preset=profile,
+                preset=profile.model_dump(mode="json"),
             )
         )
     render = StoryRender(
-        format_version=5,
+        format_version=6,
         input_sources=input_sources,
         story_id=story_id,
         plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),
         image_profile=image_profile,
-        settings=settings,
+        settings=settings.model_dump(mode="json"),
         scenes=scenes,
     )
     repository.save_render(render)
     return render
 
 
-def compatible(plan: StoryPlan, render: StoryRender, session: Session) -> None:
+def compatible(plan: StoryPlan, render: StoryRender, session: Session) -> RuntimeSettings:
     """Reject condition changes rather than silently mixing rendering variants."""
     current = session.settings
-    expected = render.settings
+    try:
+        expected = RuntimeSettings.model_validate(render.settings)
+    except ValueError:
+        raise KomaquillError(
+            code="invalid_configuration",
+            stage="story_rendering",
+            display_key="stories.render_configuration_unsupported",
+            retryable=False,
+        ) from None
     required = {
         asset
         for scene in render.scenes
-        for asset in (scene.preset or expected.presets[render.image_profile]).asset_ids
+        for asset in (
+            GenerationPreset.model_validate(scene.preset)
+            if scene.preset
+            else expected.presets[render.image_profile]
+        ).asset_ids
     }
     profiles = {scene.image_profile or render.image_profile for scene in render.scenes}
     if (
@@ -120,6 +134,7 @@ def compatible(plan: StoryPlan, render: StoryRender, session: Session) -> None:
         or any(current.assets.get(name) != expected.assets[name] for name in required)
     ):
         raise KomaquillError(code="invalid_configuration", stage="story_rendering", retryable=False)
+    return expected
 
 
 def latest_run(workspace: Workspace, scene: SceneAttempts) -> Run | None:
@@ -214,8 +229,8 @@ def story_view(
                     (
                         link.preset
                         if link and link.preset
-                        else render.settings.presets[render.image_profile]
-                    ).batch_size
+                        else render.settings["presets"][render.image_profile]
+                    ).get("batch_size", 1)
                     if render and render.format_version >= 3
                     else None
                 ),
@@ -277,9 +292,9 @@ def render_events(
             raise KomaquillError(code="invalid_request", stage="story_rendering", retryable=True)
         render = repository.render(render_id)
         plan = repository.read(render.story_id)
-        compatible(plan, render, session)
-        bound = workspace.configured(render.settings)
-        bound_session = session.model_copy(update={"settings": render.settings})
+        settings = compatible(plan, render, session)
+        bound = workspace.configured(settings)
+        bound_session = session.model_copy(update={"settings": settings})
         retries = {
             scene.scene_id
             for scene in render.scenes
@@ -310,7 +325,7 @@ def render_events(
                 for run in active:
                     if (
                         datetime.now(UTC) - run.created_at
-                    ).total_seconds() >= render.settings.generation_timeout:
+                    ).total_seconds() >= settings.generation_timeout:
                         raise KomaquillError(
                             code="generation_timeout", details={"run_id": str(run.run_id)}
                         )
@@ -331,7 +346,7 @@ def render_events(
                 raise KomaquillError(code="stopping", stage="story_rendering", retryable=False)
             if (
                 eligible is not None
-                and len(active) < render.settings.story_max_in_flight
+                and len(active) < settings.story_max_in_flight
                 and not any(run.state == "unknown" for run in active)
             ):
                 link = render.scenes[eligible]
@@ -349,10 +364,15 @@ def render_events(
                 repository.save_render(render)
                 try:
                     selected = link.image_profile or render.image_profile
-                    request_settings = render.settings
+                    request_settings = settings
                     if link.preset:
                         request_settings = request_settings.model_copy(
-                            update={"presets": {**request_settings.presets, selected: link.preset}}
+                            update={
+                                "presets": {
+                                    **request_settings.presets,
+                                    selected: GenerationPreset.model_validate(link.preset),
+                                }
+                            }
                         )
                     submit_generation(
                         bound.configured(request_settings),
@@ -376,7 +396,7 @@ def render_events(
                 continue
             reconcile = True
             if collected:
-                time.sleep(render.settings.poll_interval)
+                time.sleep(settings.poll_interval)
 
 
 def render_story(

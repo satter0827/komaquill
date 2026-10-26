@@ -102,3 +102,5 @@ python -m tests.live.batch_acceptance --story-id STORY_ID --allow-gpu
 ウォームアップ1枚、候補数1・2・4で各4枚、物語各2候補の8枚を生成します。続いてApp ModeとNode Graphから各2枚を生成し、通常のstopと提供元の停止を確認します。結果は非公開の.artifacts/records/reports/batch-candidatesへ保存します。
 
 実行順とウォームアップ、保存観測の間隔、VRAMの観測範囲を結果に明記します。速度測定と画質比較を区別し、バッチで使われる乱数列から単画像のseedを推測しません。候補の評価には全候補不合格と判断保留を含めます。
+
+Klein移行の短編完成検証は[専用手順](story-completion.md)を使います。以前のバッチ速度測定の出力予算と合算して実施せず、一つのT4セッション内でCLI・画面・編集と4場面の完成を検証します。

@@ -1,7 +1,0 @@
-name = "realesrgan-anime"
-role = "upscale_models"
-url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth"
-filename = "RealESRGAN_x4plus_anime_6B.pth"
-sha256 = "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da" # pragma: allowlist secret Public immutable asset identity.
-license = "BSD-3-Clause"
-license_url = "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE"

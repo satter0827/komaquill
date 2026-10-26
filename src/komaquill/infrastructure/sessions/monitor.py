@@ -2,12 +2,14 @@
 
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from uuid import UUID
 
 from komaquill.application.generation import (
     Collection,
     collect,
 )
+from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import Session
 from komaquill.infrastructure.comfyui import ComfyClient
@@ -36,6 +38,9 @@ def drain(
     project = project.configured(session.settings)
     settings = project.settings()
     deadline = time.monotonic() + settings.shutdown_timeout
+    remaining = remaining_seconds(session.started_at, settings.session_timeout, datetime.now(UTC))
+    if remaining is not None:
+        deadline = min(deadline, time.monotonic() + max(0.0, remaining - settings.control_timeout))
     result = Collection(0, 0, 0)
     saved = 0
     publications = PublicationTracker(project)
@@ -122,6 +127,12 @@ def watch(
     publications.reconcile()
     try:
         while stop_request(project, session) is None:
+            remaining = remaining_seconds(
+                session.started_at, project.settings().submission_timeout, datetime.now(UTC)
+            )
+            if remaining is not None and remaining <= 0:
+                request_stop(project, session, False)
+                break
             if (cancel := cancel_requested(project)) is not None:
                 request_stop(project, session, cancel)
                 break

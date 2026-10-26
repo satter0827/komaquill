@@ -1,8 +1,0 @@
-name = "clip-vision-vit-h"
-role = "clip_vision"
-url = "https://huggingface.co/h94/IP-Adapter/resolve/018e402774aeeddd60609b4ecdb7e298259dc729/models/image_encoder/model.safetensors"
-filename = "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
-sha256 = "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030" # pragma: allowlist secret Public immutable upstream identity.
-size_bytes = 2528373448
-license = "MIT"
-license_url = "https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K"

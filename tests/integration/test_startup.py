@@ -14,7 +14,6 @@ from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
 from komaquill.infrastructure.sessions import connection, startup
 from komaquill.infrastructure.storage import load_session
-from komaquill.infrastructure.workflows import preset, resource_json
 from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop
 from tests.support.session_controls import patch_session
@@ -25,6 +24,7 @@ from tests.support.session_controls import patch_session
     [
         "new",
         "existing",
+        "resume_preparation",
         "retry",
         "startup_failure",
         "allocation_failure",
@@ -44,8 +44,10 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         settings=project.settings(),
     )
     calls = []
-    if case == "existing":
+    if case in {"existing", "resume_preparation"}:
         atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
+    if case == "existing":
+        atomic_json(project.session_file, session.model_dump(mode="json"))
     patch_session(monkeypatch, "Colab", lambda _: control)
 
     patch_session(monkeypatch, "fetch_model", lambda *args: None)
@@ -59,7 +61,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
         if case == "allocation_failure":
             raise KomaquillError("allocation failed")
-        return receipt, case != "existing"
+        return receipt, case not in {"existing", "resume_preparation"}
 
     monkeypatch.setattr(control, "acquire", acquire)
     process = SimpleNamespace(poll=lambda: 1 if case == "startup_failure" else None)
@@ -151,14 +153,22 @@ def cli_connection(project, session, client, monkeypatch):
 @pytest.mark.parametrize("case", ["ready", "nodes", "model", "cpu"])
 def test_doctor_reports_actual_generation_requirements(cli_connection, client, monkeypatch, case):
     original = client.json
+    from komaquill.domain.presets import MODEL_INPUT_ROLES
+    from komaquill.infrastructure.configuration import Settings
+
+    settings = Settings()
     nodes = {
-        row["class_type"]: {} for row in resource_json("presets/pony/workflow-api.json").values()
+        node["class_type"]: {}
+        for profile in settings.presets.values()
+        for node in profile.api.values()
     }
-    nodes["CheckpointLoaderSimple"] = {"input": {"required": {"ckpt_name": [[preset().reference]]}}}
+    for kind, (field, role) in MODEL_INPUT_ROLES.items():
+        choices = [asset.reference for asset in settings.assets.values() if asset.role == role]
+        nodes[kind] = {"input": {"required": {field: [choices]}}}
     if case == "nodes":
-        nodes.pop("KSampler")
+        nodes.pop("SamplerCustomAdvanced")
     if case == "model":
-        nodes["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"] = [[]]
+        nodes["UNETLoader"]["input"]["required"]["unet_name"] = [[]]
 
     def response(path):
         if path == "/object_info":
@@ -210,7 +220,8 @@ def test_cli_delegates_operations_without_editor_dependencies(project, monkeypat
     }[command]
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), *args])
     assert result.exit_code == 0, result.output
-    assert len(calls) == 1 and "private-password" not in result.output
+    assert len(calls) == (5 if command == "models" else 1)
+    assert "private-password" not in result.output
 
 
 def test_external_open_exports_workflow_and_returns_to_terminal(
@@ -218,13 +229,13 @@ def test_external_open_exports_workflow_and_returns_to_terminal(
 ):
     session.backend = "external"
     monkeypatch.setattr(
-        views.webbrowser,
-        "open",
-        lambda _: True,
+        views.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
     )
     result = cli_connection("open", "--view", "app")
     assert result.exit_code == 0, result.output
-    assert (project.runtime / "workflows/pony_app.json").is_file()
+    assert (project.runtime / "workflows/klein_app.json").is_file()
 
 
 @pytest.mark.parametrize("open_flag", [None, "--open", "--no-open"])
@@ -234,13 +245,13 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
     calls = []
 
     def start(bound, backend, endpoint, username, open_browser, echo, foreground, **kwargs):
-        assert bound.settings().profiles == ("pony-preview",)
+        assert bound.settings().profiles == ("klein-edit",)
         assert open_browser is (open_flag == "--open")
         assert foreground is None
         calls.append("connected")
 
     monkeypatch.setattr(services.supervisor, "start", start)
-    arguments = ["--project", str(project.root), "start", "--profile", "pony-preview"]
+    arguments = ["--project", str(project.root), "start", "--profile", "klein-edit"]
     if open_flag:
         arguments.append(open_flag)
     result = CliRunner().invoke(cli.app, arguments)

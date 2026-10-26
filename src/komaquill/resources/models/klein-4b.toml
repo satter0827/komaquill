@@ -1,0 +1,8 @@
+name = "klein-4b"
+role = "diffusion_models"
+url = "https://huggingface.co/Comfy-Org/flux2-klein/resolve/533c4cbc3d3b89af1743d9466c434e89810391c0/split_files/diffusion_models/flux-2-klein-4b.safetensors"
+filename = "flux-2-klein-4b.safetensors"
+sha256 = "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343" # pragma: allowlist secret Public model SHA256.
+size_bytes = 7751105712
+license = "Apache-2.0"
+license_url = "https://huggingface.co/black-forest-labs/FLUX.2-klein-4B"

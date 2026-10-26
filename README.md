@@ -1,6 +1,6 @@
 # Komaquill
 
-ストーリーから本文付きの画像を順次生成し、作品と生成条件をローカルへ保存するPython CLIです。単画像の生成にも対応します。Google ColabのGPU、または起動済みのComfyUIを利用します。既定のモデルはPony Diffusion V6 XL、生成サイズは1024×1024です。
+ストーリーから本文付きの画像を順次生成し、作品と生成条件をローカルへ保存するPython CLIです。単画像の生成にも対応します。Google ColabのGPU、または起動済みのComfyUIを利用します。標準構成はFLUX.2 Klein 4Bと指定のテキストエンコーダー、二つのLoRAです。生成と参照画像編集を同じ構成で行います。
 
 ## 必要な環境
 
@@ -51,7 +51,7 @@ komaquill doctor
 komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 ```
 
-候補数は`--candidates`で指定します。正負をファイルから渡す場合は`--prompt-file positive.txt --negative-file negative.txt`、対象別の説明も含める場合は`--input-file image-input.json`を使います。入力形式は[操作](docs/guides/usage.md)を参照してください。保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
+候補数は`--candidates`で指定します。プロンプトをファイルから渡す場合は`--prompt-file positive.txt`、対象別の説明も含める場合は`--input-file image-input.json`を使います。入力形式は[操作](docs/guides/usage.md)を参照してください。保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
 
 ## ストーリーから生成する
 
@@ -76,25 +76,15 @@ VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen Gen
 
 ## プリセットを選ぶ
 
-通常は`start`だけでPony標準を使えます。品質タグは画像説明の前へ自動で付け、CLIP skipは2を使用します。Node Graphでは、品質タグ、ネガティブプロンプト、サンプラー、サイズ、シードを編集できます。
+標準の生成セットは`klein`、参照画像を使う編集は`klein-edit`です。両セットは同じ5資源を使用します。生成条件とモデルの固定版は[プリセット](docs/current/presets.md)を参照してください。負プロンプトの非空指定は送信前に拒否します。
 
-| プリセット | 内容 | 準備する資源 |
-|---|---|---|
-| pony | 1024×1024、25ステップ | Pony V6 XL |
-| pony-preview | 1024×1024、8ステップ | PonyとHyper-SDXL CFG LoRA |
-| pony-upscale | 元画像と2048×2048の拡大画像を保存 | PonyとReal-ESRGAN anime |
-| sd15 | 512×512、20ステップの比較用 | SD 1.5 FP16 |
-| story-reference | 参照画像を使った単一対象の生成（実験用） | Pony、IPAdapter、CLIP Vision |
-| story-compose | 背景・人物と傘・猫の段階生成（実験用） | Pony、IPAdapter、CLIP Vision |
-| story-inpaint | 編集範囲を切り出して局所修正（実験用） | Pony、IPAdapter、CLIP Vision、CropAndStitch |
-
-追加のプリセットを使う場合は、起動時にまとめて選びます。最初に指定したものが既定です。Pony標準以外の資源は、選択した場合だけ取得します。
+App Modeではプロンプト、候補数、編集用参照画像を操作します。LoRA強度などの詳細はNode Graphで調整できます。
 
 ```powershell
-komaquill start --profile pony --profile pony-preview --profile pony-upscale
-komaquill open --profile pony-preview
-komaquill open --view graph --profile pony-upscale
-komaquill generate --profile pony-preview --prompt "a sunny forest"
+komaquill start
+komaquill open --view app --profile klein
+komaquill open --view graph --profile klein-edit
+komaquill generate --profile klein --prompt "a sunny forest"
 ```
 
 公開テンプレートの不足モデルは、画面のPrepare Workflowまたは`komaquill prepare ./workflow.json`で準備できます。モデル名・容量・取得元を確認してから取得します。詳細は[ワークフローの準備](docs/guides/preparation.md)を参照してください。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/current/presets.md)を参照してください。

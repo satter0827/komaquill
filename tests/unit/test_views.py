@@ -1,6 +1,8 @@
 """Keep native graph editing accessible without disrupting automatic collection."""
 
 import json
+import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,18 +10,21 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure import views
 
 
-@pytest.mark.parametrize("result", [False, "exception", True])
+@pytest.mark.parametrize("result", [False, "exception", "timeout", True])
 def test_automatic_browser_failure_retains_connection_and_reports_url(
     project, session, monkeypatch, result
 ):
     session.settings = project.settings()
 
-    def browser(url):
+    def browser(args, **kwargs):
+        assert kwargs["timeout"] == session.settings.control_timeout
         if result == "exception":
             raise OSError("private browser details")
-        return result
+        if result == "timeout":
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+        return SimpleNamespace(returncode=0 if result is True else 1)
 
-    monkeypatch.setattr(views.webbrowser, "open", browser)
+    monkeypatch.setattr(views.subprocess, "run", browser)
     output = []
     assert views.open_view(project, session, echo=output.append, strict=False) == (result is True)
     assert output
@@ -30,13 +35,17 @@ def test_automatic_browser_failure_retains_connection_and_reports_url(
 
 
 def test_native_graph_uses_selected_prepared_profile(project, session, monkeypatch):
-    session.settings = project.settings().model_copy(update={"profiles": ("pony", "pony-preview")})
+    session.settings = project.settings()
     urls = []
-    monkeypatch.setattr(views.webbrowser, "open", lambda url: urls.append(url) or True)
-    views.open_view(project, session, "graph", "pony-preview")
-    assert "template=pony-preview_graph" in urls[-1]
+    monkeypatch.setattr(
+        views.subprocess,
+        "run",
+        lambda args, **kwargs: urls.append(args[-1]) or SimpleNamespace(returncode=0),
+    )
+    views.open_view(project, session, "graph", "klein")
+    assert "template=klein_graph" in urls[-1]
     session.backend = "external"
-    views.open_view(project, session, "graph", "pony-preview")
-    exported = json.loads((project.runtime / "workflows/pony-preview_graph.json").read_bytes())
+    views.open_view(project, session, "graph", "klein")
+    exported = json.loads((project.runtime / "workflows/klein_graph.json").read_bytes())
     assert exported["extra"]["linearMode"] is False
     assert any(n["type"] == "LoraLoaderModelOnly" for n in exported["nodes"])

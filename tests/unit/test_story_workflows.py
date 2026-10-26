@@ -1,97 +1,54 @@
-"""Check fixed workflow inputs and resource preparation without invoking GPU libraries."""
-
-import subprocess
-import tomllib
-from importlib.resources import files
-from pathlib import Path
+"""Check the fixed Klein graphs and standard resource boundaries."""
 
 import pytest
+from pydantic import ValidationError
 
-from komaquill.domain.errors import KomaquillError
-from komaquill.domain.materials import InputArtifact
-from komaquill.gpu.extensions import prepare_extensions
+from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.presets import GenerationPreset
 from komaquill.infrastructure.configuration import Settings
-from komaquill.infrastructure.workflows import assets, prepare
+from komaquill.infrastructure.workflows import prepare
 
 
-@pytest.mark.parametrize("exists,mismatch", [(False, False), (True, False), (True, True)])
-def test_reviewed_extension_revisions_are_checked(tmp_path, monkeypatch, exists, mismatch):
-    settings = Settings(profiles=["story-inpaint"])
-    names = ["ipadapter", "crop-stitch"]
-    if exists:
-        for name in names:
-            (tmp_path / "custom_nodes" / f"komaquill-{name}").mkdir(parents=True)
-    commands = []
-    monkeypatch.setattr(subprocess, "run", lambda args, **kwargs: commands.append(args))
-    catalog = tomllib.loads(
-        files("komaquill").joinpath("resources/runtime/extensions.toml").read_text()
-    )
-    revisions = {f"komaquill-{name}": catalog[name]["revision"] for name in names}
-    monkeypatch.setattr(
-        subprocess,
-        "check_output",
-        lambda args, **kwargs: "wrong" if mismatch else revisions[Path(args[2]).name],
-    )
-    if mismatch:
-        with pytest.raises(KomaquillError) as caught:
-            prepare_extensions(tmp_path, settings)
-        assert caught.value.code == "identity_mismatch"
-    else:
-        prepare_extensions(tmp_path, settings)
-        assert len(commands) == (0 if exists else 4)
+@pytest.mark.parametrize("name", ["klein", "klein-edit"])
+def test_both_loras_feed_the_sampler_and_share_the_uncensored_encoder(name):
+    settings = Settings()
+    graph, ui = prepare("a kitten", None, 42, "test", settings=settings, profile_name=name)
+    assert graph["90"]["inputs"]["model"] == ["4", 0]
+    assert graph["91"]["inputs"]["model"] == ["90", 0]
+    assert graph["63"]["inputs"]["model"] == ["91", 0]
+    assert graph["71"]["inputs"]["clip_name"] == settings.assets["klein-encoder"].reference
+    assert graph["90"]["inputs"]["strength_model"] == 1.0
+    assert graph["91"]["inputs"]["strength_model"] == 1.0
+    assert ui["extra"]["linearData"]["outputs"] == ["9"]
+    if name == "klein-edit":
+        assert graph["121"]["inputs"]["latent"] == ["82", 0]
+        assert graph["123"]["inputs"]["latent"] == ["82", 0]
+        assert ["77", "image"] in ui["extra"]["linearData"]["inputs"]
 
 
-def test_composition_uses_independent_subjects_and_preserves_candidate_axis():
-    settings = Settings(profiles=["story-compose"])
-    graph, _ = prepare(
-        "rainy street",
-        None,
-        99,
-        "example",
-        settings=settings,
-        subject_prompts=("woman holding a blue umbrella", "feral gray kitten"),
-    )
-    profile = settings.presets["story-compose"]
-    assert graph["10"]["inputs"]["string_b"] == "rainy street"
-    assert graph["61"]["inputs"]["string_b"] == "woman holding a blue umbrella"
-    assert graph["62"]["inputs"]["string_b"] == "feral gray kitten"
-    assert graph["55"]["inputs"]["seed"] == 100
-    assert graph["40"]["inputs"]["amount"] == profile.batch_size
-    assert graph["58"]["inputs"]["destination"] == ["34", 0]
-    assert graph["54"]["inputs"]["pixels"] == ["34", 0]
-    assert {asset.name for asset in assets(settings)} == {
-        "pony",
-        "ipadapter-sdxl",
-        "clip-vision-vit-h",
-    }
+def test_resource_role_mismatch_fails_before_allocation():
+    data = Settings().model_dump()
+    data["presets"]["klein"]["resources"]["encoder"] = "klein-vae"
+    with pytest.raises(ValidationError):
+        RuntimeSettings.model_validate(data)
 
 
-def test_input_reference_versions_and_masked_workflow_labels():
-    item = InputArtifact(
-        key=f"inputs/{'a' * 64}/content",
-        sha256="a" * 64,
-        name="mask.png",
-        kind="mask",
-        size_bytes=10,
-        width=32,
-        height=32,
-    )
-    assert "/" not in item.reference and item.sha256 in item.reference
-    assert (
-        item.model_copy(update={"format_version": 1}).reference == f"komaquill/{'a' * 64}/mask.png"
-    )
-    settings = Settings(profiles=["story-inpaint"])
-    graph, ui = prepare("a cat", None, 8, "mask-test", settings=settings)
-    assert graph["3"]["inputs"]["denoise"] == 1.0
-    node = next(node for node in ui["nodes"] if node["id"] == 31)
-    assert next(slot for slot in node["inputs"] if slot["name"] == "image")["label"] == "Edit Mask"
-    assert graph["35"]["inputs"]["destination"] == ["40", 0]
-    assert graph["35"]["inputs"]["mask"] == ["31", 0]
-
-
-def test_workflow_specific_inputs_require_bindings():
-    preset = Settings(profiles=["story-reference"]).presets["story-reference"]
-    missing = preset.model_dump()
-    missing["bindings"] = [row for row in missing["bindings"] if row["source"] != "input_reference"]
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        {"party_strength": True},
+        {"fixes_strength": 100.0},
+        {"party_strength": float("nan")},
+        {"unknown": 1.0},
+    ],
+)
+def test_invalid_lora_parameters_are_rejected(parameters):
     with pytest.raises(ValueError):
-        type(preset).model_validate(missing)
+        Settings().presets["klein"].configured_parameters(parameters)
+
+
+def test_resource_bindings_must_target_real_standard_model_inputs():
+    data = Settings().presets["klein"].model_dump()
+    data["bindings"][0]["api_input"] = "missing"
+    with pytest.raises(ValidationError):
+        GenerationPreset.model_validate(data)

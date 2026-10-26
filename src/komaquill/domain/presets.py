@@ -36,6 +36,7 @@ class ModelPreset(BaseModel):
     license: str
     license_url: str = ""
     local_only: bool = False
+    transfer: bool = False
     size_bytes: int | None = Field(default=None, ge=0)
 
     @property
@@ -74,7 +75,7 @@ class ModelPreset(BaseModel):
                     and (
                         parsed.hostname != "civitai.com"
                         or not set(parse_qs(parsed.query)).issubset(
-                            {"type", "format", "size", "fp"}
+                            {"type", "format", "size", "fp", "fileId"}
                         )
                     )
                 )
@@ -99,23 +100,6 @@ class WorkflowBinding(BaseModel):
     ui_widget: int = Field(ge=0)
 
 
-class ConditioningRegion(BaseModel):
-    """Use normalized rectangles independent of the selected image resolution."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
-    x: float = Field(default=0, ge=0, le=1)
-    y: float = Field(default=0, ge=0, le=1)
-    width: float = Field(default=1, gt=0, le=1)
-    height: float = Field(default=1, gt=0, le=1)
-    strength: float = Field(default=1, ge=0, le=10)
-
-    @model_validator(mode="after")
-    def contained(self) -> "ConditioningRegion":
-        if self.x + self.width > 1 or self.y + self.height > 1:
-            raise ValueError("Conditioning regions must stay inside the image.")
-        return self
-
-
 class WorkflowImageSlot(BaseModel):
     """Declare one image or white-edit mask required by a fixed workflow."""
 
@@ -123,6 +107,14 @@ class WorkflowImageSlot(BaseModel):
     kind: Literal["image", "mask"] = "image"
     sample: str = ""
     match_base: bool = False
+
+
+MODEL_INPUT_ROLES: dict[str, tuple[str, str]] = {
+    "UNETLoader": ("unet_name", "diffusion_models"),
+    "CLIPLoader": ("clip_name", "text_encoders"),
+    "VAELoader": ("vae_name", "vae"),
+    "LoraLoaderModelOnly": ("lora_name", "loras"),
+}
 
 
 class GenerationPreset(BaseModel):
@@ -133,47 +125,27 @@ class GenerationPreset(BaseModel):
     ui: dict[str, Any]
     bindings: tuple[WorkflowBinding, ...]
     resources: dict[str, str] = Field(default_factory=dict)
-    extensions: tuple[Literal["ipadapter", "crop-stitch"], ...] = ()
     image_inputs: dict[str, WorkflowImageSlot] = Field(default_factory=dict)
     parameters: dict[str, bool | int | float | str] = Field(default_factory=dict)
     parameter_bounds: dict[str, tuple[float, float]] = Field(default_factory=dict)
-    seed_offsets: dict[str, int] = Field(default_factory=dict)
-    output_stages: dict[str, str] = Field(default_factory=dict)
-    separate_subjects: bool = False
-    checkpoint: str
-    lora: str | None = None
-    upscaler: str | None = None
-    width: int = Field(ge=64, le=4096, multiple_of=8)
-    height: int = Field(ge=64, le=4096, multiple_of=8)
+    width: int = Field(ge=64, le=4096, multiple_of=16)
+    height: int = Field(ge=64, le=4096, multiple_of=16)
     steps: int = Field(ge=1, le=1000)
     cfg: float = Field(ge=0, le=100)
     sampler: str
-    scheduler: str
-    clip_skip: int = Field(default=-1, le=-1, ge=-24)
+    scheduler: Literal["flux2"]
     quality_enabled: bool = True
     positive_prefix: str = ""
-    negative_prefix: str = ""
-    regions: tuple[ConditioningRegion, ...] = Field(default=(), max_length=2)
-    single_region: ConditioningRegion = Field(default_factory=ConditioningRegion)
-    sample_subjects: tuple[str, ...] = Field(default=(), max_length=2)
+    negative_prefix: Literal[""] = ""
     batch_size: int = Field(default=1, ge=1, strict=True)
     primary_output_node: str | None = None
-    negative: str = ""
+    negative: Literal[""] = ""
     sample_prompt: str
-    lora_strength: float = Field(default=1.0, ge=-10, le=10)
-    upscale_width: int = Field(default=2048, ge=64, le=8192)
-    upscale_height: int = Field(default=2048, ge=64, le=8192)
 
     @property
     def asset_ids(self) -> tuple[str, ...]:
         """Return only assets needed for this profile."""
-        return tuple(
-            dict.fromkeys(
-                value
-                for value in (self.checkpoint, self.lora, self.upscaler, *self.resources.values())
-                if value
-            )
-        )
+        return tuple(dict.fromkeys(self.resources.values()))
 
     def configured_parameters(
         self, overrides: dict[str, bool | int | float | str]
@@ -197,37 +169,22 @@ class GenerationPreset(BaseModel):
     def validate_bindings(self) -> "GenerationPreset":
         """Reject incomplete or mismatched exports before GPU allocation."""
         nodes = {row.get("id"): row for row in self.ui.get("nodes", []) if isinstance(row, dict)}
-        allowed = set(type(self).model_fields) - {
-            "api",
-            "ui",
-            "bindings",
-            "regions",
-            "single_region",
-            "sample_subjects",
-            "resources",
-            "extensions",
-            "image_inputs",
-            "parameters",
-            "parameter_bounds",
-            "seed_offsets",
-            "output_stages",
-        }
-        declared = set(self.parameters) | {f"input_{name}" for name in self.image_inputs}
-        declared.update(f"seed_{name}" for name in self.seed_offsets)
-        reserved = allowed | {
+        allowed = {
+            "width",
+            "height",
+            "steps",
+            "cfg",
+            "sampler",
+            "batch_size",
+            "positive_prefix",
             "prompt",
             "seed",
             "output_prefix",
-            "upscaled_output_prefix",
-            "subject_1",
-            "subject_2",
-            "subject_1_body",
-            "subject_2_body",
             "prompt_delimiter",
-            "negative_delimiter",
         }
-        if (declared & reserved) or (set(self.resources) & (declared | reserved)):
-            raise ValueError("Workflow-specific inputs must not shadow standard inputs.")
+        declared = set(self.parameters) | {f"input_{name}" for name in self.image_inputs}
+        if declared & allowed or set(self.resources) & (declared | allowed):
+            raise ValueError("Workflow inputs must not shadow standard inputs.")
         if any(
             not re.fullmatch(r"[a-z][a-z0-9_]*", name) for name in declared | set(self.resources)
         ):
@@ -242,34 +199,14 @@ class GenerationPreset(BaseModel):
                 or not lower <= value <= upper
             ):
                 raise ValueError("A workflow parameter is outside its declared bounds.")
-        if any(
-            self.api.get(node, {}).get("class_type") != "SaveImage" for node in self.output_stages
-        ):
-            raise ValueError("An intermediate output must refer to an image output node.")
         allowed.update(self.resources)
         allowed.update(declared)
-        allowed.update({"prompt", "seed", "output_prefix", "upscaled_output_prefix"})
-        allowed.update({"subject_1", "subject_2", "prompt_delimiter", "negative_delimiter"})
-        allowed.update({"subject_1_body", "subject_2_body"})
-        allowed.update(
-            f"region_{index}_{key}" for index in (1, 2) for key in ConditioningRegion.model_fields
-        )
-        if self.regions:
-            regional = {"subject_1", "subject_2"} | {
-                f"region_{index}_{key}"
-                for index in (1, 2)
-                for key in ConditioningRegion.model_fields
-            }
-            if len(self.regions) != 2 or not regional.issubset(
-                {row.source for row in self.bindings}
-            ):
-                raise ValueError("Regional presets require two complete subject slots.")
         if (self.primary_output_node is not None or self.batch_size != 1) and (
             self.api.get(self.primary_output_node or "", {}).get("class_type") != "SaveImage"
             or "batch_size" not in {row.source for row in self.bindings}
         ):
             raise ValueError("Candidate presets require a final image output and batch binding.")
-        required = {"prompt", "negative", "seed", "checkpoint", "output_prefix"}
+        required = {"prompt", "seed", "batch_size", "output_prefix"}
         required.update(declared | set(self.resources))
         if not required.issubset({row.source for row in self.bindings}):
             raise ValueError("The preset is missing required input bindings.")

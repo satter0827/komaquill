@@ -54,7 +54,7 @@ def test_doctor_rejects_a_malformed_node_response_safely(project, client, sessio
 
     original = client.json
     nodes = {
-        row["class_type"]: {} for row in resource_json("presets/pony/workflow-api.json").values()
+        row["class_type"]: {} for row in resource_json("presets/klein/workflow-api.json").values()
     }
     monkeypatch.setattr(cli, "connected", connected)
     monkeypatch.setattr(
@@ -64,17 +64,3 @@ def test_doctor_rejects_a_malformed_node_response_safely(project, client, sessio
     assert result.exit_code == 1
     assert result.exception is None or isinstance(result.exception, SystemExit)
     assert "Traceback" not in result.output
-
-
-@pytest.mark.parametrize("values", [None, {}, [], [None], [[1]]])
-def test_invalid_checkpoint_choices_are_a_typed_response_error(client, monkeypatch, values):
-    from komaquill.domain.errors import KomaquillError
-
-    monkeypatch.setattr(
-        client,
-        "json",
-        lambda _: {"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": values}}}},
-    )
-    with pytest.raises(KomaquillError) as error:
-        client.checkpoints()
-    assert error.value.code == "invalid_response" and not error.value.retryable

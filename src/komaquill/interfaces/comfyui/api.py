@@ -4,6 +4,8 @@ import asyncio
 import hashlib
 import hmac
 import importlib
+import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -40,6 +42,17 @@ class Extension:
         self.control_token: str | None = None
         self.preservation: Preservation | None = None
         self.ui_clients: set[str] = set()
+        deadline = os.environ.get("KOMAQUILL_SUBMIT_UNTIL")
+        self.submit_until = float(deadline) if deadline is not None else None
+
+    @property
+    def accepting(self) -> bool:
+        """Enforce the frozen submission deadline even while local review is waiting."""
+        return self._accepting and (self.submit_until is None or time.time() < self.submit_until)
+
+    @accepting.setter
+    def accepting(self, value: bool) -> None:
+        self._accepting = value
 
     def path(self, identity: str | UUID) -> Path:
         """Constrain externally supplied identifiers before filesystem access."""

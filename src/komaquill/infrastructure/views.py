@@ -1,6 +1,7 @@
 """Open native ComfyUI views without replacing its workflow editor."""
 
-import webbrowser
+import subprocess
+import sys
 from collections.abc import Callable
 from typing import Literal
 from urllib.parse import urlencode
@@ -39,7 +40,6 @@ def open_view(
             name,
             settings=project.settings(),
             profile_name=name,
-            subject_prompts=profile.sample_subjects,
         )
         workflow["extra"]["linearMode"] = view == "app"
         path = project.runtime / "workflows" / f"{name}_{view}.json"
@@ -47,8 +47,21 @@ def open_view(
         echo(message("text.load_this_workflow_in_comfyui_path", path=path))
         url = session.endpoint + "/"
     try:
-        opened = webbrowser.open(url)
-    except (OSError, webbrowser.Error):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, webbrowser; sys.exit(not webbrowser.open(sys.argv[1]))",
+                url,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=project.settings().control_timeout,
+            check=False,
+        )
+        opened = result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
         opened = False
     if not opened:
         if strict:

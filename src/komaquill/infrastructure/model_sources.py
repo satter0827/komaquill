@@ -45,7 +45,7 @@ def resolve_model(name: str, role: str, url: str, timeout: float) -> ModelPreset
         elif parsed.hostname == "civitai.com":
             match = re.fullmatch(r"/api/download/models/([0-9]+)", parsed.path)
             if not match or not set(parse_qs(parsed.query)).issubset(
-                {"type", "format", "size", "fp"}
+                {"type", "format", "size", "fp", "fileId"}
             ):
                 raise ValueError
             with httpx.Client(timeout=timeout, follow_redirects=False) as client:
@@ -56,6 +56,9 @@ def resolve_model(name: str, role: str, url: str, timeout: float) -> ModelPreset
             if len(candidates) != 1:
                 raise ValueError
             file = candidates[0]
+            requested_ids = parse_qs(parsed.query).get("fileId")
+            if requested_ids and requested_ids != [str(file["id"])]:
+                raise ValueError
             sha256 = file["hashes"]["SHA256"].lower()
             fixed_url = file["downloadUrl"]
             size = None  # Civitai reports rounded KB; exact byte size is not known.

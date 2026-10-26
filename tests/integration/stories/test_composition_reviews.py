@@ -1,6 +1,7 @@
 """Keep saved image evidence and append-only quality decisions separate."""
 
 import json
+from datetime import timedelta
 from uuid import uuid4
 
 from typer.testing import CliRunner
@@ -64,55 +65,34 @@ def test_duplicate_candidates_are_identified_without_discarding_any_image(projec
     assert saved.duplicate_candidates == {}
 
 
-def test_material_review_is_idempotent_and_corrections_are_append_only(project, session, client):
-    from tests.live.composition import review
+def test_review_corrections_are_append_only(project, session, client):
+    from komaquill.api import Evaluator
 
     rendered(project, session, client)
     run = project.repository.load()[0]
-    first = review(project.root, run.run_id, run.images[0], "reject", "Floating handle.", "grip")
-    assert (
-        review(project.root, run.run_id, run.images[0], "reject", "Floating handle.", "grip")
-        == first
+    api = Client(project.root)
+    first = Evaluation(
+        run_id=run.run_id,
+        image=run.images[0],
+        criterion="grip",
+        criterion_version="1",
+        case_id="grip",
+        decision="reject",
+        reason="Floating handle.",
+        evaluator=Evaluator(
+            kind="ai", name="Fake review", model="fake", instruction="Assess physical contact."
+        ),
     )
-    correction = review(
-        project.root, run.run_id, run.images[0], "undecided", "Occluded grip.", "grip"
+    api.evaluations.add([first])
+    correction = first.model_copy(
+        update={
+            "evaluation_id": uuid4(),
+            "created_at": first.created_at + timedelta(microseconds=1),
+            "decision": "undecided",
+            "reason": "Occluded grip.",
+            "supersedes": first.evaluation_id,
+        }
     )
-    assert correction.supersedes == first.evaluation_id
-    assert len(Client(project.root).evaluations.list(run.run_id)) == 2
-
-
-def test_private_material_checks_refuse_unsafe_resubmission(project, monkeypatch):
-    from datetime import UTC, datetime, timedelta
-
-    from tests.live import composition
-
-    def unexpected(*args, **kwargs):
-        raise AssertionError("Preconditions must fail before any image API is used.")
-
-    monkeypatch.setattr(composition, "Client", unexpected)
-    report = project.root / "report"
-    destination = report / "materials"
-    destination.mkdir(parents=True)
-    project.state.mkdir(parents=True)
-    marker = project.state / "monitor.json"
-    import pytest
-
-    def attempt():
-        with pytest.raises(RuntimeError):
-            composition.material(project.root, report, "pair-a")
-
-    (destination / "pair-a.json").write_text("{}")
-    attempt()
-    (destination / "pair-a.json").unlink()
-    marker.write_text('{"phase":"starting"}')
-    attempt()
-    marker.write_text(json.dumps({"phase": "ready", "created_at": "2020-01-01T00:00:00Z"}))
-    attempt()
-    marker.write_text(
-        json.dumps(
-            {"phase": "ready", "created_at": (datetime.now(UTC) - timedelta(seconds=1)).isoformat()}
-        )
-    )
-    for index in range(composition.MAX_MATERIAL_CASES):
-        (destination / f"{index}.json").write_text("{}")
-    attempt()
+    api.evaluations.add([correction])
+    assert api.evaluations.list(run.run_id) == [first, correction]
+    assert project.repository.read(run.run_id).state == "saved"

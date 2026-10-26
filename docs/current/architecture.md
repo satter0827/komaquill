@@ -41,7 +41,7 @@ Google認証と公式CLIの管理ファイルは標準のユーザーフォル�
 
 ## 資源とGPUの所有
 
-モデル、LoRA、アップスケーラーの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
+拡散モデル、テキストエンコーダー、LoRA、VAEの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
 
 Colabの確保・実行・初回転送は公式CLIを使います。状態確認と対象指定の終了には同じ固定パッケージのClientを使い、公式CLIのローカルキャッシュを生存確認の根拠にしません。SSHは固定した公式実装の`_run_proxy_bridge`へ、プロバイダーで照合した一時SessionStateを渡します。この内部関数への依存は一つのアダプターに限定します。公式CLIのSSHコマンドには記録欠損時の自動確保があるため、再接続には使用しません。
 
@@ -94,3 +94,7 @@ WorkspacePathsはローカルのdata・records・state・runtimeなどを分け�
 
 
 公式CLIのコード実行はcolab_executionのアダプターで準備完了待ちと失敗時の接続終了を補います。固定SDKの非公開接続オブジェクトへの参照はこのアダプターに限定し、実行要求の再送は行いません。SSHの内部ブリッジはcolab_bridgeへ分離しています。
+
+## 短編漫画の実行
+
+計画と画像レビューをLLMの役割とし、条件固定、生成、選択規則、保存、組版は通常のプログラムで処理します。構成図と判断は[設計判断](../decisions/0009-klein-completion.md)を参照してください。常駐する汎用エージェント基盤は持ちません。

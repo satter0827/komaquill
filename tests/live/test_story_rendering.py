@@ -80,7 +80,7 @@ def test_saved_story_render_and_order_comparison():
                 ]
             )
             candidate = api.images.generate(
-                prompt, seed=render.scenes[position].seed, profile="pony"
+                prompt, seed=render.scenes[position].seed, profile="klein"
             )
             assert candidate.state == "saved"
             result["pairs"].append(

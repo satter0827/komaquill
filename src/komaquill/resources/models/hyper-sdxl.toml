@@ -1,8 +1,0 @@
-name = "hyper-sdxl"
-role = "loras"
-repo_id = "ByteDance/Hyper-SD"
-revision = "bc08d970a87c74c71209491d64e3525845698863" # pragma: allowlist secret Public immutable asset identity.
-filename = "Hyper-SDXL-8steps-CFG-lora.safetensors"
-sha256 = "55b51334c85061afff5eff7c550b61963c8b8607a5868bbe4f26db49374719b1" # pragma: allowlist secret Public immutable asset identity.
-license = "CreativeML Open RAIL++-M (SDXL section)"
-license_url = "https://huggingface.co/ByteDance/Hyper-SD/blob/main/LICENSE.md"

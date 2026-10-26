@@ -12,7 +12,7 @@ def legacy_story(project, session, client, count=2):
     builder = initialize(project.root / "fixture-source").configured(project.settings())
     repository, plan = planned(builder, count)
     active = session.model_copy(update={"settings": builder.settings()})
-    render = create_render(repository, builder, active, plan.request.story_id, "pony", seed=7)
+    render = create_render(repository, builder, active, plan.request.story_id, "klein", seed=7)
     render_story(repository, builder, client, active, render.render_id)
     render = repository.render(render.render_id)
     protected = {}

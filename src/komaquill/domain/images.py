@@ -12,33 +12,9 @@ MAX_SEED = 2**64 - 1
 ImageSeed = Annotated[int, Field(strict=True, ge=0, le=MAX_SEED)]
 
 
-def preset_fingerprint(profile: GenerationPreset, compiler_version: int = 5) -> str:
-    """Preserve legacy fingerprints; canonicalize defaults for new snapshots."""
-    value = profile.model_dump(
-        mode="json",
-        exclude_unset=compiler_version == 1,
-        exclude=(
-            ({"batch_size", "primary_output_node"} if compiler_version < 3 else set())
-            | (
-                {
-                    "resources",
-                    "extensions",
-                    "image_inputs",
-                    "parameters",
-                    "parameter_bounds",
-                    "seed_offsets",
-                    "output_stages",
-                    "separate_subjects",
-                }
-                if compiler_version < 4
-                else set()
-            )
-        ),
-    )
-    if compiler_version < 5:
-        for slot in value.get("image_inputs", {}).values():
-            slot.pop("match_base", None)
-    return digest(value)
+def preset_fingerprint(profile: GenerationPreset) -> str:
+    """Hash expanded settings for current executable presets."""
+    return digest(profile.model_dump(mode="json"))
 
 
 class CompiledImageInput(BaseModel):
@@ -46,7 +22,7 @@ class CompiledImageInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     format_version: Literal[1, 2, 3] = 1
-    compiler_version: Literal[1, 2, 3, 4, 5] = 1
+    compiler_version: Literal[1, 2, 3, 4, 5, 6] = 1
     preset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt: str
     common_prompt: str = ""
@@ -98,23 +74,13 @@ class CompiledImageInput(BaseModel):
 
     def matches(self, profile: GenerationPreset) -> bool:
         """Check a frozen input against its frozen preset without reapplying text."""
-        if self.compiler_version == 1:
-            return self.preset_sha256 == preset_fingerprint(profile, 1)
-        layout = (
-            ("left-right" if len(self.subject_prompts) == 2 else "single")
-            if profile.regions
-            else "layered"
-            if profile.separate_subjects
-            else "global"
-        )
         return (
-            self.preset_sha256 == preset_fingerprint(profile, self.compiler_version)
+            self.compiler_version == 6
+            and self.preset_sha256 == preset_fingerprint(profile)
             and self.quality_enabled == profile.quality_enabled
             and self.positive_prefix == (profile.positive_prefix if profile.quality_enabled else "")
-            and self.negative_prefix == (profile.negative_prefix if profile.quality_enabled else "")
-            and self.negative_body
-            == (profile.negative if self.requested_negative is None else self.requested_negative)
-            and self.layout == layout
+            and not self.negative
+            and self.layout == "global"
         )
 
 
@@ -152,10 +118,16 @@ def compile_image_input(
     positive_prefix = profile.positive_prefix if profile.quality_enabled else ""
     negative_prefix = profile.negative_prefix if profile.quality_enabled else ""
     context = joined(common_prompt, prompt)
-    body = context if profile.regions or profile.separate_subjects else joined(context, *subjects)
+    if negative:
+        from komaquill.domain.errors import KomaquillError
+
+        raise KomaquillError(
+            code="invalid_request", display_key="workflow.negative_unsupported", retryable=False
+        )
+    body = joined(context, *subjects)
     return CompiledImageInput(
         format_version=3,
-        compiler_version=5,
+        compiler_version=6,
         inputs=inputs or {},
         preset_sha256=preset_fingerprint(profile),
         prompt=prompt,
@@ -170,11 +142,7 @@ def compile_image_input(
         negative=joined(negative_prefix, profile.negative if negative is None else negative),
         negative_body=profile.negative if negative is None else negative,
         subject_positives=tuple(joined(positive_prefix, subject) for subject in subjects),
-        layout=("left-right" if len(subjects) == 2 else "single")
-        if profile.regions
-        else "layered"
-        if profile.separate_subjects
-        else "global",
+        layout="global",
     )
 
 

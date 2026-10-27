@@ -29,8 +29,10 @@ from komaquill.domain.story_views import StoryInterrupted as StoryInterrupted
 from komaquill.domain.story_views import StoryListing as StoryListing
 from komaquill.domain.story_views import StorySnapshot as StorySnapshot
 from komaquill.domain.story_views import StorySummary as StorySummary
+from komaquill.domain.usage import AccountUsage as AccountUsage
 
 __all__ = [
+    "AccountUsage",
     "Client",
     "CompiledImageInput",
     "ImageInput",

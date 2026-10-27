@@ -42,10 +42,10 @@ def test_native_graph_uses_selected_prepared_profile(project, session, monkeypat
         "run",
         lambda args, **kwargs: urls.append(args[-1]) or SimpleNamespace(returncode=0),
     )
-    views.open_view(project, session, "graph", "klein")
-    assert "template=klein_graph" in urls[-1]
+    views.open_view(project, session, "graph", "klein-4b")
+    assert "template=klein-4b_graph" in urls[-1]
     session.backend = "external"
-    views.open_view(project, session, "graph", "klein")
-    exported = json.loads((project.runtime / "workflows/klein_graph.json").read_bytes())
+    views.open_view(project, session, "graph", "klein-4b")
+    exported = json.loads((project.runtime / "workflows/klein-4b_graph.json").read_bytes())
     assert exported["extra"]["linearMode"] is False
     assert any(n["type"] == "LoraLoaderModelOnly" for n in exported["nodes"])

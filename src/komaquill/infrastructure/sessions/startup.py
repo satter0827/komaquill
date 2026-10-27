@@ -158,7 +158,13 @@ def start_colab(
         phase("payload_ready")
         cleanup_owned = colab.receipt() is None
         check_cancel(project)
-        receipt, created = colab.acquire(payload.code_sha256)
+        from komaquill.infrastructure.compute_budget import enforce
+
+        expected_account = enforce(project)
+        if expected_account is None:
+            receipt, created = colab.acquire(payload.code_sha256)
+        else:
+            receipt, created = colab.acquire(payload.code_sha256, expected_account=expected_account)
         phase("runtime_owned", receipt.runtime_id)
         cleanup_owned = True
         worker = None

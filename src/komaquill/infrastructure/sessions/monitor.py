@@ -127,6 +127,21 @@ def watch(
     publications.reconcile()
     try:
         while stop_request(project, session) is None:
+            if session.backend == "colab":
+                from komaquill.infrastructure.compute_budget import enforce
+
+                try:
+                    enforce(project)
+                except (KomaquillError, OSError, ValueError) as error:
+                    record_event(
+                        project,
+                        "compute_budget",
+                        "stopped",
+                        runtime_id=session.runtime_id,
+                        failure=failure_info(error, "colab_control"),
+                    )
+                    request_stop(project, session, False)
+                    break
             remaining = remaining_seconds(
                 session.started_at, project.settings().submission_timeout, datetime.now(UTC)
             )

@@ -4,12 +4,14 @@ import hashlib
 
 from komaquill.infrastructure.asset_store import model_path, register
 from komaquill.infrastructure.configuration import Project
+from komaquill.infrastructure.workflows import assets
 
 
 def stage_models(project: Project) -> None:
     """Keep fake model contents explicit and prevent real downloads in tests."""
     payloads = {
-        name: f"Offline model fixture: {name}".encode() for name in project.settings().assets
+        model.name: f"Offline model fixture: {model.name}".encode()
+        for model in assets(project.settings())
     }
     config = project.root / "komaquill.toml"
     text = config.read_text(encoding="utf-8")
@@ -19,7 +21,8 @@ def stage_models(project: Project) -> None:
             f"size_bytes = {len(content)}\n"
         )
     config.write_text(text, encoding="utf-8")
-    for name, model in project.settings().assets.items():
+    for model in assets(project.settings()):
+        name = model.name
         path = model_path(project.models, model)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(payloads[name])

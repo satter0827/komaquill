@@ -14,7 +14,7 @@ from tests.support.stories import planned
 def test_export_has_observation_times_and_story_context(project, session, client):
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     render_story(repository, project, client, active, render.render_id)
     value = Client(project.root).evaluations.export()
     assert datetime.fromisoformat(value["exported_at"]).tzinfo is not None
@@ -34,7 +34,7 @@ def test_export_has_observation_times_and_story_context(project, session, client
 def test_tampered_plan_is_not_used_for_association_export(project, session, client):
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     render_story(repository, project, client, active, render.render_id)
     path = (
         repository.folder(plan.request.story_id) / "renders" / str(render.render_id) / "render.json"

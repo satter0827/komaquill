@@ -17,6 +17,7 @@ from komaquill.api import Client, Evaluator, KomaquillError
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.storage import FileStoryRepository
+from komaquill.infrastructure.workflows import assets
 from tests.live import completion_report, story_completion
 from tests.support import llm_comparison
 from tests.support.story_cases import CORPUS, cases
@@ -128,7 +129,7 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
         from komaquill.infrastructure.stories.configuration import settings
 
         workspace = Project(report / "planning")
-        options = settings(workspace, llm_profile="lmstudio-4b", image_profile="klein")
+        options = settings(workspace, llm_profile="lmstudio-4b", image_profile="klein-4b")
         allowed = {options.llm_profiles[name].model for name in ("lmstudio-4b", "lmstudio-9b")}
         if any(row["key"] not in allowed for row in original):
             raise RuntimeError("An unrelated loaded model prevents controlled measurement.")
@@ -221,7 +222,7 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
                         source_name=case_id + ".txt",
                         images=4,
                         llm_profile="lmstudio-4b",
-                        image_profile="klein",
+                        image_profile="klein-4b",
                         allow_real_llm=True,
                     )
                     story_id = result.request.story_id
@@ -282,7 +283,7 @@ def prepare(report: Path) -> None:
     from komaquill.infrastructure.asset_store import model_path
 
     source = Project(suite.source_workspace)
-    for model in source.settings().assets.values():
+    for model in assets(source.settings()):
         if file_digest(model_path(source.models, model)) != model.sha256:
             raise ValueError("A pinned source model has changed.")
     for case_id in suite.config.live_cases:

@@ -117,7 +117,7 @@ Prepare WorkflowはJSONのパス、Stop Sessionは通常・強制、Clean Genera
 
 ## グラフを編集する
 
-`open --view graph`は標準のNode Graphを開きます。App Modeと別のGPUを確保しません。ノードの追加・接続、サンプラー、モデル、LoRA、ネガティブプロンプトなどを編集できます。標準ノード以外を使う場合は、そのノードと対応資源をGPU側へ導入する必要があります。
+`open --view graph`は標準のNode Graphを開きます。App Modeと別のGPUを確保しません。ノードの追加・接続、サンプラー、モデル、LoRAなどを編集できます。標準ノード以外を使う場合は、そのノードと対応資源をGPU側へ導入する必要があります。
 
 実行したグラフは生成条件として保存します。既定プリセットの値で上書きしません。残したい編集内容はComfyUIのSaveで保存してください。標準のSaveとアップロードは[素材保全](preservation.md)の対象です。Colabの一時領域だけに置いたファイルはランタイム終了時に失われます。
 
@@ -137,7 +137,7 @@ GPU側のモデル準備イベントは、取得したログのworker-events.jso
 komaquill generate --prompt-file positive.txt --candidates 2
 ```
 
-プロンプトは直接指定にも対応します。Kleinでは負プロンプトの非空指定を拒否します。
+プロンプトは直接指定にも対応します。負プロンプトの入力は廃止しました。
 
 ```powershell
 komaquill generate --prompt "a blue umbrella" --candidates 2
@@ -147,17 +147,31 @@ komaquill generate --prompt "a blue umbrella" --candidates 2
 
 ```json
 {
-  "format_version": 1,
+  "format_version": 3,
   "prompt": "rainy street",
-  "negative": "",
   "subjects": ["woman holding a blue umbrella", "small gray kitten"]
 }
 ```
 
 ```powershell
-komaquill generate --input-file image-input.json --profile pony-story --candidates 2
+komaquill generate --input-file image-input.json --profile klein-4b --candidates 2
 ```
 
-同じ正負入力で直接指定とファイル指定は併用できません。input-fileは他のプロンプト指定と併用せず、profile・seed・candidatesと組み合わせます。空の正プロンプトはエラーです。負の指定を省略するとプリセット値、空文字・空ファイルは利用者の負指定なしになります。品質用既定文は別に適用します。
+直接指定とprompt-fileは併用できません。input-fileは他のプロンプト指定と併用せず、profile・seed・candidatesと組み合わせます。空のプロンプトはエラーです。品質用の既定文は別に適用します。
 
 結果には候補数と保存先を表示します。ブラウザーや画像を自動で開きません。候補数の増加はGPUメモリを消費します。メモリ不足では条件を自動変更せず、ログを確認して少ない候補数で新しい生成を行います。
+
+## 9BとColabの使用量
+
+```powershell
+komaquill usage
+komaquill start --profile klein-9b --profile klein-9b-edit --gpu A100 --high-ram
+komaquill generate --profile klein-9b --prompt "an opaque red book inside a blue bag"
+komaquill open --profile klein-9b --view app
+komaquill open --profile klein-9b-edit --view graph
+komaquill stop
+```
+
+利用条件と取得済みモデルを確認してから起動してください。既定モデルは4Bです。起動済みGPUのモデルを切り替える場合は、起動時に両方のプロファイルを準備します。GPUとHigh RAMは次の起動で指定します。自動的なGPU変更はありません。
+
+`usage --json`は観測時刻を含む型付きJSONを返します。照会失敗時はエラーを返し、以前の観測や残量0へ置き換えません。

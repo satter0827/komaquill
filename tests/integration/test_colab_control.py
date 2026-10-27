@@ -112,6 +112,31 @@ def test_allocation_persists_ownership_and_settings_before_request(control, monk
         assert control.receipt_file.exists() == (case == "uncertain")
 
 
+def test_high_memory_is_sent_only_by_explicit_frozen_setting(control, monkeypatch):
+    control.settings = control.settings.model_copy(update={"gpu": "A100", "high_ram": True})
+    calls = []
+
+    def call(*args, **kwargs):
+        calls.append(args)
+        if args[0] == "new":
+            atomic_json(control.config, {control.receipt().name: {"endpoint": "expected"}})
+
+    monkeypatch.setattr(control, "call", call)
+    receipt, created = control.acquire("revision", expected_account="a" * 64)
+    allocation = next(args for args in calls if args[0] == "new")
+    assert created and "--high-mem" in allocation and "A100" in allocation
+    assert receipt.settings.high_ram
+
+
+def test_usage_account_mismatch_never_allocates(control, monkeypatch):
+    calls = []
+    monkeypatch.setattr(control, "call", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(KomaquillError):
+        control.acquire("revision", expected_account="b" * 64)
+    assert control.receipt() is None
+    assert all(args[0] != "new" for args in calls)
+
+
 def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(control, monkeypatch):
     from tests.support.models import stage_models
 
@@ -136,12 +161,17 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
         assert not control.lock.is_locked
         commands.append(args)
 
+    remote_hashes = {}
+
     def transferred(*args):
         assert not control.lock.is_locked
         commands.append(("scp", *args))
+        remote_hashes[args[2]] = args[1].parent.name
 
     monkeypatch.setattr(control, "call", uploaded)
     monkeypatch.setattr(control, "transfer_model", transferred)
+    monkeypatch.setattr(control, "remote_digest", lambda _, path: remote_hashes.get(path))
+    monkeypatch.setattr(control, "check_transfer_feasibility", lambda *args: None)
     monkeypatch.setattr(control, "command", lambda *args: ["official", *args])
     process = SimpleNamespace()
     monkeypatch.setattr(

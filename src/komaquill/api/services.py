@@ -9,12 +9,14 @@ from uuid import UUID
 from komaquill.api._errors import api_operation
 from komaquill.application.evaluations import register
 from komaquill.application.generation import Collection, collect, generate
+from komaquill.domain.configuration import GpuType
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.images import PromptSource
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import JsonObject, Run
 from komaquill.domain.status import SessionStatus
+from komaquill.domain.usage import AccountUsage
 from komaquill.infrastructure import inspection, supervisor
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import operation_scope
@@ -35,7 +37,6 @@ class ImageService:
         self,
         prompt: str,
         *,
-        negative: str | None = None,
         seed: int | None = None,
         profile: str | None = None,
         subjects: tuple[str, ...] = (),
@@ -54,7 +55,6 @@ class ImageService:
                 backend,
                 session,
                 prompt,
-                negative,
                 seed if seed is not None else secrets.randbits(63),
                 profile,
                 subjects=subjects,
@@ -119,6 +119,8 @@ class SessionService:
         interactive_auth: bool = False,
         foreground: Callable[[Path], int] | None = None,
         profiles: list[str] | None = None,
+        gpu: GpuType | None = None,
+        high_ram: bool | None = None,
         open_browser: bool = False,
     ) -> SessionStatus:
         with (
@@ -126,10 +128,23 @@ class SessionService:
             api_operation(OperationStage.PREPARATION, invalid=ErrorCode.INVALID_CONFIGURATION),
         ):
             project = self._project
-            if profiles is not None:
-                settings = project.settings()
-                settings = type(settings).model_validate(
-                    {**settings.model_dump(), "profiles": profiles}
+            if backend == "external" and (gpu is not None or high_ram is not None):
+                raise KomaquillError(
+                    code="invalid_request",
+                    stage="preparation",
+                    display_key="session.hardware_colab_only",
+                    retryable=False,
+                )
+            overrides = {
+                key: value
+                for key, value in {"profiles": profiles, "gpu": gpu, "high_ram": high_ram}.items()
+                if value is not None
+            }
+            if overrides:
+                from komaquill.domain.configuration import RuntimeSettings
+
+                settings = RuntimeSettings.model_validate(
+                    {**project.settings().model_dump(), **overrides}
                 )
                 project = project.configured(settings)
             supervisor.start(
@@ -143,6 +158,13 @@ class SessionService:
                 interactive_auth=interactive_auth,
             )
             return self.status()
+
+    def usage(self) -> AccountUsage:
+        """Observe current account consumption through the pinned provider adapter."""
+        from komaquill.infrastructure.colab import Colab
+
+        with api_operation(OperationStage.COLAB_CONTROL):
+            return Colab(self._project).usage()
 
     def stop(
         self, *, force: bool = False, progress: Callable[[str], None] | None = None

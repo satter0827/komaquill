@@ -1,0 +1,157 @@
+format_version = 2
+model_family = "klein-4b"
+width = 1024
+height = 1024
+steps = 4
+sampler = "euler"
+scheduler = "flux2"
+batch_size = 1
+primary_output_node = "9"
+quality_enabled = true
+positive_prefix = "clean line art, clear composition"
+sample_prompt = "a small cabin in a sunny forest, manga illustration"
+
+[resources]
+diffusion = "klein-4b"
+encoder = "klein-encoder"
+vae = "klein-vae"
+party = "klein-party"
+fixes = "klein-fixes"
+
+[image_inputs.reference]
+kind = "image"
+sample = ""
+
+[parameters]
+party_strength = 1.0
+fixes_strength = 1.0
+
+[parameter_bounds]
+party_strength = [-10.0, 10.0]
+fixes_strength = [-10.0, 10.0]
+
+[[bindings]]
+source = "diffusion"
+api_node = "4"
+api_input = "unet_name"
+ui_node = 4
+ui_widget = 0
+
+[[bindings]]
+source = "encoder"
+api_node = "71"
+api_input = "clip_name"
+ui_node = 71
+ui_widget = 0
+
+[[bindings]]
+source = "vae"
+api_node = "72"
+api_input = "vae_name"
+ui_node = 72
+ui_widget = 0
+
+[[bindings]]
+source = "party"
+api_node = "90"
+api_input = "lora_name"
+ui_node = 90
+ui_widget = 0
+
+[[bindings]]
+source = "fixes"
+api_node = "91"
+api_input = "lora_name"
+ui_node = 91
+ui_widget = 0
+
+[[bindings]]
+source = "party_strength"
+api_node = "90"
+api_input = "strength_model"
+ui_node = 90
+ui_widget = 1
+
+[[bindings]]
+source = "fixes_strength"
+api_node = "91"
+api_input = "strength_model"
+ui_node = 91
+ui_widget = 1
+
+[[bindings]]
+source = "seed"
+api_node = "73"
+api_input = "noise_seed"
+ui_node = 73
+ui_widget = 0
+
+[[bindings]]
+source = "steps"
+api_node = "62"
+api_input = "steps"
+ui_node = 62
+ui_widget = 0
+
+[[bindings]]
+source = "sampler"
+api_node = "61"
+api_input = "sampler_name"
+ui_node = 61
+ui_widget = 0
+
+[[bindings]]
+source = "width"
+api_node = "68"
+api_input = "value"
+ui_node = 68
+ui_widget = 0
+
+[[bindings]]
+source = "height"
+api_node = "69"
+api_input = "value"
+ui_node = 69
+ui_widget = 0
+
+[[bindings]]
+source = "batch_size"
+api_node = "5"
+api_input = "batch_size"
+ui_node = 5
+ui_widget = 0
+
+[[bindings]]
+source = "prompt"
+api_node = "10"
+api_input = "string_b"
+ui_node = 10
+ui_widget = 1
+
+[[bindings]]
+source = "positive_prefix"
+api_node = "10"
+api_input = "string_a"
+ui_node = 10
+ui_widget = 0
+
+[[bindings]]
+source = "prompt_delimiter"
+api_node = "10"
+api_input = "delimiter"
+ui_node = 10
+ui_widget = 2
+
+[[bindings]]
+source = "output_prefix"
+api_node = "9"
+api_input = "filename_prefix"
+ui_node = 9
+ui_widget = 0
+
+[[bindings]]
+source = "input_reference"
+api_node = "77"
+api_input = "image"
+ui_node = 77
+ui_widget = 0

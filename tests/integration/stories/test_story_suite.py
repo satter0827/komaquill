@@ -88,7 +88,7 @@ def test_reference_and_paragraph_identity_do_not_change_visible_conditioning(pro
             prop["prop"] = mapping[prop["prop"]]
             prop["holder"] = mapping.get(prop["holder"])
     renamed = make(StoryDraft.model_validate(value).model_dump(mode="json"))
-    profile = project.settings().presets["klein"]
+    profile = project.settings().presets["klein-4b"]
     assert [scene_input(original, scene, profile) for scene in original.scenes] == [
         scene_input(renamed, scene, profile) for scene in renamed.scenes
     ]
@@ -156,7 +156,7 @@ def test_changed_source_conditions_reach_the_common_compiler(project, variant):
         request(4, source),
         max_images=8,
     )
-    profile = project.settings().presets["klein"]
+    profile = project.settings().presets["klein-4b"]
     image = scene_input(plan, plan.scenes[2 if " to " in variant else 0], profile)
     if variant == "color":
         assert "green hardcover book" in image.positive and "yellow shoulder bag" in image.positive

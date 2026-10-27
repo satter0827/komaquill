@@ -234,7 +234,6 @@ class StoryService:
         image_profile: str | None = None,
         seed: int | None = None,
         candidates: int | None = None,
-        negative: str | None = None,
         input_sources: tuple[PromptSource, ...] = (),
         render_config: RenderConfig | None = None,
     ) -> Iterator[StoryEvent]:
@@ -256,7 +255,6 @@ class StoryService:
                 profile,
                 seed,
                 candidates=candidates,
-                negative=negative,
                 input_sources=input_sources,
                 render_config=render_config,
             )
@@ -280,7 +278,6 @@ class StoryService:
         image_profile: str | None = None,
         seed: int | None = None,
         candidates: int | None = None,
-        negative: str | None = None,
         input_sources: tuple[PromptSource, ...] = (),
         allow_real_llm: bool = False,
     ) -> Iterator[StoryEvent]:
@@ -320,7 +317,6 @@ class StoryService:
                     options.image_profile,
                     seed,
                     candidates=candidates,
-                    negative=negative,
                     input_sources=input_sources,
                 )
                 yield from self._events(backend, session, render.render_id, False)

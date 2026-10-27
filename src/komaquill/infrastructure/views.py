@@ -35,7 +35,6 @@ def open_view(
     else:
         _, workflow = prepare(
             profile.sample_prompt,
-            None,
             1,
             name,
             settings=project.settings(),

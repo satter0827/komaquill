@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 from komaquill.domain.errors import FailureInfo
 from komaquill.domain.evaluations import Evaluation
-from komaquill.domain.images import CompiledImageInput
+from komaquill.domain.images import CompiledInputRecord
 from komaquill.domain.models import ImageMetadata, RunState
 from komaquill.domain.stories import Character, Scene, StoryProp
 
@@ -20,7 +20,7 @@ class ArtifactView(BaseModel):
 
 
 class SceneView(Scene):
-    compiled_input: CompiledImageInput | None = None
+    compiled_input: CompiledInputRecord | None = None
     image_profile: str | None = None
     state: Literal["unstarted"] | RunState
     run_id: UUID | None

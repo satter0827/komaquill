@@ -9,7 +9,7 @@ from komaquill.infrastructure.workflows import resource_json
 
 
 def test_generate_saves_image_and_conditions(project, client, session, stub):
-    run = generate(project, client, session, "日本語のプロンプト", None, 42)
+    run = generate(project, client, session, "日本語のプロンプト", 42)
     folder = run_dir(project, run.run_id)
     assert run.state == "saved"
     assert (folder / "images/0001.png").is_file()
@@ -20,7 +20,7 @@ def test_generate_saves_image_and_conditions(project, client, session, stub):
 
 
 def test_repeat_collection_does_not_download_again(project, client, session, stub):
-    generate(project, client, session, "a cabin", "", 1)
+    generate(project, client, session, "a cabin", 1)
     assert collect(project, client, session).saved == 0
     assert stub.image_requests == 1
 
@@ -30,7 +30,7 @@ def test_lost_submission_response_is_reconciled_without_resubmission(
 ):
     stub.drop_response = True
     with pytest.raises(SubmissionUnknown):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     assert load_runs(project)[0].state == "unknown"
     assert collect(project, client, session).saved == 1
     assert load_runs(project)[0].state == "saved"
@@ -41,7 +41,7 @@ def test_lost_submission_response_is_reconciled_without_resubmission(
 def test_partial_download_can_be_resumed(project, client, session, stub, failure):
     setattr(stub, failure, True)
     with pytest.raises(KomaquillError):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     assert load_runs(project)[0].state == "queued"
     assert not list(project.runs.glob("*/images/*"))
     setattr(stub, failure, False)
@@ -51,8 +51,8 @@ def test_partial_download_can_be_resumed(project, client, session, stub, failure
 
 def test_ui_generation_is_imported_and_collected(project, client, session, stub):
     client.submit(
-        resource_json("presets/klein/workflow-api.json"),
-        resource_json("presets/klein/workflow.json"),
+        resource_json("presets/klein-4b/workflow-api.json"),
+        resource_json("presets/klein-4b/workflow.json"),
         "ui-client",
     )
     assert collect(project, client, session).saved == 1
@@ -62,7 +62,7 @@ def test_ui_generation_is_imported_and_collected(project, client, session, stub)
 
 
 def test_remote_failure_remains_failed(project, client, session, stub):
-    graph = resource_json("presets/klein/workflow-api.json")
+    graph = resource_json("presets/klein-4b/workflow-api.json")
     graph["5"]["inputs"]["batch_size"] = 2
     client.submit(graph, {}, "ui-client")
     record = next(iter(stub.history.values()))
@@ -93,7 +93,7 @@ def test_collector_finishing_before_post_response_preserves_saved_state(
         return prompt_id
 
     monkeypatch.setattr(client, "submit", submit)
-    run = generate(project, client, session, "a cabin", "", 1)
+    run = generate(project, client, session, "a cabin", 1)
     assert run.state == "saved"
     assert stub_images(project) == 1
 
@@ -104,10 +104,10 @@ def stub_images(project):
 
 def test_external_does_not_require_metadata_and_excludes_old_history(project, client, session):
     session.backend = "external"
-    old_id = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "old-browser")
+    old_id = client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "old-browser")
     session.excluded_prompt_ids = {old_id}
     assert collect(project, client, session).saved == 0
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "new-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "new-browser")
     assert collect(project, client, session).saved == 1
     assert len(load_runs(project)) == 1
 
@@ -118,7 +118,7 @@ def test_external_own_pending_request_is_recovered_even_if_in_baseline(
     session.backend = "external"
     stub.drop_response = True
     with pytest.raises(SubmissionUnknown):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     session.excluded_prompt_ids = set(stub.history)
     assert collect(project, client, session).saved == 1
     assert load_runs(project)[0].state == "saved"
@@ -131,7 +131,7 @@ def test_external_recovers_own_pending_request_after_connection_identity_changes
 
     stub.drop_response = True
     with pytest.raises(SubmissionUnknown):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     original = load_runs(project)[0]
     session = session.model_copy(
         update={
@@ -151,8 +151,8 @@ def test_external_recovers_own_pending_request_after_connection_identity_changes
 
 
 def test_one_corrupt_result_does_not_block_healthy_results(project, client, session, stub):
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "broken-browser")
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "broken-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "healthy-browser")
     first = next(iter(stub.history.values()))
     first["outputs"]["9"]["images"][0]["filename"] = "broken.png"
     stub.invalid_images.add("broken.png")
@@ -171,8 +171,8 @@ def test_browser_queue_is_recorded_before_completion(project, client, session, s
     prompt = [
         0,
         prompt_id,
-        resource_json("presets/klein/workflow-api.json"),
-        {"extra_pnginfo": {"workflow": resource_json("presets/klein/workflow.json")}},
+        resource_json("presets/klein-4b/workflow-api.json"),
+        {"extra_pnginfo": {"workflow": resource_json("presets/klein-4b/workflow.json")}},
         ["9"],
     ]
     stub.queue["queue_running"] = [prompt]
@@ -202,7 +202,7 @@ def test_shutdown_request_prevents_new_submission(project, client, session, stub
 
     atomic_json(project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True})
     with pytest.raises(KomaquillError):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     assert stub.submissions == 0
     assert load_runs(project) == []
 
@@ -221,7 +221,7 @@ def test_lost_state_is_preserved_when_submission_response_arrives_late(
 
     monkeypatch.setattr(client, "submit", submit)
     with pytest.raises(KomaquillError):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     assert load_runs(project)[0].state == "lost"
 
 
@@ -229,8 +229,8 @@ def test_local_save_failure_does_not_block_other_runs_or_store_exception_text(
     project, client, session, monkeypatch
 ):
 
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "first-browser")
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "second-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "first-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "second-browser")
     from komaquill.infrastructure import atomic as storage
 
     original = storage.atomic_bytes
@@ -253,7 +253,7 @@ def test_malformed_history_entry_does_not_block_other_jobs(project, client, sess
     from uuid import uuid4
 
     stub.history[str(uuid4())] = record
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "healthy-browser")
     result = collect(project, client, session)
     assert result.saved == 1
     assert len(result.errors) == 1
@@ -269,7 +269,7 @@ def test_unreadable_local_run_does_not_block_other_jobs(project, client, session
     folder.mkdir(parents=True)
     damaged = b"invalid-json-private-sentinel"
     (folder / "run.json").write_bytes(damaged)
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "healthy-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "healthy-browser")
     result = collect(project, client, session)
     assert result.saved == 1
     assert result.errors == (broken_id,)
@@ -282,8 +282,8 @@ def test_malformed_known_job_reports_its_original_run_id(project, client, sessio
     from komaquill.application.generation import new_run
     from komaquill.infrastructure.storage import save_run
 
-    prompt_id = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
-    run = new_run(project, session, uuid4(), resource_json("presets/klein/workflow-api.json"))
+    prompt_id = client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "browser")
+    run = new_run(project, session, uuid4(), resource_json("presets/klein-4b/workflow-api.json"))
     run.prompt_id = prompt_id
     run.state = "queued"
     save_run(project, run)
@@ -295,7 +295,7 @@ def test_malformed_known_job_reports_its_original_run_id(project, client, sessio
 def test_retry_after_malformed_history_preserves_workflow_digest(project, client, session, stub):
     from komaquill.domain.workflow import digest
 
-    prompt_id = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
+    prompt_id = client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "browser")
     complete = stub.history[prompt_id]
     stub.history[prompt_id] = None
     assert len(collect(project, client, session).errors) == 1
@@ -308,7 +308,7 @@ def test_corrupt_record_is_not_overwritten_by_remote_history(project, client, se
     from uuid import uuid4
 
     identity = uuid4()
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, str(identity))
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, str(identity))
     folder = run_dir(project, identity)
     folder.mkdir(parents=True)
     original = b"original-damaged-record"

@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -13,16 +14,17 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 from uuid import UUID, uuid4
 
 import psutil
 from filelock import FileLock, ReadWriteLock
 from pydantic import AwareDatetime, BaseModel
 
-from komaquill.domain.configuration import RuntimeSettings, remaining_seconds
+from komaquill.domain.configuration import RecordedSettings, RuntimeSettings, remaining_seconds
 from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
+from komaquill.domain.usage import AccountUsage
 from komaquill.infrastructure.asset_store import cached_path
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
@@ -38,6 +40,13 @@ COLAB_CLI_VERSION = "0.7.5"
 PROCESS_EXIT_GRACE = 3.0
 SFTP_REQUESTS = 256
 SFTP_BUFFER_BYTES = 262144
+TRANSFER_PROBE_BYTES = 64 * 1024 * 1024
+TRANSFER_PROBE_TIMEOUT = 60.0
+TRANSFER_MARGIN = 1.25
+ENVIRONMENT_PREPARATION_SECONDS = 600.0
+T4_VALIDATION_SECONDS = 180.0
+COMPARISON_VALIDATION_SECONDS = 1200.0
+ProviderResult = TypeVar("ProviderResult", bound=BaseModel)
 
 
 class Receipt(BaseModel):
@@ -50,7 +59,7 @@ class Receipt(BaseModel):
     payload_sha256: str | None = None
     endpoint_id: str | None = None
     account_sha256: str | None = None
-    settings: RuntimeSettings | None = None
+    settings: RecordedSettings | None = None
     started_at: AwareDatetime | None = None
 
 
@@ -165,7 +174,7 @@ class Colab:
     def provider_command(self, action: str, *arguments: str) -> list[str]:
         """Use the pinned adapter with public identities, never tokens, in arguments."""
         self.command("version")
-        if action == "identity":
+        if action in {"identity", "usage"}:
             return [
                 sys.executable,
                 "-m",
@@ -184,9 +193,13 @@ class Colab:
             *arguments,
         ]
 
-    def provider_call(
-        self, action: str, *arguments: str, timeout: float | None = None
-    ) -> RuntimeObservation:
+    def _provider_call(
+        self,
+        result_type: type[ProviderResult],
+        action: str,
+        *arguments: str,
+        timeout: float | None = None,
+    ) -> ProviderResult:
         """Bound provider calls even if an upstream helper has no request timeout."""
         try:
             result = subprocess.run(
@@ -204,9 +217,19 @@ class Colab:
                     http_status=failure.http_status,
                     retryable=failure.retryable,
                 )
-            return RuntimeObservation.model_validate_json(result.stdout)
+            return result_type.model_validate_json(result.stdout)
         except (OSError, ValueError, subprocess.SubprocessError):
             raise KomaquillError(code="colab_failed", stage="colab_control") from None
+
+    def provider_call(
+        self, action: str, *arguments: str, timeout: float | None = None
+    ) -> RuntimeObservation:
+        """Read an ownership observation through the bounded provider adapter."""
+        return self._provider_call(RuntimeObservation, action, *arguments, timeout=timeout)
+
+    def usage(self) -> AccountUsage:
+        """Read account consumption without allocating or connecting to a runtime."""
+        return self._provider_call(AccountUsage, "usage", timeout=self.settings.request_timeout)
 
     def refresh(self, receipt: Receipt) -> bool:
         """Observe provider allocation; missing CLI cache is never shutdown evidence."""
@@ -221,12 +244,16 @@ class Colab:
             raise KomaquillError(code="identity_mismatch", stage="colab_control")
         return observation.state == "running"
 
-    def acquire(self, revision: str) -> tuple[Receipt, bool]:
+    def acquire(
+        self, revision: str, *, expected_account: str | None = None
+    ) -> tuple[Receipt, bool]:
         """Allocate only from explicit startup, or reconnect to the owned runtime."""
         self.project.state.mkdir(parents=True, exist_ok=True)
         with self.lock:
             receipt = self.receipt()
             if receipt is not None:
+                if expected_account is not None and receipt.account_sha256 != expected_account:
+                    raise KomaquillError(code="identity_mismatch", stage="colab_control")
                 if not self.refresh(receipt):
                     raise KomaquillError(
                         display_key="text.the_previous_runtime_has_ended_run_stop_then"
@@ -236,6 +263,8 @@ class Colab:
                         display_key="text.the_gpu_payload_differs_run_stop_then_start"
                     )
                 return receipt, False
+            if not isinstance(self.settings, RuntimeSettings):
+                raise KomaquillError(code="invalid_configuration", stage="colab_control")
             receipt = Receipt(
                 name=f"komaquill-{uuid4().hex}",
                 runtime_id=uuid4(),
@@ -249,6 +278,8 @@ class Colab:
             identity = self.provider_call("identity")
             if not identity.account_sha256:
                 raise KomaquillError(code="authentication_failed")
+            if expected_account is not None and identity.account_sha256 != expected_account:
+                raise KomaquillError(code="identity_mismatch", stage="colab_control")
             receipt.account_sha256 = identity.account_sha256
             receipt.started_at = datetime.now(UTC)
             atomic_json(self.receipt_file, receipt.model_dump(mode="json"))
@@ -261,6 +292,7 @@ class Colab:
                     receipt.name,
                     "--gpu",
                     self.settings.gpu,
+                    *(["--high-mem"] if self.settings.high_ram else []),
                     interactive=not authenticated,
                 )
             except AllocationRefused:
@@ -346,6 +378,8 @@ class Colab:
         check_cancel(self.project)
         self.call("upload", "-s", receipt.name, str(payload.path), "content/komaquill-runtime.tar")
         transferred = []
+        pending = []
+        remote_root = f"/content/komaquill-{receipt.runtime_id}"
         for asset in assets(self.settings):
             check_cancel(self.project)
             if not (asset.transfer or asset.local_only):
@@ -354,16 +388,76 @@ class Colab:
             if source is None:
                 raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
             staging = f"komaquill-{receipt.runtime_id}-{asset.sha256}.part"
-            self.transfer_model(receipt, source, f"/content/{staging}")
+            destination = (
+                f"{remote_root}/.artifacts/models/{asset.role}/{asset.sha256}/{asset.filename}"
+            )
+            staged = f"/content/{staging}"
+            reused = self.remote_digest(receipt, destination) == asset.sha256
+            staged_match = not reused and self.remote_digest(receipt, staged) == asset.sha256
             transferred.append(
                 {
                     "role": asset.role,
                     "sha256": asset.sha256,
                     "filename": asset.filename,
-                    "staging": staging,
+                    "staging": None if reused else staging,
                 }
             )
-        remote_root = f"/content/komaquill-{receipt.runtime_id}"
+            if reused or staged_match:
+                record_event(
+                    self.project,
+                    "model_transfer",
+                    "reused",
+                    runtime_id=receipt.runtime_id,
+                    asset=asset.name,
+                    sha256=asset.sha256,
+                    byte_count=0,
+                )
+            else:
+                pending.append((asset, source, staged))
+        if pending:
+            self.check_transfer_feasibility(
+                receipt, sum(source.stat().st_size for _, source, _ in pending)
+            )
+        for asset, source, destination in pending:
+            begin = time.monotonic()
+            size = source.stat().st_size
+            record_event(
+                self.project,
+                "model_transfer",
+                "started",
+                runtime_id=receipt.runtime_id,
+                asset=asset.name,
+                sha256=asset.sha256,
+                byte_count=size,
+            )
+            try:
+                self.transfer_model(receipt, source, destination)
+                if self.remote_digest(receipt, destination) != asset.sha256:
+                    raise KomaquillError(
+                        code="invalid_output", stage="preparation", retryable=False
+                    )
+            except BaseException as error:
+                record_event(
+                    self.project,
+                    "model_transfer",
+                    "failed",
+                    runtime_id=receipt.runtime_id,
+                    asset=asset.name,
+                    sha256=asset.sha256,
+                    elapsed_seconds=time.monotonic() - begin,
+                    failure=failure_info(error, "preparation"),
+                )
+                raise
+            record_event(
+                self.project,
+                "model_transfer",
+                "verified",
+                runtime_id=receipt.runtime_id,
+                asset=asset.name,
+                sha256=asset.sha256,
+                byte_count=size,
+                elapsed_seconds=time.monotonic() - begin,
+            )
         script = self.project.runtime / "deployment/prepare.py"
         script.parent.mkdir(parents=True, exist_ok=True)
         script.write_text(
@@ -379,14 +473,16 @@ class Colab:
             "    manifest = json.load(handle)\n"
             "from pathlib import Path\n"
             f"for asset in {transferred!r}:\n"
-            "    incoming = Path('/content') / asset['staging']\n"
+            "    destination = (Path(root) / '.artifacts/models' / asset['role']\n"
+            "                   / asset['sha256'] / asset['filename'])\n"
+            "    incoming = (Path('/content') / asset['staging']\n"
+            "                if asset['staging'] else destination)\n"
             "    with incoming.open('rb') as handle:\n"
             "        if hashlib.file_digest(handle, 'sha256').hexdigest() != asset['sha256']:\n"
             f"            raise RuntimeError({message('model.transfer_checksum_failed')!r})\n"
-            "    destination = (Path(root) / '.artifacts/models' / asset['role']\n"
-            "                   / asset['sha256'] / asset['filename'])\n"
             "    destination.parent.mkdir(parents=True, exist_ok=True)\n"
-            "    os.replace(incoming, destination)\n"
+            "    if incoming != destination:\n"
+            "        os.replace(incoming, destination)\n"
             "os.environ['KOMAQUILL_SOURCE_REVISION'] = manifest.get('source_revision') or ''\n"
             "os.environ['KOMAQUILL_CODE_SHA256'] = manifest['code_sha256']\n"
             f"os.environ['KOMAQUILL_RUNTIME_ID'] = {str(receipt.runtime_id)!r}\n"
@@ -594,7 +690,107 @@ class Colab:
             f"ProxyCommand={proxy}",
         ]
 
-    def transfer_model(self, receipt: Receipt, source: Path, destination: str) -> None:
+    def remote_digest(self, receipt: Receipt, path: str) -> str | None:
+        """Hash a specific remote asset through the existing SSH transport."""
+        remaining = remaining_seconds(
+            receipt.started_at, self.settings.submission_timeout, datetime.now(UTC)
+        )
+        if remaining is not None and remaining <= 0:
+            raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+        timeout = (
+            self.settings.control_timeout
+            if remaining is None
+            else min(self.settings.control_timeout, remaining)
+        )
+        ssh = shutil.which("ssh")
+        if ssh is None:
+            raise KomaquillError(display_key="text.install_the_openssh_client")
+        script = (
+            "import hashlib,pathlib; p=pathlib.Path(" + repr(path) + "); "
+            "print(hashlib.file_digest(p.open('rb'),'sha256').hexdigest() if p.is_file() else '')"
+        )
+        try:
+            result = subprocess.run(
+                [
+                    ssh,
+                    "-T",
+                    *self.ssh_options(receipt, self.ssh_identity()),
+                    "root@colab-runtime",
+                    "python3 -c " + shlex.quote(script),
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                check=False,
+                timeout=self.bounded_timeout(timeout),
+            )
+            value = result.stdout.decode("ascii").strip()
+            if result.returncode or (value and not re.fullmatch(r"[0-9a-f]{64}", value)):
+                raise KomaquillError(code="connection_failed", stage="preparation")
+            return value or None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise KomaquillError(code="connection_failed", stage="preparation") from None
+
+    def check_transfer_feasibility(self, receipt: Receipt, byte_count: int) -> None:
+        """Measure this transport before committing to large model transfers."""
+        probe = self.project.artifacts / "tmp" / f"transfer-probe-{receipt.runtime_id}.bin"
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with probe.open("wb") as handle:
+                chunk_size = 1024 * 1024
+                for _ in range(TRANSFER_PROBE_BYTES // chunk_size):
+                    handle.write(os.urandom(chunk_size))
+            started = time.monotonic()
+            self.transfer_model(
+                receipt, probe, f"/content/{probe.name}", timeout=TRANSFER_PROBE_TIMEOUT
+            )
+            elapsed = time.monotonic() - started
+            remaining = remaining_seconds(
+                receipt.started_at, self.settings.submission_timeout, datetime.now(UTC)
+            )
+            validation = (
+                T4_VALIDATION_SECONDS
+                if self.settings.gpu == "T4"
+                else COMPARISON_VALIDATION_SECONDS
+            )
+            estimate = (
+                elapsed * byte_count / TRANSFER_PROBE_BYTES * TRANSFER_MARGIN
+                + ENVIRONMENT_PREPARATION_SECONDS
+                + validation
+            )
+            atomic_json(
+                self.project.logs / str(receipt.runtime_id) / f"transfer-probe-{uuid4().hex}.json",
+                {
+                    "format_version": 1,
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "probe_bytes": TRANSFER_PROBE_BYTES,
+                    "probe_seconds": elapsed,
+                    "pending_bytes": byte_count,
+                    "estimated_seconds": estimate,
+                    "remaining_seconds": remaining,
+                    "feasible": remaining is not None and estimate < remaining,
+                },
+            )
+            record_event(
+                self.project,
+                "transfer_probe",
+                "measured",
+                runtime_id=receipt.runtime_id,
+                byte_count=TRANSFER_PROBE_BYTES,
+                elapsed_seconds=elapsed,
+            )
+            if remaining is None or estimate >= remaining:
+                raise KomaquillError(
+                    code="stopping",
+                    stage="preparation",
+                    display_key="model.transfer_deadline",
+                    retryable=False,
+                )
+        finally:
+            probe.unlink(missing_ok=True)
+
+    def transfer_model(
+        self, receipt: Receipt, source: Path, destination: str, *, timeout: float | None = None
+    ) -> None:
         """Stream a verified model without loading its bytes into CLI memory."""
         scp = shutil.which("scp")
         if scp is None:
@@ -616,8 +812,9 @@ class Colab:
         )
         if remaining is not None and remaining <= 0:
             raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+        transfer_limit = remaining if remaining is not None else self.settings.preparation_timeout
         timeout = self.bounded_timeout(
-            remaining if remaining is not None else self.settings.preparation_timeout
+            min(transfer_limit, timeout) if timeout is not None else transfer_limit
         )
         process = subprocess.Popen(
             arguments, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE

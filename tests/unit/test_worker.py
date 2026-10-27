@@ -95,10 +95,11 @@ def test_server_preparation_pins_source_and_registers_both_views(
         assert worker.prepare_server(project, {"comfy_revision": "revision"}, user) == comfy
         templates = comfy / "custom_nodes/komaquill/example_workflows"
         assert (
-            json.loads((templates / "klein_app.json").read_bytes())["extra"]["linearMode"] is True
+            json.loads((templates / "klein-4b_app.json").read_bytes())["extra"]["linearMode"]
+            is True
         )
         assert (
-            json.loads((templates / "klein_graph.json").read_bytes())["extra"]["linearMode"]
+            json.loads((templates / "klein-4b_graph.json").read_bytes())["extra"]["linearMode"]
             is False
         )
         assert json.loads((project.runtime / "model-paths.json").read_bytes())["klein-4b"][

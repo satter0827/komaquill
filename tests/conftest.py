@@ -40,7 +40,7 @@ def offline_network(monkeypatch):
 def project(tmp_path):
     (tmp_path / "komaquill.toml").write_text(
         "poll_interval = 0.001\ngeneration_timeout = 1.0\nstory_max_in_flight = 1\n"
-        + "".join(f"[presets.{name}]\nbatch_size = 1\n" for name in ("klein", "klein-edit"))
+        + "".join(f"[presets.{name}]\nbatch_size = 1\n" for name in ("klein-4b", "klein-4b-edit"))
     )
     return Project(tmp_path)
 

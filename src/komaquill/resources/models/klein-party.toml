@@ -1,4 +1,5 @@
 name = "klein-party"
+model_family = "klein-4b"
 role = "loras"
 url = "https://civitai.com/api/download/models/3028757?fileId=2907576"
 filename = "party_time_v2.0_klein4b.safetensors"

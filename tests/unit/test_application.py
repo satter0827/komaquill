@@ -111,9 +111,7 @@ def test_generation_uses_only_replaceable_contracts():
         def identity(self):
             return {"app_version": "test", "source_revision": None, "code_sha256": None}
 
-        def prepare(
-            self, prompt, negative, seed, identity, profile_name=None, *, compiled_input=None
-        ):
+        def prepare(self, prompt, seed, identity, profile_name=None, *, compiled_input=None):
             assert compiled_input.prompt == prompt
             return {"prompt": prompt, "seed": seed}, {}
 
@@ -126,7 +124,7 @@ def test_generation_uses_only_replaceable_contracts():
     workspace.accepts_results = lambda session: True
     backend = MemoryBackend()
     session = Session(endpoint="http://127.0.0.1:8188", runtime_id=uuid4(), backend="external")
-    run = generate(workspace, backend, session, "a quiet lake", "", 1)
+    run = generate(workspace, backend, session, "a quiet lake", 1)
     assert run.state == "saved" and run.images == ["images/0001.png"]
     assert backend.submissions == 1 and repository.writes >= 3
     assert len(repository.rows) == 1

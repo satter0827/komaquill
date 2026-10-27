@@ -56,7 +56,7 @@ def test_duplicate_candidates_are_identified_without_discarding_any_image(projec
     from komaquill.application.generation import collect, submit_generation
 
     active = session.model_copy(update={"settings": project.settings()})
-    run = submit_generation(project, client, active, "a cat", None, 7, candidates=2)
+    run = submit_generation(project, client, active, "a cat", 7, candidates=2)
     collect(project, client, active)
     saved = project.repository.read(run.run_id)
     first, second = saved.images

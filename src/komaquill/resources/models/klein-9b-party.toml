@@ -1,0 +1,10 @@
+name = "klein-9b-party"
+model_family = "klein-9b"
+role = "loras"
+url = "https://civitai.com/api/download/models/3028788?fileId=2907611"
+filename = "party_time_v2.0_klein9b.safetensors"
+sha256 = "cc369cda4370cde8244e5934ac7323b9d39f0797d729c1931c8c0621692ce91c" # pragma: allowlist secret Public model SHA256.
+size_bytes = 318784864
+license = "Civitai model terms: commercial images, rental, model sale and derivatives permitted"
+license_url = "https://civitai.com/models/2458332?modelVersionId=3028788"
+transfer = true

@@ -2,7 +2,7 @@
 images = "auto"
 max_images = 8
 llm_profile = "lmstudio-4b"
-image_profile = "klein"
+image_profile = "klein-4b"
 request_timeout = 300.0
 max_output_tokens = 4096
 repair_attempts = 1

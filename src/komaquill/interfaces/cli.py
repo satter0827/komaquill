@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from komaquill.api import Client
 from komaquill.application.generation import Collection, verify_runtime
+from komaquill.domain.configuration import GpuType
 from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.models import Session
 from komaquill.infrastructure import supervisor
@@ -191,6 +192,14 @@ def start(
         ),
     ] = None,
     profile: Annotated[list[str] | None, typer.Option(help=message("profile.start_help"))] = None,
+    gpu: Annotated[
+        GpuType | None,
+        typer.Option(help=message("session.gpu_help")),
+    ] = None,
+    high_ram: Annotated[
+        bool | None,
+        typer.Option("--high-ram/--standard-ram", help=message("session.high_ram_help")),
+    ] = None,
     foreground: Annotated[bool, typer.Option(help=message("monitor.foreground_help"))] = False,
     open_browser: Annotated[
         bool, typer.Option("--open/--no-open", help=message("profile.open_help"))
@@ -218,10 +227,33 @@ def start(
             endpoint=endpoint,
             username=username,
             profiles=profile,
+            gpu=gpu,
+            high_ram=high_ram,
             open_browser=open_browser,
             progress=typer.echo,
             foreground=session_main if foreground else None,
             interactive_auth=True,
+        )
+
+
+@app.command("usage", help=message("usage.help"))
+def usage_command(
+    ctx: typer.Context,
+    json_output: Annotated[bool, typer.Option("--json", help=message("usage.json_help"))] = False,
+) -> None:
+    """Display fresh account consumption without creating a runtime."""
+    with operation(ctx) as project:
+        result = Client(project.root).sessions.usage()
+        typer.echo(
+            result.model_dump_json()
+            if json_output
+            else message(
+                "usage.observation",
+                balance=f"{result.remaining_compute_units:.2f}",
+                rate=f"{result.consumption_rate_hourly:.2f}",
+                assignments=result.assignments_count,
+                observed_at=result.observed_at.isoformat(),
+            )
         )
 
 
@@ -231,12 +263,8 @@ def generate_command(
     prompt: Annotated[
         str | None, typer.Option(help=message("text.description_of_the_image_to_generate"))
     ] = None,
-    negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
     prompt_file: Annotated[
         Path | None, typer.Option(help=message("inputs.positive_file_help"))
-    ] = None,
-    negative_file: Annotated[
-        Path | None, typer.Option(help=message("inputs.negative_file_help"))
     ] = None,
     input_file: Annotated[Path | None, typer.Option(help=message("inputs.json_file_help"))] = None,
     candidates: Annotated[
@@ -251,7 +279,7 @@ def generate_command(
     with operation(ctx) as project:
         if prompt is None and prompt_file is None and input_file is None:
             prompt = typer.prompt(message("text.describe_the_image_to_generate"))
-        value, sources = image_input(prompt, negative, prompt_file, negative_file, input_file)
+        value, sources = image_input(prompt, prompt_file, input_file)
         typer.echo(message("text.generating_the_image"))
         api = Client(project.root)
         inputs = material_inputs(
@@ -259,7 +287,6 @@ def generate_command(
         )
         run = api.images.generate(
             value.prompt,
-            negative=value.negative,
             subjects=value.subjects,
             seed=seed,
             profile=profile,
@@ -310,9 +337,7 @@ def doctor(ctx: typer.Context) -> None:
         required: set[str] = set()
         for name in settings.profiles:
             _, profile = select(settings, name)
-            graph, _ = prepare(
-                profile.sample_prompt, None, 1, name, settings=settings, profile_name=name
-            )
+            graph, _ = prepare(profile.sample_prompt, 1, name, settings=settings, profile_name=name)
             required.update(n["class_type"] for n in graph.values())
         missing = required - nodes.keys()
         if missing:

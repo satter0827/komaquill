@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from filelock import FileLock
@@ -14,6 +15,9 @@ from filelock import FileLock
 from komaquill.domain.errors import FailureInfo
 from komaquill.infrastructure.paths import WorkspacePaths
 from komaquill.messages import message
+
+if TYPE_CHECKING:
+    from komaquill.domain.usage import AccountUsage
 
 _OPERATION: ContextVar[UUID | None] = ContextVar("komaquill_operation", default=None)
 
@@ -47,6 +51,9 @@ def record_event(
     exit_code: int | None = None,
     sdk_version: str | None = None,
     function: str | None = None,
+    byte_count: int | None = None,
+    sha256: str | None = None,
+    usage: "AccountUsage | None" = None,
 ) -> bool:
     """Append an event; return false if diagnostics storage is unavailable."""
     folder = project.logs
@@ -85,6 +92,9 @@ def record_event(
         "exit_code": exit_code,
         "sdk_version": sdk_version,
         "function": function,
+        "byte_count": byte_count,
+        "sha256": sha256,
+        "usage": usage.model_dump(mode="json") if usage is not None else None,
     }
     try:
         folder.mkdir(parents=True, exist_ok=True)

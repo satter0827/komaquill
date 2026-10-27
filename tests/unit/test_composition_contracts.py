@@ -21,7 +21,7 @@ def image(kind="image", width=32):
     )
 
 
-@pytest.mark.parametrize("name", ["klein", "klein-edit"])
+@pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit"])
 def test_common_conditions_survive_compilation_and_roundtrip(name):
     profile = Settings().presets[name]
     value = compile_image_input(
@@ -38,7 +38,7 @@ def test_common_conditions_survive_compilation_and_roundtrip(name):
 def test_canvas_relative_image_dimensions_are_validated(missing):
     profile = (
         Settings()
-        .presets["klein"]
+        .presets["klein-4b"]
         .model_copy(
             update={
                 "image_inputs": {
@@ -59,14 +59,14 @@ def test_canvas_relative_image_dimensions_are_validated(missing):
 
 
 def test_render_configuration_rejects_shared_conditions_in_old_format():
-    scene = SceneRenderConfig(scene=1, profile="klein")
+    scene = SceneRenderConfig(scene=1, profile="klein-4b")
     with pytest.raises(ValueError):
         RenderConfig(format_version=1, common_prompt="rain", scenes=(scene,))
     assert RenderConfig(scenes=(scene,)).common_prompt == ""
 
 
 def test_old_compiled_input_cannot_claim_new_shared_conditions():
-    value = compile_image_input(Settings().presets["klein"], "a cat").model_dump()
+    value = compile_image_input(Settings().presets["klein-4b"], "a cat").model_dump()
     value.update(compiler_version=4, common_prompt="rain")
     with pytest.raises(ValueError):
         CompiledImageInput.model_validate(value)

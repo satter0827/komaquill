@@ -10,9 +10,10 @@ from uuid import UUID
 import typer
 
 from komaquill.api import Client, KomaquillError, StoryEvent, StoryInterrupted
+from komaquill.domain.images import PromptSource
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject
 from komaquill.infrastructure.configuration import Project
-from komaquill.interfaces.image_inputs import negative_input, render_file
+from komaquill.interfaces.image_inputs import render_file
 from komaquill.messages import message
 
 GROUP = typer.Typer(no_args_is_help=True, add_completion=False, help=message("stories.help"))
@@ -319,16 +320,12 @@ def bind(
         candidates: Annotated[
             int | None, typer.Option(min=1, help=message("images.candidates_help"))
         ] = None,
-        negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
-        negative_file: Annotated[
-            Path | None, typer.Option(help=message("inputs.negative_file_help"))
-        ] = None,
         json_output: Annotated[
             bool, typer.Option("--json", help=message("stories.json_help"))
         ] = False,
     ) -> None:
         with story_operation(ctx) as client:
-            negative, sources = negative_input(negative, negative_file)
+            sources: tuple[PromptSource, ...] = ()
             present(
                 client,
                 client.stories.generate(
@@ -339,7 +336,6 @@ def bind(
                     image_profile=image_profile,
                     seed=seed,
                     candidates=candidates,
-                    negative=negative,
                     input_sources=sources,
                     allow_real_llm=allow_real_llm,
                 ),
@@ -362,16 +358,12 @@ def bind(
         candidates: Annotated[
             int | None, typer.Option(min=1, help=message("images.candidates_help"))
         ] = None,
-        negative: Annotated[str | None, typer.Option(help=message("text.content_to_avoid"))] = None,
-        negative_file: Annotated[
-            Path | None, typer.Option(help=message("inputs.negative_file_help"))
-        ] = None,
         json_output: Annotated[
             bool, typer.Option("--json", help=message("stories.json_help"))
         ] = False,
     ) -> None:
         with story_operation(ctx) as client:
-            negative, sources = negative_input(negative, negative_file)
+            sources: tuple[PromptSource, ...] = ()
             config = None
             if render_file_path:
                 config, original = render_file(client, render_file_path)
@@ -383,7 +375,6 @@ def bind(
                     image_profile=image_profile,
                     seed=seed,
                     candidates=candidates,
-                    negative=negative,
                     input_sources=sources,
                     render_config=config,
                 ),

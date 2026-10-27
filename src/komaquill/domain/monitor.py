@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.configuration import RecordedSettings
 from komaquill.domain.errors import FailureInfo
 
 
@@ -17,7 +17,7 @@ class MonitorState(BaseModel):
     format_version: Literal[1] = 1
     operation_id: UUID
     backend: Literal["colab", "external"]
-    settings: RuntimeSettings
+    settings: RecordedSettings
     endpoint: str | None = None
     username: str | None = None
     open_browser: bool = True

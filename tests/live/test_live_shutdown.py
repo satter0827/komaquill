@@ -28,9 +28,7 @@ def test_live_owned_shutdown(mode):
     assert receipt is not None and control.refresh(receipt)
     with connected(project) as (client, session):
         assert receipt.runtime_id == session.runtime_id
-        graph, ui = prepare(
-            "a cabin in a mountain valley, watercolor", "text, watermark", 834, str(uuid4())
-        )
+        graph, ui = prepare("a cabin in a mountain valley, watercolor", 834, str(uuid4()))
         steps = 25 if mode == "normal" else 10000
         graph["62"]["inputs"]["steps"] = steps
         next(node for node in ui["nodes"] if node["id"] == 3)["widgets_values"][2] = steps

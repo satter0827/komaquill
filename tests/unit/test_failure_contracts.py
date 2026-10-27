@@ -54,7 +54,8 @@ def test_doctor_rejects_a_malformed_node_response_safely(project, client, sessio
 
     original = client.json
     nodes = {
-        row["class_type"]: {} for row in resource_json("presets/klein/workflow-api.json").values()
+        row["class_type"]: {}
+        for row in resource_json("presets/klein-4b/workflow-api.json").values()
     }
     monkeypatch.setattr(cli, "connected", connected)
     monkeypatch.setattr(

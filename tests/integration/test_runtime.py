@@ -27,12 +27,12 @@ def test_second_start_is_rejected_before_allocation(project, monkeypatch):
 
 def test_external_uses_only_standard_api_and_saves_new_browser_job(project, client, monkeypatch):
     original_watch = monitor.watch
-    old_id = client.submit(resource_json("presets/klein/workflow-api.json"), {}, "old-browser")
+    old_id = client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "old-browser")
     patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
 
     def watch(project, client, session, echo):
         assert old_id in session.excluded_prompt_ids
-        client.submit(resource_json("presets/klein/workflow-api.json"), {}, "new-browser")
+        client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "new-browser")
         atomic_json(
             project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True}
         )
@@ -50,7 +50,7 @@ def test_external_uses_only_standard_api_and_saves_new_browser_job(project, clie
 def test_force_shutdown_collects_completed_results_without_waiting(
     project, client, session, monkeypatch
 ):
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "browser")
 
     def no_wait(seconds):
         pytest.fail("強制終了で生成完了を待ってはいけない")
@@ -100,7 +100,7 @@ def owned_colab(project, session, client, monkeypatch):
 def test_stop_after_monitor_crash_collects_and_recovers_logs_before_stopping(
     project, client, session, monkeypatch
 ):
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "browser")
     atomic_json(project.session_file, session.model_dump(mode="json"))
     colab, receipt = owned_colab(project, session, client, monkeypatch)
     steps = []
@@ -174,11 +174,11 @@ def test_external_restart_excludes_offline_jobs_but_recovers_recorded_jobs(
     monkeypatch.setattr(client, "close", lambda: None)
     patch_session(monkeypatch, "watch", lambda *args: True)
     startup.start_external(project, session.endpoint, None, None, lambda message: None)
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "offline-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "offline-browser")
     startup.start_external(project, session.endpoint, None, None, lambda message: None)
     assert load_runs(project) == []
     current = load_session(project)
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "online-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "online-browser")
     assert collect(project, client, current).saved == 1
 
 
@@ -273,7 +273,7 @@ def test_shutdown_freezes_new_submissions_before_collection(project, client, ses
 
     def drain(*args):
         with pytest.raises(KomaquillError):
-            generate(project, client, session, "a cabin", "", 1)
+            generate(project, client, session, "a cabin", 1)
 
     patch_session(monkeypatch, "drain", drain)
     shutdown.finish_colab(project, colab, receipt, client, session, True, lambda message: None, [])
@@ -317,7 +317,7 @@ def test_external_stop_without_monitor_blocks_new_submissions(
 
     def drain(*args):
         with pytest.raises(KomaquillError):
-            generate(project, client, session, "a cabin", "", 1)
+            generate(project, client, session, "a cabin", 1)
 
     patch_session(monkeypatch, "drain", drain)
     shutdown.stop(project, True, lambda _: None)
@@ -372,7 +372,7 @@ def test_sidecar_failure_never_prevents_image_collection(
 ):
     from types import SimpleNamespace
 
-    client.submit(resource_json("presets/klein/workflow-api.json"), {}, "new-browser")
+    client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "new-browser")
     calls = []
 
     def fail():

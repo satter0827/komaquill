@@ -76,15 +76,15 @@ VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen Gen
 
 ## プリセットを選ぶ
 
-標準の生成セットは`klein`、参照画像を使う編集は`klein-edit`です。両セットは同じ5資源を使用します。生成条件とモデルの固定版は[プリセット](docs/current/presets.md)を参照してください。負プロンプトの非空指定は送信前に拒否します。
+標準の生成セットは`klein-4b`、参照画像を使う編集は`klein-4b-edit`です。両セットは同じ5資源を使用します。生成条件とモデルの固定版は[プリセット](docs/current/presets.md)を参照してください。負プロンプトの入力は廃止しました。空値も受け付けません。
 
 App Modeではプロンプト、候補数、編集用参照画像を操作します。LoRA強度などの詳細はNode Graphで調整できます。
 
 ```powershell
 komaquill start
-komaquill open --view app --profile klein
-komaquill open --view graph --profile klein-edit
-komaquill generate --profile klein --prompt "a sunny forest"
+komaquill open --view app --profile klein-4b
+komaquill open --view graph --profile klein-4b-edit
+komaquill generate --profile klein-4b --prompt "a sunny forest"
 ```
 
 公開テンプレートの不足モデルは、画面のPrepare Workflowまたは`komaquill prepare ./workflow.json`で準備できます。モデル名・容量・取得元を確認してから取得します。詳細は[ワークフローの準備](docs/guides/preparation.md)を参照してください。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/current/presets.md)を参照してください。

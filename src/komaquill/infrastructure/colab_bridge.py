@@ -7,12 +7,18 @@ import json
 import logging
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.configuration import (
+    RecordedSettings,
+    RetainedRuntimeSettings,
+    RuntimeSettings,
+)
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
+from komaquill.domain.usage import AccountUsage
 
 USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 
@@ -67,14 +73,30 @@ def session_state(receipt: dict[str, Any], assignment: Any) -> Any:
     )
 
 
-def execute(action: str, receipt: dict[str, Any], *arguments: str) -> RuntimeObservation:
+def execute(
+    action: str, receipt: dict[str, Any], *arguments: str
+) -> RuntimeObservation | AccountUsage:
     """Observe, terminate or connect to an existing endpoint only."""
     client = provider()
+    if action == "usage":
+        identity = account(client, float(receipt["settings"]["request_timeout"]))
+        info = client.get_consumption_user_info()
+        return AccountUsage(
+            remaining_compute_units=info.paid_compute_units_balance,
+            consumption_rate_hourly=info.consumption_rate_hourly,
+            assignments_count=info.assignments_count,
+            observed_at=datetime.now(UTC),
+            account_sha256=identity,
+        )
     if action == "identity":
         return RuntimeObservation(
             account_sha256=account(client, float(receipt["settings"]["request_timeout"]))
         )
-    settings = RuntimeSettings.model_validate(receipt["settings"])
+    settings: RecordedSettings
+    try:
+        settings = RuntimeSettings.model_validate(receipt["settings"])
+    except ValueError:
+        settings = RetainedRuntimeSettings.model_validate(receipt["settings"])
     timeout = settings.request_timeout
     observation, assignment = observe(client, receipt, timeout)
     if action == "observe":
@@ -121,13 +143,15 @@ def main() -> None:
     """Keep tokens and provider responses inside this bounded child process."""
     logging.disable(logging.CRITICAL)
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("action", choices=["identity", "observe", "terminate", "proxy", "download"])
+    parser.add_argument(
+        "action", choices=["identity", "usage", "observe", "terminate", "proxy", "download"]
+    )
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--request-timeout", type=float)
     parser.add_argument("arguments", nargs="*")
     args = parser.parse_intermixed_args()
     try:
-        if args.action == "identity":
+        if args.action in {"identity", "usage"}:
             receipt = {"settings": {"request_timeout": args.request_timeout}}
         else:
             receipt = json.loads(args.receipt.read_bytes())

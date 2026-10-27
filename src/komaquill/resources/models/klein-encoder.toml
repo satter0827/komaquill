@@ -1,4 +1,5 @@
 name = "klein-encoder"
+model_family = "klein-4b"
 role = "text_encoders"
 url = "https://huggingface.co/ponpoke/flux2-klein-4b-uncensored-text-encoder/resolve/633217e588e4c0bc76619052e05d3ce0e057cd83/flux2-klein-4b-uncensored-text-encoder/model.safetensors"
 filename = "model.safetensors"

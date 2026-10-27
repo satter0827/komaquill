@@ -16,16 +16,17 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from komaquill.api import Client, RenderConfig, SceneRenderConfig
 from komaquill.domain.images import PromptSource
 from komaquill.domain.materials import InputArtifact
+from komaquill.domain.prompts import joined
 from komaquill.domain.workflow import digest
 from komaquill.infrastructure.asset_store import model_path, register, verified_cache
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.storage import FileStoryRepository
+from komaquill.infrastructure.workflows import assets
 from komaquill.interfaces.stories import present
 from tests.support.suite_config import SuiteConfig, defaults
 
-EDIT_PROFILE = "klein-edit"
-NEGATIVE = ""
+EDIT_PROFILE = "klein-4b-edit"
 
 
 class Improvement(BaseModel):
@@ -35,7 +36,6 @@ class Improvement(BaseModel):
     parent_key: str
     method: Literal["regenerate", "edit"]
     prompt: str = Field(min_length=1)
-    negative: Literal[""] = ""
     subjects: tuple[str, ...] = ()
     seed: int
     inputs: dict[str, InputArtifact] = Field(default_factory=dict)
@@ -49,7 +49,6 @@ class ImprovementRequest(BaseModel):
     parent_key: str
     method: Literal["regenerate", "edit"]
     prompt: str = Field(min_length=1)
-    negative: Literal[""] = ""
     subjects: tuple[str, ...] = ()
 
 
@@ -178,7 +177,7 @@ def prepare(
         atomic_bytes(
             destination.root / "komaquill.toml",
             (
-                f'profiles = ["klein", "klein-edit"]\nlocal_port = {port}\n'
+                f'profiles = ["klein-4b", "klein-4b-edit"]\nlocal_port = {port}\n'
                 f"submission_timeout = {config.send_seconds}\n"
                 f"session_timeout = {config.total_seconds}\n"
                 + "".join(
@@ -187,12 +186,13 @@ def prepare(
                         f"{key} = {json.dumps(value)}\n"
                         for key, value in model.model_dump(mode="json", exclude_none=True).items()
                     )
-                    for name, model in model_source.settings().assets.items()
+                    for model in assets(model_source.settings())
+                    for name in (model.name,)
                 )
             ).encode(),
         )
     destination.settings()
-    for model in model_source.settings().assets.values():
+    for model in assets(destination.settings()):
         source_model = model_path(model_source.models, model)
         if not verified_cache(model_source.models, model):
             from komaquill.infrastructure.artifacts import file_digest
@@ -208,7 +208,7 @@ def prepare(
             raise ValueError("A shared model failed verification.")
     render_config = RenderConfig(
         scenes=tuple(
-            SceneRenderConfig(scene=scene.position, profile="klein") for scene in plan.scenes
+            SceneRenderConfig(scene=scene.position, profile="klein-4b") for scene in plan.scenes
         )
     )
     case_id = uuid4()
@@ -392,7 +392,7 @@ def improve(report: Path, request_path: Path) -> None:
         )
         from komaquill.domain.images import validate_inputs
 
-        profile = EDIT_PROFILE if data["method"] == "edit" else "klein"
+        profile = EDIT_PROFILE if data["method"] == "edit" else "klein-4b"
         validate_inputs(project(report).settings().presets[profile], inputs)
         job_id = uuid4()
         content = json.dumps(
@@ -411,7 +411,6 @@ def improve(report: Path, request_path: Path) -> None:
             parent_key=data["parent_key"],
             method=data["method"],
             prompt=data["prompt"],
-            negative=data.get("negative", NEGATIVE),
             subjects=tuple(data.get("subjects", ())),
             seed=recipe["seed"] + data["scene"] - 1,
             inputs=inputs,
@@ -428,8 +427,7 @@ def improve(report: Path, request_path: Path) -> None:
         atomic_bytes(report / job.source.name, content.encode())
         try:
             run = api.images.generate(
-                f"{recipe['render_config']['common_prompt']}, {job.prompt}",
-                negative=job.negative,
+                joined(recipe["render_config"]["common_prompt"], job.prompt),
                 subjects=job.subjects,
                 seed=job.seed,
                 profile=profile,

@@ -16,7 +16,7 @@ from komaquill.infrastructure.workflows import prepare
 from tests.support.stories import planned, request
 
 
-@pytest.mark.parametrize("name", ["klein", "klein-edit"])
+@pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit"])
 def test_preset_fingerprint_survives_default_expansion_and_json_replay(name):
     settings = Settings(profiles=[name])
     profile = GenerationPreset.model_validate(
@@ -25,9 +25,9 @@ def test_preset_fingerprint_survives_default_expansion_and_json_replay(name):
     settings = settings.model_copy(update={"presets": {name: profile}})
     compiled = compile_image_input(profile, "rainy street", subjects=("human", "cat"))
     retained = RuntimeSettings.model_validate_json(settings.model_dump_json())
-    graph, ui = prepare("ignored", None, 42, "test", settings=retained, compiled_input=compiled)
+    graph, ui = prepare("ignored", 42, "test", settings=retained, compiled_input=compiled)
     expected = prepare(
-        "rainy street", None, 42, "test", settings=settings, subject_prompts=("human", "cat")
+        "rainy street", 42, "test", settings=settings, subject_prompts=("human", "cat")
     )
     assert (graph, ui) == expected
 
@@ -38,7 +38,7 @@ def test_empty_visible_subject_is_rejected_before_any_request(
 ):
     active = session.model_copy(update={"settings": project.settings()})
     with pytest.raises(KomaquillError) as error:
-        generate(project, client, active, "a street", None, 42, subjects=subjects)
+        generate(project, client, active, "a street", 42, subjects=subjects)
     assert error.value.code == "invalid_request"
     assert stub.submissions == 0
     assert project.repository.load() == []
@@ -50,7 +50,7 @@ def test_invalid_story_seed_is_not_silently_wrapped_or_persisted(project, sessio
     active = session.model_copy(update={"settings": project.settings()})
     before = repository.renders(plan.request.story_id)
     with pytest.raises(KomaquillError) as error:
-        create_render(repository, project, active, plan.request.story_id, "klein", seed)
+        create_render(repository, project, active, plan.request.story_id, "klein-4b", seed)
     assert error.value.code == "invalid_request"
     assert repository.renders(plan.request.story_id) == before
 
@@ -76,50 +76,52 @@ def test_single_image_seed_is_rejected_before_backend_or_history(
 ):
     active = session.model_copy(update={"settings": project.settings()})
     with pytest.raises(KomaquillError) as error:
-        generate(project, client, active, "a cat", None, seed)
+        generate(project, client, active, "a cat", seed)
     assert error.value.code == "invalid_request"
     assert stub.submissions == 0 and project.repository.load() == []
 
 
-def test_retained_old_compilation_is_readable_but_not_executed_with_current_settings():
-    from komaquill.domain.images import CompiledImageInput
+def old_compilation(profile):
+    from komaquill.domain.prompts import joined
+
+    value = compile_image_input(profile, "a cat").model_dump()
+    value.update(
+        format_version=3,
+        compiler_version=6,
+        preset_sha256="a" * 64,
+        requested_negative=None,
+        negative_prefix="",
+        negative="",
+        negative_body="",
+        subject_positives=tuple(
+            joined(profile.positive_prefix, text) for text in value["subject_prompts"]
+        ),
+        layout="global",
+    )
+    return value
+
+
+def test_retained_old_compilation_is_readable_but_cannot_be_executed():
+    from komaquill.domain.retained_images import RetainedImageInput
 
     settings = Settings()
-    old = compile_image_input(settings.presets["klein"], "a cat").model_copy(
-        update={"compiler_version": 1, "preset_sha256": "a" * 64}
-    )
-    original = old.model_dump_json()
-    retained = CompiledImageInput.model_validate_json(original)
-    assert retained.model_dump_json() == original
+    retained = RetainedImageInput.model_validate(old_compilation(settings.presets["klein-4b"]))
+    original = retained.model_dump_json()
+    assert RetainedImageInput.model_validate_json(original).model_dump_json() == original
     with pytest.raises(KomaquillError):
-        prepare("unused", None, 42, "test", settings=settings, compiled_input=retained)
+        prepare("unused", 42, "test", settings=settings, compiled_input=retained)
 
 
-@pytest.mark.parametrize("change", ["quality", "layout"])
-def test_self_consistent_but_wrong_frozen_conditions_are_rejected(change):
-    from komaquill.domain.images import CompiledImageInput, joined
+def test_self_consistent_but_wrong_quality_conditions_are_rejected():
+    from komaquill.domain.images import CompiledImageInput
 
-    settings = Settings(profiles=["klein"])
-    compiled = compile_image_input(settings.presets["klein"], "street", subjects=("cat",))
+    settings = Settings(profiles=["klein-4b"])
+    compiled = compile_image_input(settings.presets["klein-4b"], "street", subjects=("cat",))
     data = compiled.model_dump()
-    if change == "quality":
-        data.update(
-            quality_enabled=False,
-            positive_prefix="",
-            negative_prefix="",
-            positive=data["body"],
-            negative="",
-            subject_positives=("cat",),
-        )
-    else:
-        data.update(
-            layout="single",
-            body=compiled.prompt,
-            positive=joined(compiled.positive_prefix, compiled.prompt),
-        )
+    data.update(quality_enabled=False, positive_prefix="", positive=data["body"])
     changed = CompiledImageInput.model_validate(data)
     with pytest.raises(KomaquillError) as error:
-        prepare("unused", None, 42, "test", settings=settings, compiled_input=changed)
+        prepare("unused", 42, "test", settings=settings, compiled_input=changed)
     assert error.value.code == "invalid_configuration"
 
 
@@ -148,34 +150,30 @@ def test_scene_limit_cannot_exceed_supported_planning_contract(project):
 def test_maximum_valid_seed_wraps_only_subsequent_scene_seeds(project, session):
     repository, plan = planned(project)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "klein", 2**64 - 1)
+    render = create_render(
+        repository, project, active, plan.request.story_id, "klein-4b", 2**64 - 1
+    )
     assert [scene.seed for scene in render.scenes] == [2**64 - 1, 0, 1, 2]
 
 
-def test_legacy_blank_subject_metadata_is_read_without_applying_new_quality_rules():
-    from komaquill.domain.images import CompiledImageInput
+def test_legacy_blank_subject_metadata_remains_readable():
+    from komaquill.domain.retained_images import RetainedImageInput
 
-    profile = Settings(profiles=["klein"]).presets["klein"]
-    value = compile_image_input(profile, "a street").model_dump()
+    profile = Settings(profiles=["klein-4b"]).presets["klein-4b"]
+    value = old_compilation(profile)
     value.update(
-        compiler_version=1,
-        preset_sha256="a" * 64,
-        subject_prompts=(" ",),
-        subject_positives=(profile.positive_prefix,),
+        compiler_version=1, subject_prompts=(" ",), subject_positives=(profile.positive_prefix,)
     )
-    retained = CompiledImageInput.model_validate(value)
+    retained = RetainedImageInput.model_validate(value)
     assert retained.compiler_version == 1 and retained.subject_prompts == (" ",)
-    assert not retained.matches(profile)
 
 
-@pytest.mark.parametrize(
-    "prompt,negative,subjects", [(42, None, ()), ("a cat", True, ()), ("a cat", None, (42,))]
-)
+@pytest.mark.parametrize("prompt,subjects", [(42, ()), ("a cat", (42,))])
 def test_invalid_python_input_types_are_safe_and_do_not_submit(
-    project, session, client, stub, prompt, negative, subjects
+    project, session, client, stub, prompt, subjects
 ):
     active = session.model_copy(update={"settings": project.settings()})
     with pytest.raises(KomaquillError) as error:
-        generate(project, client, active, prompt, negative, 42, subjects=subjects)
+        generate(project, client, active, prompt, 42, subjects=subjects)
     assert error.value.code == "invalid_request"
     assert stub.submissions == 0 and project.repository.load() == []

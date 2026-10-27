@@ -63,12 +63,12 @@ def test_nested_environment_keeps_profile_defaults_and_other_profiles(project, m
 
 
 def test_runtime_profile_leaf_override_preserves_model_and_workflow(project, monkeypatch):
-    (project.root / "komaquill.toml").write_text("[presets.klein]\nsteps=31\n", encoding="utf-8")
+    (project.root / "komaquill.toml").write_text("[presets.klein-4b]\nsteps=31\n", encoding="utf-8")
     defaults = project.settings()
-    monkeypatch.setenv("KOMAQUILL_PRESETS__KLEIN__CFG", "5.5")
+    monkeypatch.setenv("KOMAQUILL_PRESETS__KLEIN-4B__WIDTH", "512")
     configured = project.settings()
-    assert configured.presets["klein"].steps == 31
-    assert configured.presets["klein"].cfg == 5.5
-    assert configured.presets["klein"].api == defaults.presets["klein"].api
+    assert configured.presets["klein-4b"].steps == 31
+    assert configured.presets["klein-4b"].width == 512
+    assert configured.presets["klein-4b"].api == defaults.presets["klein-4b"].api
     assert configured.assets == defaults.assets
-    assert configured.presets["klein-edit"] == defaults.presets["klein-edit"]
+    assert configured.presets["klein-4b-edit"] == defaults.presets["klein-4b-edit"]

@@ -36,7 +36,7 @@ def test_expired_session_refuses_submission_before_creating_a_request(
     stub,
 ):
     with pytest.raises(KomaquillError):
-        submit_generation(project, client, expired(project, session), "a scene", None, 1)
+        submit_generation(project, client, expired(project, session), "a scene", 1)
     assert stub.submissions == 0 and not project.repository.load()
 
 

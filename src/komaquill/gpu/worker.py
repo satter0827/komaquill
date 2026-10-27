@@ -62,10 +62,12 @@ def prepare_server(
         "NODE_CLASS_MAPPINGS = {}\n"
         "WEB_DIRECTORY = str(files('komaquill').joinpath('interfaces/comfyui/web'))\n"
         "register(PromptServer.instance, Path(os.environ['KOMAQUILL_ARTIFACTS']), "
-        "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']))\n"
+        "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']), "
+        "float(os.environ['KOMAQUILL_PREPARATION_TIMEOUT']))\n"
     )
     os.environ["KOMAQUILL_ARTIFACTS"] = str(project.artifacts)
     os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
+    os.environ["KOMAQUILL_PREPARATION_TIMEOUT"] = str(project.settings().preparation_timeout)
     settings = project.settings()
     for name in settings.profiles:
         profile = settings.presets[name]

@@ -19,7 +19,12 @@ def main(root: Path, identity: UUID) -> None:
     """Keep transient provider credentials in memory for this job only."""
     manifest = json.loads((root / "manifest.json").read_bytes())
     settings = RuntimeSettings.model_validate(manifest["settings"])
-    extension = Extension(root / ".artifacts", root / ".artifacts/models", settings.request_timeout)
+    extension = Extension(
+        root / ".artifacts",
+        root / ".artifacts/models",
+        settings.request_timeout,
+        settings.preparation_timeout,
+    )
     started = os.environ.get("KOMAQUILL_SESSION_STARTED_AT")
     if started and settings.submission_timeout is not None:
         extension.submit_until = (

@@ -30,8 +30,11 @@ from komaquill.messages import catalog
 class Extension:
     """Keep explicit preparation jobs on the existing server and runtime."""
 
-    def __init__(self, root: Path, models: Path, timeout: float) -> None:
+    def __init__(
+        self, root: Path, models: Path, timeout: float, preparation_timeout: float
+    ) -> None:
         self.root, self.models, self.timeout = root, models, timeout
+        self.preparation_timeout = preparation_timeout
         self.folder = root / "state/preparation"
         self.tasks: dict[UUID, asyncio.Task[None]] = {}
         self.accepting = True
@@ -79,38 +82,56 @@ class Extension:
             job = self.read(identity)
             if job.phase not in {"confirmed", "preparing"}:
                 return
-            self.update(identity, phase="preparing")
-            for model in job.assets:
-                self.update(identity, current_asset=model.reference)
-
-                def report_retry(failure: FailureInfo, name: str = model.name) -> None:
-                    record_event(
-                        GpuPaths(self.root.parent),
-                        "model",
-                        "download_retrying",
-                        asset=name,
-                        operation_id=identity,
-                        failure=failure,
-                    )
-
-                await asyncio.to_thread(
-                    download_asset,
-                    self.models,
-                    model,
-                    self.timeout,
-                    lambda: self.read(identity).phase == "cancelled" or not self.accepting,
-                    credentials,
-                    report_retry,
-                )
-            current = self.read(identity)
-            all_ready = all(verified_cache(self.models, model) for model in current.assets)
-            self.update(
-                identity,
-                remote_ready=all_ready,
-                current_asset=None,
-                phase="ready" if all_ready else "failed",
+            remaining = (
+                self.preparation_timeout - (datetime.now(UTC) - job.created_at).total_seconds()
             )
+            if self.submit_until is not None:
+                remaining = min(remaining, self.submit_until - time.time())
+            if remaining <= 0:
+                raise KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
+                )
+            async with asyncio.timeout(remaining):
+                self.update(identity, phase="preparing")
+                for model in job.assets:
+                    self.update(identity, current_asset=model.reference)
+
+                    def report_retry(failure: FailureInfo, name: str = model.name) -> None:
+                        record_event(
+                            GpuPaths(self.root.parent),
+                            "model",
+                            "download_retrying",
+                            asset=name,
+                            operation_id=identity,
+                            failure=failure,
+                        )
+
+                    await asyncio.to_thread(
+                        download_asset,
+                        self.models,
+                        model,
+                        self.timeout,
+                        lambda: (
+                            self.read(identity).phase in PREPARATION_TERMINAL or not self.accepting
+                        ),
+                        credentials,
+                        report_retry,
+                    )
+                current = self.read(identity)
+                all_ready = await asyncio.to_thread(
+                    lambda: all(verified_cache(self.models, model) for model in current.assets)
+                )
+                self.update(
+                    identity,
+                    remote_ready=all_ready,
+                    current_asset=None,
+                    phase="ready" if all_ready else "failed",
+                )
         except Exception as error:
+            if isinstance(error, TimeoutError):
+                error = KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
+                )
             self.update(identity, phase="failed", failure=failure_info(error, "preparation"))
 
     async def capabilities(self, request: web.Request) -> web.Response:
@@ -228,9 +249,9 @@ class Extension:
         return routes
 
 
-def register(server: Any, root: Path, timeout: float) -> Extension:
+def register(server: Any, root: Path, timeout: float, preparation_timeout: float) -> Extension:
     """Install on PromptServer before it freezes its routes."""
-    extension = Extension(root, root / "models", timeout)
+    extension = Extension(root, root / "models", timeout, preparation_timeout)
     folders = importlib.import_module("folder_paths")
     for role in MODEL_ROLES:
         destination = root / "models" / role

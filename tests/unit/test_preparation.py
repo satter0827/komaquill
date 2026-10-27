@@ -127,7 +127,7 @@ def test_preparation_jobs_preserve_local_bytes_and_report_safe_errors(
         def receipt(self):
             return SimpleNamespace(runtime_id=session.runtime_id, started_at=None)
 
-        def remote_models(self, *args):
+        def remote_models(self, *args, **kwargs):
             download()
             return SimpleNamespace(poll=lambda: 0, returncode=0)
 
@@ -279,3 +279,24 @@ def test_same_filenames_bind_to_each_nodes_confirmed_source(coordinator, monkeyp
             "1": {"model.safetensors": first.reference},
             "2": {"model.safetensors": second.reference},
         }
+
+
+def test_expired_job_is_failed_after_a_detached_handoff(coordinator):
+    from datetime import UTC, datetime, timedelta
+
+    control, client = coordinator
+    client.job.workspace_id = control.workspace_id
+    client.job.phase = "preparing"
+    client.job.created_at = datetime.now(UTC) - timedelta(
+        seconds=control.project.settings().preparation_timeout + 1
+    )
+    from concurrent.futures import Future
+
+    done = Future()
+    done.set_result(None)
+    control.futures[client.job.request_id] = done
+    control.tick()
+    assert client.job.phase == "failed"
+    failure = next(data["failure"] for _, data in client.calls if data.get("action") == "failure")
+    assert failure["code"] == "preparation_timeout"
+    assert control.cancel_events[client.job.request_id].is_set()

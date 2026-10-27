@@ -122,6 +122,7 @@ def reviews_for(report):
                     "scene": scene.position,
                     "run_id": str(scene.run_id),
                     "image": image.key.split(f"runs/{scene.run_id}/", 1)[1],
+                    "scope": "scene",
                     "decision": "reject",
                     "reason": "The subject does not match the scene.",
                     "issues": ["species"],
@@ -473,3 +474,89 @@ def test_corrupt_image_is_ineligible_without_rewriting_saved_run(completion):
     assert not manifest["selection_complete"] and not manifest["comic_complete"]
     assert len(manifest["unavailable_images"]) == 1
     assert api.stories.show(case.story_id).complete
+
+
+@pytest.mark.parametrize("scope", [None, "local", "work"])
+def test_partial_or_unscoped_approval_does_not_approve_the_work(completion, scope):
+    report, _, _ = completion
+    live.baseline(report)
+    reviews_for(report)
+    path = report / "reviews.json"
+    payload = json.loads(path.read_bytes())
+    for row in payload["reviews"]:
+        row["scope"] = scope
+        row["decision"] = "accept"
+        for check in row["checks"]:
+            check["verdict"] = "match"
+    path.write_text(json.dumps(payload))
+    publication.publish(report)
+    manifest = json.loads((report / "manifest.json").read_bytes())
+    assert manifest["selection_complete"] and manifest["comic_complete"]
+    assert not manifest["quality_passed"]
+    assert manifest["selected_quality"]["unreviewed"] == 4
+    evaluations = Client(live.project(report).root).evaluations.list()
+    assert len(evaluations) == 4
+    assert all(row.decision == "accept" for row in evaluations)
+    assert all(json.loads(row.reason)["review"].get("scope") == scope for row in evaluations)
+
+
+@pytest.mark.parametrize("correction", ["scope", "checks", "evaluator"])
+def test_review_corrections_append_complete_evidence_without_rewriting_history(
+    completion, correction
+):
+    report, _, _ = completion
+    live.baseline(report)
+    reviews_for(report)
+    publication.publish(report)
+    api = Client(live.project(report).root)
+    original = api.evaluations.list()
+    path = report / "reviews.json"
+    payload = json.loads(path.read_bytes())
+    if correction == "evaluator":
+        payload["evaluator"]["model"] = "another-fake-vision"
+    elif correction == "scope":
+        payload["reviews"][0]["scope"] = "local"
+    else:
+        payload["reviews"][0]["checks"][0]["reason"] = "Corrected visible evidence"
+    path.write_text(json.dumps(payload))
+    publication.publish(report)
+    current = api.evaluations.list()
+    assert current[:4] == original
+    assert len(current) == (8 if correction == "evaluator" else 5)
+    for row in current[4:]:
+        previous = next(item for item in original if item.run_id == row.run_id)
+        assert row.supersedes == previous.evaluation_id
+        assert row.criterion_version == "2"
+        evidence = json.loads(row.reason)
+        assert evidence["source_plan_sha256"] == live.load(report).source_plan_sha256
+        assert len(evidence["image_sha256"]) == 64
+        assert evidence["review"]["reason"] == json.loads(previous.reason)["review"]["reason"]
+    publication.publish(report)
+    assert api.evaluations.list() == current
+
+
+def test_legacy_review_is_retained_and_superseded_by_complete_evidence(completion):
+    from komaquill.api import Evaluation, Evaluator
+
+    report, _, _ = completion
+    live.baseline(report)
+    reviews_for(report)
+    payload = json.loads((report / "reviews.json").read_bytes())
+    review = publication.Review.model_validate(payload["reviews"][0])
+    api = Client(live.project(report).root)
+    legacy = Evaluation(
+        run_id=review.run_id,
+        image=review.image,
+        case_id=str(live.load(report).case_id),
+        criterion=publication.CRITERION,
+        decision=review.decision,
+        reason=review.reason,
+        evaluator=Evaluator.model_validate(payload["evaluator"]),
+    )
+    api.evaluations.add([legacy])
+    publication.publish(report)
+    evaluations = api.evaluations.list()
+    assert evaluations[0] == legacy
+    replacement = next(row for row in evaluations if row.supersedes == legacy.evaluation_id)
+    assert replacement.criterion_version == "2"
+    assert json.loads(replacement.reason)["review"] == review.model_dump(mode="json")

@@ -56,7 +56,7 @@ def test_monitor_stops_without_waiting_for_review_or_a_healthy_connection(
 def test_gpu_extension_deadline_cannot_be_reopened_by_a_local_monitor(project, monkeypatch):
     monkeypatch.setenv("KOMAQUILL_SUBMIT_UNTIL", "100")
     monkeypatch.setattr(extension_api.time, "time", lambda: 101)
-    extension = extension_api.Extension(project.artifacts, project.models, 1)
+    extension = extension_api.Extension(project.artifacts, project.models, 1, 60)
     extension.accepting = True
     assert not extension.accepting
 

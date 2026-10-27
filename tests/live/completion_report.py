@@ -174,24 +174,39 @@ def publish_locked(report: Path) -> None:
             ),
             None,
         )
-        if previous and previous.decision == row.decision and previous.reason == row.reason:
+        evidence = json.dumps(
+            {
+                "review": row.model_dump(mode="json"),
+                "source_plan_sha256": case.source_plan_sha256,
+                "image_sha256": images[key][1].image_metadata[row.image].sha256,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        if (
+            previous
+            and previous.criterion_version == "2"
+            and previous.reason == evidence
+            and previous.evaluator == reviewed.evaluator
+        ):
             evaluation = previous
         else:
             evaluation = Evaluation(
                 run_id=row.run_id,
                 image=row.image,
                 criterion=CRITERION,
-                criterion_version="1",
+                criterion_version="2",
                 case_id=str(case.case_id),
                 decision=row.decision,
-                reason=row.reason,
+                reason=evidence,
                 supersedes=previous.evaluation_id if previous else None,
                 evaluator=reviewed.evaluator,
             )
             api.evaluations.add([evaluation])
             existing.append(evaluation)
         evaluation_ids[key] = str(evaluation.evaluation_id)
-        decisions[key] = evaluation.decision
+        if row.scope == "scene":
+            decisions[key] = evaluation.decision
     selected = {}
     requested = {}
     for row in reviewed.selections if reviewed.status == "complete" else []:

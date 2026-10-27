@@ -7,6 +7,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -15,9 +16,10 @@ from filelock import FileLock
 
 from komaquill.application.preparation import requirements
 from komaquill.domain.assets import PREPARATION_TERMINAL, Preparation
+from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, terminate
+from komaquill.infrastructure.colab import Colab
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
@@ -139,41 +141,24 @@ class Coordinator:
                 or receipt.runtime_id != session.runtime_id
             ):
                 raise KomaquillError(code="identity_mismatch", stage="preparation", retryable=False)
-            process = colab.remote_models(receipt, job.request_id)
-            try:
-                from datetime import UTC, datetime
-
-                from komaquill.domain.configuration import remaining_seconds
-
-                remaining = remaining_seconds(
-                    receipt.started_at,
-                    self.project.settings().submission_timeout,
-                    datetime.now(UTC),
+            remaining = remaining_seconds(
+                receipt.started_at, self.project.settings().submission_timeout, datetime.now(UTC)
+            )
+            job_remaining = (
+                self.project.settings().preparation_timeout
+                - (datetime.now(UTC) - job.created_at).total_seconds()
+            )
+            allowed = min(job_remaining, remaining if remaining is not None else job_remaining)
+            if allowed <= 0:
+                raise KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
                 )
-                job_remaining = max(
-                    0.0,
-                    self.project.settings().preparation_timeout
-                    - (datetime.now(UTC) - job.created_at).total_seconds(),
-                )
-                deadline = time.monotonic() + min(
-                    job_remaining, remaining if remaining is not None else job_remaining
-                )
-                while process.poll() is None:
-                    if (
-                        self.cancelled.is_set()
-                        or self.cancel_events.setdefault(job.request_id, threading.Event()).is_set()
-                    ):
-                        raise KomaquillError(code="stopping", stage="preparation", retryable=False)
-                    if time.monotonic() >= deadline:
-                        raise KomaquillError(
-                            code="preparation_timeout", stage="preparation", retryable=False
-                        )
-                    time.sleep(min(0.25, max(0, deadline - time.monotonic())))
-                if process.returncode:
-                    raise KomaquillError(code="connection_failed", stage="preparation")
-            finally:
-                if process.poll() is None:
-                    terminate(process, self.project.settings().control_timeout)
+            if (
+                self.cancelled.is_set()
+                or self.cancel_events.setdefault(job.request_id, threading.Event()).is_set()
+            ):
+                raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+            colab.remote_models(receipt, job.request_id, timeout=allowed)
         except Exception as error:
             record_event(
                 self.project,
@@ -199,6 +184,21 @@ class Coordinator:
             job = Preparation.model_validate(item)
             if job.workspace_id != self.workspace_id:
                 continue
+            if (
+                job.phase not in PREPARATION_TERMINAL
+                and (datetime.now(UTC) - job.created_at).total_seconds()
+                >= self.project.settings().preparation_timeout
+            ):
+                job = self.update(
+                    job,
+                    "failure",
+                    failure=failure_info(
+                        KomaquillError(
+                            code="preparation_timeout", stage="preparation", retryable=False
+                        ),
+                        "preparation",
+                    ).model_dump(mode="json"),
+                )
             local = self.project.state / "preparation" / f"{job.request_id}.json"
             if not local.is_file() or Preparation.model_validate_json(local.read_bytes()) != job:
                 atomic_json(local, job.model_dump(mode="json"))

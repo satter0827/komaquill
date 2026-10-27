@@ -29,7 +29,7 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
     monkeypatch.setattr(module, "download_asset", download)
 
     async def scenario():
-        extension = module.Extension(project.artifacts, project.models, 1)
+        extension = module.Extension(project.artifacts, project.models, 1, 60)
         app = web.Application()
         app.add_routes(extension.routes())
         async with TestClient(TestServer(app)) as client:
@@ -99,7 +99,7 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
 @pytest.mark.parametrize("case", ["cancel", "failure", "local_first", "unsupported", "stop"])
 def test_preparation_terminal_states_are_monotonic(project, monkeypatch, case):
     async def scenario():
-        extension = module.Extension(project.artifacts, project.models, 1)
+        extension = module.Extension(project.artifacts, project.models, 1, 60)
         extension.workspace_id = uuid4()
         job = Preparation(
             workspace_id=extension.workspace_id,
@@ -148,7 +148,7 @@ def test_register_uses_existing_promptserver_routes(project, monkeypatch):
         app=web.Application(),
         add_on_prompt_handler=lambda handler: None,
     )
-    module.register(server, project.artifacts, 1)
+    module.register(server, project.artifacts, 1, 60)
     assert len(server.routes) == 9
 
 
@@ -157,7 +157,7 @@ def test_register_uses_existing_promptserver_routes(project, monkeypatch):
 )
 def test_local_only_models_stream_to_a_confirmed_digest(project, case):
     async def scenario():
-        extension = module.Extension(project.artifacts, project.models, 1)
+        extension = module.Extension(project.artifacts, project.models, 1, 60)
         extension.control_token = "a" * 40
         local = asset().model_copy(update={"url": None, "local_only": True, "size_bytes": 5})
         job = Preparation(

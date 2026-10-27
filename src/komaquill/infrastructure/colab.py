@@ -420,7 +420,9 @@ class Colab:
         )
         return self.remote_models(receipt, None)
 
-    def remote_models(self, receipt: Receipt, job_id: UUID | None) -> subprocess.Popen[bytes]:
+    def remote_models(
+        self, receipt: Receipt, job_id: UUID | None, *, timeout: float | None = None
+    ) -> subprocess.Popen[bytes]:
         """Send credentials only to verified owned code through the SSH input stream."""
         ssh = shutil.which("ssh")
         if ssh is None:
@@ -475,7 +477,13 @@ class Colab:
             assert process.stdin is not None
             process.stdin.write(json.dumps(credentials()).encode() + b"\n")
             process.stdin.close()
-            process.wait(timeout=self.bounded_timeout(self.settings.control_timeout))
+            process.wait(
+                timeout=self.bounded_timeout(
+                    min(self.settings.control_timeout, timeout)
+                    if timeout is not None
+                    else self.settings.control_timeout
+                )
+            )
             if process.returncode:
                 raise KomaquillError(code="connection_failed", stage="preparation", retryable=False)
         except (OSError, ValueError, subprocess.TimeoutExpired):

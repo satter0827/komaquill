@@ -110,7 +110,8 @@ def test_local_policy_replacement_and_explicit_overrides(project, monkeypatch):
     shutil.copytree(Path(str(files("komaquill").joinpath("resources/presets/klein-4b"))), target)
     (target / "planning.toml").write_text('style="local style"\nguidance=["Use close-ups."]\n')
     (project.root / "komaquill.toml").write_text(
-        '[story]\nimage_profile="custom"\n[story.planning]\nstyle="workspace style"\n'
+        '[story]\nmodel="klein-4b"\n[story.planning]\n'
+        'style="workspace style"\nguidance=["Use close-ups."]\n'
     )
     assert settings(project).planning.style == "workspace style"
     monkeypatch.setenv("KOMAQUILL_STORY_PLANNING__STYLE", "environment style")

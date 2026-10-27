@@ -54,7 +54,7 @@ def test_story_evidence_and_shutdown():
         ]
         image_profile = os.environ.get("KOMAQUILL_ACCEPTANCE_IMAGE_PROFILE")
         if image_profile:
-            command += ["--image-profile", image_profile]
+            command += ["--model", image_profile]
         result["image_profile"] = image_profile
         process = subprocess.run(
             command,

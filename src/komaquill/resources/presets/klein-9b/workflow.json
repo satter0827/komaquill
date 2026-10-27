@@ -1,6 +1,6 @@
 {
-  "last_node_id": 91,
-  "last_link_id": 20,
+  "last_node_id": 90,
+  "last_link_id": 17,
   "nodes": [
     {
       "id": 4,
@@ -93,7 +93,7 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            2
+            4
           ]
         }
       ],
@@ -101,61 +101,7 @@
         "Node name for S&R": "LoraLoaderModelOnly"
       },
       "widgets_values": [
-        "cc369cda4370cde8244e5934ac7323b9d39f0797d729c1931c8c0621692ce91c/party_time_v2.0_klein9b.safetensors",
-        1.0
-      ]
-    },
-    {
-      "id": 91,
-      "type": "LoraLoaderModelOnly",
-      "pos": [
-        700,
-        0
-      ],
-      "size": [
-        310,
-        180
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "MODEL",
-          "link": 2
-        },
-        {
-          "name": "lora_name",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "lora_name"
-          }
-        },
-        {
-          "name": "strength_model",
-          "type": "FLOAT",
-          "link": null,
-          "widget": {
-            "name": "strength_model"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "MODEL",
-          "type": "MODEL",
-          "links": [
-            6
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LoraLoaderModelOnly"
-      },
-      "widgets_values": [
-        "68c4266c269bb57385c08cab9fe47b44120f8aa99b0bfd2ac13bd3ecb1df855c/FLUX_NSFW_Fix.safetensors",
+        "d37d58268f6e704f7d5d5daf3cfc4d69bc82189c71e17494b5e02b6892274927/AniEdit9B_v2.safetensors",
         1.0
       ]
     },
@@ -171,7 +117,7 @@
         180
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
@@ -204,7 +150,7 @@
           "name": "CLIP",
           "type": "CLIP",
           "links": [
-            4
+            3
           ]
         }
       ],
@@ -229,7 +175,7 @@
         180
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
@@ -246,7 +192,7 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
-            19
+            16
           ]
         }
       ],
@@ -269,7 +215,7 @@
         180
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -302,7 +248,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            3
+            2
           ]
         }
       ],
@@ -327,18 +273,18 @@
         180
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
           "name": "text",
           "type": "STRING",
-          "link": 3
+          "link": 2
         },
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 4
+          "link": 3
         }
       ],
       "outputs": [
@@ -346,7 +292,7 @@
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
-            7
+            5
           ]
         }
       ],
@@ -367,18 +313,18 @@
         180
       ],
       "flags": {},
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 6
+          "link": 4
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 7
+          "link": 5
         }
       ],
       "outputs": [
@@ -386,7 +332,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            14
+            11
           ]
         }
       ],
@@ -407,7 +353,7 @@
         180
       ],
       "flags": {},
-      "order": 8,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -424,7 +370,7 @@
           "name": "NOISE",
           "type": "NOISE",
           "links": [
-            13
+            10
           ]
         }
       ],
@@ -448,7 +394,7 @@
         180
       ],
       "flags": {},
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -465,7 +411,7 @@
           "name": "SAMPLER",
           "type": "SAMPLER",
           "links": [
-            15
+            12
           ]
         }
       ],
@@ -488,7 +434,7 @@
         180
       ],
       "flags": {},
-      "order": 10,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -505,8 +451,8 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            9,
-            11
+            6,
+            8
           ]
         }
       ],
@@ -530,7 +476,7 @@
         180
       ],
       "flags": {},
-      "order": 11,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -547,8 +493,8 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            10,
-            12
+            7,
+            9
           ]
         }
       ],
@@ -572,7 +518,7 @@
         180
       ],
       "flags": {},
-      "order": 12,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -586,12 +532,12 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 9
+          "link": 6
         },
         {
           "name": "height",
           "type": "INT",
-          "link": 10
+          "link": 7
         }
       ],
       "outputs": [
@@ -599,7 +545,7 @@
           "name": "SIGMAS",
           "type": "SIGMAS",
           "links": [
-            16
+            13
           ]
         }
       ],
@@ -622,18 +568,18 @@
         180
       ],
       "flags": {},
-      "order": 13,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
           "name": "width",
           "type": "INT",
-          "link": 11
+          "link": 8
         },
         {
           "name": "height",
           "type": "INT",
-          "link": 12
+          "link": 9
         },
         {
           "name": "batch_size",
@@ -649,7 +595,7 @@
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            17
+            14
           ]
         }
       ],
@@ -672,33 +618,33 @@
         180
       ],
       "flags": {},
-      "order": 14,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
           "name": "noise",
           "type": "NOISE",
-          "link": 13
+          "link": 10
         },
         {
           "name": "guider",
           "type": "GUIDER",
-          "link": 14
+          "link": 11
         },
         {
           "name": "sampler",
           "type": "SAMPLER",
-          "link": 15
+          "link": 12
         },
         {
           "name": "sigmas",
           "type": "SIGMAS",
-          "link": 16
+          "link": 13
         },
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 17
+          "link": 14
         }
       ],
       "outputs": [
@@ -706,7 +652,7 @@
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            18
+            15
           ]
         },
         {
@@ -732,18 +678,18 @@
         180
       ],
       "flags": {},
-      "order": 15,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
           "name": "samples",
           "type": "LATENT",
-          "link": 18
+          "link": 15
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 19
+          "link": 16
         }
       ],
       "outputs": [
@@ -751,7 +697,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            20
+            17
           ]
         }
       ],
@@ -772,13 +718,13 @@
         180
       ],
       "flags": {},
-      "order": 16,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 20
+          "link": 17
         },
         {
           "name": "filename_prefix",
@@ -809,14 +755,6 @@
     ],
     [
       2,
-      90,
-      0,
-      91,
-      0,
-      "MODEL"
-    ],
-    [
-      3,
       10,
       0,
       74,
@@ -824,7 +762,7 @@
       "STRING"
     ],
     [
-      4,
+      3,
       71,
       0,
       74,
@@ -832,15 +770,15 @@
       "CLIP"
     ],
     [
-      6,
-      91,
+      4,
+      90,
       0,
       63,
       0,
       "MODEL"
     ],
     [
-      7,
+      5,
       74,
       0,
       63,
@@ -848,7 +786,7 @@
       "CONDITIONING"
     ],
     [
-      9,
+      6,
       68,
       0,
       62,
@@ -856,7 +794,7 @@
       "INT"
     ],
     [
-      10,
+      7,
       69,
       0,
       62,
@@ -864,7 +802,7 @@
       "INT"
     ],
     [
-      11,
+      8,
       68,
       0,
       5,
@@ -872,7 +810,7 @@
       "INT"
     ],
     [
-      12,
+      9,
       69,
       0,
       5,
@@ -880,7 +818,7 @@
       "INT"
     ],
     [
-      13,
+      10,
       73,
       0,
       3,
@@ -888,7 +826,7 @@
       "NOISE"
     ],
     [
-      14,
+      11,
       63,
       0,
       3,
@@ -896,7 +834,7 @@
       "GUIDER"
     ],
     [
-      15,
+      12,
       61,
       0,
       3,
@@ -904,7 +842,7 @@
       "SAMPLER"
     ],
     [
-      16,
+      13,
       62,
       0,
       3,
@@ -912,7 +850,7 @@
       "SIGMAS"
     ],
     [
-      17,
+      14,
       5,
       0,
       3,
@@ -920,7 +858,7 @@
       "LATENT"
     ],
     [
-      18,
+      15,
       3,
       0,
       8,
@@ -928,7 +866,7 @@
       "LATENT"
     ],
     [
-      19,
+      16,
       72,
       0,
       8,
@@ -936,7 +874,7 @@
       "VAE"
     ],
     [
-      20,
+      17,
       8,
       0,
       9,
@@ -954,8 +892,24 @@
           "string_b"
         ],
         [
+          "68",
+          "value"
+        ],
+        [
+          "69",
+          "value"
+        ],
+        [
+          "73",
+          "noise_seed"
+        ],
+        [
           "5",
           "batch_size"
+        ],
+        [
+          "90",
+          "strength_model"
         ]
       ],
       "outputs": [

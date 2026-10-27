@@ -85,7 +85,7 @@ def test_payload_is_reproducible_and_excludes_local_data(project, monkeypatch):
         settings = tomllib.loads(archive.extractfile("komaquill.toml").read().decode())
         manifest = json.load(archive.extractfile("manifest.json"))
     assert manifest["settings"] == project.settings().model_dump(mode="json")
-    assert settings["profiles"] == list(project.settings().profiles)
+    assert settings["models"] == list(project.settings().models)
     assert manifest["code_sha256"] == first.code_sha256 and manifest["source_revision"] is None
     assert b"not for transfer" not in content and b"local work" not in content
 

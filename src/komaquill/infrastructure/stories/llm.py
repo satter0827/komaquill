@@ -144,7 +144,7 @@ def planner(project: Project, options: StorySettings, *, allow_real_llm: bool) -
         reasoning_effort=profile.reasoning_effort,
         temperature=profile.temperature,
         app_identity=project.identity(),
-        image_profile=options.image_profile,
+        image_profile=options.model,
         planning_policy=options.planning.model_dump(mode="json"),
     )
     if profile.provider == "fake":

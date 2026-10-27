@@ -72,3 +72,31 @@ class RetainedPromptSource(BaseModel):
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     content: str
     role: Literal["positive", "negative", "input"]
+
+
+class RetainedPositiveImageInput(BaseModel):
+    """Freeze the original directions and exact positive conditioning for generation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    format_version: Literal[4] = 4
+    compiler_version: Literal[7] = 7
+    preset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prompt: str
+    common_prompt: str = ""
+    subject_prompts: tuple[str, ...]
+    quality_enabled: bool
+    positive_prefix: str
+    body: str
+    positive: str
+    inputs: dict[str, InputArtifact] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def consistent(self) -> "RetainedPositiveImageInput":
+        if (
+            any(not subject.strip() for subject in self.subject_prompts)
+            or self.positive != joined(self.positive_prefix, self.body)
+            or (not self.quality_enabled and self.positive_prefix)
+            or self.body != joined(self.common_prompt, self.prompt, *self.subject_prompts)
+        ):
+            raise ValueError("The frozen image inputs are inconsistent.")
+        return self

@@ -15,14 +15,13 @@ from pydantic import ValidationError
 
 from komaquill.api import Client
 from komaquill.application.generation import Collection, verify_runtime
-from komaquill.domain.configuration import GpuType
+from komaquill.domain.configuration import GpuType, RuntimeSettings
 from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.models import Session
 from komaquill.infrastructure import supervisor
 from komaquill.infrastructure.comfyui import input_choices
 from komaquill.infrastructure.configuration import Project, find_project, initialize
 from komaquill.infrastructure.diagnostics import operation_scope
-from komaquill.infrastructure.downloads import fetch_model
 from komaquill.infrastructure.sessions import connection
 from komaquill.infrastructure.sessions.connection import connected
 from komaquill.infrastructure.storage import run_dir
@@ -42,10 +41,6 @@ app = typer.Typer(
     pretty_exceptions_enable=False,
     add_completion=False,
 )
-models_app = typer.Typer(
-    help=message("text.manage_the_image_model"), no_args_is_help=True, add_completion=False
-)
-app.add_typer(models_app, name="models")
 
 
 def show_version(value: bool) -> None:
@@ -159,22 +154,6 @@ def report(result: Collection) -> None:
         raise typer.Exit(1)
 
 
-@models_app.command("fetch", help=message("text.download_and_verify_the_selected_model"))
-def models_fetch(
-    ctx: typer.Context,
-    profile: Annotated[list[str] | None, typer.Option(help=message("profile.start_help"))] = None,
-) -> None:
-    """Fetch and verify the selected model."""
-    with operation(ctx) as project:
-        typer.echo(message("text.downloading_and_verifying_the_model"))
-        settings = project.settings()
-        if profile:
-            settings = settings.model_copy(update={"profiles": tuple(profile)})
-            settings = type(settings).model_validate(settings.model_dump())
-        for asset in assets(settings):
-            typer.echo(str(fetch_model(project, asset)))
-
-
 @app.command(help=message("text.start_comfyui_and_collect_results_automatically_press_ctrl"))
 def start(
     ctx: typer.Context,
@@ -191,7 +170,7 @@ def start(
             help=message("text.username_for_optional_basic_authentication_on_an_external")
         ),
     ] = None,
-    profile: Annotated[list[str] | None, typer.Option(help=message("profile.start_help"))] = None,
+    model: Annotated[list[str] | None, typer.Option(help=message("model.start_help"))] = None,
     gpu: Annotated[
         GpuType | None,
         typer.Option(help=message("session.gpu_help")),
@@ -226,7 +205,7 @@ def start(
             backend=backend,
             endpoint=endpoint,
             username=username,
-            profiles=profile,
+            models=model,
             gpu=gpu,
             high_ram=high_ram,
             open_browser=open_browser,
@@ -267,29 +246,55 @@ def generate_command(
         Path | None, typer.Option(help=message("inputs.positive_file_help"))
     ] = None,
     input_file: Annotated[Path | None, typer.Option(help=message("inputs.json_file_help"))] = None,
+    negative: Annotated[str | None, typer.Option(help=message("workflow.negative"))] = None,
+    negative_file: Annotated[
+        Path | None, typer.Option(help=message("inputs.negative_file_help"))
+    ] = None,
     candidates: Annotated[
         int | None, typer.Option(min=1, help=message("images.candidates_help"))
     ] = None,
     seed: Annotated[
         int | None, typer.Option(min=0, max=2**64 - 1, help=message("text.random_seed"))
     ] = None,
-    profile: Annotated[str | None, typer.Option(help=message("profile.select_help"))] = None,
+    model: Annotated[str | None, typer.Option(help=message("model.select_help"))] = None,
+    operation_kind: Annotated[
+        Literal["generate", "edit"] | None,
+        typer.Option("--operation", help=message("model.operation_help")),
+    ] = None,
 ) -> None:
     """Generate and persist one batch of image candidates."""
     with operation(ctx) as project:
         if prompt is None and prompt_file is None and input_file is None:
             prompt = typer.prompt(message("text.describe_the_image_to_generate"))
         value, sources = image_input(prompt, prompt_file, input_file)
+        if negative is not None and negative_file is not None:
+            raise KomaquillError(code="invalid_request", stage="preparation")
+        if negative_file is not None:
+            from komaquill.interfaces.image_inputs import read_source
+
+            source = read_source(negative_file, "negative")
+            sources = (*sources, source)
+            negative = source.content.removeprefix("\ufeff")
+        if negative is None:
+            negative = value.negative
+        selected_model = model or value.model
+        selected_operation = operation_kind or value.operation
         typer.echo(message("text.generating_the_image"))
         api = Client(project.root)
         inputs = material_inputs(
-            api, profile, value.inputs, input_file.parent if input_file else project.root
+            api,
+            selected_model,
+            value.inputs,
+            input_file.parent if input_file else project.root,
+            selected_operation,
         )
         run = api.images.generate(
             value.prompt,
             subjects=value.subjects,
             seed=seed,
-            profile=profile,
+            model=selected_model,
+            operation=selected_operation,
+            negative=negative,
             candidates=candidates,
             input_sources=sources,
             inputs=inputs,
@@ -317,13 +322,27 @@ def collect_command(
 def open_command(
     ctx: typer.Context,
     view: Annotated[Literal["app", "graph"], typer.Option(help=message("cli.view_help"))] = "app",
-    profile: Annotated[str | None, typer.Option(help=message("profile.select_help"))] = None,
+    model: Annotated[str | None, typer.Option(help=message("model.select_help"))] = None,
+    operation_kind: Annotated[
+        Literal["generate", "edit"] | None,
+        typer.Option("--operation", help=message("model.operation_help")),
+    ] = None,
 ) -> None:
     """Open the selected ComfyUI view."""
     with operation(ctx) as project, connected(project) as (client, session):
         client.json("/system_stats")
         verify_runtime(client, session)
-        open_view(project, session, view, profile, typer.echo)
+        if session.settings is None:
+            session = session.model_copy(update={"settings": project.settings()})
+        if not isinstance(session.settings, RuntimeSettings):
+            raise KomaquillError(code="invalid_configuration", stage="generation")
+        try:
+            selected = session.settings.profile_for(model, operation_kind or "generate")
+        except ValueError:
+            raise KomaquillError(
+                code="invalid_configuration", stage="generation", retryable=False
+            ) from None
+        open_view(project, session, view, selected, typer.echo)
 
 
 @app.command(help=message("text.check_the_connection_gpu_model_and_required_nodes"))

@@ -68,9 +68,12 @@ def test_tasks_keep_process_arguments_and_quality_dependencies_explicit():
     )
 
 
-def test_all_cli_help_is_explicit_and_independent_of_docstrings():
+def test_all_cli_help_is_explicit_and_independent_of_docstrings(monkeypatch):
     from typer.main import get_command
 
+    from komaquill.interfaces.cli import generate_command
+
+    monkeypatch.setattr(generate_command, "__doc__", "Internal docstring sentinel")
     command = get_command(app)
     assert "Generate" in command.help
     for child in command.commands.values():
@@ -80,7 +83,7 @@ def test_all_cli_help_is_explicit_and_independent_of_docstrings():
     result = CliRunner().invoke(app, ["generate", "--help"])
     assert result.exit_code == 0
     assert "Generate" in result.output
-    assert "Generate an image" not in result.output
+    assert "Internal docstring sentinel" not in result.output
 
 
 def test_malformed_workspace_configuration_has_a_safe_error(project):

@@ -1,9 +1,0 @@
-name = "klein-fixes"
-model_family = "klein-4b"
-role = "loras"
-url = "https://civitai.com/api/download/models/2802658?fileId=2688459"
-filename = "FLUX_NSFW_Fix.safetensors"
-sha256 = "fd8b9455ad344ed6c8017dbc9eefd34a4851a33e7bbb0c8d2d9a4c3632ba0320" # pragma: allowlist secret Public model SHA256.
-license = "Civitai model terms: commercial images and Civitai rental permitted; derivatives and relicensing prohibited"
-license_url = "https://civitai.com/models/2482439?modelVersionId=2802658"
-transfer = true

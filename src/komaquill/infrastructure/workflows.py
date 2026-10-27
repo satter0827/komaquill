@@ -14,6 +14,19 @@ from komaquill.messages import message
 
 _INPUT_LABELS = {
     "prompt": "workflow.prompt",
+    "negative": "workflow.negative",
+    "width": "workflow.width",
+    "height": "workflow.height",
+    "seed": "workflow.seed",
+    "steps": "workflow.steps",
+    "cfg": "workflow.cfg",
+    "sampler": "workflow.sampler",
+    "scheduler": "workflow.scheduler",
+    "aniedit_strength": "workflow.aniedit_strength",
+    "detail_strength": "workflow.detail_strength",
+    "reference_megapixels": "workflow.reference_size",
+    "megapixels": "workflow.image_size",
+    "change_strength": "workflow.change_strength",
     "batch_size": "workflow.candidates",
     "input_reference": "workflow.reference",
 }
@@ -83,6 +96,7 @@ def prepare(
     values = profile.model_dump()
     values.update(
         prompt=applied.body,
+        negative=applied.negative,
         positive_prefix=applied.positive_prefix,
         prompt_delimiter=", " if applied.positive_prefix and applied.body else "",
         seed=seed,
@@ -102,5 +116,11 @@ def prepare(
         if binding.source in _INPUT_LABELS:
             for slot in nodes[binding.ui_node].get("inputs", []):
                 if slot.get("name") == binding.api_input:
-                    slot["label"] = message(_INPUT_LABELS[binding.source])
+                    slot["label"] = message(
+                        "workflow.edit_instructions"
+                        if binding.source == "prompt"
+                        and profile.operation == "edit"
+                        and profile.model_family.startswith("klein-")
+                        else _INPUT_LABELS[binding.source]
+                    )
     return api, ui

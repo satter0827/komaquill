@@ -76,15 +76,15 @@ VS CodeではRun and DebugからStart Sessionを起動し、接続後にOpen Gen
 
 ## プリセットを選ぶ
 
-標準の生成セットは`klein-4b`、参照画像を使う編集は`klein-4b-edit`です。両セットは同じ5資源を使用します。生成条件とモデルの固定版は[プリセット](docs/current/presets.md)を参照してください。負プロンプトの入力は廃止しました。空値も受け付けません。
+標準の生成セットは`klein-4b`、参照画像を使う編集は`klein-4b-edit`です。同じモデルの生成と編集は必要資源を共有します。WAI Illustriousもモデルとして選択できます。生成条件とモデルの固定版は[プリセット](docs/current/presets.md)を参照してください。WAIは負プロンプトに対応します。未指定は既定値、明示指定は置換、空文字は無効化です。Kleinへの明示指定は拒否します。
 
 App Modeではプロンプト、候補数、編集用参照画像を操作します。LoRA強度などの詳細はNode Graphで調整できます。
 
 ```powershell
 komaquill start
-komaquill open --view app --profile klein-4b
-komaquill open --view graph --profile klein-4b-edit
-komaquill generate --profile klein-4b --prompt "a sunny forest"
+komaquill open --view app --model klein-4b
+komaquill open --view graph --model klein-4b --operation edit
+komaquill generate --model klein-4b --prompt "a sunny forest"
 ```
 
 公開テンプレートの不足モデルは、画面のPrepare Workflowまたは`komaquill prepare ./workflow.json`で準備できます。モデル名・容量・取得元を確認してから取得します。詳細は[ワークフローの準備](docs/guides/preparation.md)を参照してください。設定やワークフローの追加方法、資源の利用条件は[プリセットの管理](docs/current/presets.md)を参照してください。
@@ -115,7 +115,7 @@ komaquill start --backend external --endpoint http://127.0.0.1:8188
 | .artifacts/data/runs/ | 単画像の画像、生成条件、履歴 |
 | .artifacts/data/inputs/ | 入力画像・マスクの版と参照情報 |
 | .artifacts/data/workflows/ | 保存したワークフローと入力の参照情報 |
-| .artifacts/data/models/ | モデルのローカル正本 |
+| .artifacts/data/models/ | 廃止したモデル保存領域（整理前の原本） |
 | .artifacts/state/ | 所有記録、接続情報、SSH鍵 |
 | .artifacts/records/logs/ | 実行ログ、状態変化、終了結果 |
 | .artifacts/runtime/ | 再構築できる実行環境と転送物 |
@@ -126,7 +126,7 @@ komaquill start --backend external --endpoint http://127.0.0.1:8188
 
 .artifacts/全体をGitの対象外にしています。作品を残す場合はこのフォルダーを削除しないでください。Google認証と公式Colab CLIの管理ファイルは標準のユーザーフォルダー、外部接続のパスワードはOSの資格情報ストアへ保存します。
 
-Google Driveは使いません。モデルはローカルとColabが配布元から直接取得し、SHA256を検証します。Colab内のモデルはランタイム内で再利用し、毎回のアップロードは行いません。新しいランタイムでは取得が必要です。
+Google Driveは使いません。PCは配布情報とアクセス権を確認し、モデル本体はColabが直接取得してSHA256を検証します。Colab内のモデルはランタイム内で再利用し、毎回のアップロードは行いません。新しいランタイムでは取得が必要です。
 
 ## 詳細
 

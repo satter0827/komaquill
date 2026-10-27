@@ -59,7 +59,7 @@ def test_canvas_relative_image_dimensions_are_validated(missing):
 
 
 def test_render_configuration_rejects_shared_conditions_in_old_format():
-    scene = SceneRenderConfig(scene=1, profile="klein-4b")
+    scene = SceneRenderConfig(scene=1, model="klein-4b")
     with pytest.raises(ValueError):
         RenderConfig(format_version=1, common_prompt="rain", scenes=(scene,))
     assert RenderConfig(scenes=(scene,)).common_prompt == ""

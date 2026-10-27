@@ -15,7 +15,7 @@ from komaquill.interfaces.comfyui.preservation import Preservation
 
 
 def harness(project):
-    control = Extension(project.artifacts, project.artifacts, 1)
+    control = Extension(project.artifacts, project.artifacts, 1, 60)
     control.workspace_id = uuid4()
     control.control_token = "a" * 40
     control.ui_clients.add("ui")

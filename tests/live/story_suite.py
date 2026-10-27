@@ -129,7 +129,7 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
         from komaquill.infrastructure.stories.configuration import settings
 
         workspace = Project(report / "planning")
-        options = settings(workspace, llm_profile="lmstudio-4b", image_profile="klein-4b")
+        options = settings(workspace, llm_profile="lmstudio-4b", model="klein-4b")
         allowed = {options.llm_profiles[name].model for name in ("lmstudio-4b", "lmstudio-9b")}
         if any(row["key"] not in allowed for row in original):
             raise RuntimeError("An unrelated loaded model prevents controlled measurement.")
@@ -222,7 +222,7 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
                         source_name=case_id + ".txt",
                         images=4,
                         llm_profile="lmstudio-4b",
-                        image_profile="klein-4b",
+                        model="klein-4b",
                         allow_real_llm=True,
                     )
                     story_id = result.request.story_id

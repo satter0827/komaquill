@@ -11,6 +11,7 @@ from komaquill.application.generation import checked_seed, generation_settings, 
 from komaquill.application.stories.listing import list_stories
 from komaquill.application.stories.planning import plan_story
 from komaquill.application.stories.rendering import create_render, render_events, story_view
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage, failure_info
 from komaquill.domain.images import PromptSource
 from komaquill.domain.models import Session
@@ -115,16 +116,14 @@ class StoryService:
         source_name: str = "story.txt",
         images: int | Literal["auto"] | None = None,
         llm_profile: str | None = None,
-        image_profile: str | None = None,
+        model: str | None = None,
         allow_real_llm: bool = False,
     ) -> StoryPlan:
         with (
             operation_scope(),
             api_operation(OperationStage.STORY_PLANNING, invalid=ErrorCode.INVALID_CONFIGURATION),
         ):
-            options = settings(
-                self._project, images=images, llm_profile=llm_profile, image_profile=image_profile
-            )
+            options = settings(self._project, images=images, llm_profile=llm_profile, model=model)
             return self._plan(text, source_name, options, allow_real_llm)
 
     def list(self) -> StoryListing:
@@ -231,7 +230,7 @@ class StoryService:
         self,
         story_id: UUID,
         *,
-        image_profile: str | None = None,
+        model: str | None = None,
         seed: int | None = None,
         candidates: int | None = None,
         input_sources: tuple[PromptSource, ...] = (),
@@ -242,10 +241,10 @@ class StoryService:
             api_operation(OperationStage.STORY_RENDERING),
             connected(self._project) as (backend, session),
         ):
-            profile = image_profile or (
-                render_config.scenes[0].profile
-                if render_config
-                else settings(self._project).image_profile
+            profile = (
+                model
+                or (render_config.scenes[0].model if render_config else None)
+                or settings(self._project).model
             )
             render = create_render(
                 self._repository,
@@ -275,7 +274,7 @@ class StoryService:
         source_name: str = "story.txt",
         images: int | Literal["auto"] | None = None,
         llm_profile: str | None = None,
-        image_profile: str | None = None,
+        model: str | None = None,
         seed: int | None = None,
         candidates: int | None = None,
         input_sources: tuple[PromptSource, ...] = (),
@@ -285,9 +284,7 @@ class StoryService:
             operation_scope(),
             api_operation(OperationStage.STORY_PLANNING, invalid=ErrorCode.INVALID_CONFIGURATION),
         ):
-            options = settings(
-                self._project, images=images, llm_profile=llm_profile, image_profile=image_profile
-            )
+            options = settings(self._project, images=images, llm_profile=llm_profile, model=model)
             if options.llm_profiles[options.llm_profile].provider != "fake" and not allow_real_llm:
                 raise KomaquillError(
                     code="real_llm_not_allowed", stage="story_planning", retryable=False
@@ -303,18 +300,20 @@ class StoryService:
                 ):
                     raise KomaquillError(code="image_backend_unavailable", stage="story_rendering")
                 if (
-                    session.settings is None
-                    or options.image_profile not in session.settings.profiles
+                    not isinstance(session.settings, RuntimeSettings)
+                    or options.model not in session.settings.models
                 ):
                     raise KomaquillError(code="invalid_configuration", stage="story_rendering")
-                generation_settings(session.settings, options.image_profile, candidates)
+                generation_settings(
+                    session.settings, session.settings.profile_for(options.model), candidates
+                )
                 plan = self._plan(text, source_name, options, allow_real_llm)
                 render = create_render(
                     self._repository,
                     self._project,
                     session,
                     plan.request.story_id,
-                    options.image_profile,
+                    options.model,
                     seed,
                     candidates=candidates,
                     input_sources=input_sources,

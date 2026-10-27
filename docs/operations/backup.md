@@ -4,7 +4,7 @@
 
 `stop`後に`status`で所有GPUと監視の停止を確認します。.artifacts/data、.artifacts/records、komaquill.toml、利用者が追加したpresetsを、利用者が管理する保存先へコピーします。ファイル一覧とSHA256を記録し、コピー後に照合します。stateは復旧用の秘密情報を含むため、安全な保存先へ分けて保管します。
 
-runtime・cache・tmpは再作成できます。モデルは再取得に時間がかかるため、data/modelsも作品とともに保全します。cleanはバックアップの代わりにはなりません。
+runtime・cache・tmpは再作成できます。data/modelsの台帳は作品とともに保全します。画像生成用のモデル本体はGPUで再取得するため、PCへの保存をバックアップの前提にしません。cleanはバックアップの代わりにはなりません。
 
 ## 復元する
 

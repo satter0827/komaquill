@@ -32,7 +32,7 @@ def test_actor_count_survives_planning_compilation_and_public_request(project, c
     profile = project.settings().presets["klein-4b"]
     compiled = scene_input(plan, scene, profile)
     assert len(compiled.subject_prompts) == count
-    config = SceneRenderConfig(scene=1, profile="klein-4b", subjects=compiled.subject_prompts)
+    config = SceneRenderConfig(scene=1, model="klein-4b", subjects=compiled.subject_prompts)
     image = ImageInput(prompt=compiled.prompt, subjects=config.subjects)
     assert compile_image_input(profile, image.prompt, subjects=image.subjects) == compiled
 

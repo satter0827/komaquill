@@ -48,7 +48,7 @@ planが表示した実際のIDをSTORY_IDへ指定します。planはGPUへ接�
 ## 条件の変更と再開
 
 ```powershell
-komaquill stories render STORY_ID --image-profile klein-4b --seed 42
+komaquill stories render STORY_ID --model klein-4b --seed 42
 komaquill stories resume RENDER_ID
 komaquill stories resume RENDER_ID --retry-failed
 ```
@@ -79,7 +79,7 @@ komaquill stories show STORY_ID --follow --json
 ```toml
 [story]
 llm_profile = "local"
-image_profile = "klein-4b"
+model = "klein-4b"
 
 [llm_profiles.local]
 provider = "openai-compatible"
@@ -167,16 +167,16 @@ komaquill stories show STORY_ID --render-id RENDER_ID --refresh
 作業設定で使用するセットを有効にしてからstartします。起動済みの場合はstop後にstartしてください。既存の作業設定は自動で書き換えません。
 
 ```toml
-profiles = ["klein-4b", "klein-4b-edit"]
+models = ["klein-4b"]
 
 [story]
-image_profile = "klein-4b"
+model = "klein-4b"
 
 [presets.klein-4b]
 quality_enabled = true
 ```
 
-ストーリー操作の`--image-profile klein-4b`でも選べます。品質用のプロンプトは既定で有効です。無効にする場合はquality_enabledをfalseへ変更して接続を開始し直します。生成試行を再開するときは、作成時に保存した品質設定が維持されます。
+ストーリー操作の`--model klein-4b`でも選べます。品質用のプロンプトは既定で有効です。無効にする場合はquality_enabledをfalseへ変更して接続を開始し直します。生成試行を再開するときは、作成時に保存した品質設定が維持されます。
 
 対象別の説明は全体プロンプトへ結合します。人物の同一性や複雑な接触は実画像で確認します。
 
@@ -187,6 +187,6 @@ komaquill stories generate story.txt --images 4 --candidates 2 --allow-real-llm
 komaquill stories render STORY_ID --candidates 2
 ```
 
-imagesは場面数、candidatesは各場面の候補数です。負プロンプトの入力は廃止しました。本文と保存できた候補を順次表示し、作品内のstory.mdでも全候補を確認できます。先頭候補は採用済みではありません。
+imagesは場面数、candidatesは各場面の候補数です。負プロンプトはWAIだけで使用できます。本文と保存できた候補を順次表示し、作品内のstory.mdでも全候補を確認できます。先頭候補は採用済みではありません。
 
 再開はresumeに元のrender IDを渡します。候補数を変える場合はrenderで新しい試行を作ります。計画だけを作るplanには候補数を指定しません。

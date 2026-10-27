@@ -7,4 +7,3 @@ sha256 = "3d6f27fd39c58c62f593ff5ef48cc734e8abb188005e6a15582876e30833ab96" # pr
 size_bytes = 8044981680
 license = "FLUX Non-Commercial License v2.1"
 license_url = "https://huggingface.co/ponpoke/flux2-klein-4b-uncensored-text-encoder"
-transfer = true

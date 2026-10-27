@@ -147,7 +147,9 @@ def test_import_preserves_content_and_freezes_input_before_upload(
     assert api.artifact_path(item.key).read_bytes() == original
     assert item == api.inputs.import_file(path)
     path.write_bytes(b"changed after import")
-    run = api.images.generate("a gray kitten", profile="klein-4b-edit", inputs={"reference": item})
+    run = api.images.generate(
+        "a gray kitten", model="klein-4b", operation="edit", inputs={"reference": item}
+    )
     assert run.state == "saved" and run.compiled_input.inputs == {"reference": item}
     assert stub.uploaded_inputs[item.reference] == original and stub.upload_calls == 1
     assert run.input_sha256[item.reference] == item.sha256
@@ -169,7 +171,7 @@ def test_invalid_materials_fail_before_generation(
     else:
         api.artifact_path(image.key).write_bytes(b"damaged")
     with pytest.raises(KomaquillError):
-        api.images.generate("kitten", profile="klein-4b-edit", inputs=inputs)
+        api.images.generate("kitten", model="klein-4b", operation="edit", inputs=inputs)
     assert stub.submissions == stub.upload_calls == 0
 
 
@@ -184,10 +186,11 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
         scenes=tuple(
             SceneRenderConfig(
                 scene=i,
-                profile="klein-4b-edit",
+                model="klein-4b",
+                operation="edit",
                 prompt=f"scene {i}",
                 inputs={"reference": image},
-                parameters={"party_strength": 0.4 + i / 20},
+                parameters={"aniedit_strength": 0.4 + i / 20},
             )
             for i in range(1, 5)
         ),
@@ -197,7 +200,7 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
     ].snapshot
     assert final.complete and stub.submissions == 4
     saved = FileStoryRepository(project).render(final.render_id)
-    assert [row.preset["parameters"]["party_strength"] for row in saved.scenes] == pytest.approx(
+    assert [row.preset["parameters"]["aniedit_strength"] for row in saved.scenes] == pytest.approx(
         [
             0.45,
             0.5,
@@ -224,7 +227,10 @@ def test_all_scenes_are_validated_before_any_request(project, session, client, s
     config = RenderConfig(
         scenes=tuple(
             SceneRenderConfig(
-                scene=i, profile="klein-4b-edit", inputs={"reference": image} if i != 4 else {}
+                scene=i,
+                model="klein-4b",
+                operation="edit",
+                inputs={"reference": image} if i != 4 else {},
             )
             for i in range(1, 5)
         )
@@ -284,9 +290,9 @@ def test_failed_outputs_keep_names_when_an_earlier_stage_appears_later(
     "parameters",
     [
         {"missing": 1},
-        {"party_strength": True},
-        {"party_strength": -11},
-        {"party_strength": 10.1},
+        {"aniedit_strength": True},
+        {"aniedit_strength": -11},
+        {"aniedit_strength": 10.1},
     ],
 )
 def test_invalid_stage_parameters_fail_before_upload(
@@ -296,7 +302,11 @@ def test_invalid_stage_parameters_fail_before_upload(
     image = api.inputs.import_file(image_file(project.root))
     with pytest.raises(KomaquillError):
         api.images.generate(
-            "a cat", profile="klein-4b-edit", inputs={"reference": image}, parameters=parameters
+            "a cat",
+            model="klein-4b",
+            operation="edit",
+            inputs={"reference": image},
+            parameters=parameters,
         )
     assert stub.submissions == stub.upload_calls == 0
 
@@ -312,10 +322,10 @@ def test_cli_resolves_materials_relative_to_each_input_file(
     path.write_text(
         json.dumps(
             {
-                "format_version": 3,
+                "format_version": 4,
                 "prompt": "a cat",
                 "inputs": {"reference": "input.png"},
-                "parameters": {"party_strength": 0.25},
+                "parameters": {"aniedit_strength": 0.25},
             }
         )
     )
@@ -325,8 +335,10 @@ def test_cli_resolves_materials_relative_to_each_input_file(
             "--project",
             str(project.root),
             "generate",
-            "--profile",
-            "klein-4b-edit",
+            "--model",
+            "klein-4b",
+            "--operation",
+            "edit",
             "--input-file",
             str(path),
         ],
@@ -337,9 +349,14 @@ def test_cli_resolves_materials_relative_to_each_input_file(
     path.write_text(
         json.dumps(
             {
-                "format_version": 3,
+                "format_version": 4,
                 "scenes": [
-                    {"scene": 1, "profile": "klein-4b-edit", "inputs": {"reference": "input.png"}}
+                    {
+                        "scene": 1,
+                        "model": "klein-4b",
+                        "operation": "edit",
+                        "inputs": {"reference": "input.png"},
+                    }
                 ],
             }
         )
@@ -373,3 +390,23 @@ def test_cli_resolves_materials_relative_to_each_input_file(
     )
     assert result.exit_code != 0 and "Traceback" not in result.output
     assert stub.submissions == 2
+
+
+@pytest.mark.parametrize("filename", ["content", "image.bin", "source.png"])
+def test_import_uses_real_image_format_for_standard_ui_choices(project, filename):
+    from PIL import Image
+
+    from komaquill.domain.materials import InputArtifact
+    from komaquill.infrastructure.inputs import import_file
+
+    path = project.root / filename
+    Image.new("RGB", (16, 16), "blue").save(path, format="PNG")
+    item = import_file(project, path, "image")
+    assert item.name == filename
+    assert item.format_version == 3 and item.reference.endswith(".png")
+    assert item.reference == f"komaquill-{item.sha256}.png"
+    assert InputArtifact.model_validate_json(item.model_dump_json()) == item
+    old = item.model_dump(exclude={"extension"}) | {"format_version": 2}
+    retained = InputArtifact.model_validate(old)
+    assert retained.reference == f"komaquill-{item.sha256}-{filename}"
+    assert retained.model_dump() == old

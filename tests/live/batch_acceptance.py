@@ -157,9 +157,7 @@ def measure(story_id: UUID) -> Path:
                 save()
     report["render_started_at"] = datetime.now(UTC).isoformat()
     with (folder / "story-events.jsonl").open("w", encoding="utf-8") as events:
-        for event in api.stories.render(
-            story_id, image_profile="klein-4b", seed=31415, candidates=2
-        ):
+        for event in api.stories.render(story_id, model="klein-4b", seed=31415, candidates=2):
             events.write(event.model_dump_json() + "\n")
             events.flush()
             report["render_id"] = str(event.snapshot.render_id)

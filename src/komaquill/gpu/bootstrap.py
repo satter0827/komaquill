@@ -3,6 +3,7 @@
 import hashlib
 import os
 import subprocess
+import sys
 import tarfile
 import tomllib
 import urllib.request
@@ -12,7 +13,7 @@ from komaquill.gpu.progress import progress
 from komaquill.messages import message
 
 
-def main() -> None:
+def main(credentials: bytes = b"{}\n") -> None:
     """Start an isolated environment without modifying system Python."""
     root = Path(__file__).resolve().parents[2]
     progress(root, "environment")
@@ -82,13 +83,41 @@ def main() -> None:
     )
     progress(root, "comfyui")
     print(message("text.preparing_comfyui_and_the_model"), flush=True)
-    subprocess.run(
+    child = subprocess.Popen(
         [str(python), "-u", "-m", "komaquill.gpu.worker", str(root)],
         cwd=root,
         env=env,
-        check=True,
+        stdin=subprocess.PIPE,
     )
+    try:
+        assert child.stdin is not None
+        child.stdin.write(credentials)
+        child.stdin.close()
+        credentials = b""
+        result = child.wait()
+        if result:
+            raise subprocess.CalledProcessError(result, child.args)
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            child.wait()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main(sys.stdin.buffer.readline(65536))
+    except Exception as error:
+        status = getattr(error, "code", None)
+        progress(
+            Path(__file__).resolve().parents[2],
+            "failed",
+            failure={
+                "code": "http_failed" if isinstance(status, int) else "operation_failed",
+                "stage": "preparation",
+                "exception_type": type(error).__name__,
+                "http_status": status if isinstance(status, int) else None,
+                "retryable": False,
+            },
+        )
+        print(message("error.operation_failed"), file=sys.stderr)
+        raise SystemExit(1) from None

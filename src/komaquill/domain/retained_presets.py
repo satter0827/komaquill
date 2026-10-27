@@ -14,3 +14,10 @@ class RetainedGenerationPreset(PresetSnapshot):
     cfg: float = Field(ge=0, le=100)
     negative_prefix: str = ""
     negative: str = ""
+
+
+class RetainedPositivePreset(PresetSnapshot):
+    """Read positive-only Klein snapshots without adding current input defaults."""
+
+    format_version: Literal[2] = 2
+    model_family: Literal["klein-4b", "klein-9b"] = "klein-4b"

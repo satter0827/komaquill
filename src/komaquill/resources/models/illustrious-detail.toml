@@ -1,0 +1,9 @@
+name = "illustrious-detail"
+model_family = "illustrious"
+role = "loras"
+url = "https://huggingface.co/Stableyogi/Detail-Tweaker-Illustrious/resolve/0494910df0bbea8ebac48bdd20e5c7adb8a6ff53/Detail_Tweaker_Illustrious_BSY_V3.safetensors"
+filename = "Detail_Tweaker_Illustrious_BSY_V3.safetensors"
+sha256 = "c2e47b1adf8e197abe60965ea7dd328ed24a6033defaf94ee3ccf41125a747cd" # pragma: allowlist secret Public model SHA256.
+size_bytes = 228447996
+license = "Stable Yogi Community License"
+license_url = "https://huggingface.co/Stableyogi/Detail-Tweaker-Illustrious/blob/0494910df0bbea8ebac48bdd20e5c7adb8a6ff53/README.md"

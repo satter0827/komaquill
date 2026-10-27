@@ -272,9 +272,7 @@ def bind(
         llm_profile: Annotated[
             str | None, typer.Option(help=message("stories.llm_profile_help"))
         ] = None,
-        image_profile: Annotated[
-            str | None, typer.Option(help=message("stories.image_profile_help"))
-        ] = None,
+        model: Annotated[str | None, typer.Option(help=message("stories.model_help"))] = None,
         allow_real_llm: Annotated[
             bool, typer.Option(help=message("stories.allow_real_help"))
         ] = False,
@@ -289,7 +287,7 @@ def bind(
                 source_name=file.name,
                 images=selected_images(images),
                 llm_profile=llm_profile,
-                image_profile=image_profile,
+                model=model,
                 allow_real_llm=allow_real_llm,
             )
             value = client.stories.show(plan.request.story_id).model_dump(mode="json")
@@ -308,9 +306,7 @@ def bind(
         llm_profile: Annotated[
             str | None, typer.Option(help=message("stories.llm_profile_help"))
         ] = None,
-        image_profile: Annotated[
-            str | None, typer.Option(help=message("stories.image_profile_help"))
-        ] = None,
+        model: Annotated[str | None, typer.Option(help=message("stories.model_help"))] = None,
         allow_real_llm: Annotated[
             bool, typer.Option(help=message("stories.allow_real_help"))
         ] = False,
@@ -333,7 +329,7 @@ def bind(
                     source_name=file.name,
                     images=selected_images(images),
                     llm_profile=llm_profile,
-                    image_profile=image_profile,
+                    model=model,
                     seed=seed,
                     candidates=candidates,
                     input_sources=sources,
@@ -346,9 +342,7 @@ def bind(
     def render_command(
         ctx: typer.Context,
         story_id: UUID,
-        image_profile: Annotated[
-            str | None, typer.Option(help=message("stories.image_profile_help"))
-        ] = None,
+        model: Annotated[str | None, typer.Option(help=message("stories.model_help"))] = None,
         render_file_path: Annotated[
             Path | None, typer.Option("--render-file", help=message("stories.render_file_help"))
         ] = None,
@@ -372,7 +366,7 @@ def bind(
                 client,
                 client.stories.render(
                     story_id,
-                    image_profile=image_profile,
+                    model=model,
                     seed=seed,
                     candidates=candidates,
                     input_sources=sources,

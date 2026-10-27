@@ -15,6 +15,7 @@ from tests.support.presets import asset
 
 
 def test_verified_model_is_reused_without_download(project, monkeypatch):
+    project = GpuProject(project.root, project.settings())
     content = b"verified model"
     model = asset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
     target = model_path(project.models, model)
@@ -30,6 +31,7 @@ def test_verified_model_is_reused_without_download(project, monkeypatch):
 
 @pytest.mark.parametrize("case", ["valid", "invalid", "http"])
 def test_download_verifies_bytes_before_publication_and_redacts_errors(project, monkeypatch, case):
+    project = GpuProject(project.root, project.settings())
     content = b"verified upstream model"
     model = asset().model_copy(
         update={
@@ -63,100 +65,145 @@ def test_download_verifies_bytes_before_publication_and_redacts_errors(project, 
     assert not target.with_suffix(target.suffix + ".part").exists()
 
 
-def test_gated_hub_download_uses_standard_sdk_and_verifies_hash(project, monkeypatch, tmp_path):
-    content = b"encoder weights"
-    model = asset("klein-encoder").model_copy(
-        update={
-            "sha256": hashlib.sha256(content).hexdigest(),
-            "size_bytes": len(content),
-        }
-    )
-    observed = []
-    file_id = []
-
-    def download(**kwargs):
-        observed.append(kwargs)
-        source = kwargs["local_dir"] / kwargs["filename"]
-        source.parent.mkdir(parents=True)
-        source.write_bytes(content)
-        file_id.append(source.stat().st_ino)
-        return str(source)
-
-    monkeypatch.setattr("huggingface_hub.hf_hub_download", download)
-    result = fetch_model(project, model)
-    assert result.read_bytes() == content
-    assert result.stat().st_ino == file_id[0]
-    assert not (result.parent / ".hub").exists()
-    assert "cache_dir" not in observed[0]
-    assert observed[0]["revision"] == model.url.split("/resolve/")[1].split("/")[0]
-    assert observed[0]["filename"].endswith("/model.safetensors")
-    assert "token" not in observed[0]
+def test_pc_cannot_acquire_model_bodies(project):
+    with pytest.raises(KomaquillError) as error:
+        fetch_model(project, asset())
+    assert error.value.code == "unsupported_asset"
+    assert not project.models.exists()
 
 
-def test_gated_download_cancellation_keeps_the_sdk_file_for_resume(project, monkeypatch):
-    content = b"resumable encoder"
+def test_gpu_provider_credentials_are_headers_only(project, monkeypatch):
+    project = GpuProject(project.root, project.settings())
+    content = b"authenticated weights"
     model = asset("klein-encoder").model_copy(
         update={"sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)}
     )
-    stopped = False
-    downloaded = []
+    observed = []
 
-    def download(**kwargs):
-        nonlocal stopped
-        path = kwargs["local_dir"] / kwargs["filename"]
-        if not path.exists():
-            path.parent.mkdir(parents=True)
-            path.write_bytes(content)
-            downloaded.append(path.stat().st_ino)
-            stopped = True
-        return str(path)
+    @contextmanager
+    def stream(method, url, **kwargs):
+        observed.append((url, kwargs))
+        yield httpx.Response(200, content=content, request=httpx.Request(method, url))
 
-    monkeypatch.setattr("huggingface_hub.hf_hub_download", download)
+    monkeypatch.setattr(asset_download.httpx, "stream", stream)
+    result = fetch_model(project, model, {"huggingface.co": "test-secret"})
+    assert result.read_bytes() == content
+    assert observed[0][1]["headers"]["Authorization"] == "Bearer test-secret"
+    assert "test-secret" not in observed[0][0]
+    assert not list(project.root.rglob("token"))
+
+
+def test_preflight_uses_streaming_get_for_sources_rejecting_head(monkeypatch):
+    from komaquill.infrastructure import model_auth
+
+    observed = []
+    monkeypatch.setattr(model_auth, "credentials", lambda: {})
+
+    @contextmanager
+    def stream(method, url, **kwargs):
+        observed.append((method, kwargs))
+        yield httpx.Response(
+            206, headers={"Content-Type": "binary/octet-stream"}, request=httpx.Request(method, url)
+        )
+
+    monkeypatch.setattr(model_auth.httpx, "stream", stream)
+    model_auth.preflight([asset()], 1)
+    assert observed[0][0] == "GET"
+    assert observed[0][1]["headers"]["Range"] == "bytes=0-0"
+
+
+@pytest.mark.parametrize(
+    "status,content_type,expected",
+    [
+        (401, "application/json", "authentication_failed"),
+        (403, "text/plain", "authentication_failed"),
+        (200, "text/html", "authentication_failed"),
+        (503, "text/plain", "http_failed"),
+    ],
+)
+def test_preflight_classifies_safe_failures(monkeypatch, status, content_type, expected):
+    from komaquill.infrastructure import model_auth
+
+    monkeypatch.setattr(model_auth, "credentials", lambda: {})
+
+    @contextmanager
+    def stream(method, url, **kwargs):
+        yield httpx.Response(
+            status, headers={"Content-Type": content_type}, request=httpx.Request(method, url)
+        )
+
+    monkeypatch.setattr(model_auth.httpx, "stream", stream)
     with pytest.raises(KomaquillError) as error:
-        asset_download.download_asset(project.models, model, 1, lambda: stopped)
-    assert error.value.code == "stopping"
-    assert not model_path(project.models, model).exists()
-    stopped = False
-    result = asset_download.download_asset(project.models, model, 1, lambda: stopped)
-    assert result.stat().st_ino == downloaded[0]
-    assert len(downloaded) == 1
+        model_auth.preflight([asset()], 1)
+    assert error.value.code == expected
 
 
-def test_gated_download_rejects_corruption_without_replacing_the_existing_file(
-    project, monkeypatch
-):
-    model = asset("klein-encoder").model_copy(update={"size_bytes": 16})
-    target = model_path(project.models, model)
-    target.parent.mkdir(parents=True)
-    target.write_bytes(b"previous file")
+def test_interrupted_transfer_resumes_from_the_written_offset(project, monkeypatch):
+    content = b"abcdef"
+    model = asset().model_copy(
+        update={"sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)}
+    )
+    calls = []
+    failures = []
 
-    def download(**kwargs):
-        path = kwargs["local_dir"] / kwargs["filename"]
-        path.parent.mkdir(parents=True)
-        path.write_bytes(b"corrupt download")
-        return str(path)
+    class Interrupted(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"ab"
+            raise httpx.ReadError("private transport details")
 
-    monkeypatch.setattr("huggingface_hub.hf_hub_download", download)
-    with pytest.raises(KomaquillError) as error:
-        fetch_model(project, model)
-    assert error.value.code == "invalid_output"
-    assert target.read_bytes() == b"previous file"
-    assert not list((target.parent / ".hub").rglob("*.safetensors"))
+    @contextmanager
+    def stream(method, url, **kwargs):
+        calls.append(kwargs["headers"])
+        yield (
+            httpx.Response(200, stream=Interrupted(), request=httpx.Request(method, url))
+            if len(calls) == 1
+            else httpx.Response(
+                206,
+                content=b"cdef",
+                headers={"Content-Range": "bytes 2-5/6"},
+                request=httpx.Request(method, url),
+            )
+        )
+
+    monkeypatch.setattr(asset_download.httpx, "stream", stream)
+    monkeypatch.setattr(asset_download, "CHUNK_BYTES", 2)
+    monkeypatch.setattr(asset_download, "DOWNLOAD_RETRY_DELAY_SECONDS", 0)
+    result = asset_download.download_asset(
+        project.models, model, 1, lambda: False, on_retry=failures.append
+    )
+    assert result.read_bytes() == content
+    assert len(calls) == 2 and calls[1]["Range"] == "bytes=2-"
+    assert failures[0].exception_type == "ReadError"
+    assert "private transport" not in failures[0].model_dump_json()
 
 
-def test_gpu_refuses_missing_transferred_assets_without_network(project):
-    with pytest.raises(KomaquillError) as error:
-        fetch_model(GpuProject(project.root, project.settings()), asset("klein-encoder"))
-    assert error.value.code == "invalid_output"
+@pytest.mark.parametrize("status", [401, 403, 404])
+def test_non_transient_download_failure_is_not_retried(project, monkeypatch, status):
+    calls = []
+
+    @contextmanager
+    def stream(method, url, **kwargs):
+        calls.append(True)
+        yield httpx.Response(status, request=httpx.Request(method, url))
+
+    monkeypatch.setattr(asset_download.httpx, "stream", stream)
+    with pytest.raises(KomaquillError):
+        asset_download.download_asset(project.models, asset(), 1, lambda: False)
+    assert len(calls) == 1
 
 
-def test_gated_download_cannot_publish_a_file_outside_its_staging_folder(
-    project, monkeypatch, tmp_path
-):
-    foreign = tmp_path / "foreign.safetensors"
-    foreign.write_bytes(b"unrelated content")
-    monkeypatch.setattr("huggingface_hub.hf_hub_download", lambda **kwargs: str(foreign))
-    with pytest.raises(KomaquillError) as error:
-        fetch_model(project, asset("klein-encoder").model_copy(update={"size_bytes": 16}))
-    assert error.value.code == "invalid_output"
-    assert foreign.read_bytes() == b"unrelated content"
+def test_a_complete_partial_file_is_verified_without_another_get(project, monkeypatch):
+    content = b"completed transfer"
+    model = asset().model_copy(
+        update={"sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)}
+    )
+    path = model_path(project.models, model)
+    path.parent.mkdir(parents=True)
+    path.with_suffix(path.suffix + ".part").write_bytes(content)
+    monkeypatch.setattr(
+        asset_download.httpx, "stream", lambda *a, **kw: pytest.fail("No second GET is needed.")
+    )
+    assert (
+        asset_download.download_asset(project.models, model, 1, lambda: False).read_bytes()
+        == content
+    )

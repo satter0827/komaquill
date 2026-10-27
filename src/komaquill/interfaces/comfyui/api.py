@@ -1,7 +1,6 @@
 """Register a small native ComfyUI API without defining computation nodes."""
 
 import asyncio
-import hashlib
 import hmac
 import importlib
 import os
@@ -9,23 +8,21 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from aiohttp import web
 from filelock import FileLock
 
 from komaquill.domain.assets import PREPARATION_TERMINAL, PROTOCOL_VERSION, Preparation
-from komaquill.domain.errors import KomaquillError, failure_info
+from komaquill.domain.errors import FailureInfo, KomaquillError, failure_info
 from komaquill.domain.presets import MODEL_ROLES
 from komaquill.infrastructure.asset_download import download_asset
 from komaquill.infrastructure.asset_store import (
-    model_path,
     verified_cache,
 )
-from komaquill.infrastructure.asset_store import (
-    register as register_model,
-)
 from komaquill.infrastructure.atomic import atomic_json
+from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.paths import GpuPaths
 from komaquill.interfaces.comfyui.preservation import Preservation
 from komaquill.messages import catalog
 
@@ -33,8 +30,11 @@ from komaquill.messages import catalog
 class Extension:
     """Keep explicit preparation jobs on the existing server and runtime."""
 
-    def __init__(self, root: Path, models: Path, timeout: float) -> None:
+    def __init__(
+        self, root: Path, models: Path, timeout: float, preparation_timeout: float
+    ) -> None:
         self.root, self.models, self.timeout = root, models, timeout
+        self.preparation_timeout = preparation_timeout
         self.folder = root / "state/preparation"
         self.tasks: dict[UUID, asyncio.Task[None]] = {}
         self.accepting = True
@@ -66,9 +66,7 @@ class Extension:
         path = self.path(identity)
         with FileLock(str(path) + ".lock"):
             current = self.read(identity)
-            if current.phase == "cancelled":
-                return current
-            if current.phase == "ready":
+            if current.phase in PREPARATION_TERMINAL:
                 return current
             if values.get("phase", current.phase) != current.phase:
                 values["phase_started_at"] = datetime.now(UTC)
@@ -78,72 +76,63 @@ class Extension:
             atomic_json(path, current.model_dump(mode="json"))
             return current
 
-    async def prepare(self, identity: UUID) -> None:
+    async def prepare(self, identity: UUID, credentials: dict[str, str] | None = None) -> None:
         """Place confirmed remote models without waiting on the server event loop."""
         try:
             job = self.read(identity)
-            self.update(identity, phase="preparing")
-            for model in job.assets:
-                self.update(identity, current_asset=model.reference)
-                if model.local_only:
-                    continue
-                await asyncio.to_thread(
-                    download_asset,
-                    self.models,
-                    model,
-                    self.timeout,
-                    lambda: self.read(identity).phase == "cancelled" or not self.accepting,
-                )
-            current = self.read(identity)
-            all_ready = all(verified_cache(self.models, model) for model in current.assets)
-            self.update(
-                identity,
-                remote_ready=all_ready,
-                current_asset=None,
-                phase="ready" if all_ready and current.local_saved else "preparing",
+            if job.phase not in {"confirmed", "preparing"}:
+                return
+            remaining = (
+                self.preparation_timeout - (datetime.now(UTC) - job.created_at).total_seconds()
             )
-        except Exception as error:
-            self.update(identity, phase="failed", failure=failure_info(error, "preparation"))
+            if self.submit_until is not None:
+                remaining = min(remaining, self.submit_until - time.time())
+            if remaining <= 0:
+                raise KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
+                )
+            async with asyncio.timeout(remaining):
+                self.update(identity, phase="preparing")
+                for model in job.assets:
+                    self.update(identity, current_asset=model.reference)
 
-    async def upload(self, request: web.Request) -> web.Response:
-        if not self.authorized(request) or not self.accepting:
-            return web.json_response({"code": "authentication_failed"}, status=403)
-        job = self.read(request.match_info["identity"])
-        model = next(
-            (a for a in job.assets if a.sha256 == request.match_info["sha256"] and a.local_only),
-            None,
-        )
-        if model is None or job.phase not in {"confirmed", "preparing"}:
-            return web.json_response({"code": "invalid_request"}, status=409)
-        path = model_path(self.models, model)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + f".{uuid4().hex}.upload")
-        digest = hashlib.sha256()
-        size = 0
-        try:
-            with temporary.open("wb") as handle:
-                async for chunk in request.content.iter_chunked(1024 * 1024):
-                    if not self.accepting or self.read(job.request_id).phase == "cancelled":
-                        raise KomaquillError(code="stopping")
-                    size += len(chunk)
-                    if model.size_bytes is not None and size > model.size_bytes:
-                        raise KomaquillError(code="invalid_output")
-                    digest.update(chunk)
-                    handle.write(chunk)
-            if digest.hexdigest() != model.sha256:
-                raise KomaquillError(code="invalid_output")
-            temporary.replace(path)
-            register_model(self.models, model, path)
-        finally:
-            temporary.unlink(missing_ok=True)
-        current = self.read(job.request_id)
-        ready = all(verified_cache(self.models, a) for a in current.assets)
-        self.update(
-            job.request_id,
-            remote_ready=ready,
-            phase="ready" if ready and current.local_saved else "preparing",
-        )
-        return web.json_response(self.read(job.request_id).model_dump(mode="json"))
+                    def report_retry(failure: FailureInfo, name: str = model.name) -> None:
+                        record_event(
+                            GpuPaths(self.root.parent),
+                            "model",
+                            "download_retrying",
+                            asset=name,
+                            operation_id=identity,
+                            failure=failure,
+                        )
+
+                    await asyncio.to_thread(
+                        download_asset,
+                        self.models,
+                        model,
+                        self.timeout,
+                        lambda: (
+                            self.read(identity).phase in PREPARATION_TERMINAL or not self.accepting
+                        ),
+                        credentials,
+                        report_retry,
+                    )
+                current = self.read(identity)
+                all_ready = await asyncio.to_thread(
+                    lambda: all(verified_cache(self.models, model) for model in current.assets)
+                )
+                self.update(
+                    identity,
+                    remote_ready=all_ready,
+                    current_asset=None,
+                    phase="ready" if all_ready else "failed",
+                )
+        except Exception as error:
+            if isinstance(error, TimeoutError):
+                error = KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
+                )
+            self.update(identity, phase="failed", failure=failure_info(error, "preparation"))
 
     async def capabilities(self, request: web.Request) -> web.Response:
         client_id = request.query.get("client_id")
@@ -179,7 +168,7 @@ class Extension:
         identity = UUID(request.match_info["identity"])
         data = await request.json()
         action = data.get("action")
-        if action in {"plan", "local_saved", "failure"} and not self.authorized(request):
+        if action in {"plan", "failure"} and not self.authorized(request):
             return web.json_response({"code": "authentication_failed"}, status=403)
         current = self.read(identity)
         if action == "cancel":
@@ -191,7 +180,6 @@ class Extension:
             and self.accepting
         ):
             current = self.update(identity, phase="confirmed")
-            self.tasks[identity] = asyncio.create_task(self.prepare(identity))
         elif action == "plan" and current.phase == "requested":
             current = self.update(
                 identity,
@@ -200,10 +188,6 @@ class Extension:
                 node_models=data.get("node_models", {}),
                 reused=data["reused"],
                 unsupported=data["unsupported"],
-            )
-        elif action == "local_saved" and current.phase in {"confirmed", "preparing"}:
-            current = self.update(
-                identity, local_saved=True, phase="ready" if current.remote_ready else current.phase
             )
         elif action == "failure" and current.phase not in PREPARATION_TERMINAL:
             current = self.update(identity, phase="failed", failure=data["failure"])
@@ -255,7 +239,6 @@ class Extension:
             ("GET", "/komaquill/v1/requests", self.jobs),
             ("POST", "/komaquill/v1/requests", self.create),
             ("POST", "/komaquill/v1/requests/{identity}", self.action),
-            ("POST", "/komaquill/v1/requests/{identity}/upload/{sha256}", self.upload),
             ("POST", "/komaquill/v1/monitor", self.attach),
         ]:
 
@@ -266,9 +249,9 @@ class Extension:
         return routes
 
 
-def register(server: Any, root: Path, timeout: float) -> Extension:
+def register(server: Any, root: Path, timeout: float, preparation_timeout: float) -> Extension:
     """Install on PromptServer before it freezes its routes."""
-    extension = Extension(root, root / "models", timeout)
+    extension = Extension(root, root / "models", timeout, preparation_timeout)
     folders = importlib.import_module("folder_paths")
     for role in MODEL_ROLES:
         destination = root / "models" / role

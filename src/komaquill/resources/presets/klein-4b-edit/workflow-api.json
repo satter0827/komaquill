@@ -13,18 +13,7 @@
         "4",
         0
       ],
-      "lora_name": "0c4aea1ba041985d2d7e6ce655b865e0fe22ea37575b3310c4619ad57dc80a00/party_time_v2.0_klein4b.safetensors",
-      "strength_model": 1.0
-    }
-  },
-  "91": {
-    "class_type": "LoraLoaderModelOnly",
-    "inputs": {
-      "model": [
-        "90",
-        0
-      ],
-      "lora_name": "fd8b9455ad344ed6c8017dbc9eefd34a4851a33e7bbb0c8d2d9a4c3632ba0320/FLUX_NSFW_Fix.safetensors",
+      "lora_name": "12c5a690b1e71117835c58a9e6a699271b2488cb723da20294d0475d141c70dc/AniEdit-Klein.safetensors",
       "strength_model": 1.0
     }
   },
@@ -67,7 +56,7 @@
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
-        "91",
+        "90",
         0
       ],
       "conditioning": [

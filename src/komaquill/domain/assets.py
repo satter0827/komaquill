@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from komaquill.domain.errors import FailureInfo
 from komaquill.domain.presets import ModelPreset
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 PREPARATION_TERMINAL = frozenset({"ready", "failed", "cancelled"})
 
 
@@ -17,7 +17,7 @@ class Preparation(BaseModel):
     """Keep confirmation and local preservation distinct from remote placement."""
 
     model_config = ConfigDict(extra="forbid")
-    format_version: Literal[1] = 1
+    format_version: Literal[2] = 2
     request_id: UUID = Field(default_factory=uuid4)
     workspace_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -32,7 +32,6 @@ class Preparation(BaseModel):
     reused: list[str] = Field(default_factory=list)
     current_asset: str | None = None
     phase_started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    local_saved: bool = False
     remote_ready: bool = False
     failure: FailureInfo | None = None
 

@@ -34,7 +34,7 @@ def test_reviews_reach_api_manifest_markdown_and_export_without_changing_storage
     assert snapshot.complete and snapshot.finished
     assert [row.evaluation_id for row in snapshot.evaluations] == [review.evaluation_id]
     folder = repository.folder(plan.request.story_id) / "renders" / str(render.render_id)
-    markdown = (folder / "story.md").read_text()
+    markdown = (folder / "story.md").read_text(encoding="utf-8")
     assert "reject" in markdown and review.reason in markdown
     assert (
         json.loads((folder / "manifest.json").read_bytes())["evaluations"][0]["decision"]

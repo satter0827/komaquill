@@ -109,7 +109,7 @@ PCの電源断ではGPU終了を保証できません。次回のstatusとstop�
 
 ## VS Codeから実行する
 
-Setup Environmentで導入し、Python: Select Interpreterで.artifacts/runtime/venvを選びます。Run and DebugのStart SessionがCLIのstartを呼び出します。Open GeneratorはApp ModeまたはNode Graphを選択でき、Generate Imageは正のプロンプトを入力し、負の条件と候補数は設定の既定値を使います。Generate Image from Fileは正負のプロンプトと対象別説明を記載したJSONのパスを入力します。
+Setup Environmentで導入し、Python: Select Interpreterで.artifacts/runtime/venvを選びます。Run and DebugのStart SessionがCLIのstartを呼び出します。Open GeneratorはApp ModeまたはNode Graphを選択でき、Generate Imageは正のプロンプトを入力し、負の条件と候補数は設定の既定値を使います。Generate Image from Fileは画像説明と対象別説明を記載したJSONのパスを入力します。負プロンプトを使う場合はWAIを指定します。
 
 Prepare WorkflowはJSONのパス、Stop Sessionは通常・強制、Clean Generated Filesはプレビュー・整理を選びます。整理の既定はプレビューです。Show Status、Check Connection、Collect Results、Show Logsも同じCLIを使います。Run CLI with Argumentsでは任意の引数、Debug Sessionでは前面監視を実行します。画面だけを閉じてもGPUは終了しないため、Stop Sessionを実行してください。
 
@@ -137,7 +137,7 @@ GPU側のモデル準備イベントは、取得したログのworker-events.jso
 komaquill generate --prompt-file positive.txt --candidates 2
 ```
 
-プロンプトは直接指定にも対応します。負プロンプトの入力は廃止しました。
+プロンプトは直接指定にも対応します。負プロンプトはWAIだけで使用できます。
 
 ```powershell
 komaquill generate --prompt "a blue umbrella" --candidates 2
@@ -147,17 +147,17 @@ komaquill generate --prompt "a blue umbrella" --candidates 2
 
 ```json
 {
-  "format_version": 3,
+  "format_version": 4,
   "prompt": "rainy street",
   "subjects": ["woman holding a blue umbrella", "small gray kitten"]
 }
 ```
 
 ```powershell
-komaquill generate --input-file image-input.json --profile klein-4b --candidates 2
+komaquill generate --input-file image-input.json --model klein-4b --candidates 2
 ```
 
-直接指定とprompt-fileは併用できません。input-fileは他のプロンプト指定と併用せず、profile・seed・candidatesと組み合わせます。空のプロンプトはエラーです。品質用の既定文は別に適用します。
+直接指定とprompt-fileは併用できません。input-fileは他のプロンプト指定と併用せず、model・operation・seed・candidatesと組み合わせます。空のプロンプトはエラーです。品質用の既定文は別に適用します。
 
 結果には候補数と保存先を表示します。ブラウザーや画像を自動で開きません。候補数の増加はGPUメモリを消費します。メモリ不足では条件を自動変更せず、ログを確認して少ない候補数で新しい生成を行います。
 
@@ -165,10 +165,10 @@ komaquill generate --input-file image-input.json --profile klein-4b --candidates
 
 ```powershell
 komaquill usage
-komaquill start --profile klein-9b --profile klein-9b-edit --gpu A100 --high-ram
-komaquill generate --profile klein-9b --prompt "an opaque red book inside a blue bag"
-komaquill open --profile klein-9b --view app
-komaquill open --profile klein-9b-edit --view graph
+komaquill start --model klein-9b --gpu A100 --high-ram
+komaquill generate --model klein-9b --prompt "an opaque red book inside a blue bag"
+komaquill open --model klein-9b --view app
+komaquill open --model klein-9b --operation edit --view graph
 komaquill stop
 ```
 

@@ -110,7 +110,7 @@ def test_transferred_workflows_use_their_complete_reduced_catalog(tmp_path):
             'resources/settings/defaults.toml').read_text())
         settings = RuntimeSettings.model_validate({**defaults, **catalog()})
         for name, preset in settings.presets.items():
-            enabled = settings.model_copy(update={'profiles': (name,)})
+            enabled = settings.model_copy(update={'models': (preset.model_id,)})
             graph, view = prepare(preset.sample_prompt, 1, name,
                 settings=enabled, profile_name=name)
             assert graph and view['nodes']

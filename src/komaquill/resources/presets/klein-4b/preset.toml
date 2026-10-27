@@ -1,4 +1,4 @@
-format_version = 2
+format_version = 3
 model_family = "klein-4b"
 width = 1024
 height = 1024
@@ -10,21 +10,21 @@ primary_output_node = "9"
 quality_enabled = true
 positive_prefix = "clean line art, clear composition"
 sample_prompt = "a small cabin in a sunny forest, manga illustration"
+model_id = "klein-4b"
+operation = "generate"
+adjustable = ["width", "height"]
 
 [resources]
 diffusion = "klein-4b"
 encoder = "klein-encoder"
 vae = "klein-vae"
-party = "klein-party"
-fixes = "klein-fixes"
+aniedit = "klein-aniedit"
 
 [parameters]
-party_strength = 1.0
-fixes_strength = 1.0
+aniedit_strength = 1.0
 
 [parameter_bounds]
-party_strength = [-10.0, 10.0]
-fixes_strength = [-10.0, 10.0]
+aniedit_strength = [0.0, 2.0]
 
 [[bindings]]
 source = "diffusion"
@@ -46,34 +46,6 @@ api_node = "72"
 api_input = "vae_name"
 ui_node = 72
 ui_widget = 0
-
-[[bindings]]
-source = "party"
-api_node = "90"
-api_input = "lora_name"
-ui_node = 90
-ui_widget = 0
-
-[[bindings]]
-source = "fixes"
-api_node = "91"
-api_input = "lora_name"
-ui_node = 91
-ui_widget = 0
-
-[[bindings]]
-source = "party_strength"
-api_node = "90"
-api_input = "strength_model"
-ui_node = 90
-ui_widget = 1
-
-[[bindings]]
-source = "fixes_strength"
-api_node = "91"
-api_input = "strength_model"
-ui_node = 91
-ui_widget = 1
 
 [[bindings]]
 source = "seed"
@@ -144,3 +116,17 @@ api_node = "9"
 api_input = "filename_prefix"
 ui_node = 9
 ui_widget = 0
+
+[[bindings]]
+source = "aniedit"
+api_node = "90"
+api_input = "lora_name"
+ui_node = 90
+ui_widget = 0
+
+[[bindings]]
+source = "aniedit_strength"
+api_node = "90"
+api_input = "strength_model"
+ui_node = 90
+ui_widget = 1

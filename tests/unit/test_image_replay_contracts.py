@@ -18,16 +18,23 @@ from tests.support.stories import planned, request
 
 @pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit"])
 def test_preset_fingerprint_survives_default_expansion_and_json_replay(name):
-    settings = Settings(profiles=[name])
+    settings = Settings(models=[name.removesuffix("-edit")])
     profile = GenerationPreset.model_validate(
         settings.presets[name].model_dump(mode="json", exclude_defaults=True)
     )
     settings = settings.model_copy(update={"presets": {name: profile}})
     compiled = compile_image_input(profile, "rainy street", subjects=("human", "cat"))
     retained = RuntimeSettings.model_validate_json(settings.model_dump_json())
-    graph, ui = prepare("ignored", 42, "test", settings=retained, compiled_input=compiled)
+    graph, ui = prepare(
+        "ignored", 42, "test", settings=retained, compiled_input=compiled, profile_name=name
+    )
     expected = prepare(
-        "rainy street", 42, "test", settings=settings, subject_prompts=("human", "cat")
+        "rainy street",
+        42,
+        "test",
+        settings=settings,
+        subject_prompts=("human", "cat"),
+        profile_name=name,
     )
     assert (graph, ui) == expected
 
@@ -115,7 +122,7 @@ def test_retained_old_compilation_is_readable_but_cannot_be_executed():
 def test_self_consistent_but_wrong_quality_conditions_are_rejected():
     from komaquill.domain.images import CompiledImageInput
 
-    settings = Settings(profiles=["klein-4b"])
+    settings = Settings(models=["klein-4b"])
     compiled = compile_image_input(settings.presets["klein-4b"], "street", subjects=("cat",))
     data = compiled.model_dump()
     data.update(quality_enabled=False, positive_prefix="", positive=data["body"])
@@ -159,7 +166,7 @@ def test_maximum_valid_seed_wraps_only_subsequent_scene_seeds(project, session):
 def test_legacy_blank_subject_metadata_remains_readable():
     from komaquill.domain.retained_images import RetainedImageInput
 
-    profile = Settings(profiles=["klein-4b"]).presets["klein-4b"]
+    profile = Settings(models=["klein-4b"]).presets["klein-4b"]
     value = old_compilation(profile)
     value.update(
         compiler_version=1, subject_prompts=(" ",), subject_positives=(profile.positive_prefix,)

@@ -7,6 +7,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
@@ -15,10 +16,10 @@ from filelock import FileLock
 
 from komaquill.application.preparation import requirements
 from komaquill.domain.assets import PREPARATION_TERMINAL, Preparation
+from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError, failure_info
-from komaquill.infrastructure.asset_download import download_asset
-from komaquill.infrastructure.asset_store import inventory, model_path, verified_cache
 from komaquill.infrastructure.atomic import atomic_json
+from komaquill.infrastructure.colab import Colab
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.diagnostics import record_event
@@ -33,7 +34,7 @@ PREFIX = "/komaquill/v1"
 def capabilities(client: ComfyClient) -> bool:
     """Leave bare ComfyUI endpoints on the standard generation API."""
     try:
-        return client.json(PREFIX + "/capabilities").get("protocol_version") == 1
+        return client.json(PREFIX + "/capabilities").get("protocol_version") == 2
     except KomaquillError as error:
         if error.http_status == 404:
             return False
@@ -82,7 +83,7 @@ class Coordinator:
 
     def plan(self, job: Preparation) -> None:
         hints, unsupported = requirements(job.workflow, self.client.json("/object_info"))
-        registered = inventory(self.project.models)
+        registered = list(self.project.settings().assets.values())
         assets = []
         node_models: dict[str, dict[str, str]] = {}
         for reference in list(unsupported):
@@ -116,51 +117,48 @@ class Coordinator:
                     assets.append(asset)
             except (KomaquillError, KeyError):
                 unsupported.append(str(hint.get("name", "unknown")))
-        assets = [
-            model.model_copy(
-                update={"size_bytes": model_path(self.project.models, model).stat().st_size}
-            )
-            if model.size_bytes is None and verified_cache(self.project.models, model)
-            else model
-            for model in assets
-        ]
         self.update(
             job,
             "plan",
             assets=[a.model_dump(mode="json") for a in assets],
             node_models=node_models,
             unsupported=sorted(set(unsupported)),
-            reused=[a.reference for a in assets if verified_cache(self.project.models, a)],
+            reused=[],
         )
 
     def run(self, job: Preparation) -> None:
-        """Preserve local bytes while the server downloads from the same fixed sources."""
+        """Execute the confirmed job on its existing owned runtime."""
         try:
             if job.phase == "requested":
                 self.plan(job)
                 return
-            for asset in job.assets:
-                download_asset(
-                    self.project.models,
-                    asset,
-                    self.project.settings().request_timeout,
-                    lambda: (
-                        self.cancelled.is_set()
-                        or self.cancel_events.setdefault(job.request_id, threading.Event()).is_set()
-                    ),
+            colab = Colab(self.project)
+            receipt = colab.receipt()
+            session = load_session(self.project)
+            if (
+                receipt is None
+                or session.backend != "colab"
+                or receipt.runtime_id != session.runtime_id
+            ):
+                raise KomaquillError(code="identity_mismatch", stage="preparation", retryable=False)
+            remaining = remaining_seconds(
+                receipt.started_at, self.project.settings().submission_timeout, datetime.now(UTC)
+            )
+            job_remaining = (
+                self.project.settings().preparation_timeout
+                - (datetime.now(UTC) - job.created_at).total_seconds()
+            )
+            allowed = min(job_remaining, remaining if remaining is not None else job_remaining)
+            if allowed <= 0:
+                raise KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
                 )
-                if asset.local_only:
-                    path = model_path(self.project.models, asset)
-                    with path.open("rb") as handle:
-                        self.client.request(
-                            "POST",
-                            PREFIX + f"/requests/{job.request_id}/upload/{asset.sha256}",
-                            headers={**self.headers, "Content-Length": str(path.stat().st_size)},
-                            content=handle,
-                        )
-
-            self.update(job, "local_saved")
-            record_event(self.project, "preparation", "local_saved", operation_id=job.request_id)
+            if (
+                self.cancelled.is_set()
+                or self.cancel_events.setdefault(job.request_id, threading.Event()).is_set()
+            ):
+                raise KomaquillError(code="stopping", stage="preparation", retryable=False)
+            colab.remote_models(receipt, job.request_id, timeout=allowed)
         except Exception as error:
             record_event(
                 self.project,
@@ -169,7 +167,9 @@ class Coordinator:
                 operation_id=job.request_id,
                 failure=failure_info(error, "preparation"),
             )
-            if not self.cancelled.is_set():
+            if not self.cancelled.is_set() and not (
+                isinstance(error, KomaquillError) and error.code == "connection_failed"
+            ):
                 with contextlib.suppress(KomaquillError):
                     self.update(
                         job,
@@ -184,6 +184,21 @@ class Coordinator:
             job = Preparation.model_validate(item)
             if job.workspace_id != self.workspace_id:
                 continue
+            if (
+                job.phase not in PREPARATION_TERMINAL
+                and (datetime.now(UTC) - job.created_at).total_seconds()
+                >= self.project.settings().preparation_timeout
+            ):
+                job = self.update(
+                    job,
+                    "failure",
+                    failure=failure_info(
+                        KomaquillError(
+                            code="preparation_timeout", stage="preparation", retryable=False
+                        ),
+                        "preparation",
+                    ).model_dump(mode="json"),
+                )
             local = self.project.state / "preparation" / f"{job.request_id}.json"
             if not local.is_file() or Preparation.model_validate_json(local.read_bytes()) != job:
                 atomic_json(local, job.model_dump(mode="json"))
@@ -192,10 +207,8 @@ class Coordinator:
             if job.phase == "ready" and job.request_id not in self.bound:
                 self.bind(job)
             future = self.futures.get(job.request_id)
-            if (
-                job.phase in {"requested", "confirmed", "preparing"}
-                and not job.local_saved
-                and (future is None or future.done())
+            if (job.phase in {"requested", "confirmed"} and (future is None or future.done())) or (
+                job.phase == "preparing" and future is None
             ):
                 self.futures[job.request_id] = self.executor.submit(self.run, job)
 
@@ -255,7 +268,9 @@ def prepare_workflow(
     try:
         while job.phase not in PREPARATION_TERMINAL:
             if time.monotonic() >= deadline:
-                raise KomaquillError(code="operation_failed", stage="preparation")
+                raise KomaquillError(
+                    code="preparation_timeout", stage="preparation", retryable=False
+                )
             if previous != job.phase:
                 echo(message("assets.phase", request_id=job.request_id, phase=job.phase))
                 previous = job.phase

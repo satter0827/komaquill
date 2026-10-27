@@ -9,7 +9,7 @@ from uuid import UUID
 from komaquill.api._errors import api_operation
 from komaquill.application.evaluations import register
 from komaquill.application.generation import Collection, collect, generate
-from komaquill.domain.configuration import GpuType
+from komaquill.domain.configuration import GpuType, RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.images import PromptSource
@@ -38,7 +38,9 @@ class ImageService:
         prompt: str,
         *,
         seed: int | None = None,
-        profile: str | None = None,
+        model: str | None = None,
+        operation: Literal["generate", "edit"] = "generate",
+        negative: str | None = None,
         subjects: tuple[str, ...] = (),
         candidates: int | None = None,
         input_sources: tuple[PromptSource, ...] = (),
@@ -50,6 +52,13 @@ class ImageService:
             api_operation(OperationStage.GENERATION, invalid=ErrorCode.INVALID_CONFIGURATION),
             connected(self._project) as (backend, session),
         ):
+            if session.settings is None:
+                session = session.model_copy(update={"settings": self._project.settings()})
+            if not isinstance(session.settings, RuntimeSettings):
+                raise KomaquillError(
+                    code="invalid_configuration", stage="generation", retryable=False
+                )
+            profile = session.settings.profile_for(model, operation)
             return generate(
                 self._project,
                 backend,
@@ -58,6 +67,7 @@ class ImageService:
                 seed if seed is not None else secrets.randbits(63),
                 profile,
                 subjects=subjects,
+                negative=negative,
                 candidates=candidates,
                 input_sources=input_sources,
                 inputs=inputs,
@@ -118,7 +128,7 @@ class SessionService:
         progress: Callable[[str], None] | None = None,
         interactive_auth: bool = False,
         foreground: Callable[[Path], int] | None = None,
-        profiles: list[str] | None = None,
+        models: list[str] | None = None,
         gpu: GpuType | None = None,
         high_ram: bool | None = None,
         open_browser: bool = False,
@@ -137,7 +147,7 @@ class SessionService:
                 )
             overrides = {
                 key: value
-                for key, value in {"profiles": profiles, "gpu": gpu, "high_ram": high_ram}.items()
+                for key, value in {"models": models, "gpu": gpu, "high_ram": high_ram}.items()
                 if value is not None
             }
             if overrides:

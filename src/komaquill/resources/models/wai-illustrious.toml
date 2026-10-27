@@ -1,0 +1,9 @@
+name = "wai-illustrious"
+model_family = "illustrious"
+role = "checkpoints"
+url = "https://civitai.com/api/download/models/2883731?fileId=2763986"
+filename = "waiIllustriousSDXL_v170.safetensors"
+sha256 = "f116b0c78ff441467b0cdc8f1936e1ed18ea31e9997c7b132b1b8db533f0bd04" # pragma: allowlist secret Public model SHA256.
+size_bytes = 6938040682
+license = "Civitai permissions: attribution optional; commercial image use and Civitai rental permitted; derivatives and license changes permitted"
+license_url = "https://civitai.com/models/827184?modelVersionId=2883731"

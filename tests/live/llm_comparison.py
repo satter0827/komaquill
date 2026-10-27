@@ -83,9 +83,7 @@ def run(root, report, manifest, executable, minutes=90):
     )
     workspace = report / "workspace"
     workspace.mkdir()
-    (workspace / "komaquill.toml").write_text(
-        '[story]\nimage_profile="klein-4b"\n', encoding="utf-8"
-    )
+    (workspace / "komaquill.toml").write_text('[story]\nmodel="klein-4b"\n', encoding="utf-8")
     api = Client(workspace)
     deadline = time.monotonic() + minutes * 60
     rows = []
@@ -174,7 +172,7 @@ def run(root, report, manifest, executable, minutes=90):
                                     source_name=case_id + ".txt",
                                     images=count,
                                     llm_profile=name,
-                                    image_profile="klein-4b",
+                                    model="klein-4b",
                                     allow_real_llm=True,
                                 )
                                 story_id = plan.request.story_id

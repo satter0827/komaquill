@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 
 from komaquill.domain.configuration import RuntimeSettings
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import JsonObject
 from komaquill.domain.presets import MODEL_ROLES
 from komaquill.gpu.progress import progress
@@ -25,7 +25,9 @@ from komaquill.infrastructure.workflows import assets, prepare
 from komaquill.messages import error_message, message
 
 
-def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
+def prepare_server(
+    project: Project, config: JsonObject, user: Path, credentials: dict[str, str] | None = None
+) -> Path:
     """Pin the server source and register standard workflow templates."""
     runtime = project.artifacts / "runtime"
     comfy = runtime / "ComfyUI"
@@ -60,10 +62,12 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
         "NODE_CLASS_MAPPINGS = {}\n"
         "WEB_DIRECTORY = str(files('komaquill').joinpath('interfaces/comfyui/web'))\n"
         "register(PromptServer.instance, Path(os.environ['KOMAQUILL_ARTIFACTS']), "
-        "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']))\n"
+        "float(os.environ['KOMAQUILL_REQUEST_TIMEOUT']), "
+        "float(os.environ['KOMAQUILL_PREPARATION_TIMEOUT']))\n"
     )
     os.environ["KOMAQUILL_ARTIFACTS"] = str(project.artifacts)
     os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
+    os.environ["KOMAQUILL_PREPARATION_TIMEOUT"] = str(project.settings().preparation_timeout)
     settings = project.settings()
     for name in settings.profiles:
         profile = settings.presets[name]
@@ -85,7 +89,7 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     }
     for asset in assets(settings):
         progress(project.root, "model_preparation", asset.name)
-        model = fetch_model(project, asset)
+        model = fetch_model(project, asset, credentials)
         paths[asset.name] = {"base_path": str(model.parent.parent), asset.role: "."}
     # JSON is a YAML subset, so the model path file needs no conversion.
     atomic_json(runtime / "model-paths.json", paths)
@@ -93,7 +97,7 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
     return comfy
 
 
-def main(root: Path) -> None:
+def main(root: Path, credentials: dict[str, str] | None = None) -> None:
     """Wait for ComfyUI and keep caches inside the temporary runtime."""
     torch = importlib.import_module("torch")
     if not torch.cuda.is_available():
@@ -117,7 +121,9 @@ def main(root: Path) -> None:
     runtime = project.runtime
     runtime.mkdir(parents=True, exist_ok=True)
     user = runtime / "comfy-user"
-    comfy = prepare_server(project, config, user)
+    comfy = prepare_server(project, config, user, credentials)
+    if credentials is not None:
+        credentials.clear()
     metadata = {
         "runtime_id": os.environ["KOMAQUILL_RUNTIME_ID"],
         "source_revision": os.environ.get("KOMAQUILL_SOURCE_REVISION") or None,
@@ -191,7 +197,14 @@ def main(root: Path) -> None:
 
 if __name__ == "__main__":
     try:
-        main(Path(sys.argv[1]))
+        from komaquill.infrastructure.asset_download import read_credentials
+
+        main(Path(sys.argv[1]), read_credentials())
     except KomaquillError as error:
+        progress(
+            Path(sys.argv[1]),
+            "failed",
+            failure=failure_info(error, "preparation").model_dump(mode="json"),
+        )
         print(error_message(error), file=sys.stderr)
         raise SystemExit(1) from None

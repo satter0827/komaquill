@@ -1,0 +1,550 @@
+{
+  "rainy-cat": {
+    "title": "雨の日の青い傘",
+    "synopsis": "雨の日に出会った子猫を助けたミオが、親子猫の再会を見届ける物語。",
+    "characters": [
+      {
+        "kind": "human",
+        "key": "woman",
+        "name": "ミオ",
+        "appearance": "young woman, human face, short dark bob, yellow raincoat, human hands"
+      },
+      {
+        "kind": "animal",
+        "key": "kitten",
+        "name": "子猫",
+        "appearance": "tiny gray kitten, white chest patch, four legs, natural feline body"
+      },
+      {
+        "kind": "animal",
+        "key": "mother_cat",
+        "name": "母猫",
+        "appearance": "larger adult gray mother cat, white chest patch, four legs"
+      }
+    ],
+    "props": [
+      {
+        "key": "umbrella",
+        "name": "青い傘",
+        "appearance": "a single blue umbrella"
+      }
+    ],
+    "scenes": [
+      {
+        "title": "小さな出会い",
+        "narrative": "ミオは青い傘を差し、雨の帰り道を歩いていた。道端で雨に震える小さな子猫を見つけ、そっとしゃがんだ。",
+        "visual_description": "Low eye-level view of a rainy curb.",
+        "location": "rainy street beside a shop awning",
+        "source_refs": [
+          "p1"
+        ],
+        "subjects": [
+          {
+            "character": "woman",
+            "action": "crouches beside the kitten"
+          },
+          {
+            "character": "kitten",
+            "action": "shivers beside the curb"
+          }
+        ],
+        "props": [
+          {
+            "prop": "umbrella",
+            "holder": "woman",
+            "visible": true,
+            "state": "held above her head"
+          }
+        ]
+      },
+      {
+        "title": "落ち着く子猫",
+        "narrative": "ミオは子猫へ傘を差しかけた。自分の肩は濡れたが、子猫の震えは少しずつ落ち着いていった。",
+        "visual_description": "Close view from beneath the blue umbrella.",
+        "location": "rainy street beside a shop awning",
+        "source_refs": [
+          "p2"
+        ],
+        "subjects": [
+          {
+            "character": "woman",
+            "action": "holds the umbrella above the kitten"
+          },
+          {
+            "character": "kitten",
+            "action": "rests under the umbrella"
+          }
+        ],
+        "props": [
+          {
+            "prop": "umbrella",
+            "holder": "woman",
+            "visible": true,
+            "state": "held over the kitten"
+          }
+        ]
+      },
+      {
+        "title": "待っていた母猫",
+        "narrative": "落ち着いた子猫は通りの向こうへ走り出した。ミオが目で追うと、軒下で待っていた母猫のもとへ駆け寄っていた。",
+        "visual_description": "Medium view across the street beneath a shop awning.",
+        "location": "rainy street beside a shop awning",
+        "source_refs": [
+          "p3"
+        ],
+        "subjects": [
+          {
+            "character": "kitten",
+            "action": "runs toward its mother beneath the awning"
+          },
+          {
+            "character": "mother_cat",
+            "action": "lowers her face toward the kitten"
+          }
+        ],
+        "props": []
+      },
+      {
+        "title": "あたたかな帰り道",
+        "narrative": "母猫が子猫へ顔を寄せた。ミオは親子を見守って微笑み、自分の頭の上へ傘を戻して帰り道を歩き出した。",
+        "visual_description": "Wide rear view of a wet street leading home, soft reflected light.",
+        "location": "rainy street beside a shop awning",
+        "source_refs": [
+          "p4"
+        ],
+        "subjects": [
+          {
+            "character": "woman",
+            "action": "walks home holding the umbrella overhead"
+          },
+          {
+            "character": "mother_cat",
+            "action": "nuzzles the kitten beneath the awning"
+          },
+          {
+            "character": "kitten",
+            "action": "rests beside its mother beneath the awning"
+          }
+        ],
+        "props": [
+          {
+            "prop": "umbrella",
+            "holder": "woman",
+            "visible": true,
+            "state": "held above her head"
+          }
+        ]
+      }
+    ],
+    "supplements": [
+      "ミオの髪形と黄色いレインコート、猫の毛色は描画の一貫性のために補足した。"
+    ]
+  },
+  "red-book": {
+    "title": "赤い本と青い鞄",
+    "synopsis": "赤い本と青い鞄の出来事を順に描く。",
+    "characters": [
+      {
+        "kind": "human",
+        "key": "aki",
+        "name": "亜紀",
+        "appearance": "adult woman, short black hair, white coat"
+      },
+      {
+        "kind": "human",
+        "key": "ren",
+        "name": "蓮",
+        "appearance": "adult man, short brown hair, blue jacket"
+      }
+    ],
+    "props": [
+      {
+        "key": "book",
+        "name": "赤い本",
+        "appearance": "one red hardcover book"
+      },
+      {
+        "key": "bag",
+        "name": "青い鞄",
+        "appearance": "one blue shoulder bag"
+      }
+    ],
+    "scenes": [
+      {
+        "title": "亜紀は赤い本を持ち、青い鞄を持つ蓮と机を挟んで向かい合った",
+        "narrative": "亜紀は赤い本を持ち、青い鞄を持つ蓮と机を挟んで向かい合った。",
+        "visual_description": "Medium view across a wooden table.",
+        "location": "library meeting room",
+        "source_refs": [
+          "p1"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "holds a book opposite Ren"
+          },
+          {
+            "character": "ren",
+            "action": "holds a bag opposite Aki"
+          }
+        ],
+        "props": [
+          {
+            "prop": "book",
+            "holder": "aki",
+            "visible": true,
+            "state": "held upright"
+          },
+          {
+            "prop": "bag",
+            "holder": "ren",
+            "visible": true,
+            "state": "held at his side"
+          }
+        ]
+      },
+      {
+        "title": "亜紀は赤い本を机の中央へ置いた",
+        "narrative": "亜紀は赤い本を机の中央へ置いた。",
+        "visual_description": "Close view of the table center.",
+        "location": "library meeting room",
+        "source_refs": [
+          "p2"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "places the book on the table"
+          },
+          {
+            "character": "ren",
+            "action": "watches across the table"
+          }
+        ],
+        "props": [
+          {
+            "prop": "book",
+            "holder": null,
+            "visible": true,
+            "state": "lying closed on the table"
+          },
+          {
+            "prop": "bag",
+            "holder": "ren",
+            "visible": true,
+            "state": "held beside him"
+          }
+        ]
+      },
+      {
+        "title": "蓮は赤い本を受け取り、自分の青い鞄へ入れた",
+        "narrative": "蓮は赤い本を受け取り、自分の青い鞄へ入れた。",
+        "visual_description": "Close view beside the table.",
+        "location": "library meeting room",
+        "source_refs": [
+          "p3"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "watches Ren pack the book"
+          },
+          {
+            "character": "ren",
+            "action": "places the book into his bag"
+          }
+        ],
+        "props": [
+          {
+            "prop": "book",
+            "holder": "ren",
+            "visible": true,
+            "state": "partly visible inside the open bag"
+          },
+          {
+            "prop": "bag",
+            "holder": "ren",
+            "visible": true,
+            "state": "open at his waist"
+          }
+        ]
+      },
+      {
+        "title": "蓮は鞄を閉めて部屋を出て、亜紀は机のそばで見送った",
+        "narrative": "蓮は鞄を閉めて部屋を出て、亜紀は机のそばで見送った。",
+        "visual_description": "Wide view toward the meeting-room doorway.",
+        "location": "library meeting room",
+        "source_refs": [
+          "p4"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "waves beside the table"
+          },
+          {
+            "character": "ren",
+            "action": "walks through the doorway"
+          }
+        ],
+        "props": [
+          {
+            "prop": "bag",
+            "holder": "ren",
+            "visible": true,
+            "state": "closed over his shoulder"
+          }
+        ]
+      }
+    ],
+    "supplements": [
+      "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+    ]
+  },
+  "flying-hat": {
+    "title": "風に飛ばされた帽子",
+    "synopsis": "風に飛ばされた帽子の出来事を順に描く。",
+    "characters": [],
+    "props": [
+      {
+        "key": "hat",
+        "name": "赤い帽子",
+        "appearance": "one red cloth hat"
+      }
+    ],
+    "scenes": [
+      {
+        "title": "公園のベンチに赤い帽子が一つ置かれていた",
+        "narrative": "公園のベンチに赤い帽子が一つ置かれていた。",
+        "visual_description": "Close view of an empty park bench.",
+        "location": "park beside a bench",
+        "source_refs": [
+          "p1"
+        ],
+        "subjects": [],
+        "props": [
+          {
+            "prop": "hat",
+            "holder": null,
+            "visible": true,
+            "state": "resting on the bench"
+          }
+        ]
+      },
+      {
+        "title": "風が吹き、帽子はベンチから地面へ落ちた",
+        "narrative": "風が吹き、帽子はベンチから地面へ落ちた。",
+        "visual_description": "Low view beside a wooden bench.",
+        "location": "park beside a bench",
+        "source_refs": [
+          "p2"
+        ],
+        "subjects": [],
+        "props": [
+          {
+            "prop": "hat",
+            "holder": null,
+            "visible": true,
+            "state": "lying on the ground beside the bench"
+          }
+        ]
+      },
+      {
+        "title": "帽子は道を転がり、水たまりの手前まで進んだ",
+        "narrative": "帽子は道を転がり、水たまりの手前まで進んだ。",
+        "visual_description": "Low view along a park path beside a puddle.",
+        "location": "park path",
+        "source_refs": [
+          "p3"
+        ],
+        "subjects": [],
+        "props": [
+          {
+            "prop": "hat",
+            "holder": null,
+            "visible": true,
+            "state": "on dry ground just before the puddle"
+          }
+        ]
+      },
+      {
+        "title": "帽子は低い石の縁に引っかかって止まった",
+        "narrative": "帽子は低い石の縁に引っかかって止まった。公園には誰もいなかった。",
+        "visual_description": "Close view of a low stone edge beside a puddle.",
+        "location": "park path",
+        "source_refs": [
+          "p4"
+        ],
+        "subjects": [],
+        "props": [
+          {
+            "prop": "hat",
+            "holder": null,
+            "visible": true,
+            "state": "caught against the stone edge outside the water"
+          }
+        ]
+      }
+    ],
+    "supplements": [
+      "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+    ]
+  },
+  "group-photo": {
+    "title": "三人の集合写真",
+    "synopsis": "三人の集合写真の出来事を順に描く。",
+    "characters": [
+      {
+        "kind": "human",
+        "key": "aki",
+        "name": "亜紀",
+        "appearance": "adult woman, short black hair, white coat"
+      },
+      {
+        "kind": "human",
+        "key": "ren",
+        "name": "蓮",
+        "appearance": "adult man, short brown hair, blue jacket"
+      },
+      {
+        "kind": "human",
+        "key": "yui",
+        "name": "結衣",
+        "appearance": "adult woman, long black hair, red cardigan"
+      }
+    ],
+    "props": [
+      {
+        "key": "camera",
+        "name": "カメラ",
+        "appearance": "one black camera"
+      },
+      {
+        "key": "tripod",
+        "name": "三脚",
+        "appearance": "one silver camera tripod"
+      }
+    ],
+    "scenes": [
+      {
+        "title": "亜紀、蓮、結衣は公園へ集まり、亜紀がカメラを三脚へ取り付けた",
+        "narrative": "亜紀、蓮、結衣は公園へ集まり、亜紀がカメラを三脚へ取り付けた。",
+        "visual_description": "Wide view of a park lawn.",
+        "location": "park lawn",
+        "source_refs": [
+          "p1"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "mounts the camera on the tripod"
+          },
+          {
+            "character": "ren",
+            "action": "waits beside Yui"
+          },
+          {
+            "character": "yui",
+            "action": "waits beside Ren"
+          }
+        ],
+        "props": [
+          {
+            "prop": "camera",
+            "holder": "aki",
+            "visible": true,
+            "state": "being mounted on the tripod"
+          },
+          {
+            "prop": "tripod",
+            "holder": null,
+            "visible": true,
+            "state": "standing on the lawn"
+          }
+        ]
+      },
+      {
+        "title": "三人はカメラに向かい、亜紀、蓮、結衣の順で左から並んだ",
+        "narrative": "三人はカメラに向かい、亜紀、蓮、結衣の順で左から並んだ。",
+        "visual_description": "Front view of a sunny park lawn.",
+        "location": "park lawn",
+        "source_refs": [
+          "p2"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "stands on the left facing the camera"
+          },
+          {
+            "character": "ren",
+            "action": "stands in the middle facing the camera"
+          },
+          {
+            "character": "yui",
+            "action": "stands on the right facing the camera"
+          }
+        ],
+        "props": []
+      },
+      {
+        "title": "セルフタイマーの合図で、三人は同時に手を振った",
+        "narrative": "セルフタイマーの合図で、三人は同時に手を振った。",
+        "visual_description": "Front view framed like a group photograph.",
+        "location": "park lawn",
+        "source_refs": [
+          "p3"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "waves toward the camera"
+          },
+          {
+            "character": "ren",
+            "action": "waves toward the camera"
+          },
+          {
+            "character": "yui",
+            "action": "waves toward the camera"
+          }
+        ],
+        "props": []
+      },
+      {
+        "title": "撮影後、三人は一緒にカメラの画面をのぞき、写真を見て笑った",
+        "narrative": "撮影後、三人は一緒にカメラの画面をのぞき、写真を見て笑った。",
+        "visual_description": "Close side view beside a camera tripod.",
+        "location": "park lawn",
+        "source_refs": [
+          "p4"
+        ],
+        "subjects": [
+          {
+            "character": "aki",
+            "action": "looks at the camera screen smiling"
+          },
+          {
+            "character": "ren",
+            "action": "looks at the camera screen smiling"
+          },
+          {
+            "character": "yui",
+            "action": "looks at the camera screen smiling"
+          }
+        ],
+        "props": [
+          {
+            "prop": "camera",
+            "holder": "aki",
+            "visible": true,
+            "state": "screen facing all three people"
+          }
+        ]
+      }
+    ],
+    "supplements": [
+      "原文にない髪形、服装、動物の毛色、背景の細部は描画の一貫性のために補足した。"
+    ]
+  }
+}

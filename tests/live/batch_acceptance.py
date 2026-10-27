@@ -116,16 +116,21 @@ def measure(story_id: UUID) -> Path:
                                 saved.generation_started_at - saved.created_at
                             ).total_seconds()
                             if saved.generation_started_at
+                            and saved.generation_started_at >= saved.created_at
                             else None,
                             "gpu_seconds": (
                                 saved.generation_completed_at - saved.generation_started_at
                             ).total_seconds()
-                            if saved.generation_started_at and saved.generation_completed_at
+                            if saved.generation_started_at
+                            and saved.generation_completed_at
+                            and saved.generation_completed_at >= saved.generation_started_at
                             else None,
                             "collection_seconds": (
                                 saved.saved_at - saved.generation_completed_at
                             ).total_seconds()
-                            if saved.saved_at and saved.generation_completed_at
+                            if saved.saved_at
+                            and saved.generation_completed_at
+                            and saved.saved_at >= saved.generation_completed_at
                             else None,
                             "memory_before": memory_before,
                             "memory_after": backend.json("/system_stats").get("devices"),

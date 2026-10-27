@@ -147,4 +147,4 @@ torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 
 [tool.komaquill.quality]
-step_timeout = 600
+step_timeout = 900

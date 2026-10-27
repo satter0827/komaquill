@@ -40,10 +40,6 @@ class SettingsSnapshot[PresetType: PresetSnapshot](BaseModel):
     remote_port: int = Field(ge=1024, le=65535)
     gpu: GpuType
 
-    high_ram: bool = Field(default=False, strict=True)
-    compute_unit_limit: float | None = Field(default=None, gt=0)
-    compute_unit_reserve: float = Field(default=2, ge=0)
-
     profiles: tuple[str, ...]
     presets: dict[str, PresetType] = Field(default_factory=dict)
     assets: dict[str, ModelPreset] = Field(default_factory=dict)
@@ -57,11 +53,6 @@ class SettingsSnapshot[PresetType: PresetSnapshot](BaseModel):
             self.session_timeout is None or self.submission_timeout >= self.session_timeout
         ):
             raise ValueError("The submission deadline must precede the session deadline.")
-        if (
-            self.compute_unit_limit is not None
-            and self.compute_unit_reserve >= self.compute_unit_limit
-        ):
-            raise ValueError("The compute-unit reserve must be smaller than the limit.")
         for name in self.profiles:
             if name not in self.presets:
                 raise ValueError("The selected generation profile is undefined.")
@@ -94,6 +85,19 @@ class SettingsSnapshot[PresetType: PresetSnapshot](BaseModel):
 
 class RuntimeSettings(SettingsSnapshot[GenerationPreset]):
     """Hold accepted settings for new generation requests."""
+
+    high_ram: bool = Field(default=False, strict=True)
+    compute_unit_limit: float | None = Field(default=None, gt=0)
+    compute_unit_reserve: float = Field(default=2, ge=0)
+
+    @model_validator(mode="after")
+    def valid_compute_reserve(self) -> "RuntimeSettings":
+        if (
+            self.compute_unit_limit is not None
+            and self.compute_unit_reserve >= self.compute_unit_limit
+        ):
+            raise ValueError("The compute-unit reserve must be smaller than the limit.")
+        return self
 
 
 class RetainedRuntimeSettings(SettingsSnapshot[RetainedGenerationPreset]):

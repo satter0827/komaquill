@@ -80,7 +80,7 @@ def ui_matches(project: Project, api: Client, job: "Job", run, *, api_source: bo
 
 
 def export_ui(report: Path, job_id: str, view: Literal["app", "graph"]) -> Path:
-    _, config, jobs = load(report)
+    _, config, jobs = load(report, executing=True)
     job = next(row for row in jobs if row.id == job_id)
     project = Project(report / "workspace")
     path = report / "interfaces" / (job.id + "-" + view + ".json")
@@ -274,20 +274,11 @@ def configuration() -> ComparisonConfig:
 def fixed_plan(case_id: str, config: ComparisonConfig) -> StoryPlan:
     """Keep source obligations separate from added, shared presentation choices."""
     case = cases()[case_id]
-    data = case.draft.model_dump(mode="json")
+    data = json.loads(CONFIG.with_name("specifications.json").read_bytes())[case_id]
     for character in data["characters"]:
         character["appearance"] = config.presentation.get(character["key"], character["appearance"])
     for prop in data["props"]:
         prop["appearance"] = config.presentation.get(prop["key"], prop["appearance"])
-    # Preserve the source action and ending rather than the earlier simplified pose.
-    if case_id == "rainy-cat":
-        data["scenes"][2]["subjects"][0]["action"] = "runs toward its mother beneath the awning"
-        data["scenes"][3]["subjects"].extend(
-            [
-                {"character": "mother_cat", "action": "nuzzles the kitten beneath the awning"},
-                {"character": "kitten", "action": "rests beside its mother beneath the awning"},
-            ]
-        )
     from komaquill.domain.stories import StoryDraft
 
     original = request(4, case.source)
@@ -448,7 +439,7 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
     )
 
 
-def load(report: Path):
+def load(report: Path, *, executing: bool = False):
     frozen = json.loads((report / "comparison.json").read_bytes())
     state = json.loads((report / "state.json").read_bytes())
     if (
@@ -457,18 +448,21 @@ def load(report: Path):
         or digest(frozen) != state.get("comparison_sha256")
     ):
         raise ValueError("The frozen comparison or its version changed.")
-    if frozen["runner_sha256"] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest():
+    if (
+        executing
+        and frozen["runner_sha256"] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    ):
         raise ValueError("The comparison runner changed after preparation.")
     config = ComparisonConfig.model_validate(frozen["config"])
     jobs = [Job.model_validate(row) for row in frozen["jobs"]]
-    if frozen["identity"] != Project(report / "workspace").identity():
+    if executing and frozen["identity"] != Project(report / "workspace").identity():
         raise ValueError("The executable code changed after the comparison was frozen.")
     return frozen, config, jobs
 
 
 def start(report: Path, models_workspace: Path, gpu: Literal["T4", "A100"]) -> None:
     """Prepare only selected assets and preserve the shared CU baseline."""
-    _, config, _ = load(report)
+    _, config, _ = load(report, executing=True)
     project = Project(report / "workspace")
     with FileLock(str(report / ".operation.lock"), timeout=0):
         state = json.loads((report / "state.json").read_bytes())
@@ -561,7 +555,7 @@ def stop(report: Path) -> None:
 
 def generate(report: Path, group: str, model: str | None = None) -> None:
     """Reserve once, reconcile recorded IDs and never replay uncertain acceptance."""
-    _, config, jobs = load(report)
+    _, config, jobs = load(report, executing=True)
     api = Client(report / "workspace")
     project = Project(api.workspace)
     for job in jobs:
@@ -782,15 +776,24 @@ def summarize(report: Path) -> None:
                 if grade
                 else [],
                 "queue_seconds": (run.generation_started_at - run.created_at).total_seconds()
-                if run.generation_started_at
+                if job.source in run.input_sources
+                and run.generation_started_at
+                and run.generation_started_at >= run.created_at
                 else None,
+                "queue_observation": "submission_record"
+                if job.source in run.input_sources
+                else "first_observation_only",
                 "generation_seconds": (
                     run.generation_completed_at - run.generation_started_at
                 ).total_seconds()
-                if run.generation_started_at and run.generation_completed_at
+                if run.generation_started_at
+                and run.generation_completed_at
+                and run.generation_completed_at >= run.generation_started_at
                 else None,
                 "collection_seconds": (run.saved_at - run.generation_completed_at).total_seconds()
-                if run.saved_at and run.generation_completed_at
+                if run.saved_at
+                and run.generation_completed_at
+                and run.saved_at >= run.generation_completed_at
                 else None,
             }
         )
@@ -803,6 +806,8 @@ def summarize(report: Path) -> None:
         report / "summary.json",
         {
             "format_version": 1,
+            "producer": frozen["identity"],
+            "reader": project.identity(),
             "planned_images": len(jobs),
             "image_budget": config.output_limit,
             "technical_retry_budget": config.technical_retry_limit,

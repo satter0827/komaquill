@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from filelock import FileLock
 
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.usage import ComputeBudget
 from komaquill.infrastructure.atomic import atomic_json
@@ -17,7 +18,7 @@ MAXIMUM_OBSERVATION_AGE_SECONDS = 60.0
 def enforce(project: Project, *, allocation_pending: bool = False) -> str | None:
     """Stop on uncertain ownership, balance increases or exhausted reserves."""
     settings = project.settings()
-    if settings.compute_unit_limit is None:
+    if not isinstance(settings, RuntimeSettings) or settings.compute_unit_limit is None:
         return None
     from komaquill.infrastructure.colab import Colab
 

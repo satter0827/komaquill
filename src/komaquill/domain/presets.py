@@ -27,7 +27,9 @@ class ModelPreset(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
-    model_family: Literal["klein-4b", "klein-9b", "flux2"] | None = None
+    model_family: Literal["klein-4b", "klein-9b", "flux2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     role: ModelRole = "checkpoints"
     repo_id: str = ""
     revision: str = ""

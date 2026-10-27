@@ -21,7 +21,7 @@ import psutil
 from filelock import FileLock, ReadWriteLock
 from pydantic import AwareDatetime, BaseModel
 
-from komaquill.domain.configuration import RecordedSettings, remaining_seconds
+from komaquill.domain.configuration import RecordedSettings, RuntimeSettings, remaining_seconds
 from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
 from komaquill.domain.usage import AccountUsage
@@ -263,6 +263,8 @@ class Colab:
                         display_key="text.the_gpu_payload_differs_run_stop_then_start"
                     )
                 return receipt, False
+            if not isinstance(self.settings, RuntimeSettings):
+                raise KomaquillError(code="invalid_configuration", stage="colab_control")
             receipt = Receipt(
                 name=f"komaquill-{uuid4().hex}",
                 runtime_id=uuid4(),

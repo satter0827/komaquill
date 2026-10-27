@@ -86,6 +86,10 @@ def test_former_settings_remain_readable_without_becoming_executable():
     from uuid import uuid4
 
     value = Settings().model_dump(mode="json")
+    for key in ("high_ram", "compute_unit_limit", "compute_unit_reserve"):
+        value.pop(key)
+    for asset in value["assets"].values():
+        asset.pop("model_family")
     for profile in value["presets"].values():
         profile.pop("format_version")
         profile.pop("model_family")
@@ -95,6 +99,7 @@ def test_former_settings_remain_readable_without_becoming_executable():
     )
     assert isinstance(session.settings, RetainedRuntimeSettings)
     assert session.settings.presets["klein-4b"].cfg == 1.0
+    assert session.model_dump(mode="json")["settings"] == value
     assert session.model_dump()["settings"]["presets"]["klein-4b"]["negative"] == ""
     from komaquill.domain.errors import KomaquillError
 

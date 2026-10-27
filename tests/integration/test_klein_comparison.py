@@ -121,6 +121,16 @@ def test_changed_frozen_conditions_are_rejected(prepared):
         comparison.load(prepared)
 
 
+def test_reader_corrections_do_not_unlock_new_execution(prepared, monkeypatch):
+    original = Project.identity
+    monkeypatch.setattr(
+        Project, "identity", lambda self: {**original(self), "source_revision": "changed"}
+    )
+    comparison.load(prepared)
+    with pytest.raises(ValueError, match="executable code changed"):
+        comparison.load(prepared, executing=True)
+
+
 @pytest.mark.parametrize("view", ["app", "graph"])
 def test_interface_candidate_is_adopted_only_with_its_executed_conditions(
     prepared,
@@ -143,6 +153,8 @@ def test_interface_candidate_is_adopted_only_with_its_executed_conditions(
     summary = json.loads((prepared / "summary.json").read_bytes())
     assert summary["valid_saved_images"] == 1
     assert summary["quality_approved_images"] is None
+    assert summary["images"][0]["queue_seconds"] is None
+    assert summary["images"][0]["queue_observation"] == "first_observation_only"
     assert not summary["comparison_complete"]
     review = comparison.Review(
         scene=job.scene,

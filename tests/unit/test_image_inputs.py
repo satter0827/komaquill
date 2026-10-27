@@ -56,10 +56,10 @@ def test_frozen_prompt_is_used_without_recompilation():
         prepare("ignored", None, 42, "test", settings=changed, compiled_input=compiled)
 
 
-def test_inconsistent_retained_text_and_subject_overflow_are_rejected():
+def test_inconsistent_retained_text_is_rejected_and_global_subjects_are_preserved():
     profile = Settings().presets["klein"]
     value = compile_image_input(profile, "a kitten")
     with pytest.raises(ValidationError):
         CompiledImageInput.model_validate({**value.model_dump(), "positive": "changed"})
-    with pytest.raises(ValidationError):
-        compile_image_input(profile, "crowd", subjects=("one", "two", "three"))
+    group = compile_image_input(profile, "group photograph", subjects=("one", "two", "three"))
+    assert group.subject_prompts == ("one", "two", "three")

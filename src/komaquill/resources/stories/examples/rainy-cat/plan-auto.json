@@ -44,7 +44,8 @@
         {
           "prop": "umbrella",
           "holder": "woman",
-          "state": "held above her head"
+          "state": "held above her head",
+          "visible": true
         }
       ]
     },
@@ -70,7 +71,8 @@
         {
           "prop": "umbrella",
           "holder": "woman",
-          "state": "held over the kitten"
+          "state": "held over the kitten",
+          "visible": true
         }
       ]
     },
@@ -112,7 +114,8 @@
         {
           "prop": "umbrella",
           "holder": "woman",
-          "state": "held above her head"
+          "state": "held above her head",
+          "visible": true
         }
       ]
     }

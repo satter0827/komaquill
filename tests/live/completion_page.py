@@ -1,4 +1,4 @@
-"""Compose a four-panel reading copy from verified saved artwork."""
+"""Compose ordered reading copies from verified saved artwork."""
 
 import hashlib
 import io
@@ -35,6 +35,7 @@ def font_path(text: str, supplied: Path | None = None) -> Path:
             windows / "NotoSansJP-VF.ttf",
             windows / "arial.ttf",
             windows / "segoeui.ttf",
+            Path.home() / ".local/share/fonts/NotoSansJP-VF.ttf",
             Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
         ]
@@ -93,12 +94,86 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
 
 
 def render_page(
-    report: Path, title: str, panels: list[dict[str, Any]], *, font: Path | None = None
+    report: Path,
+    title: str,
+    panels: list[dict[str, Any]],
+    *,
+    expected_scenes: int,
+    font: Path | None = None,
 ) -> dict[str, Any]:
-    """Write PNG and PDF atomically after validating all four panel captions."""
-    if len(panels) != 4 or [row["scene"] for row in panels] != [1, 2, 3, 4]:
-        raise ValueError("A complete page requires four ordered scenes.")
+    """Write one to eight scenes without filling absent artwork with placeholders."""
+    order = list(range(1, expected_scenes + 1))
+    if not 1 <= expected_scenes <= 8 or [row["scene"] for row in panels] != order:
+        raise ValueError("A complete comic requires every declared scene in order.")
+    pages = [panels[index : index + 4] for index in range(0, len(panels), 4)]
     chosen = font_path(title + "".join(row["text"] for row in panels), font)
+    layouts = []
+    for size in range(BODY_FONT_SIZE, MINIMUM_FONT_SIZE - 1, -2):
+        layouts = [_layout(chunk, size, chosen) for chunk in pages]
+        if all(layout[2] <= layout[3] for layout in layouts):
+            break
+    else:
+        raise ValueError("A caption exceeds its panel; no text was truncated.")
+    images, retained = [], []
+    for number, (chunk, layout) in enumerate(zip(pages, layouts, strict=True), 1):
+        page, rows = _draw_page(title, chunk, chosen, size, layout)
+        images.append(page)
+        retained.extend({**row, "page": number} for row in rows)
+    outputs = {}
+    for number, page in enumerate(images, 1):
+        filename = "comic.png" if number == 1 else f"comic-{number}.png"
+        buffer = io.BytesIO()
+        page.save(buffer, format="PNG")
+        content = buffer.getvalue()
+        atomic_bytes(report / filename, content)
+        outputs[filename] = {
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "size_bytes": len(content),
+        }
+        with Image.open(report / filename) as saved:
+            saved.verify()
+    buffer = io.BytesIO()
+    images[0].save(
+        buffer, format="PDF", save_all=True, append_images=images[1:], resolution=PDF_RESOLUTION
+    )
+    content = buffer.getvalue()
+    atomic_bytes(report / "comic.pdf", content)
+    outputs["comic.pdf"] = {
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "size_bytes": len(content),
+    }
+    if not (report / "comic.pdf").read_bytes().startswith(b"%PDF-"):
+        raise ValueError("The PDF output is invalid.")
+    return {
+        "complete": True,
+        "size": list(PAGE_SIZE),
+        "reading_order": order,
+        "page_count": len(images),
+        "font_sha256": hashlib.sha256(chosen.read_bytes()).hexdigest(),
+        "panels": retained,
+        "outputs": outputs,
+    }
+
+
+def _layout(panels, size, chosen):
+    panel_width = (PAGE_SIZE[0] - 2 * PAGE_MARGIN - PANEL_GAP) // 2
+    body = ImageFont.truetype(str(chosen), size)
+    captions = [
+        wrap_text(panel["text"], body, panel_width - 2 * CAPTION_PADDING) for panel in panels
+    ]
+    ascent, descent = body.getmetrics()
+    line_height = ascent + descent + size // 4
+    row_heights = [
+        panel_width
+        + 2 * CAPTION_PADDING
+        + max((len(lines) for lines in captions[row : row + 2]), default=0) * line_height
+        for row in (0, 2)
+    ]
+    available = PAGE_SIZE[1] - PAGE_MARGIN - TITLE_HEIGHT - PAGE_MARGIN
+    return captions, row_heights, sum(row_heights) + PANEL_GAP, available
+
+
+def _draw_page(title, panels, chosen, size, layout):
     page = Image.new("RGB", PAGE_SIZE, "white")
     draw = ImageDraw.Draw(page)
     title_font = ImageFont.truetype(str(chosen), TITLE_FONT_SIZE)
@@ -107,25 +182,10 @@ def render_page(
     draw.text((PAGE_MARGIN, PAGE_MARGIN), title, font=title_font, fill="black", anchor="lt")
     panel_width = (PAGE_SIZE[0] - 2 * PAGE_MARGIN - PANEL_GAP) // 2
     top = PAGE_MARGIN + TITLE_HEIGHT
-    available_height = PAGE_SIZE[1] - top - PAGE_MARGIN
-    for size in range(BODY_FONT_SIZE, MINIMUM_FONT_SIZE - 1, -2):
-        body = ImageFont.truetype(str(chosen), size)
-        captions = [
-            wrap_text(panel["text"], body, panel_width - 2 * CAPTION_PADDING) for panel in panels
-        ]
-        ascent, descent = body.getmetrics()
-        line_height = ascent + descent + size // 4
-        row_heights = [
-            panel_width
-            + 2 * CAPTION_PADDING
-            + max(len(lines) for lines in captions[row : row + 2]) * line_height
-            for row in (0, 2)
-        ]
-        content_height = sum(row_heights) + PANEL_GAP
-        if content_height <= available_height:
-            break
-    else:
-        raise ValueError("A caption exceeds its panel; no text was truncated.")
+    captions, row_heights, content_height, available_height = layout
+    body = ImageFont.truetype(str(chosen), size)
+    ascent, descent = body.getmetrics()
+    line_height = ascent + descent + size // 4
     content_top = top + (available_height - content_height) // 2
     retained = []
     for index, panel in enumerate(panels):
@@ -156,25 +216,4 @@ def render_page(
                 "bounds": [x, y, x + panel_width, y + panel_height],
             }
         )
-    outputs = {}
-    for filename, format_name in (("comic.png", "PNG"), ("comic.pdf", "PDF")):
-        buffer = io.BytesIO()
-        page.save(buffer, format=format_name, resolution=PDF_RESOLUTION)
-        content = buffer.getvalue()
-        atomic_bytes(report / filename, content)
-        outputs[filename] = {
-            "sha256": hashlib.sha256(content).hexdigest(),
-            "size_bytes": len(content),
-        }
-    with Image.open(report / "comic.png") as saved:
-        saved.verify()
-    if not (report / "comic.pdf").read_bytes().startswith(b"%PDF-"):
-        raise ValueError("The PDF output is invalid.")
-    return {
-        "complete": True,
-        "size": list(PAGE_SIZE),
-        "reading_order": [1, 2, 3, 4],
-        "font_sha256": hashlib.sha256(chosen.read_bytes()).hexdigest(),
-        "panels": retained,
-        "outputs": outputs,
-    }
+    return page, retained

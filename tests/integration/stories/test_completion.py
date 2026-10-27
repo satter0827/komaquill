@@ -1,8 +1,10 @@
 """Verify completion controls and evidence using FakeListLLM and the ComfyUI stub."""
 
 import json
+import re
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -13,54 +15,13 @@ from tests.live import story_completion as live
 from tests.support.stories import planned
 
 
-def test_additional_session_is_explicit_and_keeps_the_cumulative_budget(completion, monkeypatch):
-    from komaquill.infrastructure.atomic import atomic_json
-
-    report, _, _ = completion
-    live.baseline(report)
-    before = live.load(report)
-    before.gpu_started_at = datetime.now(UTC) - timedelta(hours=2)
-    live.save(report, before)
-    runtime_id = uuid4()
-
-    def started(self, **kwargs):
-        settings = self._project.settings()
-        assert settings.submission_timeout == live.ADDITIONAL_SEND_SECONDS
-        assert settings.session_timeout == live.ADDITIONAL_TOTAL_SECONDS
-        live.reserve_screen(report)
-        atomic_json(self._project.state / "monitor.json", {"runtime_id": str(runtime_id)})
-
-    monkeypatch.setattr(services.SessionService, "start", started)
-    live.start(report, additional_session=True)
-    after = live.load(report)
-    assert after.gpu_started_at == before.gpu_started_at
-    assert before.reserved_outputs == 4 and after.reserved_outputs == 5
-    assert after.screen_outputs == 1
-    assert after.baseline_render_id == before.baseline_render_id
-    assert after.additional_session.runtime_id == runtime_id
-    live.sending_allowed(after)
-    with pytest.raises(RuntimeError):
-        live.sending_allowed(
-            after,
-            now=after.additional_session.started_at
-            + timedelta(seconds=after.additional_session.send_seconds),
-        )
-    with pytest.raises(RuntimeError):
-        live.start(report, additional_session=True)
-
-
 def test_shutdown_summary_uses_the_current_recorded_runtime(completion, monkeypatch):
     from komaquill.infrastructure.atomic import atomic_json
 
     report, _, _ = completion
     case = live.load(report)
     original, current = uuid4(), uuid4()
-    case.runtime_id = original
-    case.additional_session = live.AdditionalSession(
-        started_at=datetime.now(UTC),
-        runtime_id=current,
-        identity={},
-    )
+    case.runtime_id = current
     live.save(report, case)
     for identity in [current, original]:
         atomic_json(
@@ -72,6 +33,60 @@ def test_shutdown_summary_uses_the_current_recorded_runtime(completion, monkeypa
     assert json.loads((report / "shutdown.json").read_bytes())["runtime_id"] == str(current)
 
 
+def test_multiple_cases_share_one_workspace_and_model_set(completion, project):
+    report, _, _ = completion
+    _, another = planned(project, count=2)
+    second = report.parent / "second-case"
+    live.prepare(
+        project.root,
+        another.request.story_id,
+        second,
+        workspace=live.project(report).root,
+    )
+    assert live.project(report).root == live.project(second).root
+    assert live.load(second).scene_count == 2
+    assert live.load(report).scene_count == 4
+    assert len(list(live.project(report).models.rglob("*.safetensors"))) == 5
+    assert live.load(report).source_plan_sha256 != live.load(second).source_plan_sha256
+
+
+def test_model_definitions_follow_the_shared_model_workspace(completion, project):
+    from komaquill.infrastructure.configuration import Project
+
+    report, _, _ = completion
+    planning_root = project.root / "separate-planning"
+    Client.initialize(planning_root)
+    _, plan = planned(Project(planning_root))
+    destination = report.parent / "separate-case"
+    live.prepare(planning_root, plan.request.story_id, destination, model_workspace=project.root)
+    assert live.project(destination).settings().assets == project.settings().assets
+
+
+def test_preparation_checkpoints_runtime_before_start_returns(completion, monkeypatch):
+    from komaquill.infrastructure.atomic import atomic_json
+
+    report, _, _ = completion
+    case = live.load(report)
+    case.gpu_started_at = None
+    live.save(report, case)
+    runtime_id = uuid4()
+
+    def starting(self, *, progress, **kwargs):
+        atomic_json(self._project.state / "monitor.json", {"runtime_id": str(runtime_id)})
+        progress("Preparing the verified model.")
+        assert live.load(report).runtime_id == runtime_id
+        raise OSError("Injected preparation interruption")
+
+    monkeypatch.setattr(services.SessionService, "start", starting)
+    with pytest.raises(OSError):
+        live.start(report)
+    assert live.load(report).runtime_id == runtime_id
+    atomic_json(live.project(report).state / "monitor.json", {"runtime_id": str(uuid4())})
+    with pytest.raises(RuntimeError):
+        live.checkpoint_runtime(report)
+    assert live.load(report).runtime_id == runtime_id
+
+
 @pytest.fixture
 def completion(project, session, client, monkeypatch):
     repository, plan = planned(project)
@@ -79,7 +94,9 @@ def completion(project, session, client, monkeypatch):
 
     stage_models(project)
     report = project.root / "completion"
-    case = live.prepare(project.root, plan.request.story_id, report)
+    case = live.prepare(
+        project.root, plan.request.story_id, report, workspace=project.root / "shared-workspace"
+    )
     case.gpu_started_at = datetime.now(UTC)
     live.save(report, case)
     active = session.model_copy(update={"settings": live.project(report).settings()})
@@ -108,6 +125,10 @@ def reviews_for(report):
                     "decision": "reject",
                     "reason": "The subject does not match the scene.",
                     "issues": ["species"],
+                    "checks": [
+                        {"criterion": key, "verdict": "unclear", "reason": "Offline fixture"}
+                        for key in publication.REQUIRED_CHECKS
+                    ],
                 }
             )
         selections.append(
@@ -203,6 +224,37 @@ def test_improvement_is_a_separate_run_with_frozen_parent_and_only_one_submissio
     assert (report / "before-after.md").is_file()
 
 
+def test_relative_report_recovers_baseline_after_an_unselected_edit(completion, monkeypatch):
+    report, _, _ = completion
+    live.baseline(report)
+    snapshot = reviews_for(report)
+    request = report / "edit.json"
+    request.write_text(
+        json.dumps(
+            {
+                "scene": 1,
+                "method": "edit",
+                "parent_key": snapshot.scenes[0].candidates[0].key,
+                "prompt": "Preserve the source action and correct the visible prop connection.",
+            }
+        )
+    )
+    live.improve(report, request)
+    assert not (report / "baseline-manifest.json").exists()
+    monkeypatch.chdir(report.parent)
+    relative = Path(report.name)
+    publication.publish(relative)
+    initial = json.loads((report / "baseline-manifest.json").read_bytes())
+    current = json.loads((report / "manifest.json").read_bytes())
+    assert len(initial["images"]) == 4 and not initial["improvements"]
+    assert len(current["images"]) == 5 and len(current["improvements"]) == 1
+    assert initial["selected_quality"] == current["selected_quality"]
+    assert initial["comic_complete"], initial["page"]
+    for name in ["all-candidates.md", "selected.md", "baseline-selection.md", "before-after.md"]:
+        links = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", (report / name).read_text())
+        assert links and all((report / link).is_file() for link in links)
+
+
 @pytest.mark.parametrize("missing_review", [False, True])
 def test_quality_pass_requires_an_accept_review_for_every_selected_image(
     completion, missing_review
@@ -214,6 +266,8 @@ def test_quality_pass_requires_an_accept_review_for_every_selected_image(
     payload = json.loads(path.read_bytes())
     for row in payload["reviews"]:
         row["decision"] = "accept"
+        for check in row["checks"]:
+            check["verdict"] = "match"
     if missing_review:
         payload["reviews"].pop()
     path.write_text(json.dumps(payload))
@@ -232,11 +286,11 @@ def test_quality_pass_requires_an_accept_review_for_every_selected_image(
 def test_budget_and_deadline_are_not_reset_on_resume(completion):
     report, _, _ = completion
     case = live.load(report)
-    live.reserve(case, 12)
+    live.reserve(case, case.config.output_limit)
     live.save(report, case)
     with pytest.raises(RuntimeError):
         live.reserve(live.load(report), 1)
-    case.gpu_started_at = datetime.now(UTC) - timedelta(seconds=case.send_seconds)
+    case.gpu_started_at = datetime.now(UTC) - timedelta(seconds=case.config.send_seconds)
     live.save(report, case)
     with pytest.raises(RuntimeError):
         live.sending_allowed(live.load(report))
@@ -257,7 +311,7 @@ def test_unresolved_baseline_is_never_automatically_resubmitted(completion, stub
 
 def test_frozen_config_error_does_not_block_owned_gpu_shutdown(completion, monkeypatch):
     report, _, _ = completion
-    (report / "workspace/komaquill.toml").write_text("corrupt")
+    (live.project(report).root / "komaquill.toml").write_text("corrupt")
     with pytest.raises(RuntimeError):
         live.load(report)
     stopped = []
@@ -343,11 +397,19 @@ def test_confirmed_failure_does_not_block_later_scenes_and_retry_uses_budget(
 
 
 @pytest.mark.parametrize(
-    "payload", [None, "invalid JSON", '{"format_version":2,"status":"timeout"}']
+    "payload", [None, "invalid JSON", "incomplete", '{"format_version":2,"status":"timeout"}']
 )
 def test_missing_invalid_or_timed_out_review_selects_saved_images(completion, payload):
     report, _, _ = completion
     live.baseline(report)
+    if payload == "incomplete":
+        reviews_for(report)
+        value = json.loads((report / "reviews.json").read_bytes())
+        for row in value["reviews"]:
+            row["decision"] = "accept"
+            row["checks"] = row["checks"][:1]
+            row["checks"][0]["verdict"] = "match"
+        payload = json.dumps(value)
     if payload is not None:
         (report / "reviews.json").write_text(payload, encoding="utf-8")
     publication.publish(report)
@@ -411,12 +473,3 @@ def test_corrupt_image_is_ineligible_without_rewriting_saved_run(completion):
     assert not manifest["selection_complete"] and not manifest["comic_complete"]
     assert len(manifest["unavailable_images"]) == 1
     assert api.stories.show(case.story_id).complete
-
-
-def test_screen_reservations_share_the_budget_and_do_not_reset(completion):
-    report, _, _ = completion
-    live.reserve_screen(report)
-    live.reserve_screen(report)
-    assert live.load(report).reserved_outputs == 2
-    with pytest.raises(RuntimeError):
-        live.reserve_screen(report)

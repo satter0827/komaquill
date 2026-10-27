@@ -2,6 +2,7 @@
 
 import json
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,109 @@ def image_file(folder: Path, name="input.png", mode="RGB", size=(32, 32)):
     path = folder / name
     Image.new(mode, size, 255 if mode == "L" else "green").save(path)
     return path
+
+
+def pinned_reference_run(project, session, client, stub, monkeypatch):
+    api, active = configure(project, session, client, monkeypatch)
+    item = api.inputs.import_file(image_file(project.root))
+    run = submit_generation(
+        project, client, active, "a scene", None, 1, "klein-edit", inputs={"reference": item}
+    )
+    record = stub.history[run.prompt_id]
+    pinned = f"komaquill/{item.sha256}/{Path(item.reference).name}"
+    for node in record["prompt"][2].values():
+        if node["class_type"] == "LoadImage":
+            node["inputs"]["image"] = pinned
+    record["prompt"][3]["komaquill"]["input_sha256"] = {pinned: item.sha256}
+    return api, active, run, record, item
+
+
+def test_observed_graph_and_hash_match_after_server_pins_a_reference(
+    project, session, client, stub, monkeypatch
+):
+    from komaquill.domain.workflow import digest
+
+    api, active, run, record, item = pinned_reference_run(
+        project, session, client, stub, monkeypatch
+    )
+    pending = api.evaluations.export(run.run_id)["runs"][0]
+    assert pending["workflow_api"] is None and pending["workflow_integrity"] is None
+    assert collect(project, client, active).saved == 1
+    saved = project.repository.read(run.run_id)
+    observed = api.artifact_path(f"runs/{run.run_id}/workflow-api.json")
+    assert digest(json.loads(observed.read_bytes())) == saved.workflow_sha256
+    submitted = json.loads(
+        api.artifact_path(f"runs/{run.run_id}/submitted-workflow-api.json").read_bytes()
+    )
+    assert submitted["77"]["inputs"]["image"] == item.reference
+    assert json.loads(observed.read_bytes())["77"]["inputs"]["image"] != item.reference
+    assert api.evaluations.export(run.run_id)["runs"][0]["workflow_integrity"] is True
+    before = observed.read_bytes(), saved.workflow_sha256
+    record["prompt"][2]["77"]["is_changed"] = ["runtime cache metadata"]
+    project.repository.conditions(saved, record["prompt"])
+    assert (observed.read_bytes(), project.repository.read(run.run_id).workflow_sha256) == before
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["input", "class", "nodes", "invalid_node", "invalid_incoming_node", "list", "corrupt"],
+)
+def test_changed_or_corrupt_observed_graph_does_not_rewrite_a_saved_run(
+    project, session, client, stub, monkeypatch, change
+):
+    api, active, run, record, _ = pinned_reference_run(project, session, client, stub, monkeypatch)
+    assert collect(project, client, active).saved == 1
+    saved = project.repository.read(run.run_id)
+    observed = api.artifact_path(f"runs/{run.run_id}/workflow-api.json")
+    prompt = deepcopy(record["prompt"])
+    if change == "input":
+        prompt[2]["77"]["inputs"]["image"] = "a-different-image.png"
+    elif change == "class":
+        prompt[2]["77"]["class_type"] = "LoadImageMask"
+    elif change == "nodes":
+        prompt[2].pop("77")
+    elif change == "invalid_incoming_node":
+        prompt[2]["77"] = []
+    elif change == "invalid_node":
+        value = json.loads(observed.read_bytes())
+        value["77"] = []
+        observed.write_text(json.dumps(value))
+    else:
+        observed.write_text("[]" if change == "list" else "invalid JSON")
+    before = observed.read_bytes(), saved.model_dump_json()
+    with pytest.raises(KomaquillError) as caught:
+        project.repository.conditions(saved, prompt)
+    assert caught.value.code == ("storage_failed" if change == "corrupt" else "invalid_output")
+    assert (observed.read_bytes(), project.repository.read(run.run_id).model_dump_json()) == before
+
+
+def test_observed_graph_recovers_after_a_run_checkpoint_failure(
+    project, session, client, stub, monkeypatch
+):
+    from komaquill.domain.workflow import digest
+    from komaquill.infrastructure import storage
+
+    api, _, run, record, _ = pinned_reference_run(project, session, client, stub, monkeypatch)
+    original_hash = run.workflow_sha256
+
+    def interrupted(*args):
+        raise OSError("Injected checkpoint failure")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(storage, "save_run", interrupted)
+        with pytest.raises(OSError):
+            project.repository.conditions(run, record["prompt"])
+    observed = api.artifact_path(f"runs/{run.run_id}/workflow-api.json")
+    assert observed.is_file()
+    assert project.repository.read(run.run_id).workflow_sha256 == original_hash
+    recovered = project.repository.read(run.run_id)
+    record["prompt"][2]["77"]["is_changed"] = ["later cache observation"]
+    project.repository.conditions(recovered, record["prompt"])
+    assert project.repository.read(run.run_id).workflow_sha256 == digest(
+        json.loads(observed.read_bytes())
+    )
+    assert project.repository.read(run.run_id).state == "queued"
+    assert api.artifact_path(f"runs/{run.run_id}/workflow.json").is_file()
 
 
 def test_import_preserves_content_and_freezes_input_before_upload(

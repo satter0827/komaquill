@@ -23,7 +23,6 @@ def example():
     [
         "category",
         "missing_subjects",
-        "three",
         "missing_actor",
         "duplicate",
         "prop",
@@ -39,8 +38,6 @@ def test_reject_invalid_visual_specifications(fault):
         value["characters"][0].pop("kind")
     elif fault == "missing_subjects":
         scene.pop("subjects")
-    elif fault == "three":
-        scene["subjects"].append({"character": "mother_cat", "action": "sits"})
     elif fault == "missing_actor":
         scene["subjects"][0]["character"] = "missing_actor"
     elif fault == "duplicate":

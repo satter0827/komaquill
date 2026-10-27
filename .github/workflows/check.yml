@@ -32,6 +32,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Install Japanese font
+        shell: pwsh
+        run: | # pragma: allowlist secret Public immutable font URL and SHA256.
+          # SIL OFL 1.1: ofl/notosansjp/OFL.txt at the pinned font revision below.
+          $fontDirectory = if ($IsWindows) { Join-Path $env:WINDIR 'Fonts' } else { Join-Path $HOME '.local/share/fonts' }
+          New-Item -ItemType Directory -Path $fontDirectory -Force | Out-Null
+          $fontPath = Join-Path $fontDirectory 'NotoSansJP-VF.ttf'
+          if (-not (Test-Path -LiteralPath $fontPath)) {
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf' -OutFile $fontPath -TimeoutSec 120
+          }
+          if ((Get-FileHash -LiteralPath $fontPath -Algorithm SHA256).Hash -ne 'c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f') { exit 1 } # pragma: allowlist secret Public font SHA256.
       - name: Check quality and installed wheel
         run: uv run --locked --extra colab-client --extra llm python scripts/check.py --level 3
   quality:

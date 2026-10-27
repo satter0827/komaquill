@@ -146,9 +146,28 @@ def save_conditions(project: WorkspacePaths, run: Run, prompt: list[Any]) -> Non
     graph = prompt[2]
     if not isinstance(graph, dict):
         raise KomaquillError(display_key="text.generation_conditions_are_invalid")
-    if not (folder / "workflow-api.json").is_file():
-        atomic_json(folder / "workflow-api.json", graph)
-    graph_digest = digest(graph)
+    observed = folder / "workflow-api.json"
+    if not observed.is_file():
+        atomic_json(observed, graph)
+    try:
+        recorded = json.loads(observed.read_bytes())
+    except (OSError, ValueError) as error:
+        raise KomaquillError(code="storage_failed", stage="storage", retryable=False) from error
+    if (
+        not isinstance(recorded, dict)
+        or recorded.keys() != graph.keys()
+        or any(
+            not isinstance(recorded[key], dict)
+            or not isinstance(graph[key], dict)
+            or any(
+                recorded[key].get(field) != graph[key].get(field)
+                for field in ("class_type", "inputs")
+            )
+            for key in graph
+        )
+    ):
+        raise KomaquillError(code="invalid_output", stage="history_validation", retryable=False)
+    graph_digest = digest(recorded)
     if run.workflow_sha256 != graph_digest:
         run.workflow_sha256 = graph_digest
         save_run(project, run)
@@ -231,8 +250,8 @@ class FileRunRepository:
 
     def prepare(self, run: Run, graph: JsonObject, ui: JsonObject) -> None:
         folder = run_dir(self.project, run.run_id)
-        atomic_json(folder / "workflow-api.json", graph)
-        atomic_json(folder / "workflow.json", ui)
+        atomic_json(folder / "submitted-workflow-api.json", graph)
+        atomic_json(folder / "submitted-workflow.json", ui)
 
     @contextmanager
     def claim(self, run_id: UUID) -> Iterator[bool]:

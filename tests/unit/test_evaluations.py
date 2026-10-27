@@ -30,6 +30,9 @@ def history(project, session):
         graph = {"1": {"inputs": {"text": prompt}}}
         run = new_run(project, session, uuid4(), graph)
         project.repository.prepare(run, graph, {"nodes": []})
+        project.repository.conditions(
+            run, [0, str(uuid4()), graph, {"extra_pnginfo": {"workflow": {"nodes": []}}}]
+        )
         key = f"runs/{run.run_id}/images/0001.png"
         buffer = io.BytesIO()
         Image.new("RGB", (2, 2)).save(buffer, "PNG")

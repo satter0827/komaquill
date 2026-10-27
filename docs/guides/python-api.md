@@ -83,7 +83,7 @@ StoryEvent.publication_failureは、画像の保存状態とは別の閲覧用�
 ```python
 run = client.images.generate(
     "rainy street beside a shop awning",
-    profile="klein-4b",
+    model="klein-4b",
     subjects=(
         "human woman, yellow raincoat, holding a blue umbrella",
         "small gray kitten, four legs, sitting under the umbrella",
@@ -117,12 +117,12 @@ for event in client.stories.render(story_id, candidates=2):
 
 client.inputs.import_fileは画像または白が編集対象のマスクを保存し、InputArtifactを返します。images.generateのinputsへ渡し、parametersで宣言済みの工程設定を上書きできます。全場面の指定にはRenderConfigとSceneRenderConfigを使い、stories.renderのrender_configへ渡します。[素材入力と場面指定](story-workflows.md)に例と制約を記載しています。
 
-負プロンプトの入力は廃止しました。空値も受け付けません。参照画像の編集は[編集手順](story-workflows.md)を参照してください。
+WAIは負プロンプトに対応します。未指定は既定値、明示指定は置換、空文字は無効化です。Kleinへの明示指定は拒否します。参照画像の編集は[編集手順](story-workflows.md)を参照してください。
 
 ## 画像モデルとGPUを選ぶ
 
 ```python
-client.sessions.start(profiles=["klein-9b", "klein-9b-edit"], gpu="A100", high_ram=True)
+client.sessions.start(models=["klein-9b"], gpu="A100", high_ram=True)
 usage = client.sessions.usage()
 print(usage.remaining_compute_units, usage.consumption_rate_hourly)
 print(usage.assignments_count, usage.observed_at)

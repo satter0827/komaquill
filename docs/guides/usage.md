@@ -137,7 +137,7 @@ GPU側のモデル準備イベントは、取得したログのworker-events.jso
 komaquill generate --prompt-file positive.txt --candidates 2
 ```
 
-プロンプトは直接指定にも対応します。負プロンプトの入力は廃止しました。
+プロンプトは直接指定にも対応します。負プロンプトはWAIだけで使用できます。
 
 ```powershell
 komaquill generate --prompt "a blue umbrella" --candidates 2
@@ -147,14 +147,14 @@ komaquill generate --prompt "a blue umbrella" --candidates 2
 
 ```json
 {
-  "format_version": 3,
+  "format_version": 4,
   "prompt": "rainy street",
   "subjects": ["woman holding a blue umbrella", "small gray kitten"]
 }
 ```
 
 ```powershell
-komaquill generate --input-file image-input.json --profile klein-4b --candidates 2
+komaquill generate --input-file image-input.json --model klein-4b --candidates 2
 ```
 
 直接指定とprompt-fileは併用できません。input-fileは他のプロンプト指定と併用せず、profile・seed・candidatesと組み合わせます。空のプロンプトはエラーです。品質用の既定文は別に適用します。
@@ -165,10 +165,10 @@ komaquill generate --input-file image-input.json --profile klein-4b --candidates
 
 ```powershell
 komaquill usage
-komaquill start --profile klein-9b --profile klein-9b-edit --gpu A100 --high-ram
-komaquill generate --profile klein-9b --prompt "an opaque red book inside a blue bag"
-komaquill open --profile klein-9b --view app
-komaquill open --profile klein-9b-edit --view graph
+komaquill start --model klein-9b --gpu A100 --high-ram
+komaquill generate --model klein-9b --prompt "an opaque red book inside a blue bag"
+komaquill open --model klein-9b --view app
+komaquill open --model klein-9b --operation edit --view graph
 komaquill stop
 ```
 

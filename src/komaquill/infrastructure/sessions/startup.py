@@ -21,7 +21,7 @@ from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import create_payload
 from komaquill.infrastructure.diagnostics import record_event
-from komaquill.infrastructure.downloads import fetch_model
+from komaquill.infrastructure.model_auth import preflight
 from komaquill.infrastructure.monitor_state import (
     cancel_requested,
     check_cancel,
@@ -149,11 +149,9 @@ def start_colab(
         check_cancel(project)
         if saved is None:
             echo(message("text.downloading_and_verifying_the_model"))
-            for asset in assets(project.settings()):
-                phase("model_preparation", asset=asset.name)
-                fetch_model(project, asset)
-                check_cancel(project)
-        phase("models_verified" if saved is None else "models_reused")
+            preflight(list(assets(project.settings())), project.settings().request_timeout)
+            check_cancel(project)
+        phase("access_verified" if saved is None else "runtime_reused")
         payload = create_payload(project)
         phase("payload_ready")
         cleanup_owned = colab.receipt() is None
@@ -167,11 +165,9 @@ def start_colab(
             receipt, created = colab.acquire(payload.code_sha256, expected_account=expected_account)
         phase("runtime_owned", receipt.runtime_id)
         cleanup_owned = True
-        worker = None
         if created or not project.session_file.is_file():
             echo(message("text.preparing_the_environment_and_model_on_colab"))
-            worker = colab.prepare(receipt, payload)
-            processes.append(worker)
+            colab.prepare(receipt, payload)
 
         def reconnect() -> None:
             nonlocal tunnel
@@ -208,11 +204,20 @@ def start_colab(
             check_cancel(project)
             if time.monotonic() >= deadline:
                 raise KomaquillError(
-                    display_key="text.comfyui_did_not_become_ready_check_the_preparation"
+                    display_key="text.comfyui_did_not_become_ready_check_the_preparation",
+                    code="preparation_timeout",
+                    stage="preparation",
+                    retryable=False,
                 )
             update_monitor(project)
             if time.monotonic() >= next_progress:
                 current_progress = colab.progress(receipt)
+                if failure_code := current_progress.get("failure_code"):
+                    raise KomaquillError(
+                        code=failure_code,
+                        stage=current_progress.get("failure_stage") or "preparation",
+                        retryable=False,
+                    )
                 if current_progress and current_progress != previous_progress:
                     update_monitor(
                         project,
@@ -252,13 +257,21 @@ def start_colab(
             except KomaquillError as error:
                 if not error.retryable:
                     raise
-                if (
-                    time.monotonic() >= deadline
-                    or (worker is not None and worker.poll() is not None)
-                    or (tunnel is not None and tunnel.poll() is not None)
+                if time.monotonic() >= deadline or (
+                    tunnel is not None and tunnel.poll() is not None
                 ):
+                    failed_progress = colab.progress(receipt)
+                    if failure_code := failed_progress.get("failure_code"):
+                        raise KomaquillError(
+                            code=failure_code,
+                            stage=failed_progress.get("failure_stage") or "preparation",
+                            retryable=False,
+                        ) from None
                     raise KomaquillError(
-                        display_key="text.comfyui_did_not_become_ready_check_the_preparation"
+                        display_key="text.comfyui_did_not_become_ready_check_the_preparation",
+                        code="preparation_timeout",
+                        stage="preparation",
+                        retryable=False,
                     ) from None
                 time.sleep(
                     min(project.settings().poll_interval, max(0, deadline - time.monotonic()))

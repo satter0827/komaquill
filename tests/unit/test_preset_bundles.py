@@ -17,20 +17,25 @@ from komaquill.infrastructure.workflows import prepare
 def copy_bundle(project, name="klein-4b"):
     target = project.root / "presets" / name
     shutil.copytree(Path(str(files("komaquill").joinpath("resources/presets/klein-4b"))), target)
+    if name != "klein-4b":
+        manifest = target / "preset.toml"
+        manifest.write_text(
+            manifest.read_text().replace('model_id = "klein-4b"', f'model_id = "{name}"')
+        )
     return target
 
 
 def test_local_preset_is_complete_and_frozen(project, monkeypatch):
     target = copy_bundle(project, "custom")
     config = project.root / "komaquill.toml"
-    config.write_text('profiles=["custom"]\n[presets.custom]\nsteps=31\n')
+    config.write_text('models=["custom"]\n[presets.custom]\nsteps=31\n')
     frozen = project.configured()
     first, _ = prepare("first", 42, "run", settings=frozen.settings())
     assert first["62"]["inputs"]["steps"] == 31
     first["62"]["inputs"]["steps"] = 999
     manifest = target / "preset.toml"
     manifest.write_text(manifest.read_text().replace("steps = 4", "steps = 40"))
-    config.write_text('profiles=["custom"]\n')
+    config.write_text('models=["custom"]\n')
     second, _ = prepare("second", 42, "run", settings=frozen.settings())
     assert second["62"]["inputs"]["steps"] == 31
     assert second["63"]["inputs"]["conditioning"] == ["74", 0]

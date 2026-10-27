@@ -97,6 +97,7 @@ GPU_MODULES = frozenset(
         "infrastructure/asset_download.py",
         "infrastructure/asset_store.py",
         "gpu/worker.py",
+        "gpu/models.py",
         "infrastructure/__init__.py",
         "infrastructure/configuration.py",
         "infrastructure/paths.py",

@@ -217,9 +217,11 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         .joinpath("resources/presets/klein-4b/" + name)
                         .read_bytes()
                     )
+                if name == "preset.toml":
+                    content = content.replace(b'model_id = "klein-4b"', b'model_id = "custom"')
                 (bundle / name).write_bytes(content)
             (workspace / "komaquill.toml").write_text(
-                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom","klein-4b-edit"]\n'
+                'poll_interval=0.01\nshutdown_timeout=2\nmodels=["custom","klein-4b"]\n'
                 "[presets.custom]\nsteps=27\n"
             )
             command("--help")
@@ -329,7 +331,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     structured.write_text(
                         json.dumps(
                             {
-                                "format_version": 3,
+                                "format_version": 4,
                                 "prompt": "rainy street",
                                 "subjects": ["woman", "kitten"],
                             }
@@ -346,7 +348,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "4",
                             "--llm-profile",
                             "fake",
-                            "--image-profile",
+                            "--model",
                             "custom",
                             "--candidates",
                             "2",
@@ -356,7 +358,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     assert illustrated["complete"] and illustrated["image_count"] == 4
                     assert all(len(scene["candidates"]) == 2 for scene in illustrated["scenes"])
                     assert all(
-                        "requested_negative" not in scene["compiled_input"]
+                        scene["compiled_input"]["requested_negative"] is None
                         for scene in illustrated["scenes"]
                     )
                     shown = json.loads(
@@ -377,7 +379,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "snapshot = client.stories.show(story_id)",
                             "assert isinstance(snapshot, StorySnapshot) and snapshot.complete",
                             "assert snapshot.props and snapshot.scenes[0].compiled_input",
-                            "assert snapshot.scenes[0].compiled_input.compiler_version == 7",
+                            "assert snapshot.scenes[0].compiled_input.compiler_version == 8",
                             f"assert len(client.stories.list().stories) == {2 if wheel else 1}",
                             "for scene in snapshot.scenes:",
                             "    assert scene.primary_image is not None",
@@ -403,13 +405,13 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             f"reference_file.write_bytes({png.getvalue()!r})",
                             "reference = client.inputs.import_file(reference_file)",
                             "run = client.images.generate('a gray kitten', "
-                            "profile='klein-4b-edit', inputs={'reference': reference}, "
+                            "model='klein-4b', operation='edit', inputs={'reference': reference}, "
                             "candidates=2)",
                             "assert run.state == 'saved'",
                             "assert run.input_sha256[reference.reference] == reference.sha256",
                             "config = RenderConfig(common_prompt='rainy daylight, cool light', "
                             "scenes=tuple(SceneRenderConfig(scene=i, "
-                            "prompt='a gray kitten', profile='klein-4b-edit', "
+                            "prompt='a gray kitten', model='klein-4b', operation='edit', "
                             "inputs={'reference': reference}) "
                             "for i in range(1,5)))",
                             "rendered = list(client.stories.render(story_id, "

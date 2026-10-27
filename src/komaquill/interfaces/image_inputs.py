@@ -8,13 +8,14 @@ from typing import Literal
 from pydantic import ValidationError
 
 from komaquill.api import Client
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import ImageInput, PromptSource
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.rendering import RenderConfig
 
 
-def read_source(path: Path, role: Literal["positive", "input"]) -> PromptSource:
+def read_source(path: Path, role: Literal["positive", "negative", "input"]) -> PromptSource:
     try:
         content = path.read_bytes()
         return PromptSource(
@@ -81,7 +82,11 @@ def image_input(
 
 
 def material_inputs(
-    client: Client, profile_name: str | None, references: dict[str, str], base: Path
+    client: Client,
+    model: str | None,
+    references: dict[str, str],
+    base: Path,
+    operation: Literal["generate", "edit"] = "generate",
 ) -> dict[str, InputArtifact]:
     """Resolve user paths at the terminal boundary and retain only saved references."""
     if not references:
@@ -90,7 +95,14 @@ def material_inputs(
     from komaquill.infrastructure.sessions.connection import session_project
 
     settings = session_project(find_project(client.workspace)).settings()
-    name = profile_name or settings.profiles[0]
+    if not isinstance(settings, RuntimeSettings):
+        raise KomaquillError(code="invalid_configuration", stage="generation")
+    try:
+        name = settings.profile_for(model, operation)
+    except ValueError:
+        raise KomaquillError(
+            code="invalid_configuration", stage="generation", retryable=False
+        ) from None
     if name not in settings.presets or set(references) != set(settings.presets[name].image_inputs):
         raise KomaquillError(code="invalid_request", stage="preparation", retryable=False)
     return {
@@ -108,7 +120,11 @@ def render_file(client: Client, path: Path) -> tuple[RenderConfig, PromptSource]
         value = json.loads(source.content.removeprefix("\ufeff"))
         for scene in value["scenes"]:
             scene["inputs"] = material_inputs(
-                client, scene["profile"], scene.get("inputs", {}), path.parent
+                client,
+                scene.get("model"),
+                scene.get("inputs", {}),
+                path.parent,
+                scene.get("operation", "generate"),
             )
         return RenderConfig.model_validate(value), source
     except (ValueError, KeyError, TypeError):

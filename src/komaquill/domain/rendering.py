@@ -12,7 +12,9 @@ class SceneRenderConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
     scene: int = Field(ge=1, strict=True)
-    profile: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    model: str | None = None
+    operation: Literal["generate", "edit"] = "generate"
+    negative: str | None = None
     inputs: dict[str, InputArtifact] = Field(default_factory=dict)
     prompt: str | None = None
     subjects: tuple[str, ...] | None = None
@@ -23,8 +25,9 @@ class RenderConfig(BaseModel):
     """Assign every scene before any image request is submitted."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    format_version: Literal[3] = 3
+    format_version: Literal[4] = 4
     common_prompt: str = ""
+    common_negative: str | None = None
     scenes: tuple[SceneRenderConfig, ...] = Field(min_length=1, max_length=8)
 
     @model_validator(mode="after")

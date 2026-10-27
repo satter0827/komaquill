@@ -307,7 +307,7 @@ class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
     input_sources: tuple[PromptSourceRecord, ...] = ()
-    format_version: Literal[1, 2, 3, 4, 5, 6] = 1
+    format_version: Literal[1, 2, 3, 4, 5, 6, 7] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID
     plan_sha256: str
@@ -322,7 +322,12 @@ class StoryRender(StoryRecord):
             raise ValueError("New rendering attempts require frozen image inputs.")
         if self.format_version >= 4 and any(
             scene.preset is None
-            or scene.image_profile not in self.settings.get("profiles", [])
+            or scene.image_profile
+            not in (
+                self.settings.get("presets", {})
+                if self.format_version >= 7
+                else self.settings.get("profiles", [])
+            )
             or scene.compiled_input is None
             or (
                 self.format_version >= 6

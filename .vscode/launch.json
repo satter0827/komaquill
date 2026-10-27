@@ -11,7 +11,9 @@
       "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
       "justMyCode": true,
       "args": [
-        "start"
+        "start",
+        "--model",
+        "${input:imageModel}"
       ],
       "subProcess": false
     },
@@ -27,7 +29,11 @@
       "args": [
         "open",
         "--view",
-        "${input:view}"
+        "${input:view}",
+        "--model",
+        "${input:imageModel}",
+        "--operation",
+        "${input:imageOperation}"
       ],
       "subProcess": false
     },
@@ -43,7 +49,9 @@
       "args": [
         "generate",
         "--prompt",
-        "${input:prompt}"
+        "${input:prompt}",
+        "--model",
+        "${input:imageModel}"
       ],
       "subProcess": false
     },
@@ -306,7 +314,9 @@
       "args": [
         "start",
         "--foreground",
-        "--no-open"
+        "--no-open",
+        "--model",
+        "${input:imageModel}"
       ],
       "subProcess": false
     }
@@ -411,6 +421,27 @@
       "type": "promptString",
       "description": "Scene render settings JSON file",
       "default": "render.json"
+    },
+    {
+      "id": "imageModel",
+      "type": "pickString",
+      "description": "Choose an enabled image model",
+      "options": [
+        "klein-4b",
+        "klein-9b",
+        "wai-illustrious"
+      ],
+      "default": "klein-4b"
+    },
+    {
+      "id": "imageOperation",
+      "type": "pickString",
+      "description": "Choose generation or reference editing",
+      "options": [
+        "generate",
+        "edit"
+      ],
+      "default": "generate"
     }
   ]
 }

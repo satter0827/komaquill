@@ -14,7 +14,10 @@ class InputArtifact(BaseModel):
     """Reference immutable validated local bytes independently of a GPU endpoint."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    format_version: Literal[1, 2] = 2
+    format_version: Literal[1, 2, 3] = 2
+    extension: Literal["png", "jpg", "webp"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     kind: Literal["image", "mask"] = "image"
     key: str = Field(pattern=r"^inputs/[a-f0-9]{64}/content$")
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -26,7 +29,8 @@ class InputArtifact(BaseModel):
     @model_validator(mode="after")
     def portable(self) -> "InputArtifact":
         if (
-            self.key != f"inputs/{self.sha256}/content"
+            (self.format_version == 3) != (self.extension is not None)
+            or self.key != f"inputs/{self.sha256}/content"
             or PurePosixPath(self.name).name != self.name
             or PureWindowsPath(self.name).name != self.name
             or PureWindowsPath(self.name).drive
@@ -39,6 +43,8 @@ class InputArtifact(BaseModel):
 
     @property
     def reference(self) -> str:
+        if self.format_version == 3:
+            return f"komaquill-{self.sha256}.{self.extension}"
         if self.format_version == 1:
             return f"komaquill/{self.sha256}/{self.name}"
         return f"komaquill-{self.sha256}-{self.name}"

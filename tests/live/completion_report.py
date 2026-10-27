@@ -49,6 +49,9 @@ class Review(BaseModel):
     scene: int = Field(ge=1, le=8, strict=True)
     run_id: UUID
     image: str
+    scope: Literal["local", "scene", "work"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     decision: Literal["accept", "reject", "undecided"]
     reason: str = Field(min_length=1)
     issues: list[str] = Field(default_factory=list)

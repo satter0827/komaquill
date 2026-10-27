@@ -41,10 +41,9 @@ def test_comparison_pairs_conditions_and_parents_without_claiming_llm_success(pr
     frozen, config, jobs = comparison.load(prepared)
     assert len(jobs) == config.output_limit - config.technical_retry_limit
     assert Counter(job.group for job in jobs) == {
-        "baseline": 64,
-        "edit": 8,
-        "ablation": 4,
-        "regression": 2,
+        "baseline": 32,
+        "edit": 2,
+        "ablation": 1,
     }
     assert len({job.id for job in jobs}) == len(jobs)
     for job in [job for job in jobs if job.group == "baseline" and job.profile == "klein-4b"]:
@@ -55,7 +54,7 @@ def test_comparison_pairs_conditions_and_parents_without_claiming_llm_success(pr
             and row.case == job.case
             and row.scene == job.scene
             and row.seed == job.seed
-            and row.profile == "klein-9b"
+            and row.profile == "wai-illustrious"
         )
         assert (job.prompt, job.subjects, job.parameters) == (
             other.prompt,
@@ -68,12 +67,11 @@ def test_comparison_pairs_conditions_and_parents_without_claiming_llm_success(pr
     assert len(frozen["plans"]["rainy-cat"]["scenes"][3]["subjects"]) == 3
     assert not frozen["plans"]["flying-hat"]["characters"]
     for job in jobs:
-        assert "negative" not in json.loads(job.source.content)
+        assert json.loads(job.source.content)["negative"] is None
     assert Counter(row["kind"] for row in comparison.expected_pairs(jobs)) == {
-        "model": 32,
-        "lora": 4,
-        "edit_model": 4,
-        "edit_instruction": 4,
+        "model": 16,
+        "lora": 1,
+        "edit_model": 1,
     }
 
 
@@ -88,9 +86,9 @@ def test_comparison_does_not_resubmit_after_uncertain_failure(prepared, monkeypa
 
     monkeypatch.setattr(ImageService, "generate", fail)
     with pytest.raises(KomaquillError):
-        comparison.generate(prepared, "regression")
+        comparison.generate(prepared, "baseline")
     with pytest.raises(ValueError, match="unknown acceptance"):
-        comparison.generate(prepared, "regression")
+        comparison.generate(prepared, "baseline")
     assert len(calls) == 1
     state = json.loads((prepared / "state.json").read_bytes())
     assert len(state["jobs"]) == 1
@@ -99,7 +97,7 @@ def test_comparison_does_not_resubmit_after_uncertain_failure(prepared, monkeypa
 def test_comparison_summarizes_missing_images_without_placeholder_comics(prepared):
     comparison.summarize(prepared)
     summary = json.loads((prepared / "summary.json").read_bytes())
-    assert summary["saved_images"] == 0 and summary["unrun_images"] == 78
+    assert summary["saved_images"] == 0 and summary["unrun_images"] == 35
     assert summary["quality_approved_images"] is None
     assert not summary["comparison_complete"]
     assert not (prepared / "comics").exists()
@@ -140,8 +138,8 @@ def test_interface_candidate_is_adopted_only_with_its_executed_conditions(
 ):
     project = Project(prepared / "workspace")
     api = Client(project.root)
-    _, _, jobs = comparison.load(prepared)
-    job = next(row for row in jobs if row.id == "regression-generate")
+    frozen, _, jobs = comparison.load(prepared)
+    job = next(row for row in jobs if row.group == "baseline" and row.profile == "klein-4b")
     exported = comparison.export_ui(prepared, job.id, view)
     graph, _ = comparison.job_workflow(project, job)
     client.submit(graph, json.loads(exported.read_bytes()), "browser-test")
@@ -165,6 +163,10 @@ def test_interface_candidate_is_adopted_only_with_its_executed_conditions(
         checks=[
             {"criterion": key, "verdict": "unclear", "reason": "Synthetic test image."}
             for key in REQUIRED_CHECKS
+        ]
+        + [
+            {"criterion": key, "verdict": "unclear", "reason": "Synthetic test image."}
+            for key in frozen["conditions"][job.case]["scenes"][str(job.scene)]["conditions"]
         ],
     )
     reviewed = comparison.ReviewFile(
@@ -181,9 +183,104 @@ def test_interface_candidate_is_adopted_only_with_its_executed_conditions(
     summary = json.loads((prepared / "summary.json").read_bytes())
     assert summary["quality_reviewed_images"] == 1
     assert summary["quality_approved_images"] == 0
+    condition_ids = set(frozen["conditions"][job.case]["scenes"][str(job.scene)]["conditions"])
+    assert condition_ids <= {check["id"] for check in summary["images"][0]["checks"]}
     assert len(api.evaluations.list()) == 1
     changed = job.model_copy(update={"seed": job.seed + 1})
     assert not comparison.ui_matches(project, api, changed, run)
     api.artifact_path(f"runs/{run.run_id}/{name}").unlink()
     with pytest.raises((ValueError, KomaquillError)):
         comparison.saved_candidate(project, api, job, state["jobs"][job.id])
+
+
+def test_local_approval_cannot_be_counted_as_scene_quality(prepared):
+    frozen, _, jobs = comparison.load(prepared)
+    job = next(job for job in jobs if job.group == "baseline")
+    checks = [
+        {"criterion": key, "verdict": "match", "reason": "Synthetic contract fixture."}
+        for key in REQUIRED_CHECKS
+    ]
+    for key in frozen["conditions"][job.case]["scenes"][str(job.scene)]["conditions"]:
+        checks.append(
+            {"criterion": key, "verdict": "match", "reason": "Synthetic contract fixture."}
+        )
+    from uuid import uuid4
+
+    local = comparison.Review(
+        scene=job.scene,
+        run_id=uuid4(),
+        image="test.png",
+        scope="local",
+        decision="accept",
+        reason="Only the edited region was checked.",
+        checks=checks,
+    )
+    assert not comparison.scene_approved(frozen, job, local)
+    assert comparison.scene_approved(frozen, job, local.model_copy(update={"scope": "scene"}))
+    assert not comparison.scene_approved(
+        frozen,
+        job,
+        local.model_copy(update={"scope": "scene", "checks": local.checks[: len(REQUIRED_CHECKS)]}),
+    )
+
+
+def test_recovery_target_does_not_replace_conditions_or_reset_session_budget(prepared, monkeypatch):
+    frozen, _, _ = comparison.load(prepared)
+    original = (prepared / "comparison.json").read_bytes()
+    state = json.loads((prepared / "state.json").read_bytes())
+    state["sessions"]["T4-1"] = {"status": "stopped", "runtime_id": "original"}
+    atomic_json(prepared / "state.json", state)
+    with pytest.raises(ValueError, match="session budget"):
+        comparison.start(prepared)
+    assert (prepared / "comparison.json").read_bytes() == original
+    wrong = {
+        "format_version": 1,
+        "comparison_sha256": "0" * 64,
+        "identity": frozen["identity"],
+        "runner_sha256": frozen["runner_sha256"],
+        "session_limit": 2,
+        "created_at": "2026-10-27T00:00:00Z",
+        "reason": "Synthetic authorization fixture.",
+    }
+    (prepared / "execution-revisions.jsonl").write_text(json.dumps(wrong) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="another comparison"):
+        comparison.load(prepared, executing=True)
+    assert (
+        json.loads((prepared / "state.json").read_bytes())["sessions"]["T4-1"]["status"]
+        == "stopped"
+    )
+
+
+def test_each_case_criteria_identify_its_own_scene(prepared):
+    frozen, _, _ = comparison.load(prepared)
+    conditions = comparison.review_conditions(prepared, frozen)
+    for key, value in frozen["plans"].items():
+        plan = comparison.StoryPlan.model_validate(value)
+        for scene in plan.scenes:
+            actual = conditions[key]["scenes"][str(scene.position)]
+            assert actual == comparison.scene_conditions(key, scene)
+    assert "rainy-cat:scene:1:subject:woman" in conditions["rainy-cat"]["scenes"]["1"]["conditions"]
+    assert not any(
+        "subject:" in key for key in conditions["flying-hat"]["scenes"]["1"]["conditions"]
+    )
+
+
+def test_explicit_criteria_correction_preserves_frozen_plan_and_source(prepared):
+    frozen, _, _ = comparison.load(prepared)
+    original = (prepared / "comparison.json").read_bytes()
+    correction = {
+        "format_version": 1,
+        "comparison_sha256": comparison.digest(frozen),
+        "original_conditions_sha256": comparison.digest(frozen["conditions"]),
+        "reason": "Synthetic correction fixture.",
+        "conditions": frozen["conditions"],
+    }
+    atomic_json(prepared / "condition-correction.json", correction)
+    assert comparison.review_conditions(prepared, frozen) == frozen["conditions"]
+    correction["conditions"]["rainy-cat"]["scenes"] = correction["conditions"]["group-photo"][
+        "scenes"
+    ]
+    atomic_json(prepared / "condition-correction.json", correction)
+    with pytest.raises(ValueError, match="frozen source and scene"):
+        comparison.review_conditions(prepared, json.loads(original))
+    assert (prepared / "comparison.json").read_bytes() == original

@@ -50,7 +50,7 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         atomic_json(project.session_file, session.model_dump(mode="json"))
     patch_session(monkeypatch, "Colab", lambda _: control)
 
-    patch_session(monkeypatch, "fetch_model", lambda *args: None)
+    patch_session(monkeypatch, "preflight", lambda *args: None)
     patch_session(monkeypatch, "check_port", lambda _: None)
     patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
@@ -66,6 +66,15 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
     monkeypatch.setattr(control, "acquire", acquire)
     process = SimpleNamespace(poll=lambda: 1 if case == "startup_failure" else None)
     monkeypatch.setattr(control, "prepare", lambda *args: calls.append("prepare") or process)
+    monkeypatch.setattr(
+        control,
+        "progress",
+        lambda _: (
+            {"phase": "failed", "failure_code": "connection_failed", "failure_stage": "preparation"}
+            if case == "startup_failure"
+            else {}
+        ),
+    )
     monkeypatch.setattr(control, "refresh", lambda _: True)
     monkeypatch.setattr(control, "tunnel", lambda _: calls.append("ssh") or process)
     monkeypatch.setattr(control, "recover_diagnostics", lambda _: calls.append("logs") or ())
@@ -193,16 +202,11 @@ def test_generate_cli_prompts_and_returns_saved_path(cli_connection, monkeypatch
         assert "Saved:" in result.output
 
 
-@pytest.mark.parametrize("command", ["start", "stop", "models"])
+@pytest.mark.parametrize("command", ["start", "stop"])
 def test_cli_delegates_operations_without_editor_dependencies(project, monkeypatch, command):
     calls = []
     monkeypatch.setattr(services.supervisor, "start", lambda *args, **kwargs: calls.append(args))
     monkeypatch.setattr(services.shutdown, "stop", lambda *args, **kwargs: calls.append(args))
-    monkeypatch.setattr(
-        cli,
-        "fetch_model",
-        lambda *args, **kwargs: calls.append(args) or project.artifacts / "model",
-    )
     monkeypatch.setattr(cli.typer, "prompt", lambda *args, **kwargs: "private-password")
     monkeypatch.setattr(cli.keyring, "set_password", lambda *args: None)
     args = {
@@ -245,13 +249,13 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
     calls = []
 
     def start(bound, backend, endpoint, username, open_browser, echo, foreground, **kwargs):
-        assert bound.settings().profiles == ("klein-4b-edit",)
+        assert bound.settings().profiles == ("klein-4b", "klein-4b-edit")
         assert open_browser is (open_flag == "--open")
         assert foreground is None
         calls.append("connected")
 
     monkeypatch.setattr(services.supervisor, "start", start)
-    arguments = ["--project", str(project.root), "start", "--profile", "klein-4b-edit"]
+    arguments = ["--project", str(project.root), "start", "--model", "klein-4b"]
     if open_flag:
         arguments.append(open_flag)
     result = CliRunner().invoke(cli.app, arguments)

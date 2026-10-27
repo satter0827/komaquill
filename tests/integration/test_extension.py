@@ -35,7 +35,7 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
         async with TestClient(TestServer(app)) as client:
             assert (await (await client.get("/komaquill/v1/capabilities")).json())[
                 "protocol_version"
-            ] == 1
+            ] == 2
             assert (
                 await client.post("/komaquill/v1/requests", json={"workflow": {}})
             ).status == 409
@@ -71,12 +71,13 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
             assert not calls
             assert (await client.post(route, json={"action": "invalid"})).status == 409
             assert (await client.post(route, json={"action": "confirm"})).status == 200
-            await asyncio.gather(*extension.tasks.values())
+            assert not calls
+            await extension.prepare(job["request_id"], {})
             state = extension.read(job["request_id"])
-            assert state.remote_ready and not state.local_saved and state.phase == "preparing"
+            assert state.remote_ready and state.phase == "ready"
             assert (
                 await client.post(route, headers=token, json={"action": "local_saved"})
-            ).status == 200
+            ).status == 409
             assert extension.read(job["request_id"]).phase == "ready"
             extension.update(job["request_id"], phase="failed")
             assert extension.read(job["request_id"]).phase == "ready"
@@ -103,9 +104,8 @@ def test_preparation_terminal_states_are_monotonic(project, monkeypatch, case):
         job = Preparation(
             workspace_id=extension.workspace_id,
             workflow={},
-            phase="confirmation",
+            phase="confirmed",
             assets=[asset()],
-            local_saved=case == "local_first",
         )
         atomic_json(extension.path(job.request_id), job.model_dump(mode="json"))
 
@@ -126,7 +126,7 @@ def test_preparation_terminal_states_are_monotonic(project, monkeypatch, case):
             "cancel": "cancelled",
             "failure": "failed",
             "local_first": "ready",
-        }.get(case, "preparing")
+        }.get(case, "ready")
         if case == "cancel":
             extension.update(job.request_id, phase="ready")
             assert extension.read(job.request_id).phase == "cancelled"
@@ -149,7 +149,7 @@ def test_register_uses_existing_promptserver_routes(project, monkeypatch):
         add_on_prompt_handler=lambda handler: None,
     )
     module.register(server, project.artifacts, 1)
-    assert len(server.routes) == 10
+    assert len(server.routes) == 9
 
 
 @pytest.mark.parametrize(
@@ -165,7 +165,6 @@ def test_local_only_models_stream_to_a_confirmed_digest(project, case):
             workflow={},
             phase="cancelled" if case == "cancelled" else "preparing",
             assets=[local],
-            local_saved=True,
         )
         atomic_json(extension.path(job.request_id), job.model_dump(mode="json"))
         app = web.Application()
@@ -177,15 +176,9 @@ def test_local_only_models_stream_to_a_confirmed_digest(project, case):
                 headers={} if case == "unauthorized" else {"X-Komaquill-Control": "a" * 40},
                 data=b"corrupt" if case == "oversize" else b"wrong" if case == "hash" else b"model",
             )
-            assert response.status == {
-                "saved": 200,
-                "unknown": 409,
-                "unauthorized": 403,
-                "cancelled": 409,
-            }.get(case, 400)
-            assert model_path(project.models, local).exists() is (case == "saved")
+            assert response.status == 404
+            assert model_path(project.models, local).exists() is False
             assert not list(project.artifacts.glob("models/**/*upload"))
-            if case == "saved":
-                assert extension.read(job.request_id).phase == "ready"
+            assert extension.read(job.request_id).phase == job.phase
 
     asyncio.run(scenario())

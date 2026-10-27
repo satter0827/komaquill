@@ -16,17 +16,17 @@ from komaquill.infrastructure.workflows import assets, prepare
 
 @pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit", "klein-9b", "klein-9b-edit"])
 def test_profile_prepares_exactly_its_five_assets_and_positive_guider(name):
-    settings = Settings(profiles=[name])
+    settings = Settings(models=[name.removesuffix("-edit")])
     selected = assets(settings)
-    assert len(selected) == 5
+    assert len(selected) == 4
     assert {item.model_family for item in selected} == {name.removesuffix("-edit"), "flux2"}
-    graph, _ = prepare("opaque clothes, blue bag", 42, "test", settings=settings)
+    graph, _ = prepare("opaque clothes, blue bag", 42, "test", settings=settings, profile_name=name)
     assert graph["63"]["class_type"] == "BasicGuider"
     assert set(graph["63"]["inputs"]) == {"model", "conditioning"}
     assert "76" not in graph and "123" not in graph
 
 
-@pytest.mark.parametrize("role", ["diffusion", "encoder", "party", "fixes"])
+@pytest.mark.parametrize("role", ["diffusion", "encoder", "aniedit"])
 def test_cross_family_resources_are_rejected_before_allocation(role):
     data = Settings().model_dump()
     data["presets"]["klein-9b"]["resources"][role] = data["presets"]["klein-4b"]["resources"][role]
@@ -37,16 +37,17 @@ def test_cross_family_resources_are_rejected_before_allocation(role):
 @pytest.mark.parametrize("value", [None, "", "extra hands"])
 def test_input_contracts_reject_removed_fields(value):
     with pytest.raises(ValidationError):
-        ImageInput.model_validate({"prompt": "a street", "negative": value})
+        ImageInput.model_validate({"prompt": "a street", "profile": value})
     with pytest.raises(ValidationError):
         SceneRenderConfig.model_validate({"scene": 1, "profile": "klein-4b", "negative": value})
-    assert RenderConfig.model_fields["format_version"].default == 3
+    assert RenderConfig.model_fields["format_version"].default == 4
 
 
 def test_public_interfaces_have_no_negative_parameter(project):
     api = Client(project.root)
     for operation in (api.images.generate, api.stories.generate, api.stories.render):
-        assert "negative" not in signature(operation).parameters
+        assert "profile" not in signature(operation).parameters
+    assert "negative" in signature(api.images.generate).parameters
 
 
 @pytest.mark.parametrize(
@@ -74,7 +75,7 @@ def test_gpu_and_memory_overrides_are_frozen_with_cli_precedence(project, monkey
     )
     monkeypatch.setattr(services.SessionService, "status", lambda _: SessionStatus())
     api = Client(project.root)
-    api.sessions.start(gpu="A100", high_ram=True, profiles=["klein-9b", "klein-9b-edit"])
+    api.sessions.start(gpu="A100", high_ram=True, models=["klein-9b"])
     snapshot = captured[0]
     assert (snapshot.gpu, snapshot.high_ram) == ("A100", True)
     assert snapshot.profiles == ("klein-9b", "klein-9b-edit")
@@ -86,6 +87,15 @@ def test_former_settings_remain_readable_without_becoming_executable():
     from uuid import uuid4
 
     value = Settings().model_dump(mode="json")
+    value.pop("format_version")
+    value.pop("models")
+    value["profiles"] = ["klein-4b", "klein-4b-edit"]
+    value["presets"] = {
+        key: row for key, row in value["presets"].items() if key in value["profiles"]
+    }
+    for row in value["presets"].values():
+        for key in ("model_id", "operation", "negative_default", "adjustable"):
+            row.pop(key, None)
     for key in ("high_ram", "compute_unit_limit", "compute_unit_reserve"):
         value.pop(key)
     for asset in value["assets"].values():

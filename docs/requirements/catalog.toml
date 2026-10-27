@@ -143,7 +143,7 @@ tests = ["tests/integration/stories/test_completion.py", "tests/live/story_compl
 [requirements.REQ-KLEIN]
 summary = "Kleinの生成・編集をCLI・Python API・標準画面で共有する"
 status = "implemented"
-acceptance = ["全資源をGPU確保前に照合する", "二つのLoRAを標準ノードで接続する", "APIと画面の条件を一致させる", "負入力を空値も含めて受け付けない", "旧記録を現在の生成設定型から分離する"]
+acceptance = ["GPU確保前に配布情報とアクセス権を確認し、GPU上で実体を照合する", "AniEditを標準ノードで接続し、WAIは系列に対応するDetail Tweakerを使う", "APIと画面の条件を一致させる", "Kleinでは負入力を拒否し、WAIでは未指定・空・明示指定を区別する", "旧記録を現在の生成設定型から分離する"]
 sources = ["src/komaquill/domain/presets.py", "src/komaquill/infrastructure/colab.py", "src/komaquill/resources/presets/klein-4b/preset.toml", "src/komaquill/resources/presets/klein-4b-edit/preset.toml"]
 tests = ["tests/unit/test_presets.py", "tests/unit/test_story_workflows.py", "tests/integration/test_workflow_inputs.py", "tests/integration/test_colab_control.py"]
 
@@ -157,6 +157,13 @@ tests = ["tests/integration/stories/test_story_suite.py", "tests/unit/stories/te
 [requirements.REQ-KLEIN-SWITCH]
 summary = "Klein 4B・9BとGPUを明示選択し、確定した条件と予算で比較する"
 status = "implemented"
-acceptance = ["生成と編集の4セットをCLI・API・標準画面で共有する", "規模が混在する資源と廃止した入力を送信前に拒否する", "GPUとHigh RAMを優先順位に従って起動時に固定する", "残CU・CU毎時・割当数・観測時刻を型付きで返す", "CUの基準残高を再開と次のセッションへ引き継ぐ", "転送前の実測とハッシュ照合で準備の可否を判定する", "保存・画質・選好・未実施を分け、同じ条件の比較だけを集計する"]
+acceptance = ["モデルと操作から6セットを解決し、CLI・API・標準画面で共有する", "規模が混在する資源と廃止した入力を送信前に拒否する", "GPUとHigh RAMを優先順位に従って起動時に固定する", "残CU・CU毎時・割当数・観測時刻を型付きで返す", "CUの基準残高を再開と次のセッションへ引き継ぐ", "PC保存を行わず、Colabで直接取得・取消・SHA256照合を行う", "保存・画質・選好・未実施を分け、同じ条件の比較だけを集計する"]
 sources = ["src/komaquill/domain/usage.py", "src/komaquill/infrastructure/compute_budget.py", "src/komaquill/api/services.py", "src/komaquill/infrastructure/colab.py"]
-tests = ["tests/unit/test_klein_switching.py", "tests/unit/test_compute_budget.py", "tests/unit/test_model_transfer.py", "tests/integration/test_klein_comparison.py", "tests/integration/test_colab_provider.py", "tests/live/klein_comparison.py"]
+tests = ["tests/unit/test_klein_switching.py", "tests/unit/test_compute_budget.py", "tests/unit/test_remote_models.py", "tests/integration/test_klein_comparison.py", "tests/integration/test_colab_provider.py", "tests/live/klein_comparison.py"]
+
+[requirements.REQ-MODEL-INTERFACE]
+summary = "共通の場面計画をモデルと操作で描画し、モデル本体をColabへ直接取得する"
+status = "in_progress"
+acceptance = ["公開入力をmodelとoperation、起動入力をmodelsへ統一する", "KleinとWAIに対応する基本設定をApp Modeで調整する", "旧記録を読み取り専用で保持し、新規生成へ流用しない", "認証情報をSSH標準入力だけで渡し、PCとGPUへトークンファイルを作らない", "同じ計画・seedで両モデルを比較し、保存と画質を分ける", "停止確認と一覧・ハッシュ記録後に不要なモデルを削除する"]
+sources = ["src/komaquill/domain/configuration.py", "src/komaquill/infrastructure/model_auth.py", "src/komaquill/gpu/models.py", "src/komaquill/infrastructure/asset_download.py", "src/komaquill/resources/presets/wai-illustrious/preset.toml"]
+tests = ["tests/unit/test_model_interface.py", "tests/unit/test_remote_models.py", "tests/unit/test_downloads.py", "tests/integration/test_extension.py", "tests/integration/test_klein_comparison.py"]

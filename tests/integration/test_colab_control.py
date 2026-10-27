@@ -161,21 +161,10 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
         assert not control.lock.is_locked
         commands.append(args)
 
-    remote_hashes = {}
-
-    def transferred(*args):
-        assert not control.lock.is_locked
-        commands.append(("scp", *args))
-        remote_hashes[args[2]] = args[1].parent.name
-
     monkeypatch.setattr(control, "call", uploaded)
-    monkeypatch.setattr(control, "transfer_model", transferred)
-    monkeypatch.setattr(control, "remote_digest", lambda _, path: remote_hashes.get(path))
-    monkeypatch.setattr(control, "check_transfer_feasibility", lambda *args: None)
-    monkeypatch.setattr(control, "command", lambda *args: ["official", *args])
     process = SimpleNamespace()
     monkeypatch.setattr(
-        module.subprocess, "Popen", lambda args, **kwargs: commands.append(args) or process
+        control, "remote_models", lambda *args: commands.append(("ssh",)) or process
     )
     assert control.prepare(receipt) is process
     script = (control.project.runtime / "deployment/prepare.py").read_text()
@@ -185,19 +174,16 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
 
     with tarfile.open(control.project.runtime / "deployment/payload.tar") as archive:
         assert b"poll_interval = 0.001" in archive.extractfile("komaquill.toml").read()
-    assert commands[0][0] == "upload" and "exec" in commands[-1]
+    assert [command[0] for command in commands] == ["upload", "exec", "ssh"]
     import shutil
-
-    from komaquill.infrastructure.workflows import assets
 
     remote = control.project.root / "remote"
     remote.mkdir()
     shutil.copyfile(
         control.project.runtime / "deployment/payload.tar", remote / "komaquill-runtime.tar"
     )
-    transferred_asset = next(asset for asset in assets(control.settings) if asset.transfer)
-    incoming = remote / f"komaquill-{receipt.runtime_id}-{transferred_asset.sha256}.part"
-    incoming.write_bytes(b"interrupted or corrupted transfer")
+    incoming = remote / "komaquill-runtime.tar"
+    incoming.write_bytes(b"interrupted or corrupted runtime archive")
     with pytest.raises(RuntimeError):
         exec(compile(script.replace("/content", remote.as_posix()), "prepare.py", "exec"), {})
     assert incoming.exists()

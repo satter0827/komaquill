@@ -15,6 +15,12 @@ from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.materials import workspace_identity
 
+IMAGE_EXTENSIONS: dict[str, Literal["png", "jpg", "webp"]] = {
+    "PNG": "png",
+    "JPEG": "jpg",
+    "WEBP": "webp",
+}
+
 
 def import_file(project: Project, path: Path, kind: Literal["image", "mask"]) -> InputArtifact:
     """Preserve original bytes and reject masks with ambiguous color semantics."""
@@ -27,7 +33,10 @@ def import_file(project: Project, path: Path, kind: Literal["image", "mask"]) ->
             )
         if kind == "mask" and (image.format != "PNG" or image.mode not in {"1", "L"}):
             raise KomaquillError(code="invalid_request", stage="image_validation", retryable=False)
+        extension = IMAGE_EXTENSIONS[image.format]
     item = InputArtifact(
+        format_version=3,
+        extension=extension,
         kind=kind,
         key=f"inputs/{metadata.sha256}/content",
         sha256=metadata.sha256,

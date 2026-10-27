@@ -28,7 +28,7 @@ def test_json_accepts_current_prompt_format_and_subjects(tmp_path):
     path.write_text(
         json.dumps(
             {
-                "format_version": 3,
+                "format_version": 4,
                 "prompt": "a street",
                 "subjects": ["woman", "kitten"],
             }
@@ -90,7 +90,7 @@ def test_missing_file_is_a_safe_error(tmp_path):
 @pytest.mark.parametrize("negative", [None, "", "extra hands"])
 def test_removed_json_input_is_rejected_even_when_empty(tmp_path, negative):
     file = tmp_path / "input.json"
-    file.write_text(json.dumps({"prompt": "a street", "negative": negative}))
+    file.write_text(json.dumps({"prompt": "a street", "profile": negative}))
     with pytest.raises(KomaquillError) as error:
         image_input(None, input_file=file)
     assert error.value.display_key == "inputs.invalid_json"

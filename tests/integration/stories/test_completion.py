@@ -46,7 +46,7 @@ def test_multiple_cases_share_one_workspace_and_model_set(completion, project):
     assert live.project(report).root == live.project(second).root
     assert live.load(second).scene_count == 2
     assert live.load(report).scene_count == 4
-    assert len(list(live.project(report).models.rglob("*.safetensors"))) == 5
+    assert len(list(live.project(report).models.rglob("*.safetensors"))) == 0
     assert live.load(report).source_plan_sha256 != live.load(second).source_plan_sha256
 
 
@@ -251,7 +251,7 @@ def test_relative_report_recovers_baseline_after_an_unselected_edit(completion, 
     assert initial["selected_quality"] == current["selected_quality"]
     assert initial["comic_complete"], initial["page"]
     for name in ["all-candidates.md", "selected.md", "baseline-selection.md", "before-after.md"]:
-        links = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", (report / name).read_text())
+        links = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", (report / name).read_text(encoding="utf-8"))
         assert links and all((report / link).is_file() for link in links)
 
 

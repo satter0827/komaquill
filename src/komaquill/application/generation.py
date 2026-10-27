@@ -520,6 +520,7 @@ def submit_generation(
     run_id: UUID | None = None,
     compiled_input: CompiledImageInput | None = None,
     subjects: tuple[str, ...] = (),
+    negative: str | None = None,
     candidates: int | None = None,
     input_sources: tuple[PromptSource, ...] = (),
     inputs: dict[str, InputArtifact] | None = None,
@@ -554,9 +555,9 @@ def submit_generation(
             raise KomaquillError(code="invalid_request", retryable=False)
         try:
             compiled_input = compile_image_input(
-                settings.presets[selected], prompt, subjects, inputs
+                settings.presets[selected], prompt, subjects, inputs, negative=negative
             )
-        except ValidationError:
+        except ValueError:
             raise KomaquillError(
                 code="invalid_request", stage="generation", retryable=False
             ) from None
@@ -655,6 +656,7 @@ def generate(
     profile_name: str | None = None,
     *,
     subjects: tuple[str, ...] = (),
+    negative: str | None = None,
     candidates: int | None = None,
     input_sources: tuple[PromptSource, ...] = (),
     inputs: dict[str, InputArtifact] | None = None,
@@ -669,6 +671,7 @@ def generate(
         seed,
         profile_name,
         subjects=subjects,
+        negative=negative,
         candidates=candidates,
         input_sources=input_sources,
         inputs=inputs,

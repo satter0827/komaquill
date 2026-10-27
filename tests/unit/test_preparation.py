@@ -20,7 +20,7 @@ class Client:
 
     def json(self, path):
         if path.endswith("capabilities"):
-            return {"protocol_version": 1}
+            return {"protocol_version": 2}
         if path == "/object_info":
             return {}
         return {"requests": [self.job.model_dump(mode="json")]}
@@ -36,8 +36,6 @@ class Client:
         if action == "plan":
             self.job.phase = "confirmation"
             self.job.assets = [asset()]
-        if action == "local_saved":
-            self.job.local_saved = True
         if action == "failure":
             self.job.phase = "failed"
         return httpx.Response(200, json=self.job.model_dump(mode="json"))
@@ -57,7 +55,7 @@ def test_capability_detection_does_not_change_standard_external_access(case):
     def query(path):
         if case != "supported":
             raise KomaquillError(code="http_failed", http_status=404 if case == "bare" else 500)
-        return {"protocol_version": 1}
+        return {"protocol_version": 2}
 
     if case == "failed":
         with pytest.raises(KomaquillError):
@@ -82,7 +80,7 @@ def test_coordinator_creates_control_credentials_once_and_reuses_workspace(proje
     "case", ["plan", "unsupported", "download", "failed", "cancel", "report_failed"]
 )
 def test_preparation_jobs_preserve_local_bytes_and_report_safe_errors(
-    coordinator, monkeypatch, case
+    coordinator, monkeypatch, session, case
 ):
     control, client = coordinator
     client.job.workspace_id = control.workspace_id
@@ -118,7 +116,22 @@ def test_preparation_jobs_preserve_local_bytes_and_report_safe_errors(
         if case in {"failed", "cancel", "report_failed"}:
             raise OSError("private-exception")
 
-    monkeypatch.setattr(module, "download_asset", download)
+    from komaquill.infrastructure.atomic import atomic_json
+
+    atomic_json(control.project.session_file, session.model_dump(mode="json"))
+
+    class Remote:
+        def __init__(self, *args):
+            pass
+
+        def receipt(self):
+            return SimpleNamespace(runtime_id=session.runtime_id, started_at=None)
+
+        def remote_models(self, *args):
+            download()
+            return SimpleNamespace(poll=lambda: 0, returncode=0)
+
+    monkeypatch.setattr(module, "Colab", Remote)
     if case == "cancel":
         control.cancelled.set()
     if case == "report_failed":
@@ -126,7 +139,7 @@ def test_preparation_jobs_preserve_local_bytes_and_report_safe_errors(
             control, "update", lambda *a, **k: (_ for _ in ()).throw(KomaquillError())
         )
     control.run(client.job)
-    assert client.job.local_saved is (case == "download")
+    assert not list(control.project.models.rglob("*.safetensors"))
     if case == "unsupported":
         assert client.calls[-1][1]["unsupported"] == ["model.safetensors"]
     assert "private-exception" not in json.dumps(client.calls)
@@ -139,7 +152,7 @@ def test_tick_schedules_only_this_workspace_pending_jobs(coordinator):
     control.run = lambda job: None
     control.tick()
     control.futures[client.job.request_id].result(timeout=2)
-    client.job.local_saved = True
+    client.job.phase = "ready"
     control.tick()
     client.job.workspace_id = uuid4()
     control.tick()
@@ -183,10 +196,12 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
         module.prepare_workflow(project, client, workflow, output.append, lambda _: True)
         assert any("5 bytes" in line for line in output)
     else:
-        with pytest.raises((KomaquillError, KeyboardInterrupt)):
+        with pytest.raises((KomaquillError, KeyboardInterrupt)) as caught:
             module.prepare_workflow(
                 project, client, workflow, lambda _: None, lambda _: case != "cancelled"
             )
+        if case == "timeout":
+            assert caught.value.code == "preparation_timeout" and not caught.value.retryable
 
 
 def test_bindings_are_scoped_to_the_verified_runtime(coordinator, session):
@@ -217,7 +232,12 @@ def test_registered_model_plan_uses_verified_local_capacity(coordinator, monkeyp
     from komaquill.infrastructure.asset_store import model_path, register
 
     control, client = coordinator
-    model = asset()
+    model = asset(size_bytes=5)
+    control.project = control.project.configured(
+        control.project.settings().model_copy(
+            update={"assets": {**control.project.settings().assets, model.name: model}}
+        )
+    )
     target = model_path(control.project.models, model)
     target.parent.mkdir(parents=True)
     target.write_bytes(b"model")
@@ -226,7 +246,7 @@ def test_registered_model_plan_uses_verified_local_capacity(coordinator, monkeyp
     control.plan(client.job)
     plan = client.calls[-1][1]
     assert plan["assets"][0]["size_bytes"] == 5
-    assert plan["reused"] == [model.reference]
+    assert plan["reused"] == []
 
 
 @pytest.mark.parametrize("same_node", [False, True])

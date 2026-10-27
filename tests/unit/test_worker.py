@@ -43,6 +43,21 @@ def test_bootstrap_verifies_tools_and_starts_isolated_worker(tmp_path, monkeypat
     monkeypatch.setattr(
         bootstrap.subprocess, "run", lambda args, **kwargs: commands.append((args, kwargs))
     )
+
+    class Child:
+        stdin = io.BytesIO()
+
+        def wait(self):
+            return 0
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "Popen",
+        lambda args, **kwargs: commands.append((args, kwargs)) or Child(),
+    )
     uv = tmp_path / ".artifacts/runtime/tools/uv"
     if case == "cached":
         uv.parent.mkdir(parents=True)
@@ -188,6 +203,7 @@ def test_worker_entrypoint_hides_traceback_for_gpu_unavailable(project, monkeypa
         SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False)),
     )
     monkeypatch.setattr(sys, "argv", ["worker.py", str(project.root)])
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"{}\n")))
     namespace = {"__name__": "__main__", "__file__": worker.__file__}
     with pytest.raises(SystemExit) as error:
         exec(
@@ -218,16 +234,28 @@ def test_transferred_extension_loads_from_comfy_working_directory(project, monke
     uv.write_bytes(b"test-tool")
     captured = []
     real_run = subprocess.run
+    real_popen = subprocess.Popen
     monkeypatch.setattr(
         bootstrap.subprocess, "run", lambda args, **kwargs: captured.append(kwargs["env"])
     )
+    monkeypatch.setattr(
+        bootstrap.subprocess,
+        "Popen",
+        lambda args, **kwargs: (
+            captured.append(kwargs["env"])
+            or SimpleNamespace(stdin=io.BytesIO(), wait=lambda: 0, poll=lambda: 0)
+        ),
+    )
     bootstrap.main()
+    monkeypatch.setattr(bootstrap.subprocess, "Popen", real_popen)
     env = captured[-1]
     assert env["PYTHONPATH"] == str(root)
     bound = project.__class__(root, project.settings())
     comfy = bound.runtime / "ComfyUI"
     comfy.mkdir(parents=True)
-    runtime = tomllib.loads((root / "komaquill/resources/runtime/versions.toml").read_text())
+    runtime = tomllib.loads(
+        (root / "komaquill/resources/runtime/versions.toml").read_text(encoding="utf-8")
+    )
     monkeypatch.setattr(
         worker.subprocess, "check_output", lambda *a, **kw: runtime["comfy_revision"]
     )
@@ -278,3 +306,24 @@ def test_transferred_extension_loads_from_comfy_working_directory(project, monke
         timeout=30,
     )
     assert rejected.returncode != 0 and "No module named 'komaquill'" in rejected.stderr
+
+
+def test_bootstrap_failure_cannot_overwrite_the_first_model_failure(project):
+    from komaquill.gpu.progress import progress
+    from komaquill.infrastructure.paths import GpuPaths
+
+    progress(project.root, "model_preparation", "klein-encoder")
+    first = {
+        "code": "http_failed",
+        "stage": "preparation",
+        "exception_type": "ReadError",
+        "http_status": None,
+        "retryable": True,
+    }
+    progress(project.root, "failed", failure=first)
+    progress(project.root, "failed", failure={"code": "operation_failed"})
+    progress(project.root, "ready")
+    observed = json.loads((GpuPaths(project.root).logs / "progress.json").read_bytes())
+    assert observed["failure"] == first
+    assert observed["previous_phase"] == "model_preparation"
+    assert observed["asset"] == "klein-encoder"

@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,7 +17,6 @@ from komaquill.domain.images import PromptSource
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.prompts import joined
 from komaquill.domain.workflow import digest
-from komaquill.infrastructure.asset_store import model_path, register, verified_cache
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.storage import FileStoryRepository
@@ -177,7 +175,7 @@ def prepare(
         atomic_bytes(
             destination.root / "komaquill.toml",
             (
-                f'profiles = ["klein-4b", "klein-4b-edit"]\nlocal_port = {port}\n'
+                f'models = ["klein-4b"]\nlocal_port = {port}\n'
                 f"submission_timeout = {config.send_seconds}\n"
                 f"session_timeout = {config.total_seconds}\n"
                 + "".join(
@@ -192,23 +190,9 @@ def prepare(
             ).encode(),
         )
     destination.settings()
-    for model in assets(destination.settings()):
-        source_model = model_path(model_source.models, model)
-        if not verified_cache(model_source.models, model):
-            from komaquill.infrastructure.artifacts import file_digest
-
-            if not source_model.is_file() or file_digest(source_model) != model.sha256:
-                raise ValueError("A required model does not match its pinned checksum.")
-        destination_model = model_path(destination.models, model)
-        destination_model.parent.mkdir(parents=True, exist_ok=True)
-        if not destination_model.exists():
-            os.link(source_model, destination_model)
-            register(destination.models, model, destination_model)
-        elif not verified_cache(destination.models, model):
-            raise ValueError("A shared model failed verification.")
     render_config = RenderConfig(
         scenes=tuple(
-            SceneRenderConfig(scene=scene.position, profile="klein-4b") for scene in plan.scenes
+            SceneRenderConfig(scene=scene.position, model="klein-4b") for scene in plan.scenes
         )
     )
     case_id = uuid4()
@@ -430,7 +414,8 @@ def improve(report: Path, request_path: Path) -> None:
                 joined(recipe["render_config"]["common_prompt"], job.prompt),
                 subjects=job.subjects,
                 seed=job.seed,
-                profile=profile,
+                model="klein-4b",
+                operation="edit" if profile == EDIT_PROFILE else "generate",
                 candidates=case.config.candidates,
                 inputs=job.inputs,
                 input_sources=(job.source,),

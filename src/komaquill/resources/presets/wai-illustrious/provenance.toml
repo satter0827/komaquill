@@ -1,0 +1,5 @@
+source_revision = "67984637eefcd4825dcf5c134e39034785be1682" # pragma: allowlist secret Public source revision.
+source_url = "https://github.com/Comfy-Org/workflow_templates/blob/67984637eefcd4825dcf5c134e39034785be1682/templates/image_sdxl_simple.json"
+source_sha256 = "f13ce5e57ecd3b7cf52a953b938ad798843adb61e8f3969344e209680b490643" # pragma: allowlist secret Public source hash.
+license_url = "https://github.com/Comfy-Org/workflow_templates/blob/67984637eefcd4825dcf5c134e39034785be1682/LICENSE"
+changes = ["Use the pinned WAI Illustrious checkpoint and one Detail Tweaker LoRA.", "Share model and text LoRA strength through a standard scalar input.", "Expose common App Mode inputs and standard sampling controls.", "Use standard image scaling, VAE encoding and latent repetition for img2img."]

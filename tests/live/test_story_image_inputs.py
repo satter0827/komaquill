@@ -34,7 +34,7 @@ def test_local_4b_visual_plan(count, monkeypatch):
             source_name="rainy-cat-visual.txt",
             images=count,
             llm_profile="lmstudio-4b",
-            image_profile="klein-4b",
+            model="klein-4b",
             allow_real_llm=True,
         )
         story_id = plan.request.story_id

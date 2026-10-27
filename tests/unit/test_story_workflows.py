@@ -10,15 +10,14 @@ from komaquill.infrastructure.workflows import prepare
 
 
 @pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit"])
-def test_both_loras_feed_the_sampler_and_share_the_uncensored_encoder(name):
+def test_aniedit_feeds_the_sampler_and_uses_the_uncensored_encoder(name):
     settings = Settings()
     graph, ui = prepare("a kitten", 42, "test", settings=settings, profile_name=name)
     assert graph["90"]["inputs"]["model"] == ["4", 0]
-    assert graph["91"]["inputs"]["model"] == ["90", 0]
-    assert graph["63"]["inputs"]["model"] == ["91", 0]
+    assert "91" not in graph
+    assert graph["63"]["inputs"]["model"] == ["90", 0]
     assert graph["71"]["inputs"]["clip_name"] == settings.assets["klein-encoder"].reference
     assert graph["90"]["inputs"]["strength_model"] == 1.0
-    assert graph["91"]["inputs"]["strength_model"] == 1.0
     assert ui["extra"]["linearData"]["outputs"] == ["9"]
     if name == "klein-4b-edit":
         assert graph["121"]["inputs"]["latent"] == ["82", 0]
@@ -36,9 +35,9 @@ def test_resource_role_mismatch_fails_before_allocation():
 @pytest.mark.parametrize(
     "parameters",
     [
-        {"party_strength": True},
-        {"fixes_strength": 100.0},
-        {"party_strength": float("nan")},
+        {"aniedit_strength": True},
+        {"aniedit_strength": 100.0},
+        {"aniedit_strength": float("nan")},
         {"unknown": 1.0},
     ],
 )

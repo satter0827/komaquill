@@ -65,7 +65,7 @@ class StorySettings(BaseSettings):
     planning: PlanningPolicy
     max_images: int = Field(ge=1, le=8)
     llm_profile: str
-    image_profile: str
+    model: str
     request_timeout: float = Field(gt=0)
     max_output_tokens: int = Field(gt=0)
     repair_attempts: int = Field(ge=0, le=1)
@@ -99,21 +99,14 @@ def settings(project: Project, **overrides: object) -> StorySettings:
     environment = EnvSettingsSource(StorySettings)()
     explicit = {key: value for key, value in overrides.items() if value is not None}
     preliminary = merge_settings(merge_settings(data, environment), explicit)
-    profile = str(preliminary["image_profile"])
+    model = str(preliminary["model"])
     from komaquill.infrastructure.preset_catalog import catalog
 
-    if profile not in catalog(project.root)["presets"]:
+    if model not in {p["model_id"] for p in catalog(project.root)["presets"].values()}:
         raise KomaquillError(code="invalid_configuration", stage="story_planning")
-    local = project.root / "presets" / profile
-    policy_file = (
-        local / "planning.toml"
-        if local.is_dir()
-        else files("komaquill").joinpath(f"resources/presets/{profile}/planning.toml")
+    data["planning"] = merge_settings(
+        defaults["planning"], workspace.get("story", {}).get("planning", {})
     )
-    policy = defaults["planning"]
-    if policy_file.is_file():
-        policy = merge_settings(policy, tomllib.loads(policy_file.read_text(encoding="utf-8")))
-    data["planning"] = merge_settings(policy, workspace.get("story", {}).get("planning", {}))
     combined = merge_settings(merge_settings(data, environment), explicit)
     return StorySettings.model_validate(combined)
 

@@ -8,4 +8,3 @@ sha256 = "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58" # pr
 size_bytes = 18157185168
 license = "FLUX Non-Commercial License"
 license_url = "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B"
-transfer = true

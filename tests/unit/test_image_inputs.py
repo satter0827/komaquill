@@ -23,13 +23,18 @@ def test_effective_prompt_preserves_user_text_and_applies_quality_once(enabled):
     assert value.matches(profile)
 
 
-@pytest.mark.parametrize("negative", [None, "", "extra limbs"])
-def test_removed_python_input_is_rejected_before_any_side_effect(project, negative):
-    from komaquill.api import Client
+@pytest.mark.parametrize("negative", ["", "extra limbs"])
+def test_klein_explicit_negative_is_rejected_before_submission(negative):
+    with pytest.raises(ValueError):
+        compile_image_input(Settings().presets["klein-4b"], "a kitten", negative=negative)
 
-    with pytest.raises(TypeError):
-        Client(project.root).images.generate("a kitten", negative=negative)
-    assert not project.repository.load()
+
+@pytest.mark.parametrize("negative,expected", [(None, None), ("", ""), ("blur", "blur")])
+def test_wai_negative_defaults_replacement_and_disabling(negative, expected):
+    profile = Settings().presets["wai-illustrious"]
+    compiled = compile_image_input(profile, "a park", negative=negative)
+    assert compiled.negative == (profile.negative_default if expected is None else expected)
+    assert compiled.matches(profile)
 
 
 def test_frozen_prompt_is_used_without_recompilation():

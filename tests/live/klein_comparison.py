@@ -3,7 +3,6 @@
 import argparse
 import hashlib
 import json
-import os
 import shutil
 import time
 import tomllib
@@ -24,13 +23,12 @@ from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.images import compile_image_input, preset_fingerprint
 from komaquill.domain.stories import PlannerProvenance, Scene, StoryPlan, validate_draft
 from komaquill.domain.workflow import digest
-from komaquill.infrastructure.asset_store import cached_path, file_digest, model_path, register
+from komaquill.infrastructure.asset_store import file_digest
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.monitor_state import read_monitor
 from komaquill.infrastructure.sessions.connection import connected
-from komaquill.infrastructure.workflows import assets
 from komaquill.infrastructure.workflows import prepare as prepare_workflow
 from tests.live.completion_page import render_page
 from tests.live.completion_report import Review, ReviewFile
@@ -148,6 +146,7 @@ def saved_candidate(project: Project, api: Client, job: "Job", record: dict):
 
 def record_reviews(report: Path, path: Path) -> None:
     frozen, _, jobs = load(report)
+    conditions = review_conditions(report, frozen)
     value = ReviewFile.model_validate_json(path.read_bytes())
     if value.status != "complete" or value.evaluator is None or value.evaluator.kind != "ai":
         raise ValueError("An attributed AI image review is required.")
@@ -170,7 +169,7 @@ def record_reviews(report: Path, path: Path) -> None:
         reason = json.dumps(
             {
                 "review": row.model_dump(mode="json"),
-                "conditions_sha256": digest(frozen["conditions"][job.case]),
+                "conditions_sha256": digest(conditions[job.case]),
                 "image_sha256": run.image_metadata[name].sha256,
             },
             ensure_ascii=False,
@@ -208,7 +207,6 @@ class ComparisonConfig(BaseModel):
     baseline_limit: int = Field(gt=0)
     edit_limit: int = Field(ge=0)
     ablation_limit: int = Field(ge=0)
-    regression_limit: int = Field(ge=0)
     technical_retry_limit: int = Field(ge=0)
     output_limit: int = Field(gt=0)
     compute_unit_limit: float = Field(gt=0)
@@ -228,7 +226,6 @@ class ComparisonConfig(BaseModel):
                     self.baseline_limit,
                     self.edit_limit,
                     self.ablation_limit,
-                    self.regression_limit,
                     self.technical_retry_limit,
                 )
             )
@@ -241,7 +238,7 @@ class ComparisonConfig(BaseModel):
 class Job(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     id: str
-    group: Literal["baseline", "edit", "ablation", "regression"]
+    group: Literal["baseline", "edit", "ablation"]
     case: str
     scene: int
     profile: str
@@ -315,6 +312,53 @@ def fixed_plan(case_id: str, config: ComparisonConfig) -> StoryPlan:
     )
 
 
+def scene_conditions(case_id: str, scene: Scene) -> dict:
+    """Bind each expectation to its own frozen scene and source references."""
+    return {
+        "source_refs": scene.source_refs,
+        "conditions": {
+            f"{case_id}:scene:{scene.position}:content": scene.visual_description,
+            **{
+                f"{case_id}:scene:{scene.position}:subject:{subject.character}": subject.action
+                for subject in scene.subjects
+            },
+            **{
+                f"{case_id}:scene:{scene.position}:prop:{state.prop}": {
+                    "visible": state.visible,
+                    "holder": state.holder,
+                    "state": state.state,
+                }
+                for state in scene.props
+            },
+        },
+    }
+
+
+def review_conditions(report: Path, frozen: dict) -> dict:
+    """Apply an explicit append-only correction without changing frozen generation data."""
+    result = frozen["conditions"]
+    correction = report / "condition-correction.json"
+    if correction.exists():
+        data = json.loads(correction.read_bytes())
+        if (
+            data.get("format_version") != 1
+            or data.get("comparison_sha256") != digest(frozen)
+            or data.get("original_conditions_sha256") != digest(result)
+            or not data.get("reason")
+        ):
+            raise ValueError("The condition correction does not identify this comparison.")
+        result = data["conditions"]
+    for key, value in frozen["plans"].items():
+        plan = StoryPlan.model_validate(value)
+        expected = {str(scene.position): scene_conditions(key, scene) for scene in plan.scenes}
+        if result[key]["scenes"] != expected or any(
+            result[key][name] != frozen["conditions"][key][name]
+            for name in ("source_sha256", "source", "presentation")
+        ):
+            raise ValueError("The criteria do not match their frozen source and scene.")
+    return result
+
+
 def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
     """Freeze every job, parent and expectation before any GPU is requested."""
     if report.exists():
@@ -322,6 +366,13 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
     config = configuration()
     client = Client.initialize(report / "workspace")
     project = Project(client.workspace)
+    settings_file = project.root / "komaquill.toml"
+    settings_file.write_text(
+        settings_file.read_text(encoding="utf-8").replace(
+            'models = ["klein-4b"]', "models = " + json.dumps(config.models)
+        ),
+        encoding="utf-8",
+    )
     settings = project.settings()
     plans = {key: fixed_plan(key, config) for key in config.cases}
     jobs = []
@@ -344,9 +395,9 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
                             preset_sha256=preset_fingerprint(profile),
                         )
                     )
-        for scene in plans["red-book"].scenes[:2]:
+        for scene in plans["red-book"].scenes[:1] if model == "wai-illustrious" else []:
             compiled = scene_input(plans["red-book"], scene, profile)
-            parameters = {"party_strength": 0.0, "fixes_strength": 0.0}
+            parameters = {"detail_strength": 0.0}
             jobs.append(
                 Job(
                     id=f"ablation-red-book-{scene.position}-{model}",
@@ -363,14 +414,16 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
             )
     parents = json.loads(parents_file.read_bytes())
     origin = Client(parents_workspace)
-    for index, parent in enumerate(parents, 1):
+    for index, parent in enumerate(parents[:1], 1):
         path = origin.artifact_path(parent["key"])
         artifact = client.inputs.import_file(path)
         if artifact.sha256 != parent["sha256"]:
             raise ValueError("A common edit parent changed.")
         for model in config.models:
-            profile_name = model + "-edit"
-            for variant in ("original", "visible_state"):
+            profile_name = (
+                model + "-edit" if model.startswith("klein-") else "wai-illustrious-img2img"
+            )
+            for variant in ("visible_state",):
                 jobs.append(
                     Job(
                         id=f"edit-{index}-{variant}-{model}",
@@ -387,23 +440,11 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
                         preset_sha256=preset_fingerprint(settings.presets[profile_name]),
                     )
                 )
-    regression = next(
-        job
-        for job in jobs
-        if job.group == "baseline"
-        and job.case == "red-book"
-        and job.scene == 1
-        and job.profile == "klein-4b"
-    )
-    jobs.append(regression.model_copy(update={"id": "regression-generate", "group": "regression"}))
-    regression = next(job for job in jobs if job.group == "edit" and job.profile == "klein-4b-edit")
-    jobs.append(regression.model_copy(update={"id": "regression-edit", "group": "regression"}))
     counts = Counter(job.group for job in jobs)
     if counts != {
         "baseline": config.baseline_limit,
         "edit": config.edit_limit,
         "ablation": config.ablation_limit,
-        "regression": config.regression_limit,
     }:
         raise ValueError("The frozen jobs do not match the approved image budgets.")
     atomic_json(
@@ -417,6 +458,12 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
             "conditions": {
                 key: {
                     "source_sha256": cases()[key].source_sha256,
+                    "scenes": {
+                        str(scene.position): {
+                            **scene_conditions(key, scene),
+                        }
+                        for scene in plans[key].scenes
+                    },
                     "source": {
                         f"{key}:source:{index}": value
                         for index, value in enumerate(cases()[key].required, 1)
@@ -439,6 +486,36 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
     )
 
 
+class ExecutionRevision(BaseModel):
+    """Record an explicit recovery target without changing frozen image conditions."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    format_version: Literal[1] = 1
+    comparison_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    identity: dict[str, object]
+    runner_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    session_limit: int = Field(ge=1, strict=True)
+    created_at: datetime
+    reason: str = Field(min_length=1)
+
+
+def execution_target(report: Path, frozen) -> dict:
+    """Keep recovery approvals separate from the immutable comparison and budgets."""
+    result = {
+        "identity": frozen["identity"],
+        "runner_sha256": frozen["runner_sha256"],
+        "session_limit": 1,
+    }
+    path = report / "execution-revisions.jsonl"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            revision = ExecutionRevision.model_validate_json(line)
+            if revision.comparison_sha256 != digest(frozen):
+                raise ValueError("The recovery target belongs to another comparison.")
+            result = revision.model_dump(mode="json")
+    return result
+
+
 def load(report: Path, *, executing: bool = False):
     frozen = json.loads((report / "comparison.json").read_bytes())
     state = json.loads((report / "state.json").read_bytes())
@@ -448,37 +525,48 @@ def load(report: Path, *, executing: bool = False):
         or digest(frozen) != state.get("comparison_sha256")
     ):
         raise ValueError("The frozen comparison or its version changed.")
+    target = execution_target(report, frozen)
     if (
         executing
-        and frozen["runner_sha256"] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        and target["runner_sha256"] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     ):
         raise ValueError("The comparison runner changed after preparation.")
     config = ComparisonConfig.model_validate(frozen["config"])
     jobs = [Job.model_validate(row) for row in frozen["jobs"]]
-    if executing and frozen["identity"] != Project(report / "workspace").identity():
+    if executing and target["identity"] != Project(report / "workspace").identity():
         raise ValueError("The executable code changed after the comparison was frozen.")
     return frozen, config, jobs
 
 
-def start(report: Path, models_workspace: Path, gpu: Literal["T4", "A100"]) -> None:
+def start(report: Path, gpu: Literal["T4"] = "T4") -> None:
     """Prepare only selected assets and preserve the shared CU baseline."""
-    _, config, _ = load(report, executing=True)
+    frozen, config, _ = load(report, executing=True)
     project = Project(report / "workspace")
     with FileLock(str(report / ".operation.lock"), timeout=0):
         state = json.loads((report / "state.json").read_bytes())
-        if gpu in state["sessions"]:
-            receipt = Colab(project).receipt()
-            if receipt is None or receipt.settings is None or receipt.settings.gpu != gpu:
-                raise ValueError("This GPU session has ended or its ownership is unknown.")
-        profiles = [
-            name
-            for model in (["klein-4b"] if gpu == "T4" else config.models)
-            for name in (model, model + "-edit")
-        ]
+        receipt = Colab(project).receipt()
+        if receipt is None:
+            if any(row.get("status") != "stopped" for row in state["sessions"].values()):
+                raise ValueError(
+                    "Confirm the previous session shutdown before allocating another GPU."
+                )
+            if len(state["sessions"]) >= execution_target(report, frozen)["session_limit"]:
+                raise ValueError("The approved session budget is exhausted.")
+            session_key = f"{gpu}-{len(state['sessions']) + 1}"
+        else:
+            matches = [
+                key
+                for key, row in state["sessions"].items()
+                if row.get("runtime_id") == str(receipt.runtime_id)
+            ]
+            if len(matches) != 1 or receipt.settings is None or receipt.settings.gpu != gpu:
+                raise ValueError("The current session ownership is unknown.")
+            session_key = matches[0]
+        models = list(config.models)
         values = {
-            "profiles": profiles,
+            "models": models,
             "gpu": gpu,
-            "high_ram": gpu == "A100",
+            "high_ram": False,
             "compute_unit_limit": config.compute_unit_limit,
             "compute_unit_reserve": config.compute_unit_reserve,
             "submission_timeout": config.submission_seconds,
@@ -490,29 +578,15 @@ def start(report: Path, models_workspace: Path, gpu: Literal["T4", "A100"]) -> N
         )
         if shutil.disk_usage(project.root).free < config.minimum_free_bytes:
             raise ValueError("The required disk reserve is unavailable.")
-        for model in assets(project.settings()):
-            source = cached_path(Project(models_workspace).models, model)
-            if source is None:
-                raise ValueError("A selected model has not been verified locally.")
-            target = model_path(project.models, model)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if not target.exists():
-                os.link(source, target)
-            if cached_path(project.models, model) is None:
-                from komaquill.infrastructure.asset_store import verify_file
-
-                if not verify_file(project.models, model):
-                    raise ValueError("A shared model failed verification.")
-            register(project.models, model, target)
-        state["sessions"].setdefault(gpu, {"started_at": datetime.now(UTC).isoformat()})
-        state["sessions"][gpu]["status"] = "requested"
+        state["sessions"].setdefault(session_key, {"started_at": datetime.now(UTC).isoformat()})
+        state["sessions"][session_key]["status"] = "requested"
         atomic_json(report / "state.json", state)
     try:
-        Client(project.root).sessions.start(profiles=profiles, gpu=gpu, high_ram=gpu == "A100")
+        Client(project.root).sessions.start(models=models, gpu=gpu, high_ram=False)
     except BaseException as error:
         with FileLock(str(report / ".operation.lock"), timeout=0):
             state = json.loads((report / "state.json").read_bytes())
-            state["sessions"][gpu].setdefault(
+            state["sessions"][session_key].setdefault(
                 "first_failure", failure_info(error, "preparation").model_dump(mode="json")
             )
             atomic_json(report / "state.json", state)
@@ -524,7 +598,7 @@ def start(report: Path, models_workspace: Path, gpu: Literal["T4", "A100"]) -> N
     with FileLock(str(report / ".operation.lock"), timeout=0):
         state = json.loads((report / "state.json").read_bytes())
         receipt = Colab(project).receipt()
-        state["sessions"][gpu].update(
+        state["sessions"][session_key].update(
             status="ready", runtime_id=str(receipt.runtime_id) if receipt else None
         )
         atomic_json(report / "state.json", state)
@@ -544,7 +618,18 @@ def stop(report: Path) -> None:
     outcome = json.loads(outcome_path.read_bytes()) if outcome_path.exists() else {}
     with FileLock(str(report / ".operation.lock"), timeout=0):
         state = json.loads((report / "state.json").read_bytes())
-        state["sessions"][settings.gpu].update(
+        matches = [
+            key
+            for key, row in state["sessions"].items()
+            if row.get("runtime_id") == str(runtime_id)
+        ]
+        pending = [
+            key for key, row in state["sessions"].items() if row.get("status") == "requested"
+        ]
+        session_key = matches[0] if len(matches) == 1 else pending[-1] if pending else None
+        if session_key is None:
+            raise ValueError("The shutdown result has no matching session record.")
+        state["sessions"][session_key].update(
             status="stopped" if outcome.get("gpu") == "stopped" else "stop_unconfirmed",
             runtime_id=str(runtime_id),
             ownership_released=Colab(project).receipt() is None,
@@ -567,9 +652,12 @@ def generate(report: Path, group: str, model: str | None = None) -> None:
             if len(matches) > 1:
                 raise ValueError("Multiple matching requests need explicit reconciliation.")
             if matches:
-                if matches[0].state != "saved":
+                if matches[0].state not in {"saved", "failed"}:
                     raise ValueError("Collect the recorded request without resubmitting it.")
-                state["jobs"][job.id] = {"status": "saved", "run_id": str(matches[0].run_id)}
+                state["jobs"][job.id] = {
+                    "status": matches[0].state,
+                    "run_id": str(matches[0].run_id),
+                }
                 atomic_json(report / "state.json", state)
                 continue
             if job.id in state["jobs"]:
@@ -593,16 +681,28 @@ def generate(report: Path, group: str, model: str | None = None) -> None:
             state["jobs"][job.id] = {"status": "reserved", "source_sha256": job.source.sha256}
             atomic_json(report / "state.json", state)
         started = time.monotonic()
-        run = api.images.generate(
-            job.prompt,
-            profile=job.profile,
-            seed=job.seed,
-            subjects=job.subjects,
-            inputs=job.inputs,
-            parameters=job.parameters,
-            candidates=1,
-            input_sources=(job.source,),
-        )
+        try:
+            run = api.images.generate(
+                job.prompt,
+                model=project.settings().presets[job.profile].model_id,
+                operation=project.settings().presets[job.profile].operation,
+                seed=job.seed,
+                subjects=job.subjects,
+                inputs=job.inputs,
+                parameters=job.parameters,
+                candidates=1,
+                input_sources=(job.source,),
+            )
+        except KomaquillError as error:
+            identity = error.details.get("run_id")
+            recorded = project.repository.read(UUID(str(identity))) if identity else None
+            if (
+                recorded is None
+                or recorded.state != "failed"
+                or job.source not in recorded.input_sources
+            ):
+                raise
+            run = recorded
         with FileLock(str(report / ".operation.lock"), timeout=0):
             state = json.loads((report / "state.json").read_bytes())
             state["jobs"][job.id] = {
@@ -651,8 +751,16 @@ def expected_pairs(jobs):
     return pairs
 
 
+def scene_approved(frozen, job: Job, review: Review) -> bool:
+    """Require scene scope and every frozen obligation before counting quality approval."""
+    expected = set(frozen["conditions"][job.case]["scenes"][str(job.scene)]["conditions"])
+    matches = {check.criterion for check in review.checks if check.verdict == "match"}
+    return review.scope == "scene" and review.decision == "accept" and expected <= matches
+
+
 def summarize(report: Path) -> None:
     frozen, config, jobs = load(report)
+    criteria = {"conditions": review_conditions(report, frozen)}
     api = Client(report / "workspace")
     project = Project(api.workspace)
     state = json.loads((report / "state.json").read_bytes())
@@ -690,7 +798,7 @@ def summarize(report: Path) -> None:
                     or row.criterion_version != "1"
                     or (review.run_id, review.scene, review.image, review.decision)
                     != (run.run_id, job.scene, name, row.decision)
-                    or evidence["conditions_sha256"] != digest(frozen["conditions"][job.case])
+                    or evidence["conditions_sha256"] != digest(criteria["conditions"][job.case])
                     or evidence["image_sha256"] != run.image_metadata[name].sha256
                 ):
                     raise ValueError("The review evidence does not match the candidate.")
@@ -726,7 +834,7 @@ def summarize(report: Path) -> None:
                 ]
                 complete = all(job.id in available for job in selected)
                 accepted = complete and all(
-                    job.id in reviewed and reviewed[job.id][1].decision == "accept"
+                    job.id in reviewed and scene_approved(criteria, job, reviewed[job.id][1])
                     for job in selected
                 )
                 works.append(
@@ -750,7 +858,7 @@ def summarize(report: Path) -> None:
                     ]
                     render_page(
                         report / "comics" / f"{case}-{model}-{seed}",
-                        f"{case} {model} {seed}",
+                        frozen["plans"][case]["title"],
                         panels,
                         expected_scenes=4,
                     )
@@ -769,8 +877,15 @@ def summarize(report: Path) -> None:
                 "sha256": run.image_metadata[name].sha256,
                 "selected_by": "first_valid_saved_image",
                 "quality_decision": grade[1].decision if grade else None,
+                "review_scope": grade[1].scope if grade else None,
                 "checks": [
-                    {"id": f"{job.case}:scene:{job.scene}:{check.criterion}", **check.model_dump()}
+                    {
+                        "id": check.criterion
+                        if check.criterion
+                        in criteria["conditions"][job.case]["scenes"][str(job.scene)]["conditions"]
+                        else f"{job.case}:scene:{job.scene}:{check.criterion}",
+                        **check.model_dump(),
+                    }
                     for check in grade[1].checks
                 ]
                 if grade
@@ -807,6 +922,7 @@ def summarize(report: Path) -> None:
         {
             "format_version": 1,
             "producer": frozen["identity"],
+            "execution_target": execution_target(report, frozen),
             "reader": project.identity(),
             "planned_images": len(jobs),
             "image_budget": config.output_limit,
@@ -816,8 +932,13 @@ def summarize(report: Path) -> None:
             "valid_saved_images": len(available),
             "unrun_images": len(jobs) - len(state["jobs"]),
             "quality_reviewed_images": len(reviewed),
+            "local_approved_images": sum(
+                review.scope == "local" and review.decision == "accept"
+                for _, review in reviewed.values()
+            ),
             "quality_approved_images": sum(
-                review.decision == "accept" for _, review in reviewed.values()
+                scene_approved(criteria, next(job for job in jobs if job.id == identity), review)
+                for identity, (_, review) in reviewed.items()
             )
             if reviewed
             else None,
@@ -855,8 +976,8 @@ def main() -> None:
     parser.add_argument("report", type=Path)
     parser.add_argument("--source", type=Path)
     parser.add_argument("--parents", type=Path)
-    parser.add_argument("--gpu", choices=["T4", "A100"])
-    parser.add_argument("--group", choices=["baseline", "edit", "ablation", "regression"])
+    parser.add_argument("--gpu", choices=["T4"])
+    parser.add_argument("--group", choices=["baseline", "edit", "ablation"])
     parser.add_argument("--model")
     parser.add_argument("--job")
     parser.add_argument("--view", choices=["app", "graph"], default="app")
@@ -865,7 +986,7 @@ def main() -> None:
     if args.action == "prepare":
         prepare(args.report, args.source, args.parents)
     elif args.action == "start":
-        start(args.report, args.source, args.gpu)
+        start(args.report, args.gpu or "T4")
     elif args.action == "generate":
         generate(args.report, args.group, args.model)
     elif args.action == "stop":

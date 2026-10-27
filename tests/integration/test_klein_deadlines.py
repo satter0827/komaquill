@@ -1,6 +1,5 @@
 """Verify transfer streaming and persisted deadlines without a GPU or an LLM."""
 
-import subprocess
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -11,7 +10,6 @@ from pydantic import ValidationError
 from komaquill.application.generation import submit_generation
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.monitor import MonitorState
-from komaquill.infrastructure import colab as transport
 from komaquill.infrastructure import supervisor
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.colab import Colab, Receipt
@@ -68,7 +66,7 @@ def test_invalid_local_model_never_allocates_a_gpu(project, monkeypatch):
         raise KomaquillError(code="invalid_output", stage="preparation", retryable=False)
 
     monkeypatch.setattr(startup, "check_port", lambda _: None)
-    monkeypatch.setattr(startup, "fetch_model", fail)
+    monkeypatch.setattr(startup, "preflight", fail)
     monkeypatch.setattr(
         Colab, "acquire", lambda *args: pytest.fail("Model preparation must finish.")
     )
@@ -79,51 +77,51 @@ def test_invalid_local_model_never_allocates_a_gpu(project, monkeypatch):
 
 @pytest.mark.parametrize("case", ["saved", "timeout", "failed", "cancelled"])
 def test_model_transfer_streams_a_path_and_bounds_subprocesses(project, monkeypatch, case):
+    import hashlib
+    import time
+    from contextlib import contextmanager
+
+    import httpx
+
+    from komaquill.infrastructure import asset_download
+    from komaquill.infrastructure.configuration import GpuProject
+    from komaquill.infrastructure.downloads import fetch_model
+    from tests.support.presets import asset
+
     control = Colab(project)
     receipt = Receipt(
-        name="owned",
-        runtime_id=uuid4(),
-        settings=project.settings(),
-        started_at=datetime.now(UTC) - timedelta(seconds=project.settings().submission_timeout - 5),
+        name="owned", runtime_id=uuid4(), settings=project.settings(), started_at=datetime.now(UTC)
     )
     atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
-    source = project.root / "model.safetensors"
-    source.write_bytes(b"test-model")
+    gpu = GpuProject(project.root, project.settings())
+    content = b"verified GPU model"
+    model = asset().model_copy(
+        update={"sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)}
+    )
     calls = []
 
-    def communicate(*, timeout):
-        assert 0 < timeout <= min(control.settings.poll_interval, 5)
-        if case in {"timeout", "cancelled"}:
-            raise subprocess.TimeoutExpired("scp", timeout)
+    @contextmanager
+    def stream(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if case == "failed":
+            raise httpx.ReadTimeout("private timeout")
+        yield httpx.Response(200, content=content, request=httpx.Request(method, url))
 
-    process = SimpleNamespace(communicate=communicate, returncode=1 if case == "failed" else 0)
-    monkeypatch.setattr(control, "ssh_identity", lambda: project.root / "key")
-    monkeypatch.setattr(control, "ssh_options", lambda *args: ["-o", "BatchMode=yes"])
-    monkeypatch.setattr(transport.shutil, "which", lambda _: "scp")
-    monkeypatch.setattr(
-        transport.subprocess, "Popen", lambda args, **kwargs: calls.append(args) or process
-    )
-    monkeypatch.setattr(transport, "terminate", lambda *args: calls.append("terminated"))
+    monkeypatch.setattr(asset_download.httpx, "stream", stream)
     if case == "timeout":
-        ticks = iter([0.0, 1.0, 6.0])
-        monkeypatch.setattr(transport.time, "monotonic", lambda: next(ticks))
+        monkeypatch.setenv("KOMAQUILL_SUBMIT_UNTIL", str(time.time() - 1))
     if case == "cancelled":
-        checks = []
-
-        def cancelled(_):
-            checks.append(True)
-            if len(checks) > 1:
-                raise KomaquillError(code="stopping", stage="preparation", retryable=False)
-
-        monkeypatch.setattr(transport, "check_cancel", cancelled)
-    if case == "saved":
-        control.transfer_model(receipt, source, "/content/model.part")
+        with pytest.raises(KomaquillError) as error:
+            asset_download.download_asset(gpu.models, model, 1, lambda: True)
+        assert error.value.code == "stopping"
+    elif case == "saved":
+        assert fetch_model(gpu, model).read_bytes() == content
     else:
-        with pytest.raises(subprocess.TimeoutExpired if case == "timeout" else KomaquillError):
-            control.transfer_model(receipt, source, "/content/model.part")
-    assert str(source) in calls[0] and b"test-model" not in calls[0]
+        with pytest.raises(KomaquillError) as error:
+            fetch_model(gpu, model)
+        assert error.value.code == ("preparation_timeout" if case == "timeout" else "http_failed")
+    assert not project.models.exists()
     assert control.receipt() == receipt
-    assert ("terminated" in calls) == (case in {"timeout", "cancelled"})
 
 
 def test_session_clock_requires_a_time_zone(session):

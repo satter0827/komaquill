@@ -4,6 +4,7 @@
 
 | 記録 | 対象 |
 |---|---|
+| [モデル共通化と直接取得](results/model-interface.md) | AniEdit・WAIの共通入力、GPU直接取得、Klein四題材、原因修正、モデル削除と未実施 |
 | [複数題材による計画とKlein](results/multi-story-validation.md) | 8題材の構造、4Bの拒否を含む計画実測、共通原因の修正と未達 |
 | [通常環境のKlein確認と容量整理](results/klein-readiness.md) | 通常の起動経路、生成物の見直し、標準画面、LoRA比較、個別データの削除 |
 | [Kleinによる短編漫画](results/klein-completion.md) | 指定モデル、4場面の生成、評価と組版、期限による回収と終了 |

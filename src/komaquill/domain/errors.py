@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class ErrorCode(StrEnum):
     """Identify safe, machine-readable product failure categories."""
 
+    PREPARATION_TIMEOUT = "preparation_timeout"
     AUTHENTICATION_FAILED = "authentication_failed"
     BROWSER_FAILED = "browser_failed"
     COLAB_FAILED = "colab_failed"
@@ -146,7 +147,7 @@ def failure_info(error: BaseException, stage: OperationStage | str) -> "FailureI
         stage=error.stage
         if isinstance(error, KomaquillError) and error.stage != OperationStage.OPERATION
         else OperationStage(stage),
-        exception_type=type(error).__name__,
+        exception_type=type(error.__cause__ or error.__context__ or error).__name__,
         http_status=error.http_status if isinstance(error, KomaquillError) else None,
         retryable=retryable,
     )

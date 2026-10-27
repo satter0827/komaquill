@@ -1,0 +1,155 @@
+format_version = 3
+model_id = "wai-illustrious"
+operation = "edit"
+model_family = "illustrious"
+width = 1024
+height = 1024
+steps = 25
+sampler = "euler_ancestral"
+scheduler = "normal"
+batch_size = 1
+primary_output_node = "9"
+quality_enabled = true
+positive_prefix = "masterpiece, best quality, amazing quality, anime illustration, detailed"
+negative_default = "bad quality, worst quality, worst detail, sketch, censor"
+sample_prompt = "a small cabin in a sunny forest, manga illustration"
+adjustable = ["steps", "sampler", "scheduler"]
+
+[resources]
+checkpoint = "wai-illustrious"
+detail = "illustrious-detail"
+
+[parameters]
+detail_strength = 0.5
+cfg = 6.0
+megapixels = 1.0
+change_strength = 0.45
+
+[parameter_bounds]
+detail_strength = [0.0, 2.0]
+cfg = [1.0, 20.0]
+megapixels = [0.0625, 16.0]
+change_strength = [0.0, 1.0]
+
+[[bindings]]
+source = "checkpoint"
+api_node = "4"
+api_input = "ckpt_name"
+ui_node = 4
+ui_widget = 0
+
+[[bindings]]
+source = "detail"
+api_node = "90"
+api_input = "lora_name"
+ui_node = 90
+ui_widget = 0
+
+[[bindings]]
+source = "prompt"
+api_node = "10"
+api_input = "string_b"
+ui_node = 10
+ui_widget = 1
+
+[[bindings]]
+source = "positive_prefix"
+api_node = "10"
+api_input = "string_a"
+ui_node = 10
+ui_widget = 0
+
+[[bindings]]
+source = "prompt_delimiter"
+api_node = "10"
+api_input = "delimiter"
+ui_node = 10
+ui_widget = 2
+
+[[bindings]]
+source = "negative"
+api_node = "7"
+api_input = "text"
+ui_node = 7
+ui_widget = 0
+
+[[bindings]]
+source = "seed"
+api_node = "3"
+api_input = "seed"
+ui_node = 3
+ui_widget = 0
+
+[[bindings]]
+source = "steps"
+api_node = "3"
+api_input = "steps"
+ui_node = 3
+ui_widget = 2
+
+[[bindings]]
+source = "cfg"
+api_node = "3"
+api_input = "cfg"
+ui_node = 3
+ui_widget = 3
+
+[[bindings]]
+source = "sampler"
+api_node = "3"
+api_input = "sampler_name"
+ui_node = 3
+ui_widget = 4
+
+[[bindings]]
+source = "scheduler"
+api_node = "3"
+api_input = "scheduler"
+ui_node = 3
+ui_widget = 5
+
+[[bindings]]
+source = "output_prefix"
+api_node = "9"
+api_input = "filename_prefix"
+ui_node = 9
+ui_widget = 0
+
+[[bindings]]
+source = "input_reference"
+api_node = "77"
+api_input = "image"
+ui_node = 77
+ui_widget = 0
+
+[[bindings]]
+source = "megapixels"
+api_node = "80"
+api_input = "megapixels"
+ui_node = 80
+ui_widget = 1
+
+[[bindings]]
+source = "change_strength"
+api_node = "3"
+api_input = "denoise"
+ui_node = 3
+ui_widget = 6
+
+[[bindings]]
+source = "batch_size"
+api_node = "83"
+api_input = "amount"
+ui_node = 83
+ui_widget = 0
+
+[image_inputs.reference]
+kind = "image"
+sample = ""
+
+[[bindings]]
+source = "detail_strength"
+api_node = "92"
+api_input = "value"
+ui_node = 92
+ui_widget = 0

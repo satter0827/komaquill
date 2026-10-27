@@ -37,7 +37,7 @@ def create_render(
     workspace: Workspace,
     session: Session,
     story_id: UUID,
-    image_profile: str,
+    model: str,
     seed: int | None = None,
     *,
     candidates: int | None = None,
@@ -46,9 +46,14 @@ def create_render(
 ) -> StoryRender:
     """Capture a complete image-settings snapshot for a new independent rendering."""
     plan = repository.read(story_id)
-    settings = generation_settings(
-        workspace.configured(session.settings).settings(), image_profile, candidates
-    )
+    active = workspace.configured(session.settings).settings()
+    if not isinstance(active, RuntimeSettings):
+        raise KomaquillError(code="invalid_configuration", stage="story_rendering")
+    try:
+        image_profile = active.profile_for(model)
+    except ValueError:
+        raise KomaquillError(code="invalid_configuration", stage="story_rendering") from None
+    settings = generation_settings(active, image_profile, candidates)
     if image_profile not in settings.profiles:
         raise KomaquillError(code="invalid_configuration", stage="story_rendering")
     assigned = {row.scene: row for row in render_config.scenes} if render_config else {}
@@ -60,7 +65,9 @@ def create_render(
     scenes = []
     for index, scene in enumerate(plan.scenes):
         spec = assigned.get(scene.position)
-        selected = spec.profile if spec else image_profile
+        selected = (
+            settings.profile_for(spec.model or model, spec.operation) if spec else image_profile
+        )
         settings = generation_settings(settings, selected, candidates)
         profile = settings.presets[selected]
         if spec:
@@ -77,6 +84,13 @@ def create_render(
             spec.subjects if spec and spec.subjects is not None else original.subject_prompts,
             spec.inputs if spec else {},
             common_prompt=render_config.common_prompt if render_config else "",
+            negative=(
+                spec.negative
+                if spec and spec.negative is not None
+                else render_config.common_negative
+                if render_config
+                else None
+            ),
         )
         try:
             validate_inputs(profile, compiled.inputs)
@@ -96,7 +110,7 @@ def create_render(
             )
         )
     render = StoryRender(
-        format_version=6,
+        format_version=7,
         input_sources=input_sources,
         story_id=story_id,
         plan_sha256=digest(plan.model_dump(mode="json", exclude_unset=True)),

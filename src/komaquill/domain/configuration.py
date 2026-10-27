@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from komaquill.domain.presets import GenerationPreset, ModelPreset, PresetSnapshot
-from komaquill.domain.retained_presets import RetainedGenerationPreset
+from komaquill.domain.retained_presets import RetainedGenerationPreset, RetainedPositivePreset
 
 GpuType = Literal["T4", "L4", "A100", "H100", "G4"]
 
@@ -40,20 +40,20 @@ class SettingsSnapshot[PresetType: PresetSnapshot](BaseModel):
     remote_port: int = Field(ge=1024, le=65535)
     gpu: GpuType
 
-    profiles: tuple[str, ...]
     presets: dict[str, PresetType] = Field(default_factory=dict)
     assets: dict[str, ModelPreset] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_profiles(self) -> "SettingsSnapshot[PresetType]":
         """Fail before allocation if a preset or required asset is undefined."""
-        if not self.profiles or len(set(self.profiles)) != len(self.profiles):
+        profiles = self.selected_profiles()
+        if not profiles or len(set(profiles)) != len(profiles):
             raise ValueError("Select at least one distinct generation profile.")
         if self.submission_timeout is not None and (
             self.session_timeout is None or self.submission_timeout >= self.session_timeout
         ):
             raise ValueError("The submission deadline must precede the session deadline.")
-        for name in self.profiles:
+        for name in profiles:
             if name not in self.presets:
                 raise ValueError("The selected generation profile is undefined.")
             if self.presets[name].batch_size > self.max_candidates:
@@ -74,7 +74,11 @@ class SettingsSnapshot[PresetType: PresetSnapshot](BaseModel):
                 if (
                     isinstance(profile, GenerationPreset)
                     and asset.model_family is not None
-                    and asset.model_family not in {profile.model_family, "flux2"}
+                    and asset.model_family
+                    not in {
+                        profile.model_family,
+                        *(("flux2",) if profile.model_family.startswith("klein-") else ()),
+                    }
                 ):
                     raise ValueError("A profile mixes incompatible model families.")
                 spec = MODEL_INPUT_ROLES.get(profile.api[binding.api_node]["class_type"])
@@ -82,9 +86,56 @@ class SettingsSnapshot[PresetType: PresetSnapshot](BaseModel):
                     raise ValueError("A profile resource does not match its standard model loader.")
         return self
 
+    def selected_profiles(self) -> tuple[str, ...]:
+        """Return available profiles for stored settings."""
+        return tuple(self.presets)
+
 
 class RuntimeSettings(SettingsSnapshot[GenerationPreset]):
     """Hold accepted settings for new generation requests."""
+
+    format_version: Literal[2] = 2
+    models: tuple[str, ...] = ("klein-4b",)
+
+    @property
+    def profiles(self) -> tuple[str, ...]:
+        """Resolve enabled models to their fixed operation profiles."""
+        return tuple(
+            name
+            for model in self.models
+            for operation in ("generate", "edit")
+            for name, preset in self.presets.items()
+            if preset.model_id == model and preset.operation == operation
+        )
+
+    def selected_profiles(self) -> tuple[str, ...]:
+        return self.profiles
+
+    def profile_for(
+        self, model: str | None, operation: Literal["generate", "edit"] = "generate"
+    ) -> str:
+        """Resolve one enabled model and operation without fallback."""
+        selected = model or self.models[0]
+        matches = [
+            name
+            for name in self.profiles
+            if self.presets[name].model_id == selected and self.presets[name].operation == operation
+        ]
+        if len(matches) != 1:
+            raise ValueError("The selected model or operation is unavailable.")
+        return matches[0]
+
+    @model_validator(mode="after")
+    def distinct_models(self) -> "RuntimeSettings":
+        if not self.models or len(set(self.models)) != len(self.models):
+            raise ValueError("Select distinct models.")
+        if any(asset.local_only or asset.transfer for asset in self.assets.values()):
+            raise ValueError("Local-only and transferred model sources are retained-record fields.")
+        for model in self.models:
+            available = [p.operation for p in self.presets.values() if p.model_id == model]
+            if not available or len(set(available)) != len(available):
+                raise ValueError("Each enabled model requires distinct operation workflows.")
+        return self
 
     high_ram: bool = Field(default=False, strict=True)
     compute_unit_limit: float | None = Field(default=None, gt=0)
@@ -103,5 +154,22 @@ class RuntimeSettings(SettingsSnapshot[GenerationPreset]):
 class RetainedRuntimeSettings(SettingsSnapshot[RetainedGenerationPreset]):
     """Read former session settings only for observation, collection and shutdown."""
 
+    profiles: tuple[str, ...]
 
-RecordedSettings = RuntimeSettings | RetainedRuntimeSettings
+    def selected_profiles(self) -> tuple[str, ...]:
+        return self.profiles
+
+
+class RetainedPositiveRuntimeSettings(SettingsSnapshot[RetainedPositivePreset]):
+    """Preserve the previous positive-only runtime contract."""
+
+    profiles: tuple[str, ...]
+    high_ram: bool = False
+    compute_unit_limit: float | None = None
+    compute_unit_reserve: float = 2.0
+
+    def selected_profiles(self) -> tuple[str, ...]:
+        return self.profiles
+
+
+RecordedSettings = RuntimeSettings | RetainedPositiveRuntimeSettings | RetainedRuntimeSettings

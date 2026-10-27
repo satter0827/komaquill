@@ -13,6 +13,7 @@ from typing import Any
 
 from komaquill.domain.configuration import (
     RecordedSettings,
+    RetainedPositiveRuntimeSettings,
     RetainedRuntimeSettings,
     RuntimeSettings,
 )
@@ -96,7 +97,10 @@ def execute(
     try:
         settings = RuntimeSettings.model_validate(receipt["settings"])
     except ValueError:
-        settings = RetainedRuntimeSettings.model_validate(receipt["settings"])
+        try:
+            settings = RetainedPositiveRuntimeSettings.model_validate(receipt["settings"])
+        except ValueError:
+            settings = RetainedRuntimeSettings.model_validate(receipt["settings"])
     timeout = settings.request_timeout
     observation, assignment = observe(client, receipt, timeout)
     if action == "observe":

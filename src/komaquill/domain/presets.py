@@ -27,7 +27,7 @@ class ModelPreset(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
-    model_family: Literal["klein-4b", "klein-9b", "flux2"] | None = Field(
+    model_family: Literal["klein-4b", "klein-9b", "flux2", "illustrious"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     role: ModelRole = "checkpoints"
@@ -113,6 +113,8 @@ class WorkflowImageSlot(BaseModel):
 
 
 MODEL_INPUT_ROLES: dict[str, tuple[str, str]] = {
+    "CheckpointLoaderSimple": ("ckpt_name", "checkpoints"),
+    "LoraLoader": ("lora_name", "loras"),
     "UNETLoader": ("unet_name", "diffusion_models"),
     "CLIPLoader": ("clip_name", "text_encoders"),
     "VAELoader": ("vae_name", "vae"),
@@ -135,7 +137,7 @@ class PresetSnapshot(BaseModel):
     height: int = Field(ge=64, le=4096, multiple_of=16)
     steps: int = Field(ge=1, le=1000)
     sampler: str
-    scheduler: Literal["flux2"]
+    scheduler: str
     quality_enabled: bool = True
     positive_prefix: str = ""
     batch_size: int = Field(default=1, ge=1, strict=True)
@@ -149,26 +151,36 @@ class PresetSnapshot(BaseModel):
 
     def configured_parameters(self, overrides: dict[str, bool | int | float | str]) -> Self:
         """Apply declared values without accepting type changes or unbounded numeric inputs."""
-        if set(overrides) - set(self.parameters):
+        allowed = set(self.parameters) | set(getattr(self, "adjustable", ()))
+        if set(overrides) - allowed:
             raise ValueError("The workflow parameter is not declared.")
+        standard = {}
+        custom = dict(self.parameters)
         for name, value in overrides.items():
-            expected = self.parameters[name]
+            expected = self.parameters[name] if name in self.parameters else getattr(self, name)
             if isinstance(expected, float):
                 valid = isinstance(value, (int, float)) and not isinstance(value, bool)
+                value = float(value) if valid else value
             else:
                 valid = type(value) is type(expected)
             if not valid:
                 raise ValueError("The workflow parameter has the wrong type.")
-        return type(self).model_validate(
-            {**self.model_dump(), "parameters": {**self.parameters, **overrides}}
-        )
+            if name in custom:
+                custom[name] = value
+            else:
+                standard[name] = value
+        return type(self).model_validate({**self.model_dump(), **standard, "parameters": custom})
 
 
 class GenerationPreset(PresetSnapshot):
     """Validate positive-only executable workflows and their model family."""
 
-    format_version: Literal[2] = 2
-    model_family: Literal["klein-4b", "klein-9b"] = "klein-4b"
+    format_version: Literal[3] = 3
+    model_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    operation: Literal["generate", "edit"]
+    model_family: Literal["klein-4b", "klein-9b", "illustrious"]
+    negative_default: str | None = None
+    adjustable: tuple[str, ...] = ("width", "height")
 
     @model_validator(mode="after")
     def validate_bindings(self) -> Self:
@@ -179,9 +191,11 @@ class GenerationPreset(PresetSnapshot):
             "height",
             "steps",
             "sampler",
+            "scheduler",
             "batch_size",
             "positive_prefix",
             "prompt",
+            "negative",
             "seed",
             "output_prefix",
             "prompt_delimiter",
@@ -193,16 +207,24 @@ class GenerationPreset(PresetSnapshot):
             not re.fullmatch(r"[a-z][a-z0-9_]*", name) for name in declared | set(self.resources)
         ):
             raise ValueError("Use portable names for workflow inputs.")
-        if set(self.parameter_bounds) - set(self.parameters):
+        if set(self.adjustable) - {"width", "height", "steps", "sampler", "scheduler"}:
+            raise ValueError("The adjustable standard parameter is unknown.")
+        if set(self.parameter_bounds) - (set(self.parameters) | set(self.adjustable)):
             raise ValueError("Bounds must refer to declared parameters.")
         for name, (lower, upper) in self.parameter_bounds.items():
-            value = self.parameters[name]
+            value = self.parameters[name] if name in self.parameters else getattr(self, name)
             if (
                 not isinstance(value, (float, int))
                 or isinstance(value, bool)
                 or not lower <= value <= upper
             ):
                 raise ValueError("A workflow parameter is outside its declared bounds.")
+        if (self.negative_default is not None) != (
+            "negative" in {row.source for row in self.bindings}
+        ):
+            raise ValueError("Negative conditioning must match the declared graph input.")
+        if self.model_family != "illustrious" and self.negative_default is not None:
+            raise ValueError("Klein uses positive conditioning only.")
         allowed.update(self.resources)
         allowed.update(declared)
         if (self.primary_output_node is not None or self.batch_size != 1) and (

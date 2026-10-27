@@ -1,0 +1,9 @@
+name = "klein-9b-aniedit"
+model_family = "klein-9b"
+role = "loras"
+url = "https://civitai.com/api/download/models/2642969?fileId=2530899"
+filename = "AniEdit9B_v2.safetensors"
+sha256 = "d37d58268f6e704f7d5d5daf3cfc4d69bc82189c71e17494b5e02b6892274927" # pragma: allowlist secret Public model SHA256.
+size_bytes = 994079944
+license = "Civitai permissions: attribution optional; image use, rental and model sale permitted; derivatives and license changes permitted"
+license_url = "https://civitai.com/models/2332320?modelVersionId=2642969"

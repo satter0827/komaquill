@@ -1,18 +1,17 @@
 cases = ["rainy-cat", "red-book", "flying-hat", "group-photo"]
-models = ["klein-4b", "klein-9b"]
-seeds = [424242, 131313]
-baseline_limit = 64
-edit_limit = 8
-ablation_limit = 4
-regression_limit = 2
-technical_retry_limit = 4
-output_limit = 82
-compute_unit_limit = 20.0
-compute_unit_reserve = 2.0
+models = ["wai-illustrious", "klein-4b"]
+seeds = [424242]
+baseline_limit = 32
+edit_limit = 2
+ablation_limit = 1
+technical_retry_limit = 1
+output_limit = 36
+compute_unit_limit = 3.0
+compute_unit_reserve = 0.5
 submission_seconds = 4200
 session_seconds = 5400
 storage_bytes = 2147483648
-minimum_free_bytes = 17179869184
+minimum_free_bytes = 2147483648
 
 [presentation]
 aki = "adult woman, short straight black hair, opaque white coat over an opaque plain white blouse"

@@ -7,7 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.presets import GenerationPreset
 from komaquill.domain.prompts import joined
-from komaquill.domain.retained_images import RetainedImageInput, RetainedPromptSource
+from komaquill.domain.retained_images import (
+    RetainedImageInput,
+    RetainedPositiveImageInput,
+    RetainedPromptSource,
+)
 from komaquill.domain.workflow import digest
 
 MAX_SEED = 2**64 - 1
@@ -23,10 +27,12 @@ class CompiledImageInput(BaseModel):
     """Freeze the original directions and exact positive conditioning for generation."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    format_version: Literal[4] = 4
-    compiler_version: Literal[7] = 7
+    format_version: Literal[5] = 5
+    compiler_version: Literal[8] = 8
     preset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt: str
+    requested_negative: str | None = None
+    negative: str | None = None
     common_prompt: str = ""
     subject_prompts: tuple[str, ...]
     quality_enabled: bool
@@ -38,7 +44,8 @@ class CompiledImageInput(BaseModel):
     @model_validator(mode="after")
     def consistent(self) -> "CompiledImageInput":
         if (
-            any(not subject.strip() for subject in self.subject_prompts)
+            (self.requested_negative is not None and self.negative != self.requested_negative)
+            or any(not subject.strip() for subject in self.subject_prompts)
             or self.positive != joined(self.positive_prefix, self.body)
             or (not self.quality_enabled and self.positive_prefix)
             or self.body != joined(self.common_prompt, self.prompt, *self.subject_prompts)
@@ -49,13 +56,19 @@ class CompiledImageInput(BaseModel):
     def matches(self, profile: GenerationPreset) -> bool:
         """Check frozen input without applying directions again."""
         return (
-            self.preset_sha256 == preset_fingerprint(profile)
+            self.negative
+            == (
+                profile.negative_default
+                if self.requested_negative is None
+                else self.requested_negative
+            )
+            and self.preset_sha256 == preset_fingerprint(profile)
             and self.quality_enabled == profile.quality_enabled
             and self.positive_prefix == (profile.positive_prefix if profile.quality_enabled else "")
         )
 
 
-CompiledInputRecord = CompiledImageInput | RetainedImageInput
+CompiledInputRecord = CompiledImageInput | RetainedPositiveImageInput | RetainedImageInput
 
 
 def validate_inputs(profile: GenerationPreset, inputs: dict[str, InputArtifact]) -> None:
@@ -82,12 +95,18 @@ def compile_image_input(
     inputs: dict[str, InputArtifact] | None = None,
     *,
     common_prompt: str = "",
+    negative: str | None = None,
 ) -> CompiledImageInput:
     """Apply model-specific quality once and freeze positive directions."""
+    if negative is not None and profile.negative_default is None:
+        raise ValueError("This model does not support negative conditioning.")
+    effective_negative = profile.negative_default if negative is None else negative
     positive_prefix = profile.positive_prefix if profile.quality_enabled else ""
     body = joined(common_prompt, prompt, *subjects)
     return CompiledImageInput(
         inputs=inputs or {},
+        requested_negative=negative,
+        negative=effective_negative,
         preset_sha256=preset_fingerprint(profile),
         prompt=prompt,
         common_prompt=common_prompt,
@@ -106,7 +125,7 @@ class PromptSource(BaseModel):
     name: str = Field(min_length=1, pattern=r"^[^/\\]+$")
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     content: str
-    role: Literal["positive", "input"]
+    role: Literal["positive", "negative", "input"]
 
 
 PromptSourceRecord = PromptSource | RetainedPromptSource
@@ -116,7 +135,10 @@ class ImageInput(BaseModel):
     """Validate positive and optional subject directions."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
-    format_version: Literal[3] = 3
+    format_version: Literal[4] = 4
+    negative: str | None = None
+    model: str | None = None
+    operation: Literal["generate", "edit"] = "generate"
     prompt: str = Field(min_length=1)
     subjects: tuple[str, ...] = ()
     inputs: dict[str, str] = Field(default_factory=dict)

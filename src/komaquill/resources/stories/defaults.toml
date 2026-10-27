@@ -2,7 +2,7 @@
 images = "auto"
 max_images = 8
 llm_profile = "lmstudio-4b"
-image_profile = "klein-4b"
+model = "klein-4b"
 request_timeout = 300.0
 max_output_tokens = 4096
 repair_attempts = 1
@@ -30,5 +30,5 @@ provider = "fake"
 model = "fake-list"
 
 [planning]
-style = "simple illustration, consistent colors and lighting"
-guidance = ["One still moment with a clear focal subject.", "Use prose to connect events that are difficult to draw.", "Keep necessary relationships; simplify poses, not the plot."]
+style = "manga illustration, consistent characters and lighting"
+guidance = ["One clearly visible moment per panel.", "Keep subject appearance, actions and prop states distinct.", "Preserve the story while simplifying complex poses."]

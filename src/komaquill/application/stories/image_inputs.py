@@ -1,14 +1,13 @@
 """Translate visible story intent into portable image-generation inputs."""
 
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.images import CompiledImageInput, compile_image_input, joined
+from komaquill.domain.images import CompiledImageInput, compile_image_input
 from komaquill.domain.presets import GenerationPreset
+from komaquill.domain.prompts import joined
 from komaquill.domain.stories import Scene, StoryPlan
 
 
-def scene_input(
-    plan: StoryPlan, scene: Scene, profile: GenerationPreset, negative: str | None = None
-) -> CompiledImageInput:
+def scene_input(plan: StoryPlan, scene: Scene, profile: GenerationPreset) -> CompiledImageInput:
     if plan.format_version != 2 or scene.subjects is None:
         raise KomaquillError(
             code="story_replan_required",
@@ -41,4 +40,4 @@ def scene_input(
             if state.visible and state.holder is None
         ),
     )
-    return compile_image_input(profile, prompt, negative, subjects=subjects)
+    return compile_image_input(profile, prompt, subjects=subjects)

@@ -28,3 +28,5 @@ AIによる変更でも、この索引とAGENTSから対象文書を選び、実
 Kleinのモデル構成、役割の構成図、旧構成の削除理由は[設計判断](decisions/0009-klein-completion.md)、完走の条件は[短編漫画の検証](verification/story-completion.md)を参照してください。
 
 複数題材での検証と、物語の状態・描画対象の分離は[設計判断](decisions/0010-multi-story-verification.md)を参照してください。
+
+Klein 4B・9Bの切替、負プロンプトの廃止、GPUとCUの制限は[設計判断](decisions/0011-klein-model-comparison.md)、比較の操作と判定は[モデル比較](verification/klein-comparison.md)を参照してください。

@@ -1,7 +1,8 @@
+format_version = 2
+model_family = "klein-9b"
 width = 1024
 height = 1024
 steps = 4
-cfg = 1.0
 sampler = "euler"
 scheduler = "flux2"
 batch_size = 1
@@ -11,11 +12,15 @@ positive_prefix = "clean line art, clear composition"
 sample_prompt = "a small cabin in a sunny forest, manga illustration"
 
 [resources]
-diffusion = "klein-4b"
-encoder = "klein-encoder"
+diffusion = "klein-9b"
+encoder = "klein-9b-encoder"
 vae = "klein-vae"
-party = "klein-party"
-fixes = "klein-fixes"
+party = "klein-9b-party"
+fixes = "klein-9b-fixes"
+
+[image_inputs.reference]
+kind = "image"
+sample = ""
 
 [parameters]
 party_strength = 1.0
@@ -89,13 +94,6 @@ ui_node = 62
 ui_widget = 0
 
 [[bindings]]
-source = "cfg"
-api_node = "63"
-api_input = "cfg"
-ui_node = 63
-ui_widget = 0
-
-[[bindings]]
 source = "sampler"
 api_node = "61"
 api_input = "sampler_name"
@@ -149,4 +147,11 @@ source = "output_prefix"
 api_node = "9"
 api_input = "filename_prefix"
 ui_node = 9
+ui_widget = 0
+
+[[bindings]]
+source = "input_reference"
+api_node = "77"
+api_input = "image"
+ui_node = 77
 ui_widget = 0

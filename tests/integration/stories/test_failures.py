@@ -63,7 +63,7 @@ def test_rendered_corrupt_plan_does_not_escape_projection_recovery(project, sess
     api = Client(project.root)
     plan = api.stories.plan(source(), llm_profile="fake", images=1)
     active = session.model_copy(update={"settings": project.settings()})
-    create_render(api.stories._repository, project, active, plan.request.story_id, "klein")
+    create_render(api.stories._repository, project, active, plan.request.story_id, "klein-4b")
     path = api.stories._repository.folder(plan.request.story_id) / "plan.json"
     path.write_text('{"format_version":1}')
     assert refresh_saved_stories(project) == (plan.request.story_id,)

@@ -1,4 +1,5 @@
 name = "klein-4b"
+model_family = "klein-4b"
 role = "diffusion_models"
 url = "https://huggingface.co/Comfy-Org/flux2-klein/resolve/533c4cbc3d3b89af1743d9466c434e89810391c0/split_files/diffusion_models/flux-2-klein-4b.safetensors"
 filename = "flux-2-klein-4b.safetensors"

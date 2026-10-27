@@ -235,7 +235,7 @@ def test_external_open_exports_workflow_and_returns_to_terminal(
     )
     result = cli_connection("open", "--view", "app")
     assert result.exit_code == 0, result.output
-    assert (project.runtime / "workflows/klein_app.json").is_file()
+    assert (project.runtime / "workflows/klein-4b_app.json").is_file()
 
 
 @pytest.mark.parametrize("open_flag", [None, "--open", "--no-open"])
@@ -245,13 +245,13 @@ def test_start_reuses_cli_profiles_and_opens_browser_only_when_enabled(
     calls = []
 
     def start(bound, backend, endpoint, username, open_browser, echo, foreground, **kwargs):
-        assert bound.settings().profiles == ("klein-edit",)
+        assert bound.settings().profiles == ("klein-4b-edit",)
         assert open_browser is (open_flag == "--open")
         assert foreground is None
         calls.append("connected")
 
     monkeypatch.setattr(services.supervisor, "start", start)
-    arguments = ["--project", str(project.root), "start", "--profile", "klein-edit"]
+    arguments = ["--project", str(project.root), "start", "--profile", "klein-4b-edit"]
     if open_flag:
         arguments.append(open_flag)
     result = CliRunner().invoke(cli.app, arguments)

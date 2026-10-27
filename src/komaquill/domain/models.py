@@ -7,9 +7,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.configuration import RecordedSettings
 from komaquill.domain.errors import FailureInfo
-from komaquill.domain.images import CompiledImageInput, PromptSource
+from komaquill.domain.images import CompiledInputRecord, PromptSourceRecord
 from komaquill.domain.presets import ModelPreset as ModelPreset
 
 JsonObject = dict[str, Any]
@@ -30,7 +30,7 @@ class Session(BaseModel):
     asset_sha256: dict[str, str] = Field(default_factory=dict)
     started_at: datetime | None = None
     username: str | None = None
-    settings: RuntimeSettings | None = None
+    settings: RecordedSettings | None = None
     excluded_prompt_ids: set[str] = Field(default_factory=set)
 
     @field_validator("started_at")
@@ -105,10 +105,10 @@ class ImageMetadata(BaseModel):
 class Run(BaseModel):
     """Retain generation conditions for collection after reconnecting."""
 
-    compiled_input: CompiledImageInput | None = None
+    compiled_input: CompiledInputRecord | None = None
 
     output_spec: OutputSpec | None = None
-    input_sources: tuple[PromptSource, ...] = ()
+    input_sources: tuple[PromptSourceRecord, ...] = ()
     format_version: int = 5
     run_id: UUID
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

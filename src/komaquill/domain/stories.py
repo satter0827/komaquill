@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from komaquill.domain.errors import FailureInfo
-from komaquill.domain.images import CompiledImageInput, PromptSource
+from komaquill.domain.images import CompiledInputRecord, PromptSourceRecord
 from komaquill.domain.workflow import digest
 
 
@@ -295,7 +295,7 @@ class StoryPlan(StoryRecord):
 
 
 class SceneAttempts(StoryRecord):
-    compiled_input: CompiledImageInput | None = None
+    compiled_input: CompiledInputRecord | None = None
     image_profile: str | None = None
     preset: dict[str, Any] | None = None
     scene_id: UUID
@@ -306,7 +306,7 @@ class SceneAttempts(StoryRecord):
 class StoryRender(StoryRecord):
     """Freeze image settings while retaining independent request attempts."""
 
-    input_sources: tuple[PromptSource, ...] = ()
+    input_sources: tuple[PromptSourceRecord, ...] = ()
     format_version: Literal[1, 2, 3, 4, 5, 6] = 1
     render_id: UUID = Field(default_factory=uuid4)
     story_id: UUID

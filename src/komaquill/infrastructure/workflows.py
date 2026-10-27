@@ -5,7 +5,7 @@ import tomllib
 from importlib.resources import files
 from typing import cast
 
-from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import CompiledImageInput, compile_image_input
 from komaquill.domain.models import JsonObject, ModelPreset
@@ -31,8 +31,10 @@ def resource_json(name: str) -> JsonObject:
     )
 
 
-def select(settings: RuntimeSettings, name: str | None = None) -> tuple[str, GenerationPreset]:
+def select(settings: RecordedSettings, name: str | None = None) -> tuple[str, GenerationPreset]:
     """Resolve only profiles prepared for the current connection."""
+    if not isinstance(settings, RuntimeSettings):
+        raise KomaquillError(code="invalid_configuration", stage="generation", retryable=False)
     selected = name or settings.profiles[0]
     if selected not in settings.profiles:
         raise KomaquillError(
@@ -44,7 +46,7 @@ def select(settings: RuntimeSettings, name: str | None = None) -> tuple[str, Gen
     return selected, settings.presets[selected]
 
 
-def assets(settings: RuntimeSettings) -> tuple[ModelPreset, ...]:
+def assets(settings: RecordedSettings) -> tuple[ModelPreset, ...]:
     """Deduplicate shared weights across the selected profiles."""
     names = dict.fromkeys(
         asset for name in settings.profiles for asset in settings.presets[name].asset_ids
@@ -54,11 +56,10 @@ def assets(settings: RuntimeSettings) -> tuple[ModelPreset, ...]:
 
 def prepare(
     prompt: str,
-    negative: str | None,
     seed: int,
     run_id: str,
     *,
-    settings: RuntimeSettings | None = None,
+    settings: RecordedSettings | None = None,
     profile_name: str | None = None,
     compiled_input: CompiledImageInput | None = None,
     subject_prompts: tuple[str, ...] = (),
@@ -76,8 +77,8 @@ def prepare(
 
     api = deepcopy(profile.api)
     ui = deepcopy(profile.ui)
-    applied = compiled_input or compile_image_input(profile, prompt, negative, subject_prompts)
-    if not applied.matches(profile):
+    applied = compiled_input or compile_image_input(profile, prompt, subject_prompts)
+    if not isinstance(applied, CompiledImageInput) or not applied.matches(profile):
         raise KomaquillError(code="invalid_configuration", stage="generation")
     values = profile.model_dump()
     values.update(

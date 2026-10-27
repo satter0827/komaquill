@@ -2,7 +2,7 @@
 
 import re
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Any, Literal, get_args
+from typing import Any, Literal, Self, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -27,6 +27,7 @@ class ModelPreset(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    model_family: Literal["klein-4b", "klein-9b", "flux2"] | None = None
     role: ModelRole = "checkpoints"
     repo_id: str = ""
     revision: str = ""
@@ -117,7 +118,7 @@ MODEL_INPUT_ROLES: dict[str, tuple[str, str]] = {
 }
 
 
-class GenerationPreset(BaseModel):
+class PresetSnapshot(BaseModel):
     """Bind standard workflow files to explicit model and sampling settings."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
@@ -131,15 +132,12 @@ class GenerationPreset(BaseModel):
     width: int = Field(ge=64, le=4096, multiple_of=16)
     height: int = Field(ge=64, le=4096, multiple_of=16)
     steps: int = Field(ge=1, le=1000)
-    cfg: float = Field(ge=0, le=100)
     sampler: str
     scheduler: Literal["flux2"]
     quality_enabled: bool = True
     positive_prefix: str = ""
-    negative_prefix: Literal[""] = ""
     batch_size: int = Field(default=1, ge=1, strict=True)
     primary_output_node: str | None = None
-    negative: Literal[""] = ""
     sample_prompt: str
 
     @property
@@ -147,9 +145,7 @@ class GenerationPreset(BaseModel):
         """Return only assets needed for this profile."""
         return tuple(dict.fromkeys(self.resources.values()))
 
-    def configured_parameters(
-        self, overrides: dict[str, bool | int | float | str]
-    ) -> "GenerationPreset":
+    def configured_parameters(self, overrides: dict[str, bool | int | float | str]) -> Self:
         """Apply declared values without accepting type changes or unbounded numeric inputs."""
         if set(overrides) - set(self.parameters):
             raise ValueError("The workflow parameter is not declared.")
@@ -165,15 +161,21 @@ class GenerationPreset(BaseModel):
             {**self.model_dump(), "parameters": {**self.parameters, **overrides}}
         )
 
+
+class GenerationPreset(PresetSnapshot):
+    """Validate positive-only executable workflows and their model family."""
+
+    format_version: Literal[2] = 2
+    model_family: Literal["klein-4b", "klein-9b"] = "klein-4b"
+
     @model_validator(mode="after")
-    def validate_bindings(self) -> "GenerationPreset":
+    def validate_bindings(self) -> Self:
         """Reject incomplete or mismatched exports before GPU allocation."""
         nodes = {row.get("id"): row for row in self.ui.get("nodes", []) if isinstance(row, dict)}
         allowed = {
             "width",
             "height",
             "steps",
-            "cfg",
             "sampler",
             "batch_size",
             "positive_prefix",

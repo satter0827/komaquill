@@ -38,7 +38,7 @@ def pinned_reference_run(project, session, client, stub, monkeypatch):
     api, active = configure(project, session, client, monkeypatch)
     item = api.inputs.import_file(image_file(project.root))
     run = submit_generation(
-        project, client, active, "a scene", None, 1, "klein-edit", inputs={"reference": item}
+        project, client, active, "a scene", 1, "klein-4b-edit", inputs={"reference": item}
     )
     record = stub.history[run.prompt_id]
     pinned = f"komaquill/{item.sha256}/{Path(item.reference).name}"
@@ -147,7 +147,7 @@ def test_import_preserves_content_and_freezes_input_before_upload(
     assert api.artifact_path(item.key).read_bytes() == original
     assert item == api.inputs.import_file(path)
     path.write_bytes(b"changed after import")
-    run = api.images.generate("a gray kitten", profile="klein-edit", inputs={"reference": item})
+    run = api.images.generate("a gray kitten", profile="klein-4b-edit", inputs={"reference": item})
     assert run.state == "saved" and run.compiled_input.inputs == {"reference": item}
     assert stub.uploaded_inputs[item.reference] == original and stub.upload_calls == 1
     assert run.input_sha256[item.reference] == item.sha256
@@ -169,7 +169,7 @@ def test_invalid_materials_fail_before_generation(
     else:
         api.artifact_path(image.key).write_bytes(b"damaged")
     with pytest.raises(KomaquillError):
-        api.images.generate("kitten", profile="klein-edit", inputs=inputs)
+        api.images.generate("kitten", profile="klein-4b-edit", inputs=inputs)
     assert stub.submissions == stub.upload_calls == 0
 
 
@@ -184,7 +184,7 @@ def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
         scenes=tuple(
             SceneRenderConfig(
                 scene=i,
-                profile="klein-edit",
+                profile="klein-4b-edit",
                 prompt=f"scene {i}",
                 inputs={"reference": image},
                 parameters={"party_strength": 0.4 + i / 20},
@@ -224,7 +224,7 @@ def test_all_scenes_are_validated_before_any_request(project, session, client, s
     config = RenderConfig(
         scenes=tuple(
             SceneRenderConfig(
-                scene=i, profile="klein-edit", inputs={"reference": image} if i != 4 else {}
+                scene=i, profile="klein-4b-edit", inputs={"reference": image} if i != 4 else {}
             )
             for i in range(1, 5)
         )
@@ -238,7 +238,7 @@ def test_failed_intermediate_collection_retries_without_promoting_success(
     project, session, client, stub
 ):
     active = session.model_copy(update={"settings": project.settings()})
-    run = submit_generation(project, client, active, "a scene", None, 1)
+    run = submit_generation(project, client, active, "a scene", 1)
     record = stub.history[run.prompt_id]
     record["outputs"] = {"29": record["outputs"]["9"]}
     record["status"] = {"completed": False, "status_str": "error"}
@@ -261,7 +261,7 @@ def test_failed_outputs_keep_names_when_an_earlier_stage_appears_later(
     project, session, client, stub
 ):
     active = session.model_copy(update={"settings": project.settings()})
-    run = submit_generation(project, client, active, "a scene", None, 1)
+    run = submit_generation(project, client, active, "a scene", 1)
     record = stub.history[run.prompt_id]
     original = record["outputs"]["9"]
     record["outputs"] = {"29": original}
@@ -296,7 +296,7 @@ def test_invalid_stage_parameters_fail_before_upload(
     image = api.inputs.import_file(image_file(project.root))
     with pytest.raises(KomaquillError):
         api.images.generate(
-            "a cat", profile="klein-edit", inputs={"reference": image}, parameters=parameters
+            "a cat", profile="klein-4b-edit", inputs={"reference": image}, parameters=parameters
         )
     assert stub.submissions == stub.upload_calls == 0
 
@@ -312,7 +312,7 @@ def test_cli_resolves_materials_relative_to_each_input_file(
     path.write_text(
         json.dumps(
             {
-                "format_version": 2,
+                "format_version": 3,
                 "prompt": "a cat",
                 "inputs": {"reference": "input.png"},
                 "parameters": {"party_strength": 0.25},
@@ -326,7 +326,7 @@ def test_cli_resolves_materials_relative_to_each_input_file(
             str(project.root),
             "generate",
             "--profile",
-            "klein-edit",
+            "klein-4b-edit",
             "--input-file",
             str(path),
         ],
@@ -337,9 +337,9 @@ def test_cli_resolves_materials_relative_to_each_input_file(
     path.write_text(
         json.dumps(
             {
-                "format_version": 1,
+                "format_version": 3,
                 "scenes": [
-                    {"scene": 1, "profile": "klein-edit", "inputs": {"reference": "input.png"}}
+                    {"scene": 1, "profile": "klein-4b-edit", "inputs": {"reference": "input.png"}}
                 ],
             }
         )

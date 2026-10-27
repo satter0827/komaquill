@@ -1,6 +1,6 @@
 {
-  "last_node_id": 123,
-  "last_link_id": 27,
+  "last_node_id": 121,
+  "last_link_id": 25,
   "nodes": [
     {
       "id": 4,
@@ -47,7 +47,7 @@
         "Node name for S&R": "UNETLoader"
       },
       "widgets_values": [
-        "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343/flux-2-klein-4b.safetensors",
+        "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58/flux-2-klein-9b.safetensors",
         "default"
       ]
     },
@@ -101,7 +101,7 @@
         "Node name for S&R": "LoraLoaderModelOnly"
       },
       "widgets_values": [
-        "0c4aea1ba041985d2d7e6ce655b865e0fe22ea37575b3310c4619ad57dc80a00/party_time_v2.0_klein4b.safetensors",
+        "cc369cda4370cde8244e5934ac7323b9d39f0797d729c1931c8c0621692ce91c/party_time_v2.0_klein9b.safetensors",
         1.0
       ]
     },
@@ -155,7 +155,7 @@
         "Node name for S&R": "LoraLoaderModelOnly"
       },
       "widgets_values": [
-        "fd8b9455ad344ed6c8017dbc9eefd34a4851a33e7bbb0c8d2d9a4c3632ba0320/FLUX_NSFW_Fix.safetensors",
+        "68c4266c269bb57385c08cab9fe47b44120f8aa99b0bfd2ac13bd3ecb1df855c/FLUX_NSFW_Fix.safetensors",
         1.0
       ]
     },
@@ -212,7 +212,7 @@
         "Node name for S&R": "CLIPLoader"
       },
       "widgets_values": [
-        "3d6f27fd39c58c62f593ff5ef48cc734e8abb188005e6a15582876e30833ab96/model.safetensors",
+        "2bb97dcc052d0b9a4e2a9953229f2ea83cfa0d58c2310391279f16cad931c4ba/model.safetensors",
         "flux2",
         "default"
       ]
@@ -347,7 +347,6 @@
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
-            5,
             24
           ]
         }
@@ -358,11 +357,11 @@
       "widgets_values": []
     },
     {
-      "id": 76,
-      "type": "ConditioningZeroOut",
+      "id": 63,
+      "type": "BasicGuider",
       "pos": [
-        1050,
-        300
+        0,
+        600
       ],
       "size": [
         310,
@@ -373,62 +372,14 @@
       "mode": 0,
       "inputs": [
         {
-          "name": "conditioning",
-          "type": "CONDITIONING",
-          "link": 5
-        }
-      ],
-      "outputs": [
-        {
-          "name": "CONDITIONING",
-          "type": "CONDITIONING",
-          "links": [
-            26
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ConditioningZeroOut"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 63,
-      "type": "CFGGuider",
-      "pos": [
-        0,
-        600
-      ],
-      "size": [
-        310,
-        180
-      ],
-      "flags": {},
-      "order": 8,
-      "mode": 0,
-      "inputs": [
-        {
           "name": "model",
           "type": "MODEL",
           "link": 6
         },
         {
-          "name": "positive",
+          "name": "conditioning",
           "type": "CONDITIONING",
           "link": 7
-        },
-        {
-          "name": "negative",
-          "type": "CONDITIONING",
-          "link": 8
-        },
-        {
-          "name": "cfg",
-          "type": "FLOAT",
-          "link": null,
-          "widget": {
-            "name": "cfg"
-          }
         }
       ],
       "outputs": [
@@ -441,11 +392,9 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "CFGGuider"
+        "Node name for S&R": "BasicGuider"
       },
-      "widgets_values": [
-        1.0
-      ]
+      "widgets_values": []
     },
     {
       "id": 73,
@@ -459,7 +408,7 @@
         180
       ],
       "flags": {},
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -500,7 +449,7 @@
         180
       ],
       "flags": {},
-      "order": 10,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -540,7 +489,7 @@
         180
       ],
       "flags": {},
-      "order": 11,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -582,7 +531,7 @@
         180
       ],
       "flags": {},
-      "order": 12,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -624,7 +573,7 @@
         180
       ],
       "flags": {},
-      "order": 13,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -674,7 +623,7 @@
         180
       ],
       "flags": {},
-      "order": 14,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -724,7 +673,7 @@
         180
       ],
       "flags": {},
-      "order": 15,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -784,7 +733,7 @@
         180
       ],
       "flags": {},
-      "order": 16,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
@@ -824,7 +773,7 @@
         180
       ],
       "flags": {},
-      "order": 17,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {
@@ -861,7 +810,7 @@
         180
       ],
       "flags": {},
-      "order": 18,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
@@ -907,7 +856,7 @@
         180
       ],
       "flags": {},
-      "order": 19,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
@@ -970,7 +919,7 @@
         180
       ],
       "flags": {},
-      "order": 20,
+      "order": 19,
       "mode": 0,
       "inputs": [
         {
@@ -989,8 +938,7 @@
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            25,
-            27
+            25
           ]
         }
       ],
@@ -1011,7 +959,7 @@
         180
       ],
       "flags": {},
-      "order": 21,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
@@ -1031,46 +979,6 @@
           "type": "CONDITIONING",
           "links": [
             7
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ReferenceLatent"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 123,
-      "type": "ReferenceLatent",
-      "pos": [
-        700,
-        1500
-      ],
-      "size": [
-        310,
-        180
-      ],
-      "flags": {},
-      "order": 22,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "conditioning",
-          "type": "CONDITIONING",
-          "link": 26
-        },
-        {
-          "name": "latent",
-          "type": "LATENT",
-          "link": 27
-        }
-      ],
-      "outputs": [
-        {
-          "name": "CONDITIONING",
-          "type": "CONDITIONING",
-          "links": [
-            8
           ]
         }
       ],
@@ -1114,14 +1022,6 @@
       "CLIP"
     ],
     [
-      5,
-      74,
-      0,
-      76,
-      0,
-      "CONDITIONING"
-    ],
-    [
       6,
       91,
       0,
@@ -1135,14 +1035,6 @@
       0,
       63,
       1,
-      "CONDITIONING"
-    ],
-    [
-      8,
-      123,
-      0,
-      63,
-      2,
       "CONDITIONING"
     ],
     [
@@ -1278,22 +1170,6 @@
       82,
       0,
       121,
-      1,
-      "LATENT"
-    ],
-    [
-      26,
-      76,
-      0,
-      123,
-      0,
-      "CONDITIONING"
-    ],
-    [
-      27,
-      82,
-      0,
-      123,
       1,
       "LATENT"
     ]

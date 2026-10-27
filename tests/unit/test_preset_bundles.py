@@ -14,9 +14,9 @@ from komaquill.infrastructure.preset_catalog import bundle
 from komaquill.infrastructure.workflows import prepare
 
 
-def copy_bundle(project, name="klein"):
+def copy_bundle(project, name="klein-4b"):
     target = project.root / "presets" / name
-    shutil.copytree(Path(str(files("komaquill").joinpath("resources/presets/klein"))), target)
+    shutil.copytree(Path(str(files("komaquill").joinpath("resources/presets/klein-4b"))), target)
     return target
 
 
@@ -25,15 +25,15 @@ def test_local_preset_is_complete_and_frozen(project, monkeypatch):
     config = project.root / "komaquill.toml"
     config.write_text('profiles=["custom"]\n[presets.custom]\nsteps=31\n')
     frozen = project.configured()
-    first, _ = prepare("first", None, 42, "run", settings=frozen.settings())
+    first, _ = prepare("first", 42, "run", settings=frozen.settings())
     assert first["62"]["inputs"]["steps"] == 31
     first["62"]["inputs"]["steps"] = 999
     manifest = target / "preset.toml"
     manifest.write_text(manifest.read_text().replace("steps = 4", "steps = 40"))
     config.write_text('profiles=["custom"]\n')
-    second, _ = prepare("second", "", 42, "run", settings=frozen.settings())
+    second, _ = prepare("second", 42, "run", settings=frozen.settings())
     assert second["62"]["inputs"]["steps"] == 31
-    assert second["76"]["inputs"]["conditioning"] == ["74", 0]
+    assert second["63"]["inputs"]["conditioning"] == ["74", 0]
     assert project.settings().presets["custom"].steps == 40
     monkeypatch.setenv("KOMAQUILL_PRESETS", json.dumps({"custom": {"steps": 41}}))
     assert project.settings().presets["custom"].steps == 41
@@ -52,7 +52,7 @@ def test_local_preset_is_complete_and_frozen(project, monkeypatch):
     ],
 )
 def test_invalid_bundles_fail_before_start(project, case):
-    target = copy_bundle(project, "BadName" if case == "invalid_name" else "klein")
+    target = copy_bundle(project, "BadName" if case == "invalid_name" else "klein-4b")
     manifest = target / "preset.toml"
     text = manifest.read_text()
     if case == "missing":
@@ -80,15 +80,15 @@ def test_invalid_bundles_fail_before_start(project, case):
 
 def test_packaged_graphs_are_independent_copies():
     settings = Settings()
-    first, ui = prepare("one", None, 1, "first", settings=settings)
+    first, ui = prepare("one", 1, "first", settings=settings)
     first["4"]["inputs"]["unet_name"] = "changed"
     ui["nodes"].clear()
-    second, other = prepare("two", None, 2, "second", settings=settings)
+    second, other = prepare("two", 2, "second", settings=settings)
     assert second["4"]["inputs"]["unet_name"] != "changed"
     assert other["nodes"]
 
 
-@pytest.mark.parametrize("name", ["klein", "klein-edit"])
+@pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit"])
 def test_app_mode_exposes_only_declared_scalar_inputs(name):
     root = files("komaquill").joinpath("resources/presets", name)
     graph = json.loads(root.joinpath("workflow.json").read_bytes())

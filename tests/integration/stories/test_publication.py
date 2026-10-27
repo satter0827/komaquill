@@ -16,7 +16,7 @@ from tests.support.stories import planned
 def rendered(project, session, client):
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "klein", 1)
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b", 1)
     render_story(repository, project, client, active, render.render_id)
     return repository, plan, repository.render(render.render_id), active
 

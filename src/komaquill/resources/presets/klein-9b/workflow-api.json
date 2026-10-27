@@ -1,0 +1,179 @@
+{
+  "4": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58/flux-2-klein-9b.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "90": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "lora_name": "cc369cda4370cde8244e5934ac7323b9d39f0797d729c1931c8c0621692ce91c/party_time_v2.0_klein9b.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "91": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "90",
+        0
+      ],
+      "lora_name": "68c4266c269bb57385c08cab9fe47b44120f8aa99b0bfd2ac13bd3ecb1df855c/FLUX_NSFW_Fix.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "71": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "2bb97dcc052d0b9a4e2a9953229f2ea83cfa0d58c2310391279f16cad931c4ba/model.safetensors",
+      "type": "flux2",
+      "device": "default"
+    }
+  },
+  "72": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3/flux2-vae.safetensors"
+    }
+  },
+  "10": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "clean line art, clear composition",
+      "string_b": "a small cabin in a sunny forest",
+      "delimiter": ", "
+    }
+  },
+  "74": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "10",
+        0
+      ],
+      "clip": [
+        "71",
+        0
+      ]
+    }
+  },
+  "63": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "91",
+        0
+      ],
+      "conditioning": [
+        "74",
+        0
+      ]
+    }
+  },
+  "73": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 1
+    }
+  },
+  "61": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "68": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1024
+    }
+  },
+  "69": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 1024
+    }
+  },
+  "62": {
+    "class_type": "Flux2Scheduler",
+    "inputs": {
+      "steps": 4,
+      "width": [
+        "68",
+        0
+      ],
+      "height": [
+        "69",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {
+      "width": [
+        "68",
+        0
+      ],
+      "height": [
+        "69",
+        0
+      ],
+      "batch_size": 1
+    }
+  },
+  "3": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "73",
+        0
+      ],
+      "guider": [
+        "63",
+        0
+      ],
+      "sampler": [
+        "61",
+        0
+      ],
+      "sigmas": [
+        "62",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "72",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "komaquill"
+    }
+  }
+}

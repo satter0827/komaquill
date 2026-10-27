@@ -200,7 +200,7 @@ def test_global_conditioning_routes_prop_to_its_current_holder(project):
     )
     StoryPlan.model_validate(plan.model_dump())
     first = plan.scenes[0]
-    profile = project.settings().presets["klein"]
+    profile = project.settings().presets["klein-4b"]
     before = scene_input(plan, first, profile)
     changed = first.model_copy(
         update={

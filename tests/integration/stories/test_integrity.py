@@ -17,7 +17,7 @@ from tests.support.stories import planned, source
 def rendered(project, session, client):
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "klein", 1)
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b", 1)
     render_story(repository, project, client, active, render.render_id)
     return repository, plan, render, active
 
@@ -92,7 +92,7 @@ def test_malformed_saved_workflow_raises_a_safe_storage_error(project, session, 
 def test_final_collection_observation_reports_newly_unreadable_history(
     project, client, session, monkeypatch
 ):
-    graph, ui = project.prepare("a lake", None, 1, "ui-request")
+    graph, ui = project.prepare("a lake", 1, "ui-request")
     client.submit(graph, ui, "ui-request")
     original = FileRunRepository.load
     calls = 0
@@ -232,7 +232,7 @@ def test_reserved_request_is_unsent_but_lost_placement_cannot_be_resubmitted(
 
     repository, plan = planned(project, 1)
     active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(repository, project, active, plan.request.story_id, "klein", 1)
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b", 1)
     identity = uuid4()
     link = render.scenes[0].model_copy(update={"run_ids": [identity]})
     render = render.model_copy(update={"scenes": [link]})
@@ -267,7 +267,7 @@ def test_unindexed_recorded_history_is_not_overwritten(project, session, client,
         identity = repository.render(render.render_id).scenes[0].run_ids[0]
     else:
         active = session
-        identity = generate(project, client, session, "a lake", None, 1).run_id
+        identity = generate(project, client, session, "a lake", 1).run_id
     api = Client(project.root)
     path = api.artifact_path(f"runs/{identity}/run.json")
     before = path.read_bytes()

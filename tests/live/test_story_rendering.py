@@ -36,7 +36,7 @@ def test_saved_story_render_and_order_comparison():
         "identity": project.identity(),
         "runtime_id": str(receipt.runtime_id),
         "changed_condition": "appearance before/after focal scene description",
-        "fixed_conditions": ["plan", "seed", "model", "sampler", "steps", "cfg", "negative"],
+        "fixed_conditions": ["plan", "seed", "model", "sampler", "steps", "conditioning"],
         "pairs": [],
     }
     try:
@@ -80,7 +80,7 @@ def test_saved_story_render_and_order_comparison():
                 ]
             )
             candidate = api.images.generate(
-                prompt, seed=render.scenes[position].seed, profile="klein"
+                prompt, seed=render.scenes[position].seed, profile="klein-4b"
             )
             assert candidate.state == "saved"
             result["pairs"].append(

@@ -1,4 +1,5 @@
 name = "klein-fixes"
+model_family = "klein-4b"
 role = "loras"
 url = "https://civitai.com/api/download/models/2802658?fileId=2688459"
 filename = "FLUX_NSFW_Fix.safetensors"

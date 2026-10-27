@@ -14,7 +14,7 @@ from komaquill.domain.materials import InputArtifact
 from komaquill.domain.rendering import RenderConfig
 
 
-def read_source(path: Path, role: Literal["positive", "negative", "input"]) -> PromptSource:
+def read_source(path: Path, role: Literal["positive", "input"]) -> PromptSource:
     try:
         content = path.read_bytes()
         return PromptSource(
@@ -32,31 +32,13 @@ def read_source(path: Path, role: Literal["positive", "negative", "input"]) -> P
         ) from None
 
 
-def negative_input(
-    negative: str | None, negative_file: Path | None
-) -> tuple[str | None, tuple[PromptSource, ...]]:
-    if negative is not None and negative_file is not None:
-        raise KomaquillError(
-            code="invalid_request",
-            stage="generation",
-            display_key="inputs.negative_conflict",
-            retryable=False,
-        )
-    if negative_file is None:
-        return negative, ()
-    source = read_source(negative_file, "negative")
-    return source.content.removeprefix("\ufeff"), (source,)
-
-
 def image_input(
     prompt: str | None,
-    negative: str | None,
     prompt_file: Path | None = None,
-    negative_file: Path | None = None,
     input_file: Path | None = None,
 ) -> tuple[ImageInput, tuple[PromptSource, ...]]:
     if input_file is not None:
-        if any(value is not None for value in (prompt, negative, prompt_file, negative_file)):
+        if any(value is not None for value in (prompt, prompt_file)):
             raise KomaquillError(
                 code="invalid_request",
                 stage="generation",
@@ -86,9 +68,8 @@ def image_input(
         source = read_source(prompt_file, "positive")
         sources = (source,)
         prompt = source.content.removeprefix("\ufeff")
-    negative, extra = negative_input(negative, negative_file)
     try:
-        value = ImageInput.model_validate({"prompt": prompt, "negative": negative})
+        value = ImageInput.model_validate({"prompt": prompt})
     except ValidationError:
         raise KomaquillError(
             code="invalid_request",
@@ -96,7 +77,7 @@ def image_input(
             display_key="inputs.invalid_prompt",
             retryable=False,
         ) from None
-    return value, (*sources, *extra)
+    return value, sources
 
 
 def material_inputs(

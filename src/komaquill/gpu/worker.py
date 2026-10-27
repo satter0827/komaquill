@@ -70,7 +70,6 @@ def prepare_server(project: Project, config: JsonObject, user: Path) -> Path:
         for view in ["graph", "app"]:
             _, workflow = prepare(
                 profile.sample_prompt,
-                None,
                 1,
                 name,
                 settings=settings,

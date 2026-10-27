@@ -210,14 +210,16 @@ def run_acceptance(wheel: Path | None = None) -> None:
             for name in ("preset.toml", "workflow.json", "workflow-api.json"):
                 if wheel is not None:
                     with zipfile.ZipFile(wheel) as archive:
-                        content = archive.read("komaquill/resources/presets/klein/" + name)
+                        content = archive.read("komaquill/resources/presets/klein-4b/" + name)
                 else:
                     content = (
-                        files("komaquill").joinpath("resources/presets/klein/" + name).read_bytes()
+                        files("komaquill")
+                        .joinpath("resources/presets/klein-4b/" + name)
+                        .read_bytes()
                     )
                 (bundle / name).write_bytes(content)
             (workspace / "komaquill.toml").write_text(
-                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom","klein-edit"]\n'
+                'poll_interval=0.01\nshutdown_timeout=2\nprofiles=["custom","klein-4b-edit"]\n'
                 "[presets.custom]\nsteps=27\n"
             )
             command("--help")
@@ -309,23 +311,17 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         "generate",
                         "--prompt",
                         "a quiet blue lake",
-                        "--negative",
-                        "",
                         "--seed",
                         "5",
                         "--candidates",
                         "2",
                     )
                     positive = workspace / "positive.txt"
-                    negative = workspace / "negative.txt"
                     positive.write_text("a blue umbrella", encoding="utf-8-sig")
-                    negative.write_text("", encoding="utf-8-sig")
                     command(
                         "generate",
                         "--prompt-file",
                         str(positive),
-                        "--negative-file",
-                        str(negative),
                         "--candidates",
                         "1",
                     )
@@ -333,9 +329,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     structured.write_text(
                         json.dumps(
                             {
-                                "format_version": 1,
+                                "format_version": 3,
                                 "prompt": "rainy street",
-                                "negative": "",
                                 "subjects": ["woman", "kitten"],
                             }
                         ),
@@ -355,15 +350,13 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "custom",
                             "--candidates",
                             "2",
-                            "--negative-file",
-                            str(negative),
                             "--json",
                         ).stdout
                     )
                     assert illustrated["complete"] and illustrated["image_count"] == 4
                     assert all(len(scene["candidates"]) == 2 for scene in illustrated["scenes"])
                     assert all(
-                        scene["compiled_input"]["requested_negative"] == ""
+                        "requested_negative" not in scene["compiled_input"]
                         for scene in illustrated["scenes"]
                     )
                     shown = json.loads(
@@ -384,7 +377,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             "snapshot = client.stories.show(story_id)",
                             "assert isinstance(snapshot, StorySnapshot) and snapshot.complete",
                             "assert snapshot.props and snapshot.scenes[0].compiled_input",
-                            "assert snapshot.scenes[0].compiled_input.layout == 'global'",
+                            "assert snapshot.scenes[0].compiled_input.compiler_version == 7",
                             f"assert len(client.stories.list().stories) == {2 if wheel else 1}",
                             "for scene in snapshot.scenes:",
                             "    assert scene.primary_image is not None",
@@ -410,19 +403,19 @@ def run_acceptance(wheel: Path | None = None) -> None:
                             f"reference_file.write_bytes({png.getvalue()!r})",
                             "reference = client.inputs.import_file(reference_file)",
                             "run = client.images.generate('a gray kitten', "
-                            "profile='klein-edit', inputs={'reference': reference}, "
+                            "profile='klein-4b-edit', inputs={'reference': reference}, "
                             "candidates=2)",
                             "assert run.state == 'saved'",
                             "assert run.input_sha256[reference.reference] == reference.sha256",
                             "config = RenderConfig(common_prompt='rainy daylight, cool light', "
                             "scenes=tuple(SceneRenderConfig(scene=i, "
-                            "prompt='a gray kitten', profile='klein-edit', "
+                            "prompt='a gray kitten', profile='klein-4b-edit', "
                             "inputs={'reference': reference}) "
                             "for i in range(1,5)))",
                             "rendered = list(client.stories.render(story_id, "
                             "render_config=config))[-1].snapshot",
                             "assert rendered.complete and all(scene.image_profile == "
-                            "'klein-edit' for scene in rendered.scenes)",
+                            "'klein-4b-edit' for scene in rendered.scenes)",
                             "assert all(scene.compiled_input.common_prompt == "
                             "'rainy daylight, cool light' for scene in rendered.scenes)",
                             "assert all(scene.compiled_input.body.startswith('rainy daylight') "

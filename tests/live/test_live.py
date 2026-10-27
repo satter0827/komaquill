@@ -34,9 +34,7 @@ def test_live_websocket_and_saved_integrity():
 def test_live_normal_wait_collects_a_browser_request_without_stopping_gpu():
     project = find_project(Path(os.environ["KOMAQUILL_PROJECT_DIR"]))
     with connected(project) as (client, session):
-        graph, ui = prepare(
-            "a sunny forest stream, watercolor", "text, watermark", 833, str(uuid4())
-        )
+        graph, ui = prepare("a sunny forest stream, watercolor", 833, str(uuid4()))
         graph["62"]["inputs"]["steps"] = 100
         node = next(node for node in ui["nodes"] if node["id"] == 3)
         node["widgets_values"][2] = 100

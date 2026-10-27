@@ -34,7 +34,7 @@ def create_payload(project: Project) -> Payload:
         "\n".join(
             f"{key} = {json.dumps(value)}"
             for key, value in settings.model_dump().items()
-            if key not in {"presets", "assets"}
+            if key not in {"presets", "assets"} and value is not None
         )
         + "\n"
     ).encode()

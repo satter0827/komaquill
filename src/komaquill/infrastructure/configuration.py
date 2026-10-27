@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from importlib.resources import as_file, files
 from pathlib import Path
 
+from pydantic import Strict, TypeAdapter
+from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
@@ -23,7 +25,7 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.infrastructure.paths import GpuPaths, WorkspacePaths
 from komaquill.infrastructure.preset_catalog import catalog
@@ -40,6 +42,21 @@ def merge_settings(base: dict[str, object], changes: dict[str, object]) -> dict[
             else value
         )
     return result
+
+
+class TypedEnvSettingsSource(EnvSettingsSource):
+    """Decode strict primitive fields at the textual environment boundary."""
+
+    def prepare_field_value(
+        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
+    ) -> Any:
+        if (
+            isinstance(value, str)
+            and field.annotation in {bool, int}
+            and any(isinstance(item, Strict) and item.strict for item in field.metadata)
+        ):
+            value = TypeAdapter(field.annotation).validate_python(value)
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 class Settings(RuntimeSettings, BaseSettings):
@@ -68,7 +85,7 @@ class Settings(RuntimeSettings, BaseSettings):
         definitions = catalog()
         return (
             init_settings,
-            env_settings,
+            TypedEnvSettingsSource(settings_cls),
             defaults,
             InitSettingsSource(settings_cls, init_kwargs=definitions),
         )
@@ -78,13 +95,13 @@ class Settings(RuntimeSettings, BaseSettings):
 class Project(WorkspacePaths):
     """Keep all application files in one workspace."""
 
-    effective_settings: RuntimeSettings | None = None
+    effective_settings: RecordedSettings | None = None
 
-    def configured(self, settings: RuntimeSettings | None = None) -> "Project":
+    def configured(self, settings: RecordedSettings | None = None) -> "Project":
         """Bind a validated snapshot without changing the source configuration."""
         return type(self)(self.root, settings or self.settings())
 
-    def settings(self) -> RuntimeSettings:
+    def settings(self) -> RecordedSettings:
         """Read workspace overrides and environment variables."""
         if self.effective_settings is not None:
             return self.effective_settings
@@ -93,7 +110,7 @@ class Project(WorkspacePaths):
         defaults.pop("story", None)
         defaults.pop("llm_profiles", None)
         combined = merge_settings(catalog(self.root), defaults)
-        combined = merge_settings(combined, EnvSettingsSource(Settings)())
+        combined = merge_settings(combined, TypedEnvSettingsSource(Settings)())
         return RuntimeSettings.model_validate(Settings.model_validate(combined).model_dump())
 
     @property
@@ -151,7 +168,6 @@ class Project(WorkspacePaths):
     def prepare(
         self,
         prompt: str,
-        negative: str | None,
         seed: int,
         run_id: str,
         profile_name: str | None = None,
@@ -162,7 +178,6 @@ class Project(WorkspacePaths):
 
         return prepare(
             prompt,
-            negative,
             seed,
             run_id,
             settings=self.settings(),

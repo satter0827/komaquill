@@ -99,6 +99,14 @@ def wait_ready(project: Project, operation_id: object, echo: Callable[[str], Non
             if state.pid and not alive(state):
                 record_event(project, "monitor", "lost", runtime_id=state.runtime_id)
                 raise KomaquillError(display_key="monitor.lost", code="connection_failed")
+            if state.backend == "colab":
+                from komaquill.infrastructure.compute_budget import enforce
+
+                try:
+                    enforce(project, allocation_pending=state.runtime_id is None)
+                except (KomaquillError, OSError, ValueError):
+                    request_cancel(project, state.operation_id, False)
+                    raise
             receipt = Colab(project).receipt() if state.backend == "colab" else None
             remaining = remaining_seconds(
                 receipt.started_at if receipt else None,

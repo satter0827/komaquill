@@ -1,6 +1,6 @@
 # 参照画像による編集の契約
 
-`klein-edit`はComfyUI標準のLoadImage、ImageScaleToTotalPixels、VAEEncode、ReferenceLatentを使用します。参照画像は新しい出力を導く入力です。変更対象外の画素保存や人物同一性は保証しません。
+`klein-4b-edit`はComfyUI標準のLoadImage、ImageScaleToTotalPixels、VAEEncode、ReferenceLatentを使用します。参照画像は新しい出力を導く入力です。変更対象外の画素保存や人物同一性は保証しません。
 
 入力は公開APIのinputs.import_fileで読み取り、内容ハッシュで識別して保存します。参照画像とマスクの用途を混同せず、宣言されていない入力は送信前に拒否します。標準の編集セットはマスクを受け取りません。保存済みの入力を使って再開し、利用者の元ファイルを読み直しません。
 

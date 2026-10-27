@@ -1,0 +1,21 @@
+cases = ["rainy-cat", "red-book", "flying-hat", "group-photo"]
+models = ["klein-4b", "klein-9b"]
+seeds = [424242, 131313]
+baseline_limit = 64
+edit_limit = 8
+ablation_limit = 4
+regression_limit = 2
+technical_retry_limit = 4
+output_limit = 82
+compute_unit_limit = 20.0
+compute_unit_reserve = 2.0
+submission_seconds = 4200
+session_seconds = 5400
+storage_bytes = 2147483648
+minimum_free_bytes = 17179869184
+
+[presentation]
+aki = "adult woman, short straight black hair, opaque white coat over an opaque plain white blouse"
+ren = "adult man, short brown hair, plain opaque blue hip-length jacket with a small collar"
+yui = "adult woman, long straight black hair, opaque red cardigan"
+bag = "one rectangular opaque blue canvas tote bag, two short blue handles and one long blue shoulder strap"

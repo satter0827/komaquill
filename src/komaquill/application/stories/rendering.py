@@ -18,7 +18,13 @@ from komaquill.application.stories.image_inputs import scene_input
 from komaquill.application.stories.ports import StoryRepository
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError, OperationStage
-from komaquill.domain.images import MAX_SEED, PromptSource, compile_image_input, validate_inputs
+from komaquill.domain.images import (
+    MAX_SEED,
+    CompiledImageInput,
+    PromptSource,
+    compile_image_input,
+    validate_inputs,
+)
 from komaquill.domain.models import TERMINAL_RUN_STATES, JsonObject, Run, Session
 from komaquill.domain.presets import GenerationPreset
 from komaquill.domain.rendering import RenderConfig
@@ -35,7 +41,6 @@ def create_render(
     seed: int | None = None,
     *,
     candidates: int | None = None,
-    negative: str | None = None,
     input_sources: tuple[PromptSource, ...] = (),
     render_config: RenderConfig | None = None,
 ) -> StoryRender:
@@ -65,11 +70,10 @@ def create_render(
                 raise KomaquillError(
                     code="invalid_request", stage="story_rendering", retryable=False
                 ) from None
-        original = scene_input(plan, scene, profile, negative)
+        original = scene_input(plan, scene, profile)
         compiled = compile_image_input(
             profile,
             spec.prompt if spec and spec.prompt is not None else original.prompt,
-            spec.negative if spec and spec.negative is not None else negative,
             spec.subjects if spec and spec.subjects is not None else original.subject_prompts,
             spec.inputs if spec else {},
             common_prompt=render_config.common_prompt if render_config else "",
@@ -351,7 +355,7 @@ def render_events(
             ):
                 link = render.scenes[eligible]
                 compiled = link.compiled_input
-                if compiled is None:
+                if not isinstance(compiled, CompiledImageInput):
                     raise KomaquillError(
                         code="story_replan_required", stage="story_rendering", retryable=False
                     )
@@ -379,12 +383,15 @@ def render_events(
                         client,
                         bound_session.model_copy(update={"settings": request_settings}),
                         compiled.prompt,
-                        compiled.requested_negative,
                         link.seed,
                         selected,
                         run_id=link.run_ids[-1],
                         compiled_input=compiled,
-                        input_sources=render.input_sources,
+                        input_sources=tuple(
+                            source
+                            for source in render.input_sources
+                            if isinstance(source, PromptSource)
+                        ),
                     )
                 except KomaquillError:
                     current = latest_run(bound, link)

@@ -39,11 +39,9 @@ def measure(story_id: UUID) -> Path:
         path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
     positive = folder / "positive.txt"
-    negative = folder / "negative.txt"
     positive.write_text(
         "a small cabin in a sunny forest, illustration, warm light", encoding="utf-8"
     )
-    negative.write_text("", encoding="utf-8")
     before = {run.run_id for run in project.repository.load()}
     warmup = subprocess.run(
         [
@@ -56,8 +54,6 @@ def measure(story_id: UUID) -> Path:
             "generate",
             "--prompt-file",
             str(positive),
-            "--negative-file",
-            str(negative),
             "--candidates",
             "1",
             "--seed",
@@ -89,9 +85,8 @@ def measure(story_id: UUID) -> Path:
                         backend,
                         session,
                         positive.read_text(encoding="utf-8"),
-                        "",
                         200 + index,
-                        "klein",
+                        "klein-4b",
                         candidates=candidates,
                     )
                     observed = []
@@ -157,7 +152,9 @@ def measure(story_id: UUID) -> Path:
                 save()
     report["render_started_at"] = datetime.now(UTC).isoformat()
     with (folder / "story-events.jsonl").open("w", encoding="utf-8") as events:
-        for event in api.stories.render(story_id, image_profile="klein", seed=31415, candidates=2):
+        for event in api.stories.render(
+            story_id, image_profile="klein-4b", seed=31415, candidates=2
+        ):
             events.write(event.model_dump_json() + "\n")
             events.flush()
             report["render_id"] = str(event.snapshot.render_id)

@@ -1,0 +1,968 @@
+{
+  "last_node_id": 91,
+  "last_link_id": 20,
+  "nodes": [
+    {
+      "id": 4,
+      "type": "UNETLoader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "unet_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "unet_name"
+          }
+        },
+        {
+          "name": "weight_dtype",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "weight_dtype"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "widgets_values": [
+        "ec3d4e733a771f61c052fb4856c48b336c55eaf2c65487c2a1faeb9bbda7a343/flux-2-klein-4b.safetensors",
+        "default"
+      ]
+    },
+    {
+      "id": 90,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        350,
+        0
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "lora_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "lora_name"
+          }
+        },
+        {
+          "name": "strength_model",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "strength_model"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "0c4aea1ba041985d2d7e6ce655b865e0fe22ea37575b3310c4619ad57dc80a00/party_time_v2.0_klein4b.safetensors",
+        1.0
+      ]
+    },
+    {
+      "id": 91,
+      "type": "LoraLoaderModelOnly",
+      "pos": [
+        700,
+        0
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 2
+        },
+        {
+          "name": "lora_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "lora_name"
+          }
+        },
+        {
+          "name": "strength_model",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "strength_model"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoraLoaderModelOnly"
+      },
+      "widgets_values": [
+        "fd8b9455ad344ed6c8017dbc9eefd34a4851a33e7bbb0c8d2d9a4c3632ba0320/FLUX_NSFW_Fix.safetensors",
+        1.0
+      ]
+    },
+    {
+      "id": 71,
+      "type": "CLIPLoader",
+      "pos": [
+        1050,
+        0
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "clip_name"
+          }
+        },
+        {
+          "name": "type",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "type"
+          }
+        },
+        {
+          "name": "device",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "device"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "3d6f27fd39c58c62f593ff5ef48cc734e8abb188005e6a15582876e30833ab96/model.safetensors",
+        "flux2",
+        "default"
+      ]
+    },
+    {
+      "id": 72,
+      "type": "VAELoader",
+      "pos": [
+        0,
+        300
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "vae_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "widgets_values": [
+        "868fe7b343cc8f3a19dbcfcafbc3d5f888802be3f89bd81b65b3621a066ce8f3/flux2-vae.safetensors"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "StringConcatenate",
+      "pos": [
+        350,
+        300
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "string_b"
+          }
+        },
+        {
+          "name": "delimiter",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "delimiter"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "clean line art, clear composition",
+        "a small cabin in a sunny forest",
+        ", "
+      ]
+    },
+    {
+      "id": 74,
+      "type": "CLIPTextEncode",
+      "pos": [
+        700,
+        300
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "link": 3
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 63,
+      "type": "BasicGuider",
+      "pos": [
+        0,
+        600
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 6
+        },
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "GUIDER",
+          "type": "GUIDER",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicGuider"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 73,
+      "type": "RandomNoise",
+      "pos": [
+        350,
+        600
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise_seed",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "noise_seed"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "NOISE",
+          "type": "NOISE",
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "RandomNoise"
+      },
+      "widgets_values": [
+        1,
+        "fixed"
+      ]
+    },
+    {
+      "id": 61,
+      "type": "KSamplerSelect",
+      "pos": [
+        700,
+        600
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sampler_name",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "sampler_name"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect"
+      },
+      "widgets_values": [
+        "euler"
+      ]
+    },
+    {
+      "id": 68,
+      "type": "PrimitiveInt",
+      "pos": [
+        1050,
+        600
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "value"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            9,
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        1024,
+        "fixed"
+      ]
+    },
+    {
+      "id": 69,
+      "type": "PrimitiveInt",
+      "pos": [
+        0,
+        900
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "value"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            10,
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        1024,
+        "fixed"
+      ]
+    },
+    {
+      "id": 62,
+      "type": "Flux2Scheduler",
+      "pos": [
+        350,
+        900
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "steps",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "steps"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 9
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "Flux2Scheduler"
+      },
+      "widgets_values": [
+        4
+      ]
+    },
+    {
+      "id": 5,
+      "type": "EmptyFlux2LatentImage",
+      "pos": [
+        700,
+        900
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 11
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 12
+        },
+        {
+          "name": "batch_size",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "batch_size"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyFlux2LatentImage"
+      },
+      "widgets_values": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "type": "SamplerCustomAdvanced",
+      "pos": [
+        1050,
+        900
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "noise",
+          "type": "NOISE",
+          "link": 13
+        },
+        {
+          "name": "guider",
+          "type": "GUIDER",
+          "link": 14
+        },
+        {
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 15
+        },
+        {
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 16
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            18
+          ]
+        },
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustomAdvanced"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [
+        0,
+        1200
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 18
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 19
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            20
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "SaveImage",
+      "pos": [
+        350,
+        1200
+      ],
+      "size": [
+        310,
+        180
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 20
+        },
+        {
+          "name": "filename_prefix",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "filename_prefix"
+          }
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "widgets_values": [
+        "komaquill"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      4,
+      0,
+      90,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      90,
+      0,
+      91,
+      0,
+      "MODEL"
+    ],
+    [
+      3,
+      10,
+      0,
+      74,
+      0,
+      "STRING"
+    ],
+    [
+      4,
+      71,
+      0,
+      74,
+      1,
+      "CLIP"
+    ],
+    [
+      6,
+      91,
+      0,
+      63,
+      0,
+      "MODEL"
+    ],
+    [
+      7,
+      74,
+      0,
+      63,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      68,
+      0,
+      62,
+      1,
+      "INT"
+    ],
+    [
+      10,
+      69,
+      0,
+      62,
+      2,
+      "INT"
+    ],
+    [
+      11,
+      68,
+      0,
+      5,
+      0,
+      "INT"
+    ],
+    [
+      12,
+      69,
+      0,
+      5,
+      1,
+      "INT"
+    ],
+    [
+      13,
+      73,
+      0,
+      3,
+      0,
+      "NOISE"
+    ],
+    [
+      14,
+      63,
+      0,
+      3,
+      1,
+      "GUIDER"
+    ],
+    [
+      15,
+      61,
+      0,
+      3,
+      2,
+      "SAMPLER"
+    ],
+    [
+      16,
+      62,
+      0,
+      3,
+      3,
+      "SIGMAS"
+    ],
+    [
+      17,
+      5,
+      0,
+      3,
+      4,
+      "LATENT"
+    ],
+    [
+      18,
+      3,
+      0,
+      8,
+      0,
+      "LATENT"
+    ],
+    [
+      19,
+      72,
+      0,
+      8,
+      1,
+      "VAE"
+    ],
+    [
+      20,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "linearData": {
+      "inputs": [
+        [
+          "10",
+          "string_b"
+        ],
+        [
+          "5",
+          "batch_size"
+        ]
+      ],
+      "outputs": [
+        "9"
+      ]
+    },
+    "linearMode": false
+  },
+  "version": 0.4
+}

@@ -29,10 +29,10 @@ def test_actor_count_survives_planning_compilation_and_public_request(project, c
             "props": [],
         }
     )
-    profile = project.settings().presets["klein"]
+    profile = project.settings().presets["klein-4b"]
     compiled = scene_input(plan, scene, profile)
     assert len(compiled.subject_prompts) == count
-    config = SceneRenderConfig(scene=1, profile="klein", subjects=compiled.subject_prompts)
+    config = SceneRenderConfig(scene=1, profile="klein-4b", subjects=compiled.subject_prompts)
     image = ImageInput(prompt=compiled.prompt, subjects=config.subjects)
     assert compile_image_input(profile, image.prompt, subjects=image.subjects) == compiled
 
@@ -48,12 +48,12 @@ def test_hidden_prop_state_is_retained_without_conditioning_an_extra_visible_obj
     plan = plan.model_copy(update={"props": [*plan.props, coin]})
     state = ScenePropState(prop="coin", holder=holder, visible=False, state="inside a closed pouch")
     scene = plan.scenes[0].model_copy(update={"props": [*plan.scenes[0].props, state]})
-    before = scene_input(plan, scene, project.settings().presets["klein"])
+    before = scene_input(plan, scene, project.settings().presets["klein-4b"])
     assert "copper coin" not in before.positive
     assert "closed pouch" not in before.positive
     assert scene.props[-1].visible is False
     visible = scene.model_copy(
         update={"props": [*scene.props[:-1], state.model_copy(update={"visible": True})]}
     )
-    after = scene_input(plan, visible, project.settings().presets["klein"])
+    after = scene_input(plan, visible, project.settings().presets["klein-4b"])
     assert "copper coin" in after.positive

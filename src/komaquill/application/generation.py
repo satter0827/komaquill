@@ -10,7 +10,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from pydantic import TypeAdapter, ValidationError
 
 from komaquill.application.ports import GenerationBackend, Workspace
-from komaquill.domain.configuration import RuntimeSettings
+from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import (
     FailureInfo,
     KomaquillError,
@@ -30,7 +30,7 @@ from komaquill.domain.models import ImageRef, JsonObject, OutputSpec, Run, Sessi
 from komaquill.domain.workflow import digest
 
 _SEED_ADAPTER = TypeAdapter(ImageSeed)
-_GENERATION_INPUTS = TypeAdapter(tuple[str, str | None, ImageSeed, tuple[str, ...]])
+_GENERATION_INPUTS = TypeAdapter(tuple[str, ImageSeed, tuple[str, ...]])
 
 
 def checked_seed(seed: int, *, stage: OperationStage = OperationStage.GENERATION) -> int:
@@ -42,12 +42,14 @@ def checked_seed(seed: int, *, stage: OperationStage = OperationStage.GENERATION
 
 
 def generation_settings(
-    settings: RuntimeSettings,
+    settings: RecordedSettings,
     profile_name: str | None,
     candidates: int | None = None,
     parameters: dict[str, bool | int | float | str] | None = None,
 ) -> RuntimeSettings:
     """Freeze a request override without mutating the active session defaults."""
+    if not isinstance(settings, RuntimeSettings):
+        raise KomaquillError(code="invalid_configuration", stage="generation", retryable=False)
     name = profile_name or settings.profiles[0]
     if name not in settings.profiles:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
@@ -77,7 +79,7 @@ def generation_settings(
     )
 
 
-def output_spec(settings: RuntimeSettings | None, graph: JsonObject) -> OutputSpec | None:
+def output_spec(settings: RecordedSettings | None, graph: JsonObject) -> OutputSpec | None:
     """Identify supported output roles only when the preset topology is known."""
     found: set[tuple[str, int]] = set()
     if settings is None:
@@ -512,7 +514,6 @@ def submit_generation(
     client: GenerationBackend,
     session: Session,
     prompt: str,
-    negative: str | None,
     seed: int,
     profile_name: str | None = None,
     *,
@@ -526,9 +527,7 @@ def submit_generation(
 ) -> Run:
     """Record before submission and return without waiting for image persistence."""
     try:
-        prompt, negative, seed, subjects = _GENERATION_INPUTS.validate_python(
-            (prompt, negative, seed, subjects)
-        )
+        prompt, seed, subjects = _GENERATION_INPUTS.validate_python((prompt, seed, subjects))
     except ValidationError:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False) from None
     if not prompt.strip():
@@ -545,16 +544,17 @@ def submit_generation(
         raise KomaquillError(code="stopping", stage="generation", retryable=False)
     project = project.configured(settings)
     session = session.model_copy(update={"settings": settings})
+    if compiled_input is not None and not isinstance(compiled_input, CompiledImageInput):
+        raise KomaquillError(code="invalid_configuration", stage="generation", retryable=False)
     verify_runtime(client, session)
     run_id = run_id or uuid4()
     if compiled_input is None:
-        settings = project.settings()
         selected = profile_name or settings.profiles[0]
         if selected not in settings.profiles:
             raise KomaquillError(code="invalid_request", retryable=False)
         try:
             compiled_input = compile_image_input(
-                settings.presets[selected], prompt, negative, subjects, inputs
+                settings.presets[selected], prompt, subjects, inputs
             )
         except ValidationError:
             raise KomaquillError(
@@ -571,7 +571,7 @@ def submit_generation(
     for name, item in compiled_input.inputs.items():
         client.upload_image(item, contents[name])
     graph, ui = project.prepare(
-        prompt, negative, seed, str(run_id), profile_name, compiled_input=compiled_input
+        prompt, seed, str(run_id), profile_name, compiled_input=compiled_input
     )
     if session.backend == "external":
         graph, ui = client.resolve_models(graph, ui)
@@ -651,7 +651,6 @@ def generate(
     client: GenerationBackend,
     session: Session,
     prompt: str,
-    negative: str | None,
     seed: int,
     profile_name: str | None = None,
     *,
@@ -667,7 +666,6 @@ def generate(
         client,
         session,
         prompt,
-        negative,
         seed,
         profile_name,
         subjects=subjects,

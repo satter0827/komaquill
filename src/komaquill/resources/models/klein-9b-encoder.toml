@@ -1,0 +1,11 @@
+name = "klein-9b-encoder"
+model_family = "klein-9b"
+role = "text_encoders"
+repo_id = "ponpoke/flux2-klein-9b-uncensored-text-encoder"
+revision = "fba36e796aac081246708dd30392a401ba44922e" # pragma: allowlist secret Public fixed model revision.
+filename = "model.safetensors"
+sha256 = "2bb97dcc052d0b9a4e2a9953229f2ea83cfa0d58c2310391279f16cad931c4ba" # pragma: allowlist secret Public model SHA256.
+size_bytes = 16381516808
+license = "FLUX Non-Commercial License v2.1"
+license_url = "https://huggingface.co/ponpoke/flux2-klein-9b-uncensored-text-encoder"
+transfer = true

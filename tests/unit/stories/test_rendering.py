@@ -18,7 +18,7 @@ def bound(project, session):
 def test_progressive_render_and_resume_do_not_duplicate_images(project, session, client, stub):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein", 42)
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b", 42)
     snapshots = []
     view = render_story(
         repository, project, client, active, render.render_id, notify=snapshots.append
@@ -29,7 +29,7 @@ def test_progressive_render_and_resume_do_not_duplicate_images(project, session,
     assert all(scene["primary_image"]["key"].startswith("runs/") for scene in view["scenes"])
     render_story(repository, project, client, active, render.render_id)
     assert stub.submissions == 4
-    another = create_render(repository, project, active, plan.request.story_id, "klein", 70)
+    another = create_render(repository, project, active, plan.request.story_id, "klein-4b", 70)
     render_story(repository, project, client, active, another.render_id)
     assert stub.submissions == 8
     assert story_view(repository, project, plan.request.story_id)["render_id"] == str(
@@ -41,7 +41,7 @@ def test_progressive_render_and_resume_do_not_duplicate_images(project, session,
 def test_interrupt_leaves_one_request_for_monitor_and_resume(project, session, client, stub):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
 
     def interrupt(view):
         if view["scenes"][0]["state"] == "queued":
@@ -59,7 +59,7 @@ def test_interrupt_leaves_one_request_for_monitor_and_resume(project, session, c
 def test_unknown_acceptance_is_recovered_without_resubmission(project, session, client, stub):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     stub.drop_response = True
     with pytest.raises(KomaquillError):
         render_story(repository, project, client, active, render.render_id)
@@ -74,7 +74,7 @@ def test_failed_scene_does_not_block_others_and_retry_keeps_old_attempt(
 ):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     original = client.submit
 
     def submit(*args):
@@ -98,7 +98,7 @@ def test_failed_scene_does_not_block_others_and_retry_keeps_old_attempt(
 def test_collection_failure_stops_new_scenes_and_can_be_retried(project, session, client, stub):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     stub.corrupt_image = True
     with pytest.raises(KomaquillError):
         render_story(repository, project, client, active, render.render_id)
@@ -111,7 +111,7 @@ def test_collection_failure_stops_new_scenes_and_can_be_retried(project, session
 def test_two_renderers_and_changed_resources_are_rejected(project, session, client):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     with repository.claim(render.render_id), pytest.raises(KomaquillError):
         render_story(repository, project, client, active, render.render_id)
     changed = active.model_copy(
@@ -120,7 +120,9 @@ def test_two_renderers_and_changed_resources_are_rejected(project, session, clie
                 update={
                     "presets": {
                         **active.settings.presets,
-                        "klein": active.settings.presets["klein"].model_copy(update={"steps": 1}),
+                        "klein-4b": active.settings.presets["klein-4b"].model_copy(
+                            update={"steps": 1}
+                        ),
                     }
                 }
             )
@@ -129,7 +131,7 @@ def test_two_renderers_and_changed_resources_are_rejected(project, session, clie
     assert render_story(repository, project, client, changed, render.render_id)["complete"]
     for run in project.repository.load():
         graph = json.loads(project.artifacts_store.read(f"runs/{run.run_id}/workflow-api.json"))
-        assert graph["62"]["inputs"]["steps"] == active.settings.presets["klein"].steps
+        assert graph["62"]["inputs"]["steps"] == active.settings.presets["klein-4b"].steps
     changed_resource = changed.model_copy(
         update={
             "settings": changed.settings.model_copy(
@@ -157,7 +159,7 @@ def test_reserved_request_before_submission_is_resumable_and_link_precedes_http(
 ):
     repository, plan = planned(project, 1)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     reserved = uuid4()
     link = render.scenes[0].model_copy(update={"run_ids": [reserved]})
     repository.save_render(render.model_copy(update={"scenes": [link]}))
@@ -175,7 +177,7 @@ def test_reserved_request_before_submission_is_resumable_and_link_precedes_http(
 def test_wrong_story_reference_and_corrupted_render_are_not_hidden(project, session, client):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     _, other = planned(project)
     with pytest.raises(KomaquillError):
         story_view(repository, project, other.request.story_id, render.render_id)
@@ -194,7 +196,7 @@ def test_wrong_story_reference_and_corrupted_render_are_not_hidden(project, sess
 def test_session_stop_prevents_new_scene_submission(project, session, client, stub, monkeypatch):
     repository, plan = planned(project)
     active = bound(project, session)
-    render = create_render(repository, project, active, plan.request.story_id, "klein")
+    render = create_render(repository, project, active, plan.request.story_id, "klein-4b")
     monkeypatch.setattr(type(project), "stop_requested", lambda *args: False)
     with pytest.raises(KomaquillError) as error:
         render_story(repository, project, client, active, render.render_id)

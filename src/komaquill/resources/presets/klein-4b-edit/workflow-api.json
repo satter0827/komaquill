@@ -63,31 +63,17 @@
       ]
     }
   },
-  "76": {
-    "class_type": "ConditioningZeroOut",
-    "inputs": {
-      "conditioning": [
-        "74",
-        0
-      ]
-    }
-  },
   "63": {
-    "class_type": "CFGGuider",
+    "class_type": "BasicGuider",
     "inputs": {
       "model": [
         "91",
         0
       ],
-      "positive": [
-        "74",
+      "conditioning": [
+        "121",
         0
-      ],
-      "negative": [
-        "76",
-        0
-      ],
-      "cfg": 1.0
+      ]
     }
   },
   "73": {
@@ -188,6 +174,50 @@
         0
       ],
       "filename_prefix": "komaquill"
+    }
+  },
+  "77": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    }
+  },
+  "80": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "77",
+        0
+      ],
+      "upscale_method": "nearest-exact",
+      "megapixels": 1.0,
+      "resolution_steps": 1
+    }
+  },
+  "82": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "80",
+        0
+      ],
+      "vae": [
+        "72",
+        0
+      ]
+    }
+  },
+  "121": {
+    "class_type": "ReferenceLatent",
+    "inputs": {
+      "conditioning": [
+        "74",
+        0
+      ],
+      "latent": [
+        "82",
+        0
+      ]
     }
   }
 }

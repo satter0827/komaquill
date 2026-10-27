@@ -1,0 +1,11 @@
+name = "klein-9b"
+model_family = "klein-9b"
+role = "diffusion_models"
+repo_id = "black-forest-labs/FLUX.2-klein-9B"
+revision = "92196c8e11f7b6cf2b7493e037d8c5345c559216" # pragma: allowlist secret Public fixed model revision.
+filename = "flux-2-klein-9b.safetensors"
+sha256 = "0975d6b77b5f510b99547d6724a208e36527df654e8f6134f59ece3f9f30da58" # pragma: allowlist secret Public model SHA256.
+size_bytes = 18157185168
+license = "FLUX Non-Commercial License"
+license_url = "https://huggingface.co/black-forest-labs/FLUX.2-klein-9B"
+transfer = true

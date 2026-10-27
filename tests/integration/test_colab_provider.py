@@ -68,6 +68,32 @@ def test_absent_cli_cache_is_independent_of_provider_liveness(provider, project,
     assert not control.config.exists()
 
 
+def test_usage_reads_typed_fields_without_allocating(provider):
+    from komaquill.domain.usage import AccountUsage
+
+    client, _, calls, receipt = provider
+    client.get_consumption_user_info = lambda: SimpleNamespace(
+        paid_compute_units_balance=42.5, consumption_rate_hourly=2.5, assignments_count=1
+    )
+    result = bridge.execute("usage", receipt)
+    assert isinstance(result, AccountUsage)
+    assert result.remaining_compute_units == 42.5
+    assert result.consumption_rate_hourly == 2.5 and result.assignments_count == 1
+    assert result.account_sha256 == SUBJECT and result.observed_at.tzinfo is not None
+    assert calls == []
+
+
+def test_usage_failure_is_not_converted_to_a_zero_balance(provider):
+    client, _, _, receipt = provider
+
+    def unavailable():
+        raise TimeoutError("Private provider response")
+
+    client.get_consumption_user_info = unavailable
+    with pytest.raises(TimeoutError):
+        bridge.execute("usage", receipt)
+
+
 @pytest.mark.parametrize("case", ["account", "endpoint", "unavailable"])
 def test_uncertain_observation_never_stops_or_releases(provider, project, monkeypatch, case):
     client, state, calls, data = provider

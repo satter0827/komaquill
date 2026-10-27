@@ -52,6 +52,6 @@ def test_non_unicode_submission_response_remains_unknown_and_is_recovered(
 
     monkeypatch.setattr(client, "request", request)
     with pytest.raises(SubmissionUnknown):
-        generate(project, client, session, "a cabin", "", 1)
+        generate(project, client, session, "a cabin", 1)
     assert collect(project, client, session).saved == 1
     assert stub.submissions == 1

@@ -224,13 +224,17 @@ def test_local_approval_cannot_be_counted_as_scene_quality(prepared):
     )
 
 
-def test_recovery_target_does_not_replace_conditions_or_reset_session_budget(prepared, monkeypatch):
+def test_recovery_target_preserves_conditions_and_requires_cumulative_budget(prepared, monkeypatch):
     frozen, _, _ = comparison.load(prepared)
     original = (prepared / "comparison.json").read_bytes()
     state = json.loads((prepared / "state.json").read_bytes())
-    state["sessions"]["T4-1"] = {"status": "stopped", "runtime_id": "original"}
+    state["sessions"]["T4-1"] = {
+        "status": "stopped",
+        "runtime_id": "original",
+        "ownership_released": True,
+    }
     atomic_json(prepared / "state.json", state)
-    with pytest.raises(ValueError, match="session budget"):
+    with pytest.raises(ValueError, match="cumulative verification budget"):
         comparison.start(prepared)
     assert (prepared / "comparison.json").read_bytes() == original
     wrong = {
@@ -284,3 +288,111 @@ def test_explicit_criteria_correction_preserves_frozen_plan_and_source(prepared)
     with pytest.raises(ValueError, match="frozen source and scene"):
         comparison.review_conditions(prepared, json.loads(original))
     assert (prepared / "comparison.json").read_bytes() == original
+
+
+def test_real_plan_validation_freezes_only_required_model_seed_combinations(project, monkeypatch):
+    from tests.live import story_validation
+    from tests.support.story_cases import cases
+
+    config = comparison.configuration()
+    from uuid import uuid4
+
+    from komaquill.domain.stories import Scene
+    from tests.support.stories import request
+
+    base = comparison.fixed_plan("rainy-cat", config)
+    plans = {}
+    for key, case in cases().items():
+        data = case.draft.model_dump(exclude={"scenes"})
+        data.update(
+            request=request(4, case.source),
+            scenes=[
+                Scene(
+                    **scene.model_dump(),
+                    scene_id=uuid4(),
+                    position=index,
+                    characters=[subject.character for subject in scene.subjects],
+                )
+                for index, scene in enumerate(case.draft.scenes, 1)
+            ],
+        )
+        plans[key] = comparison.StoryPlan.model_validate({**base.model_dump(), **data})
+    monkeypatch.setattr(story_validation, "reviewed_plans", lambda _: plans)
+    report = project.root / "validation"
+    story_validation.freeze(report, project.root / "mock-review")
+    frozen, _, jobs = comparison.load(report, executing=True)
+    assert len(jobs) == 64
+    assert Counter(job.profile for job in jobs) == {"klein-4b": 48, "wai-illustrious": 16}
+    assert len(frozen["plans"]) == 8
+    assert len([job for job in jobs if job.case == "red-book" and job.profile == "klein-4b"]) == 8
+    assert len([job for job in jobs if job.case == "morning"]) == 4
+    comparison.summarize(report)
+    summary = json.loads((report / "summary.json").read_bytes())
+    assert len(summary["works"]) == 16
+    assert all(row["quality_approved"] is None for row in summary["works"])
+    assert all(row["generation_status"] == "not_submitted" for row in summary["works"])
+
+
+def test_reallocations_use_cumulative_budget_and_do_not_require_session_count_approval(
+    prepared, monkeypatch
+):
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    from komaquill.api.services import SessionService
+    from komaquill.infrastructure.colab import Colab, Receipt
+    from tests.live import verification_budget as budget
+
+    project = Project(prepared / "workspace")
+    parent = {
+        "saved_images": 17,
+        "compute_budget": {
+            "initial_balance": 10,
+            "latest": {"remaining_compute_units": 9, "account_sha256": "a" * 64},
+        },
+    }
+    budget.initialize(
+        project.root,
+        parent,
+        dict(
+            compute_unit_limit=9,
+            compute_unit_reserve=0.5,
+            output_limit=100,
+            gpu_seconds=16200,
+            session_seconds=5400,
+            submission_seconds=4200,
+        ),
+    )
+    from types import SimpleNamespace
+
+    budget.reconcile_opening_usage(
+        project.root,
+        parent,
+        SimpleNamespace(assignments_count=0, account_sha256="a" * 64, remaining_compute_units=9),
+    )
+
+    def start(service, **kwargs):
+        settings = project.settings()
+        receipt = Receipt(
+            name="test", runtime_id=uuid4(), settings=settings, started_at=datetime.now(UTC)
+        )
+        atomic_json(Colab(project).receipt_file, receipt.model_dump(mode="json"))
+
+    def stop(service, **kwargs):
+        control = Colab(project)
+        receipt = control.receipt()
+        atomic_json(
+            project.logs / str(receipt.runtime_id) / "shutdown.json",
+            {"gpu": "stopped", "finished_at": datetime.now(UTC).isoformat()},
+        )
+        control.receipt_file.unlink()
+
+    monkeypatch.setattr(SessionService, "start", start)
+    monkeypatch.setattr(SessionService, "stop", stop)
+    for _ in range(5):
+        comparison.start(prepared)
+        comparison.stop(prepared)
+    state = json.loads((prepared / "state.json").read_bytes())
+    assert len(state["sessions"]) == 5
+    assert all(row.ownership_released for row in budget.read(project.root).allocations)
+    assert budget.read(project.root).carried_images == 17

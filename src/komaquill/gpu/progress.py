@@ -18,6 +18,15 @@ def progress(
     with suppress(OSError, ValueError, AttributeError):
         previous = json.loads(path.read_bytes())
     if isinstance(previous, dict) and previous.get("phase") == "failed":
+        if failure is not None and failure != previous.get("failure"):
+            atomic_json(
+                path,
+                {
+                    **previous,
+                    "last_failure": failure,
+                    "last_failure_at": datetime.now(UTC).isoformat(),
+                },
+            )
         return
     prior = previous.get("phase") if isinstance(previous, dict) else None
     atomic_json(

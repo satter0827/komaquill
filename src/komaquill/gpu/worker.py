@@ -200,11 +200,16 @@ if __name__ == "__main__":
         from komaquill.infrastructure.asset_download import read_credentials
 
         main(Path(sys.argv[1]), read_credentials())
-    except KomaquillError as error:
+    except Exception as error:
         progress(
             Path(sys.argv[1]),
             "failed",
             failure=failure_info(error, "preparation").model_dump(mode="json"),
         )
-        print(error_message(error), file=sys.stderr)
+        print(
+            error_message(error)
+            if isinstance(error, KomaquillError)
+            else message("error.operation_failed"),
+            file=sys.stderr,
+        )
         raise SystemExit(1) from None

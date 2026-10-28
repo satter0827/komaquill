@@ -353,7 +353,10 @@ def validate_structure(draft: StoryDraft | StoryPlan, request: StoryInput) -> No
         raise ValueError("The scene count differs from the requested image count.")
     keys = [character.key for character in draft.characters]
     if len(set(keys)) != len(keys):
-        raise ValueError("Character keys must be distinct.")
+        raise ValueError(
+            "Assign a distinct descriptive key to every source actor, and use that actor key "
+            "consistently in subjects and prop holders."
+        )
     for scene in draft.scenes:
         if not scene.source_refs or not set(scene.source_refs) <= request.paragraphs.keys():
             raise ValueError("Scene source references are invalid.")
@@ -399,7 +402,10 @@ def validate_visual_references(draft: StoryDraft | StoryPlan) -> None:
             if state.holder is not None and state.holder not in visible:
                 reject(
                     (*path, "props", position, "holder"),
-                    "A prop holder must be visible in the scene.",
+                    "A prop holder must be listed in this scene's subjects. Repair the scene as "
+                    "a whole: retain every actor visible at the selected source moment and its "
+                    "action. Do not drop source actors or swap owners to satisfy this check; "
+                    "omit props that are outside the image instead of drawing an absent holder.",
                 )
     if issues:
         raise PlanningValidationError(

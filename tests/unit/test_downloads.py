@@ -207,3 +207,22 @@ def test_a_complete_partial_file_is_verified_without_another_get(project, monkey
         asset_download.download_asset(project.models, model, 1, lambda: False).read_bytes()
         == content
     )
+
+
+def test_reused_model_event_identifies_content_and_gpu(project, monkeypatch):
+    import json
+    from uuid import uuid4
+
+    from komaquill.infrastructure.paths import GpuPaths
+
+    gpu = GpuProject(project.root, project.settings())
+    content = b"verified model"
+    model = asset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
+    target = model_path(gpu.models, model)
+    target.parent.mkdir(parents=True)
+    target.write_bytes(content)
+    runtime = uuid4()
+    monkeypatch.setenv("KOMAQUILL_RUNTIME_ID", str(runtime))
+    fetch_model(gpu, model)
+    event = json.loads((GpuPaths(gpu.root).logs / "cli.jsonl").read_bytes())
+    assert event["runtime_id"] == str(runtime) and event["sha256"] == model.sha256

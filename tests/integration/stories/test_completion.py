@@ -72,7 +72,15 @@ def test_preparation_checkpoints_runtime_before_start_returns(completion, monkey
     runtime_id = uuid4()
 
     def starting(self, *, progress, **kwargs):
-        atomic_json(self._project.state / "monitor.json", {"runtime_id": str(runtime_id)})
+        from komaquill.domain.monitor import MonitorState
+
+        monitor = MonitorState(
+            operation_id=uuid4(),
+            backend="colab",
+            settings=self._project.settings(),
+            runtime_id=runtime_id,
+        )
+        atomic_json(self._project.state / "monitor.json", monitor.model_dump(mode="json"))
         progress("Preparing the verified model.")
         assert live.load(report).runtime_id == runtime_id
         raise OSError("Injected preparation interruption")
@@ -81,7 +89,13 @@ def test_preparation_checkpoints_runtime_before_start_returns(completion, monkey
     with pytest.raises(OSError):
         live.start(report)
     assert live.load(report).runtime_id == runtime_id
-    atomic_json(live.project(report).state / "monitor.json", {"runtime_id": str(uuid4())})
+    from komaquill.infrastructure.monitor_state import read_monitor
+
+    monitor = read_monitor(live.project(report))
+    atomic_json(
+        live.project(report).state / "monitor.json",
+        monitor.model_copy(update={"runtime_id": uuid4()}).model_dump(mode="json"),
+    )
     with pytest.raises(RuntimeError):
         live.checkpoint_runtime(report)
     assert live.load(report).runtime_id == runtime_id
@@ -560,3 +574,23 @@ def test_legacy_review_is_retained_and_superseded_by_complete_evidence(completio
     replacement = next(row for row in evaluations if row.supersedes == legacy.evaluation_id)
     assert replacement.criterion_version == "2"
     assert json.loads(replacement.reason)["review"] == review.model_dump(mode="json")
+
+
+def test_startup_checkpoint_failure_cannot_replace_the_primary_failure(completion, monkeypatch):
+    from komaquill.domain.errors import KomaquillError
+
+    report, _, _ = completion
+    case = live.load(report)
+    case.gpu_started_at = None
+    live.save(report, case)
+
+    def failing(service, **kwargs):
+        (service._project.state / "monitor.json").parent.mkdir(parents=True, exist_ok=True)
+        (service._project.state / "monitor.json").write_text("invalid")
+        raise KomaquillError(code="authentication_failed")
+
+    monkeypatch.setattr(services.SessionService, "start", failing)
+    with pytest.raises(KomaquillError) as caught:
+        live.start(report)
+    assert caught.value.code == "authentication_failed"
+    assert "JSONDecodeError" in caught.value.__notes__[0]

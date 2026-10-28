@@ -1,0 +1,39 @@
+wai_cases = ["rainy-cat", "red-book", "flying-hat", "group-photo"]
+
+[budget]
+compute_unit_limit = 9.0
+compute_unit_reserve = 0.5
+output_limit = 100
+gpu_seconds = 16200
+session_seconds = 5400
+submission_seconds = 4200
+
+[planning]
+seed = 424242
+candidates = 1
+output_limit = 83
+improvement_limit = 12
+technical_retry_limit = 5
+send_seconds = 4200
+total_seconds = 5400
+storage_limit = 2147483648
+planning_seconds = 10800
+planning_calls = 32
+live_cases = ["rainy-cat", "lost-key", "shared-umbrella", "morning", "red-book", "dog-delivery", "flying-hat", "group-photo"]
+
+[comparison]
+cases = ["rainy-cat", "lost-key", "shared-umbrella", "morning", "red-book", "dog-delivery", "flying-hat", "group-photo"]
+models = ["wai-illustrious", "klein-4b"]
+seeds = [424242, 131313]
+baseline_limit = 64
+edit_limit = 13
+ablation_limit = 1
+technical_retry_limit = 5
+output_limit = 83
+compute_unit_limit = 9.0
+compute_unit_reserve = 0.5
+submission_seconds = 4200
+session_seconds = 5400
+storage_bytes = 2147483648
+minimum_free_bytes = 2147483648
+presentation = {}

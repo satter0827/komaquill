@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from filelock import FileLock
 
 from komaquill.domain.errors import FailureInfo
-from komaquill.infrastructure.paths import WorkspacePaths
+from komaquill.infrastructure.paths import GpuPaths, WorkspacePaths
 from komaquill.messages import message
 
 if TYPE_CHECKING:
@@ -56,10 +56,14 @@ def record_event(
     usage: "AccountUsage | None" = None,
 ) -> bool:
     """Append an event; return false if diagnostics storage is unavailable."""
+    gpu = isinstance(project, GpuPaths)
+    if gpu and runtime_id is None:
+        with suppress(ValueError):
+            runtime_id = UUID(os.environ.get("KOMAQUILL_RUNTIME_ID", ""))
     folder = project.logs
-    if runtime_id is not None:
+    if runtime_id is not None and not gpu:
         folder /= str(runtime_id)
-    path = folder / ("events.jsonl" if runtime_id is not None else "cli.jsonl")
+    path = folder / ("events.jsonl" if runtime_id is not None and not gpu else "cli.jsonl")
     session_operation_id = None
     with suppress(OSError, ValueError, KeyError, TypeError):
         monitor = json.loads((project.state / "monitor.json").read_bytes())
@@ -69,6 +73,9 @@ def record_event(
             and monitor.get("phase") not in {"stopped", "failed"}
         ):
             session_operation_id = monitor["operation_id"]
+    if gpu:
+        with suppress(ValueError):
+            session_operation_id = str(UUID(os.environ.get("KOMAQUILL_SESSION_OPERATION_ID", "")))
     operation_id = operation_id or _OPERATION.get()
     if operation_id is None:
         with suppress(ValueError):

@@ -327,3 +327,41 @@ def test_bootstrap_failure_cannot_overwrite_the_first_model_failure(project):
     assert observed["failure"] == first
     assert observed["previous_phase"] == "model_preparation"
     assert observed["asset"] == "klein-encoder"
+    assert observed["last_failure"] == {"code": "operation_failed"}
+
+
+def test_unexpected_worker_failure_is_retained_before_outer_process_failure(
+    project, monkeypatch, capsys
+):
+    from komaquill.gpu.progress import progress
+    from komaquill.infrastructure.paths import GpuPaths
+
+    def unavailable():
+        raise OSError("private exception details")
+
+    monkeypatch.setitem(
+        sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(is_available=unavailable))
+    )
+    monkeypatch.setattr(sys, "argv", ["worker.py", str(project.root)])
+    monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"{}\n")))
+    namespace = {"__name__": "__main__", "__file__": worker.__file__}
+    with pytest.raises(SystemExit) as caught:
+        exec(
+            compile(Path(worker.__file__).read_text(encoding="utf-8"), worker.__file__, "exec"),
+            namespace,
+        )
+    assert caught.value.code == 1
+    progress(
+        project.root,
+        "failed",
+        failure=dict(
+            code="operation_failed",
+            stage="preparation",
+            exception_type="CalledProcessError",
+            retryable=False,
+        ),
+    )
+    result = json.loads((GpuPaths(project.root).logs / "progress.json").read_bytes())
+    assert result["failure"]["exception_type"] == "OSError"
+    assert result["last_failure"]["exception_type"] == "CalledProcessError"
+    assert "private exception details" not in repr(result) + capsys.readouterr().err

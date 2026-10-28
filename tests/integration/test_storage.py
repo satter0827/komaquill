@@ -3,6 +3,7 @@
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,11 +19,19 @@ def test_atomic_publication_retries_only_bounded_windows_conflicts(tmp_path, mon
     ticks = [0.0]
     sharing = case in {"sharing", "sharing_twice"}
     injected_conflicts = 2 if case == "sharing_twice" else 1
-    monkeypatch.setattr(storage.sys, "platform", "linux" if case == "posix" else "win32")
+    monkeypatch.setattr(
+        storage,
+        "sys",
+        SimpleNamespace(platform="linux" if case == "posix" else "win32", stderr=sys.stderr),
+    )
     if not sharing:
-        monkeypatch.setattr(storage.time, "monotonic", lambda: ticks[0])
         monkeypatch.setattr(
-            storage.time, "sleep", lambda seconds: ticks.__setitem__(0, ticks[0] + seconds)
+            storage,
+            "time",
+            SimpleNamespace(
+                monotonic=lambda: ticks[0],
+                sleep=lambda seconds: ticks.__setitem__(0, ticks[0] + seconds),
+            ),
         )
         monkeypatch.setattr(storage, "REPLACE_TIMEOUT_SECONDS", 0.1)
 

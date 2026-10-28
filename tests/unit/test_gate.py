@@ -3,6 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -153,7 +154,7 @@ def test_report_publication_retries_only_known_windows_replace_conflicts(
     target.write_text('{"state":"old"}', encoding="utf-8")
     original = Path.replace
     calls = []
-    monkeypatch.setattr(_support.sys, "platform", "win32")
+    monkeypatch.setattr(_support, "sys", SimpleNamespace(platform="win32"))
 
     def replace(source, destination):
         calls.append(True)

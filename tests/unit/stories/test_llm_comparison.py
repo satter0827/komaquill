@@ -230,7 +230,9 @@ def test_runner_always_restores_models_when_loading_fails(
         from komaquill.infrastructure import atomic
 
         original_replace = Path.replace
-        monkeypatch.setattr(atomic.sys, "platform", "win32")
+        monkeypatch.setattr(
+            atomic, "sys", SimpleNamespace(platform="win32", stderr=atomic.sys.stderr)
+        )
 
         def replace(source, destination):
             if (

@@ -13,7 +13,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypedDict, TypeVar
 from uuid import UUID, uuid4
 
 import psutil
@@ -24,7 +24,7 @@ from komaquill.domain.configuration import RecordedSettings, RuntimeSettings, re
 from komaquill.domain.errors import AllocationRefused, FailureInfo, KomaquillError, failure_info
 from komaquill.domain.models import RuntimeObservation
 from komaquill.domain.usage import AccountUsage
-from komaquill.infrastructure.atomic import atomic_json
+from komaquill.infrastructure.atomic import atomic_json, replace_file
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import Payload, create_payload
 from komaquill.infrastructure.diagnostics import record_event
@@ -36,6 +36,14 @@ from komaquill.infrastructure.provenance import source_revision
 COLAB_CLI_VERSION = "0.7.5"
 PROCESS_EXIT_GRACE = 3.0
 ProviderResult = TypeVar("ProviderResult", bound=BaseModel)
+
+
+class RuntimeProgress(TypedDict, total=False):
+    """Carry the first remote failure without flattening its typed attributes."""
+
+    phase: str
+    asset: str | None
+    failure: FailureInfo
 
 
 class Receipt(BaseModel):
@@ -439,12 +447,22 @@ class Colab:
         module = "komaquill.gpu.bootstrap" if job_id is None else "komaquill.gpu.models"
         python = "python3" if job_id is None else root + "/.artifacts/runtime/venv/bin/python"
         log_name = "bootstrap.log" if job_id is None else f"models-{job_id}.log"
+        from komaquill.infrastructure.monitor_state import read_monitor
+
+        session_operation_id = os.environ.get("KOMAQUILL_OPERATION_ID", "")
+        with suppress(OSError, ValueError):
+            monitor = read_monitor(self.project)
+            if monitor and monitor.runtime_id == receipt.runtime_id:
+                session_operation_id = str(monitor.operation_id)
         script = (
             "import json,os,sys; "
             f"root={root!r}; sys.path.insert(0,root); "
             "manifest=json.load(open(root+'/manifest.json')); "
             f"assert manifest['code_sha256']=={receipt.code_sha256!r}; "
             f"os.environ['KOMAQUILL_RUNTIME_ID']={str(receipt.runtime_id)!r}; "
+            f"os.environ['KOMAQUILL_SESSION_OPERATION_ID']={session_operation_id!r}; "
+            "os.environ['KOMAQUILL_OPERATION_ID']="
+            f"{str(job_id) if job_id else os.environ.get('KOMAQUILL_OPERATION_ID', '')!r}; "
             "os.environ['KOMAQUILL_CODE_SHA256']=manifest['code_sha256']; "
             "os.environ['KOMAQUILL_SOURCE_REVISION']=manifest.get('source_revision') or ''; "
             "os.environ['KOMAQUILL_SESSION_STARTED_AT']="
@@ -491,7 +509,7 @@ class Colab:
             raise KomaquillError(code="connection_failed", stage="preparation") from None
         return process
 
-    def progress(self, receipt: Receipt) -> dict[str, str | None]:
+    def progress(self, receipt: Receipt) -> RuntimeProgress:
         """Read bounded structured progress from an existing runtime only."""
         target = self.project.artifacts / "tmp" / f"progress-{receipt.runtime_id}.json"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -523,17 +541,18 @@ class Colab:
                 state["failure"] = FailureInfo.model_validate(data["failure"]).model_dump(
                     mode="json"
                 )
+            if phase == "failed" and data.get("last_failure") is not None:
+                with suppress(ValueError, KeyError, TypeError):
+                    state["last_failure"] = FailureInfo.model_validate(
+                        data["last_failure"]
+                    ).model_dump(mode="json")
+                    state["last_failure_at"] = datetime.fromisoformat(
+                        data["last_failure_at"]
+                    ).isoformat()
             atomic_json(self.project.state / f"startup-{receipt.runtime_id}.json", state)
-            result = {"phase": phase, "asset": asset}
+            result: RuntimeProgress = {"phase": phase, "asset": asset}
             if phase == "failed":
-                failure = FailureInfo.model_validate(data["failure"])
-                result.update(
-                    failure_code=failure.code.value,
-                    failure_stage=failure.stage.value,
-                    http_status=str(failure.http_status)
-                    if failure.http_status is not None
-                    else None,
-                )
+                result["failure"] = FailureInfo.model_validate(data["failure"])
             return result
         except (KomaquillError, OSError, ValueError, KeyError):
             return {}
@@ -591,7 +610,7 @@ class Colab:
                         str(temporary),
                         timeout=remaining,
                     )
-                temporary.replace(folder / name)
+                replace_file(temporary, folder / name)
                 item.update(result="saved", last_success_at=datetime.now(UTC).isoformat())
             except (KomaquillError, OSError) as error:
                 failed.append(name)

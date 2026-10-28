@@ -10,6 +10,7 @@ from komaquill.infrastructure.asset_download import download_asset
 from komaquill.infrastructure.asset_store import cached_path
 from komaquill.infrastructure.configuration import GpuProject, Project
 from komaquill.infrastructure.diagnostics import record_event
+from komaquill.infrastructure.paths import GpuPaths
 
 
 def fetch_model(
@@ -18,12 +19,13 @@ def fetch_model(
     """Acquire GPU weights with bounded recovery and safe progress events."""
     if not isinstance(project, GpuProject):
         raise KomaquillError(code="unsupported_asset", stage="preparation", retryable=False)
+    paths = GpuPaths(project.root)
     started = time.monotonic()
     existing = cached_path(project.models, model)
     if existing is not None:
-        record_event(project, "model", "cache_verified", asset=model.name)
+        record_event(paths, "model", "cache_verified", asset=model.name, sha256=model.sha256)
         return existing
-    record_event(project, "model", "download_started", asset=model.name)
+    record_event(paths, "model", "download_started", asset=model.name, sha256=model.sha256)
     deadline = os.environ.get("KOMAQUILL_SUBMIT_UNTIL")
 
     def cancelled() -> bool:
@@ -38,14 +40,20 @@ def fetch_model(
         cancelled,
         credentials,
         lambda failure: record_event(
-            project, "model", "download_retrying", asset=model.name, failure=failure
+            paths,
+            "model",
+            "download_retrying",
+            asset=model.name,
+            sha256=model.sha256,
+            failure=failure,
         ),
     )
     record_event(
-        project,
+        paths,
         "model",
         "download_verified",
         asset=model.name,
+        sha256=model.sha256,
         byte_count=result.stat().st_size,
         elapsed_seconds=round(time.monotonic() - started, 3),
     )

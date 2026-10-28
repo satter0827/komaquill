@@ -344,3 +344,24 @@ def test_forced_shutdown_reports_lost_count_without_claiming_full_collection(
     assert not result.errors and not colab.receipt_file.exists()
     assert any("Lost: 1" in message for message in messages)
     assert any("Collection: incomplete" in message for message in messages)
+
+
+def test_gpu_events_keep_owned_ids_without_changing_collection_location(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    from komaquill.infrastructure.paths import GpuPaths
+
+    runtime, operation = uuid4(), uuid4()
+    monkeypatch.setenv("KOMAQUILL_RUNTIME_ID", str(runtime))
+    monkeypatch.setenv("KOMAQUILL_OPERATION_ID", str(operation))
+    monkeypatch.setenv("KOMAQUILL_SESSION_OPERATION_ID", str(operation))
+    project = GpuPaths(tmp_path)
+    assert record_event(project, "model_preparation", "download_verified", sha256="a" * 64)
+    event = json.loads((project.logs / "cli.jsonl").read_bytes())
+    assert event["runtime_id"] == str(runtime)
+    assert event["operation_id"] == str(operation)
+    assert event["session_operation_id"] == str(operation)
+    assert event["sha256"] == "a" * 64
+    assert not (project.logs / str(runtime)).exists()
+    monkeypatch.setenv("KOMAQUILL_RUNTIME_ID", "invalid")
+    assert record_event(project, "model_preparation", "started")

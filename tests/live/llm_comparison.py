@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from komaquill.api import Client, KomaquillError
+from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.configuration import settings
 from tests.support.llm_comparison import (
@@ -32,14 +33,6 @@ from tests.support.stories import source
 from tests.support.story_evidence import CASES, planning_measurement
 
 RESTORE_RESERVE = 180
-
-
-def write(path, value):
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
-    )
-    temporary.replace(path)
 
 
 def run(root, report, manifest, executable, minutes=90):
@@ -71,7 +64,7 @@ def run(root, report, manifest, executable, minutes=90):
         if case["task"] == "pair" and "sha256" not in case:
             case["sha256"] = {image: fixed_hashes.get(image) for image in case["images"]}
     report.mkdir(parents=True, exist_ok=False)
-    write(
+    atomic_json(
         report / "original.json",
         {
             "models": original,
@@ -98,12 +91,13 @@ def run(root, report, manifest, executable, minutes=90):
     }
 
     def checkpoint():
-        write(report / "results.json", result)
+        atomic_json(report / "results.json", result)
 
     def available(seconds):
         return time.monotonic() + seconds + RESTORE_RESERVE < deadline
 
     checkpoint()
+    primary = None
     with MemoryTrace(report / "memory.jsonl") as trace:
         try:
             for name in names:
@@ -196,7 +190,7 @@ def run(root, report, manifest, executable, minutes=90):
                                 if story_id
                                 else None
                             )
-                            write(report / (key + ".json"), record)
+                            atomic_json(report / (key + ".json"), record)
                             rows.append(
                                 {
                                     "kind": "planning",
@@ -249,7 +243,7 @@ def run(root, report, manifest, executable, minutes=90):
                         trace.phase = f"{name}:vision:{case['id']}:{reverse}"
                         messages = image_messages(case, root, reverse)
                         key = f"{name}-{case['id']}-{int(reverse)}"
-                        write(
+                        atomic_json(
                             report / (key + ".input.json"),
                             {
                                 "model": profile.model,
@@ -288,7 +282,7 @@ def run(root, report, manifest, executable, minutes=90):
                         except Exception as error:
                             response = {"failure": type(error).__name__}
                         response.update(seconds=time.monotonic() - before)
-                        write(report / (key + ".json"), response)
+                        atomic_json(report / (key + ".json"), response)
                         rows.append(
                             {
                                 "kind": "vision",
@@ -303,8 +297,12 @@ def run(root, report, manifest, executable, minutes=90):
                         checkpoint()
                         print(json.dumps(rows[-1]), flush=True)
         except BaseException as error:
+            primary = error
             result["interruption"] = {"type": type(error).__name__}
-            checkpoint()
+            try:
+                checkpoint()
+            except Exception as recording:
+                error.add_note(f"Interruption report failed: {type(recording).__name__}")
             raise
         finally:
             trace.phase = "restore"
@@ -316,7 +314,12 @@ def run(root, report, manifest, executable, minutes=90):
                 result["restoration"] = "failed"
                 result["restoration_error"] = {"type": type(error).__name__}
             result["finished_at"] = datetime.now(UTC).isoformat()
-            checkpoint()
+            try:
+                checkpoint()
+            except Exception as recording:
+                if primary is None:
+                    raise
+                primary.add_note(f"Final report failed: {type(recording).__name__}")
     blind = []
     for row in rows:
         if row.get("kind") != "planning" or "record" not in row:
@@ -334,8 +337,10 @@ def run(root, report, manifest, executable, minutes=90):
                 }
             )
     random.SystemRandom().shuffle(blind)
-    write(report / "blind-map.json", {item["blind_id"]: item.pop("_record") for item in blind})
-    write(report / "blind-plans.json", blind)
+    atomic_json(
+        report / "blind-map.json", {item["blind_id"]: item.pop("_record") for item in blind}
+    )
+    atomic_json(report / "blind-plans.json", blind)
     return result
 
 

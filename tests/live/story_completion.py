@@ -3,10 +3,13 @@
 import argparse
 import hashlib
 import json
+import os
 import socket
-from datetime import UTC, datetime
+import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from filelock import FileLock
@@ -18,10 +21,13 @@ from komaquill.domain.materials import InputArtifact
 from komaquill.domain.prompts import joined
 from komaquill.domain.workflow import digest
 from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
+from komaquill.infrastructure.colab import Colab
 from komaquill.infrastructure.configuration import Project
+from komaquill.infrastructure.monitor_state import read_monitor
 from komaquill.infrastructure.stories.storage import FileStoryRepository
 from komaquill.infrastructure.workflows import assets
 from komaquill.interfaces.stories import present
+from tests.live import verification_budget
 from tests.support.suite_config import SuiteConfig, defaults
 
 EDIT_PROFILE = "klein-4b-edit"
@@ -62,6 +68,8 @@ class Case(BaseModel):
     baseline_source: PromptSource
     gpu_started_at: datetime | None = None
     runtime_id: UUID | None = None
+    submission_deadline: datetime | None = None
+    stop_deadline: datetime | None = None
     reserved_outputs: int = 0
     baseline_reserved: bool = False
     baseline_render_id: UUID | None = None
@@ -116,7 +124,8 @@ def sending_allowed(case: Case, *, now: datetime | None = None) -> None:
     started_at, send_seconds = case.gpu_started_at, case.config.send_seconds
     if started_at is None:
         raise RuntimeError("Start the dedicated case explicitly before rendering.")
-    if ((now or datetime.now(UTC)) - started_at).total_seconds() >= send_seconds:
+    deadline = case.submission_deadline or started_at + timedelta(seconds=send_seconds)
+    if (now or datetime.now(UTC)) >= deadline:
         raise RuntimeError("The submission deadline has been reached; collect and stop.")
 
 
@@ -248,8 +257,33 @@ def checkpoint_runtime(report: Path) -> None:
     runtime_id = UUID(data["runtime_id"])
     with FileLock(str(report / ".case.lock")):
         latest = load(report)
-        if latest.runtime_id not in {None, runtime_id}:
-            raise RuntimeError("The owned runtime identity changed during preparation.")
+        current = read_monitor(project(report))
+        if (
+            current is None
+            or current.runtime_id != runtime_id
+            or (
+                latest.runtime_id not in {None, runtime_id}
+                and not verification_budget.path(project(report).root).exists()
+            )
+        ):
+            raise RuntimeError("The current owned runtime could not be established.")
+        ledger_path = verification_budget.path(project(report).root)
+        if latest.runtime_id not in {None, runtime_id} and ledger_path.exists():
+            budget = verification_budget.read(project(report).root)
+            active = [row for row in budget.allocations if not row.ownership_released]
+            if (
+                len(active) != 1
+                or active[0].runtime_id not in {None, str(runtime_id)}
+                or not any(
+                    row.runtime_id == str(latest.runtime_id) and row.ownership_released
+                    for row in budget.allocations
+                )
+            ):
+                raise RuntimeError("The preceding runtime shutdown is not confirmed.")
+        receipt = Colab(project(report)).receipt()
+        latest.gpu_started_at = (
+            receipt.started_at if receipt and receipt.started_at else current.created_at
+        )
         latest.runtime_id = runtime_id
         save(report, latest)
 
@@ -257,9 +291,39 @@ def checkpoint_runtime(report: Path) -> None:
 def start(report: Path) -> None:
     with FileLock(str(report / ".case.lock")):
         case = load(report)
-        if case.gpu_started_at is not None:
-            raise RuntimeError("A startup was already attempted; inspect and stop this case.")
-        case.gpu_started_at = datetime.now(UTC)
+        owner = project(report)
+        receipt = Colab(owner).receipt()
+        if case.gpu_started_at is not None and not verification_budget.path(owner.root).exists():
+            raise RuntimeError(
+                "Initialize a cumulative verification budget before another startup."
+            )
+        ledger_key = None
+        environment = {}
+        if verification_budget.path(owner.root).exists():
+            budget = verification_budget.read(owner.root)
+            active = [row for row in budget.allocations if not row.ownership_released]
+            if receipt and (
+                not active or active[0].runtime_id not in {None, str(receipt.runtime_id)}
+            ):
+                raise RuntimeError("The current runtime ownership is unknown.")
+            ledger_key = active[0].key if active else str(uuid4())
+            if budget.opening_balance is None:
+                raise RuntimeError("Reconcile the opening account before GPU startup.")
+            send, stop = verification_budget.begin(owner.root, ledger_key)
+            started = verification_budget.read(owner.root).allocations[-1].started_at
+            if receipt is None:
+                case.submission_deadline = datetime.now(UTC) + timedelta(seconds=send)
+                case.stop_deadline = datetime.now(UTC) + timedelta(seconds=stop)
+            else:
+                send = int((case.submission_deadline - started).total_seconds())
+                stop = int((case.stop_deadline - started).total_seconds())
+            environment = {
+                "KOMAQUILL_SUBMISSION_TIMEOUT": str(send),
+                "KOMAQUILL_SESSION_TIMEOUT": str(stop),
+                "KOMAQUILL_COMPUTE_UNIT_LIMIT": str(budget.runtime_compute_unit_limit),
+                "KOMAQUILL_COMPUTE_UNIT_RESERVE": str(budget.compute_unit_reserve),
+            }
+        case.gpu_started_at = datetime.now(UTC) if receipt is None else case.gpu_started_at
         save(report, case)
     try:
 
@@ -267,9 +331,22 @@ def start(report: Path) -> None:
             print(text, flush=True)
             checkpoint_runtime(report)
 
-        Client(project(report).root).sessions.start(progress=progress)
+        with patch.dict(os.environ, environment):
+            Client(project(report).root).sessions.start(progress=progress)
     finally:
-        checkpoint_runtime(report)
+        primary = sys.exc_info()[1]
+        try:
+            checkpoint_runtime(report)
+            if ledger_key:
+                verification_budget.checkpoint(
+                    owner.root,
+                    ledger_key,
+                    runtime_id=str(load(report).runtime_id) if load(report).runtime_id else None,
+                )
+        except BaseException as secondary:
+            if primary is None:
+                raise
+            primary.add_note("Runtime checkpoint did not complete: " + type(secondary).__name__)
 
 
 def baseline(report: Path, *, retry_failed: bool = False) -> None:
@@ -289,6 +366,14 @@ def baseline(report: Path, *, retry_failed: bool = False) -> None:
         elif case.baseline_reserved and case.baseline_render_id is None:
             raise RuntimeError("The reserved baseline identity is unresolved; do not resubmit.")
         if not case.baseline_reserved:
+            if verification_budget.path(
+                project(report).root
+            ).exists() and not verification_budget.reserve(
+                project(report).root,
+                "baseline:" + str(case.case_id),
+                case.scene_count * case.config.candidates,
+            ):
+                raise RuntimeError("Reconcile the existing baseline reservation first.")
             reserve(case, case.scene_count * case.config.candidates)
             case.baseline_reserved = True
         if retry_failed:
@@ -300,6 +385,14 @@ def baseline(report: Path, *, retry_failed: bool = False) -> None:
                 raise RuntimeError("The technical retry budget cannot cover every failed scene.")
             if not failed:
                 raise RuntimeError("No confirmed failed scenes are available for retry.")
+            if verification_budget.path(
+                project(report).root
+            ).exists() and not verification_budget.reserve(
+                project(report).root,
+                "retry:" + str(case.case_id),
+                failed * case.config.candidates,
+            ):
+                raise RuntimeError("Reconcile the existing retry reservation first.")
             reserve(case, failed * case.config.candidates)
             case.retry_attempted = True
         save(report, case)
@@ -405,6 +498,14 @@ def improve(report: Path, request_path: Path) -> None:
                 sha256=hashlib.sha256(content.encode()).hexdigest(),
             ),
         )
+        if verification_budget.path(
+            project(report).root
+        ).exists() and not verification_budget.reserve(
+            project(report).root,
+            "improvement:" + str(case.case_id) + ":" + request_sha,
+            case.config.candidates,
+        ):
+            raise RuntimeError("Reconcile the existing improvement reservation first.")
         reserve(case, case.config.candidates)
         case.improvements.append(job)
         save(report, case)
@@ -458,7 +559,11 @@ def stop(report: Path) -> None:
         runtime_id = case.runtime_id
         started_at, total_seconds = case.gpu_started_at, case.config.total_seconds
         elapsed = (datetime.now(UTC) - started_at).total_seconds() if started_at else total_seconds
-        force = elapsed >= total_seconds
+        force = (
+            datetime.now(UTC) >= case.stop_deadline
+            if case.stop_deadline
+            else elapsed >= total_seconds
+        )
     except (OSError, ValueError):
         force = True
         runtime_id = None
@@ -466,7 +571,22 @@ def stop(report: Path) -> None:
     root = project(report).logs
     path = root / str(runtime_id) / "shutdown.json"
     if runtime_id is not None and path.is_file():
-        atomic_json(report / "shutdown.json", json.loads(path.read_bytes()))
+        outcome = json.loads(path.read_bytes())
+        atomic_json(report / "shutdown.json", outcome)
+        owner = project(report)
+        if verification_budget.path(owner.root).exists():
+            budget = verification_budget.read(owner.root)
+            active = [row for row in budget.allocations if not row.ownership_released]
+            if active:
+                verification_budget.checkpoint(
+                    owner.root,
+                    active[0].key,
+                    runtime_id=str(runtime_id),
+                    stopped_at=datetime.fromisoformat(outcome["finished_at"])
+                    if outcome.get("gpu") == "stopped"
+                    else None,
+                    released=outcome.get("gpu") == "stopped" and Colab(owner).receipt() is None,
+                )
 
 
 if __name__ == "__main__":

@@ -155,8 +155,41 @@ def test_real_measurement_adapter_counts_calls_and_restores_models_with_a_fake(
     state = suite.load(folder)
     repaired = repository.read(UUID(state.plans["flying-hat"][-1]["story_id"]))
     assert state.planning_calls == 2 and len(restored) == 2
-    assert "Do not add an observer" in repaired.planner.planning_policy["guidance"][-1]
+    assert repaired.planner.planning_policy == first.planner.planning_policy
+    messages = repository.planning_evidence(repaired.request.story_id)["inputs"][0]["messages"]
+    assert [row["role"] for row in messages] == ["system", "user", "assistant", "user"]
+    assert "Do not add an observer" in messages[-1]["content"]
+    assert (
+        messages[2]["content"]
+        == repository.planning_evidence(identity)["attempts"][-1]["response"]["content"]
+    )
     assert (folder / "planning/komaquill.toml").read_bytes() == original
+    from tests.live.story_validation import reviewed_plans
+
+    state.plans["flying-hat"][-1]["llm_profile"] = repaired.planner.profile
+    suite.save(folder, state)
+    envelope = json.loads((repository.folder(repaired.request.story_id) / "plan.json").read_bytes())
+    atomic_json(
+        folder / "planning-reviews.json",
+        [
+            {
+                "case_id": "flying-hat",
+                "story_id": str(repaired.request.story_id),
+                "decision": "accept",
+                "source_sha256": repaired.request.source_sha256,
+                "plan_sha256": envelope["sha256"],
+                "reason": "Synthetic attributed approval.",
+                "evaluator": {
+                    "kind": "ai",
+                    "model": "test-reviewer",
+                    "instruction": "Check source fidelity.",
+                },
+            }
+        ],
+    )
+    assert reviewed_plans(folder, require_all=False) == {}
+    with pytest.raises(ValueError, match="real LLM plan"):
+        reviewed_plans(folder)
 
 
 def test_unknown_reservation_cannot_submit_a_fresh_baseline(campaign, monkeypatch):

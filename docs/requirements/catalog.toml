@@ -150,9 +150,9 @@ tests = ["tests/unit/test_presets.py", "tests/unit/test_story_workflows.py", "te
 [requirements.REQ-STORY-SUITE]
 summary = "複数題材の原文から完成までを共通処理と固定予算で検証する"
 status = "in_progress"
-acceptance = ["8題材の原文とFake応答を対で検証する", "対象数と場面数に依存せず入力と組版を扱う", "評価と一致した実LLM計画だけを実生成へ渡す", "呼び出し・画像・時間・容量の上限を再開で戻さない", "初回と改善後の品質・保存・未実施を分けて集計する"]
+acceptance = ["8題材の原文とFake応答を対で検証する", "対象数と場面数に依存せず入力と組版を扱う", "可視対象の数と対象なしの条件を描画入力へ保持する", "後からの意味評価の訂正を現在の適格性へ反映する", "評価と一致した実LLM計画だけを実生成へ渡す", "呼び出し・画像・時間・容量の上限を再開で戻さない", "初回と改善後の品質・保存・未実施を分けて集計する"]
 sources = ["src/komaquill/domain/stories.py", "src/komaquill/domain/images.py", "src/komaquill/application/stories/image_inputs.py"]
-tests = ["tests/integration/stories/test_story_suite.py", "tests/unit/stories/test_subject_cardinality.py", "tests/unit/stories/test_suite_controls.py", "tests/unit/test_completion_page.py", "tests/unit/test_completion_reviews.py", "tests/live/story_suite.py", "tests/live/completion_report.py"]
+tests = ["tests/integration/stories/test_story_suite.py", "tests/unit/stories/test_subject_cardinality.py", "tests/unit/stories/test_suite_controls.py", "tests/unit/test_completion_page.py", "tests/unit/test_completion_reviews.py", "tests/live/story_suite.py", "tests/live/completion_report.py", "tests/live/verification_budget.py", "tests/live/story_validation.py", "tests/unit/test_verification_budget.py"]
 
 [requirements.REQ-KLEIN-SWITCH]
 summary = "Klein 4B・9BとGPUを明示選択し、確定した条件と予算で比較する"

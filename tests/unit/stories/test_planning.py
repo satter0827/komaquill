@@ -200,3 +200,24 @@ def test_invalid_internal_correction_never_reaches_the_model(project, feedback):
     with pytest.raises(KomaquillError) as error:
         chat_messages(request(), base.provenance, feedback)
     assert error.value.code == "invalid_output"
+
+
+def test_missing_holder_identifies_the_field_without_exposing_actor_text(project):
+    from komaquill.domain.stories import PlanningValidationError
+
+    draft = StoryDraft.model_validate_json(
+        files("komaquill")
+        .joinpath("resources/stories/examples/rainy-cat/plan-4.json")
+        .read_text(encoding="utf-8")
+    )
+    scene = draft.scenes[0]
+    holder = scene.subjects[0].character
+    draft.scenes[0] = scene.model_copy(
+        update={"subjects": [subject for subject in scene.subjects if subject.character != holder]}
+    )
+    scene = draft.scenes[0]
+    scene.props[0] = scene.props[0].model_copy(update={"holder": holder})
+    with pytest.raises(PlanningValidationError) as caught:
+        validate_draft(draft, request())
+    assert any(issue.path[-1:] == ("holder",) for issue in caught.value.issues)
+    assert holder not in str(caught.value)

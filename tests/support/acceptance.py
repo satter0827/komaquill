@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 import threading
 import time
+import traceback
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
@@ -54,6 +55,10 @@ def failure_snapshot(workspace: Path) -> dict:
                 if isinstance(event, dict) and isinstance(event.get("failure"), dict):
                     failures.append(
                         {
+                            **{
+                                key: event.get(key)
+                                for key in ("created_at", "operation_id", "runtime_id")
+                            },
                             "operation": event.get("operation"),
                             "result": event.get("result"),
                             "failure": {key: event["failure"].get(key) for key in failure_fields},
@@ -61,8 +66,49 @@ def failure_snapshot(workspace: Path) -> dict:
                     )
         except (OSError, ValueError) as error:
             failures.append({"unreadable_type": type(error).__name__})
+    failures.sort(key=lambda row: row.get("created_at") or "")
+    result["first_failure"] = next((row for row in failures if "failure" in row), None)
     result["failures"] = failures[-12:]
     return result
+
+
+@contextlib.contextmanager
+def acceptance_workspace(parent: Path):
+    """Persist failure evidence before the isolated workspace is removed."""
+    with tempfile.TemporaryDirectory(prefix="komaquill-wheel-", dir=parent) as temporary:
+        root = Path(temporary)
+        try:
+            yield root
+        except BaseException as error:
+            destination = Path(
+                os.environ.get(
+                    "KOMAQUILL_ACCEPTANCE_REPORT_DIR",
+                    str(
+                        Path(__file__).resolve().parents[2]
+                        / ".artifacts/records/reports/acceptance"
+                    ),
+                )
+            )
+            try:
+                destination.mkdir(parents=True, exist_ok=True)
+                frame = traceback.extract_tb(error.__traceback__)[-1]
+                payload = {
+                    "origin": {
+                        "file": Path(frame.filename).name,
+                        "function": frame.name,
+                        "line": frame.lineno,
+                    },
+                    "exception_type": type(error).__name__,
+                    "snapshot": failure_snapshot(root / "work"),
+                }
+                path = destination / (str(uuid4()) + ".json")
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                error.add_note("Acceptance failure evidence: " + str(path))
+            except (OSError, ValueError) as diagnostic:
+                error.add_note(
+                    "Acceptance evidence could not be saved: " + type(diagnostic).__name__
+                )
+            raise
 
 
 def run_acceptance(wheel: Path | None = None) -> None:
@@ -156,8 +202,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
     # Temporary isolation outside the checkout is removed even after a failed assertion.
     parent = Path(os.environ["LOCALAPPDATA"]) / "Temp" if os.name == "nt" else Path("/tmp")
     try:
-        with tempfile.TemporaryDirectory(prefix="komaquill-wheel-", dir=parent) as temporary:
-            root = Path(temporary)
+        with acceptance_workspace(parent) as root:
             env = dict(os.environ, PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
             for name in list(env):
                 if name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV":
@@ -481,21 +526,33 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     assert monitor.wait(timeout=30) == 0
                 finally:
                     primary = sys.exc_info()[1]
-                    stopped = subprocess.run(
-                        [str(python), "-B", "-m", "komaquill", "stop", "--force"],
-                        cwd=workspace,
-                        env=env,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                    if primary is None:
-                        assert stopped.returncode == 0, stopped.stderr
-                    elif stopped.returncode:
-                        primary.add_note("The isolated acceptance monitor could not be stopped.")
+                    try:
+                        stopped = subprocess.run(
+                            [str(python), "-B", "-m", "komaquill", "stop", "--force"],
+                            cwd=workspace,
+                            env=env,
+                            capture_output=True,
+                            text=True,
+                            timeout=30,
+                        )
+                        if primary is None:
+                            assert stopped.returncode == 0, stopped.stderr
+                        elif stopped.returncode:
+                            primary.add_note(
+                                "The isolated acceptance monitor could not be stopped."
+                            )
+                    except subprocess.TimeoutExpired:
+                        if primary is None:
+                            raise
+                        primary.add_note("The isolated acceptance shutdown timed out.")
                     if monitor.poll() is None:
                         monitor.terminate()
-                        monitor.wait(timeout=10)
+                        try:
+                            monitor.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            if primary is None:
+                                raise
+                            primary.add_note("The acceptance monitor termination timed out.")
             runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
             runs.extend((workspace / ".artifacts/data/stories").glob("*/renders/*/runs/*/run.json"))
             assert len(runs) == 12

@@ -25,6 +25,27 @@ def discard_temporary(path: Path, primary: BaseException | None) -> None:
         print(message("storage.cleanup_failed"), file=sys.stderr)
 
 
+def replace_file(source: Path, target: Path) -> None:
+    """Publish an already written file through bounded Windows sharing conflicts."""
+    deadline = None
+    while True:
+        try:
+            source.replace(target)
+            return
+        except PermissionError as error:
+            if (
+                sys.platform != "win32"
+                or getattr(error, "winerror", None) not in WINDOWS_REPLACE_ERRORS
+            ):
+                raise
+            now = time.monotonic()
+            if deadline is None:
+                deadline = now + REPLACE_TIMEOUT_SECONDS
+            elif now >= deadline:
+                raise
+            time.sleep(REPLACE_RETRY_SECONDS)
+
+
 def atomic_bytes(path: Path, content: bytes) -> None:
     """Replace a file using a temporary file in the same directory."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,24 +57,8 @@ def atomic_bytes(path: Path, content: bytes) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        deadline = None
-        while True:
-            try:
-                temporary.replace(path)
-                committed = True
-                break
-            except PermissionError as error:
-                if (
-                    sys.platform != "win32"
-                    or getattr(error, "winerror", None) not in WINDOWS_REPLACE_ERRORS
-                ):
-                    raise
-                now = time.monotonic()
-                if deadline is None:
-                    deadline = now + REPLACE_TIMEOUT_SECONDS
-                elif now >= deadline:
-                    raise
-                time.sleep(REPLACE_RETRY_SECONDS)
+        replace_file(temporary, path)
+        committed = True
     except BaseException as error:
         primary = error
         raise

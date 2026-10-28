@@ -7,7 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from komaquill.api import services
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.models import ShutdownResult
 from komaquill.infrastructure import views
 from komaquill.infrastructure.atomic import atomic_json
@@ -70,7 +70,16 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         control,
         "progress",
         lambda _: (
-            {"phase": "failed", "failure_code": "connection_failed", "failure_stage": "preparation"}
+            {
+                "phase": "failed",
+                "failure": FailureInfo(
+                    code="connection_failed",
+                    stage="preparation",
+                    exception_type="ConnectError",
+                    http_status=503,
+                    retryable=True,
+                ),
+            }
             if case == "startup_failure"
             else {}
         ),
@@ -115,8 +124,10 @@ def test_colab_startup_freezes_configuration_and_always_finalizes_owned_runtime(
         with pytest.raises(PermissionError):
             startup.start_colab(project, lambda _: None)
     elif case in {"startup_failure", "allocation_failure", "diagnostics_failure"}:
-        with pytest.raises(KomaquillError):
+        with pytest.raises(KomaquillError) as caught:
             startup.start_colab(project, lambda _: None)
+        if case == "startup_failure":
+            assert caught.value.http_status == 503 and caught.value.retryable
     else:
         startup.start_colab(project, lambda _: None)
         assert load_session(project).settings == receipt.settings

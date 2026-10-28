@@ -410,3 +410,40 @@ def test_log_follow_does_not_reload_configuration(project, monkeypatch):
     )
     with pytest.raises(KeyboardInterrupt):
         next(stream)
+
+
+def test_first_and_outer_startup_failures_survive_progress_recovery(project, monkeypatch):
+    from pathlib import Path
+
+    from komaquill.infrastructure.colab import Colab, Receipt
+
+    control = Colab(project)
+    receipt = Receipt(name="test", runtime_id=uuid4())
+    first = dict(
+        code="http_failed", stage="preparation", exception_type="ReadError", retryable=True
+    )
+    outer = dict(
+        code="operation_failed",
+        stage="preparation",
+        exception_type="CalledProcessError",
+        retryable=False,
+    )
+
+    def download(action, source, target, **kwargs):
+        Path(target).write_text(
+            json.dumps(
+                dict(
+                    phase="failed",
+                    previous_phase="model_preparation",
+                    failure=first,
+                    last_failure=outer,
+                    last_failure_at="2026-10-28T02:00:00+00:00",
+                )
+            )
+        )
+
+    monkeypatch.setattr(control, "provider_call", download)
+    assert control.progress(receipt)["failure"].code == "http_failed"
+    value = json.loads((project.state / f"startup-{receipt.runtime_id}.json").read_bytes())
+    assert value["failure"]["exception_type"] == "ReadError"
+    assert value["last_failure"]["exception_type"] == "CalledProcessError"

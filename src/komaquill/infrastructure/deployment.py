@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 
-from komaquill.infrastructure.atomic import atomic_json
+from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.provenance import code_sha256, gpu_contents, source_revision
 
@@ -49,14 +49,14 @@ def create_payload(project: Project) -> Payload:
     ).encode()
     path = project.runtime / "deployment/payload.tar"
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    with tarfile.open(temporary, "w") as archive:
-        for name, content in sorted(entries.items()):
+    content = io.BytesIO()
+    with tarfile.open(fileobj=content, mode="w") as archive:
+        for name, entry in sorted(entries.items()):
             member = tarfile.TarInfo(name)
-            member.size = len(content)
+            member.size = len(entry)
             member.mode = 0o644
-            archive.addfile(member, io.BytesIO(content))
-    temporary.replace(path)
+            archive.addfile(member, io.BytesIO(entry))
+    atomic_bytes(path, content.getvalue())
     with path.open("rb") as handle:
         digest = hashlib.file_digest(handle, "sha256").hexdigest()
     atomic_json(

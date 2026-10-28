@@ -3,7 +3,7 @@
 import pytest
 from PIL import Image
 
-from tests.live.completion_page import render_page, wrap_text
+from tests.live.completion_page import render_page, validate_pdf, wrap_text
 
 
 def panels(tmp_path, text="The kitten is safe."):
@@ -79,3 +79,39 @@ def test_partial_last_page_and_multiple_pages_preserve_every_scene(tmp_path, cou
     assert len(result["panels"]) == count
     assert len({row["font_size"] for row in result["panels"]}) == 1
     assert (tmp_path / "comic-2.png").exists() is (count > 4)
+
+
+def test_pdf_validation_detects_truncation_missing_page_and_wrong_size(tmp_path):
+    render_page(tmp_path, "A rainy day", panels(tmp_path), expected_scenes=4)
+    path = tmp_path / "comic.pdf"
+    with pytest.raises(ValueError, match="page count"):
+        validate_pdf(path, 2)
+    path.write_bytes(path.read_bytes()[:200])
+    with pytest.raises(ValueError):
+        validate_pdf(path, 1)
+    Image.new("RGB", (100, 100)).save(path, "PDF", resolution=300)
+    with pytest.raises(ValueError, match="dimensions"):
+        validate_pdf(path, 1)
+
+
+def test_pdf_decodes_all_pages_in_the_same_order_as_png(tmp_path):
+    from pypdf import PdfReader
+
+    values = panels(tmp_path)
+    values += [{**row, "scene": row["scene"] + 4} for row in values]
+    layout = render_page(tmp_path, "Eight scenes", values, expected_scenes=8)
+    reader = PdfReader(tmp_path / "comic.pdf", strict=True)
+    assert len(reader.pages) == 2
+    for position, page in enumerate(reader.pages, 1):
+        image = page.images[0].image.convert("RGB")
+        for row in layout["panels"]:
+            if row["page"] == position:
+                x, y, _, _ = row["bounds"]
+                with Image.open(
+                    tmp_path / ("comic.png" if position == 1 else "comic-2.png")
+                ) as png:
+                    expected = png.getpixel((x + 100, y + 100))
+                assert all(
+                    abs(a - b) < 8
+                    for a, b in zip(image.getpixel((x + 100, y + 100)), expected, strict=True)
+                )

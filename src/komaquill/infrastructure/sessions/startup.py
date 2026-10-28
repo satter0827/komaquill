@@ -16,7 +16,7 @@ from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
 from komaquill.domain.models import Session
 from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, check_port
+from komaquill.infrastructure.colab import Colab, RuntimeProgress, check_port
 from komaquill.infrastructure.comfyui import ComfyClient
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.deployment import create_payload
@@ -199,7 +199,7 @@ def start_colab(
             timeout = min(timeout, remaining)
         deadline = time.monotonic() + timeout
         next_progress = time.monotonic() + PROGRESS_POLL_SECONDS
-        previous_progress: dict[str, str | None] = {}
+        previous_progress: RuntimeProgress = {}
         while True:
             check_cancel(project)
             if time.monotonic() >= deadline:
@@ -212,11 +212,12 @@ def start_colab(
             update_monitor(project)
             if time.monotonic() >= next_progress:
                 current_progress = colab.progress(receipt)
-                if failure_code := current_progress.get("failure_code"):
+                if remote_failure := current_progress.get("failure"):
                     raise KomaquillError(
-                        code=failure_code,
-                        stage=current_progress.get("failure_stage") or "preparation",
-                        retryable=False,
+                        code=remote_failure.code,
+                        stage=remote_failure.stage,
+                        http_status=remote_failure.http_status,
+                        retryable=remote_failure.retryable,
                     )
                 if current_progress and current_progress != previous_progress:
                     update_monitor(
@@ -261,11 +262,12 @@ def start_colab(
                     tunnel is not None and tunnel.poll() is not None
                 ):
                     failed_progress = colab.progress(receipt)
-                    if failure_code := failed_progress.get("failure_code"):
+                    if remote_failure := failed_progress.get("failure"):
                         raise KomaquillError(
-                            code=failure_code,
-                            stage=failed_progress.get("failure_stage") or "preparation",
-                            retryable=False,
+                            code=remote_failure.code,
+                            stage=remote_failure.stage,
+                            http_status=remote_failure.http_status,
+                            retryable=remote_failure.retryable,
                         ) from None
                     raise KomaquillError(
                         display_key="text.comfyui_did_not_become_ready_check_the_preparation",

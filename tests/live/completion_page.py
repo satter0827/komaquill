@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from komaquill.infrastructure.atomic import atomic_bytes
 
@@ -20,6 +22,7 @@ MINIMUM_FONT_SIZE = 28
 MIN_LAST_LINE_CHARACTERS = 3
 TITLE_FONT_SIZE = 64
 PDF_RESOLUTION = 300
+PDF_DIMENSION_TOLERANCE = 0.01
 LINE_START_FORBIDDEN = "、。，．？！：；)]）］｝〉》」』】〕"
 LINE_END_FORBIDDEN = "([（［｛〈《「『【〔"
 
@@ -142,8 +145,7 @@ def render_page(
         "sha256": hashlib.sha256(content).hexdigest(),
         "size_bytes": len(content),
     }
-    if not (report / "comic.pdf").read_bytes().startswith(b"%PDF-"):
-        raise ValueError("The PDF output is invalid.")
+    validate_pdf(report / "comic.pdf", len(images))
     return {
         "complete": True,
         "size": list(PAGE_SIZE),
@@ -153,6 +155,28 @@ def render_page(
         "panels": retained,
         "outputs": outputs,
     }
+
+
+def validate_pdf(path: Path, expected_pages: int) -> None:
+    """Reopen every exported page and its raster before reporting completion."""
+    try:
+        reader = PdfReader(path, strict=True)
+        if len(reader.pages) != expected_pages:
+            raise ValueError("The PDF page count differs from the layout.")
+        expected = tuple(value * 72 / PDF_RESOLUTION for value in PAGE_SIZE)
+        for page in reader.pages:
+            actual = (float(page.mediabox.width), float(page.mediabox.height))
+            if any(
+                abs(a - b) > PDF_DIMENSION_TOLERANCE for a, b in zip(actual, expected, strict=True)
+            ):
+                raise ValueError("The PDF page dimensions differ from the layout.")
+            contents = page.get_contents()
+            if contents is None or not contents.get_data() or len(page.images) != 1:
+                raise ValueError("The PDF page artwork is missing.")
+            if page.images[0].image.size != PAGE_SIZE:
+                raise ValueError("The PDF raster dimensions differ from the layout.")
+    except (PdfReadError, OSError, KeyError) as error:
+        raise ValueError("The PDF output is invalid.") from error
 
 
 def _layout(panels, size, chosen):

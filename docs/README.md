@@ -32,3 +32,5 @@ Kleinのモデル構成、役割の構成図、旧構成の削除理由は[設�
 Klein 4B・9Bの切替、負プロンプトの廃止、GPUとCUの制限は[設計判断](decisions/0011-klein-model-comparison.md)、比較の操作と判定は[モデル比較](verification/klein-comparison.md)を参照してください。
 
 モデルと操作の共通化、AniEdit・WAI構成、直接取得の判断は[設計判断](decisions/0012-model-interface-and-acquisition.md)、実施中の確認事項は[移行計画](plans/model-interface.md)を参照してください。
+
+複数題材の未達解消は[継続計画](plans/story-stability.md)、実行と判定は[継続検証](verification/story-stability.md)を参照してください。

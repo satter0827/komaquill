@@ -302,3 +302,33 @@ def test_repair_uses_actual_chat_turns_and_preserves_exact_wire_messages(project
         ).read_bytes()
     )
     assert stored["format_version"] == 2 and stored["messages"] == sent
+
+
+def test_semantic_review_preserves_actual_chat_input_without_rewriting_policy(
+    project, model_server
+):
+    url, state = model_server
+    original = state["content"]
+    feedback = json.dumps(
+        {
+            "previous_output": original,
+            "validation_errors": [{"code": "semantic_review"}],
+            "requirements": "Keep the final source action.",
+        }
+    )
+    repository = FileStoryRepository(project)
+    result = plan_story(
+        repository,
+        planner(project, options(project, url), allow_real_llm=True),
+        request(),
+        max_images=8,
+        allow_real_llm=True,
+        initial_correction=feedback,
+    )
+    sent = state["requests"][0]["payload"]["messages"]
+    assert [row["role"] for row in sent] == ["system", "user", "assistant", "user"]
+    assert sent[2]["content"] == original
+    saved = repository.planning_evidence(result.request.story_id)
+    assert saved["inputs"][0]["messages"] == sent
+    assert saved["attempts"][0]["correction"] == feedback
+    assert len(state["requests"]) == 1

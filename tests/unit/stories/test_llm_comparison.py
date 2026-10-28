@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -213,8 +214,9 @@ def test_restore_reports_mismatch_instead_of_claiming_success(monkeypatch, tmp_p
 
 
 @pytest.mark.parametrize("interrupted", [False, True])
+@pytest.mark.parametrize("conflict", [False, True])
 def test_runner_always_restores_models_when_loading_fails(
-    project, tmp_path, monkeypatch, interrupted
+    project, tmp_path, monkeypatch, interrupted, conflict
 ):
     from contextlib import nullcontext
 
@@ -223,6 +225,28 @@ def test_runner_always_restores_models_when_loading_fails(
     monkeypatch.setattr(runner, "inventory", lambda: [])
     monkeypatch.setattr(runner, "runtime_observation", lambda: {})
     monkeypatch.setattr(runner, "MemoryTrace", lambda path: nullcontext(SimpleNamespace(phase="")))
+    conflicts = []
+    if conflict:
+        from komaquill.infrastructure import atomic
+
+        original_replace = Path.replace
+        monkeypatch.setattr(
+            atomic, "sys", SimpleNamespace(platform="win32", stderr=atomic.sys.stderr)
+        )
+
+        def replace(source, destination):
+            if (
+                Path(destination).name == "results.json"
+                and not conflicts
+                and b'"restoration": "verified"' in source.read_bytes()
+            ):
+                conflicts.append(True)
+                error = PermissionError("Synthetic sharing conflict")
+                error.winerror = 5
+                raise error
+            return original_replace(source, destination)
+
+        monkeypatch.setattr(Path, "replace", replace)
     fail = KeyboardInterrupt() if interrupted else MemoryError()
     monkeypatch.setattr(runner, "switch", Mock(side_effect=fail))
     restored = Mock(return_value=[])
@@ -236,6 +260,7 @@ def test_runner_always_restores_models_when_loading_fails(
     else:
         assert runner.run(project.root, report, manifest, "lms")["restoration"] == "verified"
     restored.assert_called_once()
+    assert len(conflicts) == int(conflict)
     assert (
         json.loads((report / "results.json").read_text(encoding="utf-8"))["restoration"]
         == "verified"
@@ -298,3 +323,34 @@ def test_blind_review_resolves_deduplicated_raw_responses():
         }
     )
     assert value["responses"] == ["visible rejected answer"]
+
+
+def test_runner_preserves_interruption_when_final_report_cannot_be_saved(
+    project, tmp_path, monkeypatch
+):
+    from contextlib import nullcontext
+
+    from tests.live import llm_comparison as runner
+
+    monkeypatch.setattr(runner, "inventory", lambda: [])
+    monkeypatch.setattr(runner, "runtime_observation", lambda: {})
+    monkeypatch.setattr(runner, "MemoryTrace", lambda path: nullcontext(SimpleNamespace(phase="")))
+    primary = KeyboardInterrupt()
+    monkeypatch.setattr(runner, "switch", Mock(side_effect=primary))
+    restored = Mock(return_value=[])
+    monkeypatch.setattr(runner, "restore", restored)
+    publish = runner.atomic_json
+
+    def blocked(path, data):
+        if path.name == "results.json" and data.get("interruption"):
+            raise PermissionError("not retained")
+        publish(path, data)
+
+    monkeypatch.setattr(runner, "atomic_json", blocked)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"cases":[]}', encoding="utf-8")
+    with pytest.raises(KeyboardInterrupt) as result:
+        runner.run(project.root, tmp_path / "measurement", manifest, "lms")
+    assert result.value is primary
+    restored.assert_called_once()
+    assert any("Final report failed: PermissionError" in note for note in primary.__notes__)

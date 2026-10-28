@@ -26,6 +26,7 @@ from tests.support.suite_config import SuiteConfig, defaults
 
 RESTORE_SECONDS = 180
 REQUEST_GUARD_SECONDS = 5
+MINIMUM_CONTEXT_TOKENS = 8192
 
 
 class PlanningBudgetExhausted(RuntimeError):
@@ -82,9 +83,9 @@ def load(report: Path) -> Suite:
     return suite
 
 
-def initialize(source: Path, report: Path) -> None:
+def initialize(source: Path, report: Path, *, config: SuiteConfig | None = None) -> None:
     report.mkdir(parents=True, exist_ok=False)
-    config = defaults()
+    config = config or defaults()
     if not set(config.live_cases) <= cases().keys():
         raise ValueError("Every live case must exist in the paired corpus.")
     corpus = CORPUS.read_bytes()
@@ -101,7 +102,14 @@ def initialize(source: Path, report: Path) -> None:
     )
 
 
-def plan(report: Path, case_id: str, executable: Path) -> None:
+def plan(
+    report: Path,
+    case_id: str,
+    executable: Path,
+    *,
+    llm_profile: str = "lmstudio-4b",
+    review_feedback: bool = True,
+) -> None:
     """Charge every model call before invocation, including structural repair calls."""
     from komaquill.api import stories
 
@@ -129,7 +137,9 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
         from komaquill.infrastructure.stories.configuration import settings
 
         workspace = Project(report / "planning")
-        options = settings(workspace, llm_profile="lmstudio-4b", model="klein-4b")
+        if llm_profile not in {"lmstudio-4b", "lmstudio-9b"}:
+            raise ValueError("Select an explicitly authorized planning model.")
+        options = settings(workspace, llm_profile=llm_profile, model="klein-4b")
         allowed = {options.llm_profiles[name].model for name in ("lmstudio-4b", "lmstudio-9b")}
         if any(row["key"] not in allowed for row in original):
             raise RuntimeError("An unrelated loaded model prevents controlled measurement.")
@@ -138,6 +148,9 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
         folder.mkdir(parents=True, exist_ok=False)
         atomic_json(folder / "original.json", {"models": original})
         factory = stories.planner
+        application_plan = stories.plan_story
+        semantic_correction = None
+        semantic_parent = None
 
         class BudgetedPlanner:
             def __init__(self, delegate):
@@ -176,38 +189,87 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
         original_config = config_path.read_bytes()
         try:
             control = llm_comparison.switch(
-                executable, options.llm_profiles["lmstudio-4b"].model, 8192, allowed, folder
+                executable,
+                options.llm_profiles[llm_profile].model,
+                max(MINIMUM_CONTEXT_TOKENS, options.max_output_tokens * 2),
+                allowed,
+                folder,
             )
             atomic_json(folder / "loaded.json", control)
             reviews_path = report / "planning-reviews.json"
-            if reviews_path.is_file():
+            if review_feedback and reviews_path.is_file():
                 previous = [
                     PlanReview.model_validate(row)
                     for row in json.loads(reviews_path.read_bytes())
-                    if row["case_id"] == case_id and row["decision"] == "reject"
+                    if row["case_id"] == case_id
+                    and row["decision"] == "reject"
+                    and any(
+                        item.get("story_id") == row["story_id"]
+                        and item.get("llm_profile") == llm_profile
+                        for item in suite.plans.get(case_id, [])
+                    )
                 ]
                 if previous:
                     review = previous[-1]
                     if review.source_sha256 != hashlib.sha256(case["source"].encode()).hexdigest():
                         raise ValueError("Repair feedback refers to a different source.")
-                    policy = options.planning.model_dump()
-                    policy["guidance"] = [
-                        *policy["guidance"],
-                        "A previous plan was rejected by the reviewer. Correct its cause while "
-                        "preserving the original source: " + review.reason,
-                    ]
-                    extra = (
-                        "\n[story.planning]\n"
-                        + "\n".join(
-                            name + " = " + json.dumps(value, ensure_ascii=False)
-                            for name, value in policy.items()
-                        )
-                        + "\n"
+                    previous_plan = FileStoryRepository(workspace).read(review.story_id)
+                    envelope = json.loads(
+                        (
+                            FileStoryRepository(workspace).folder(review.story_id) / "plan.json"
+                        ).read_bytes()
                     )
-                    atomic_bytes(config_path, original_config + extra.encode())
-                    atomic_json(folder / "repair-review.json", review.model_dump(mode="json"))
+                    if (
+                        envelope["sha256"] != review.plan_sha256
+                        or previous_plan.request.source_sha256 != review.source_sha256
+                    ):
+                        raise ValueError("The semantic review does not match its retained plan.")
+                    evidence = FileStoryRepository(workspace).planning_evidence(review.story_id)
+                    responses = [
+                        row["response"] for row in evidence["attempts"] if row.get("response")
+                    ]
+                    if not responses:
+                        raise ValueError("The rejected planning response is unavailable.")
+                    previous_output = responses[-1]["content"]
+                    from komaquill.domain.stories import StoryDraft
+
+                    retained = previous_plan.model_dump(mode="json")
+                    retained = {key: retained[key] for key in StoryDraft.model_fields}
+                    retained["scenes"] = [
+                        {
+                            key: value
+                            for key, value in scene.items()
+                            if key not in {"scene_id", "position", "characters"}
+                        }
+                        for scene in retained["scenes"]
+                    ]
+                    if json.loads(previous_output) != retained:
+                        raise ValueError("The retained response differs from the reviewed plan.")
+                    semantic_correction = json.dumps(
+                        {
+                            "previous_output": previous_output,
+                            "validation_errors": [{"code": "semantic_review", "loc": []}],
+                            "requirements": review.reason,
+                        },
+                        ensure_ascii=False,
+                    )
+                    semantic_parent = str(review.story_id)
+                    atomic_json(
+                        folder / "repair-review.json",
+                        {
+                            "review": review.model_dump(mode="json"),
+                            "previous_output_sha256": hashlib.sha256(
+                                previous_output.encode()
+                            ).hexdigest(),
+                        },
+                    )
+
+            def reviewed_plan(*args, **kwargs):
+                return application_plan(*args, initial_correction=semantic_correction, **kwargs)
+
             with (
                 patch.object(stories, "planner", budgeted),
+                patch.object(stories, "plan_story", reviewed_plan),
                 patch.dict(
                     os.environ,
                     {
@@ -221,7 +283,7 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
                         case["source"],
                         source_name=case_id + ".txt",
                         images=4,
-                        llm_profile="lmstudio-4b",
+                        llm_profile=llm_profile,
                         model="klein-4b",
                         allow_real_llm=True,
                     )
@@ -254,6 +316,8 @@ def plan(report: Path, case_id: str, executable: Path) -> None:
                     {
                         "story_id": str(story_id) if story_id else None,
                         "status": measured["status"],
+                        "llm_profile": llm_profile,
+                        "semantic_repair_of": semantic_parent,
                         "measurement": str((folder / "measurement.json").relative_to(report)),
                     }
                 )
@@ -322,8 +386,11 @@ def prepare(report: Path) -> None:
 def start(report: Path) -> None:
     with FileLock(str(report / ".suite.lock")):
         suite = load(report)
-        if not suite.members or suite.gpu_started_at is not None:
-            raise RuntimeError("A suite may start exactly one prepared GPU session.")
+        if not suite.members:
+            raise RuntimeError("Prepare the suite before GPU startup.")
+        if suite.gpu_started_at is not None and not suite.shutdown_confirmed:
+            raise RuntimeError("Recover or confirm shutdown of the owned suite runtime first.")
+        suite.shutdown_confirmed = suite.stopping = False
         settings = story_completion.project(report / "cases" / suite.members[0]).settings()
         if (
             settings.submission_timeout != suite.config.send_seconds
@@ -475,7 +542,15 @@ def summarize(report: Path) -> None:
     for case_id in suite.config.live_cases:
         folder = report / "cases" / case_id
         if case_id not in suite.members:
-            rows.append({"case_id": case_id, "generated": False, "quality_passed": False})
+            rows.append(
+                {
+                    "case_id": case_id,
+                    "generated": False,
+                    "quality_passed": None,
+                    "generation_status": "not_submitted",
+                    "quality_status": "not_generated",
+                }
+            )
             continue
         completion_report.publish(folder)
         manifest = json.loads((folder / "manifest.json").read_bytes())
@@ -530,6 +605,9 @@ if __name__ == "__main__":
     parser.add_argument("--case")
     parser.add_argument("--request", type=Path)
     parser.add_argument("--lms", type=Path, default=Path.home() / ".lmstudio/bin/lms.exe")
+    parser.add_argument(
+        "--llm-profile", choices=("lmstudio-4b", "lmstudio-9b"), default="lmstudio-4b"
+    )
     parser.add_argument("--allow-real-llm", action="store_true")
     parser.add_argument("--allow-gpu", action="store_true")
     args = parser.parse_args()
@@ -540,7 +618,7 @@ if __name__ == "__main__":
     if args.action == "initialize":
         initialize(args.source, args.report)
     elif args.action == "plan":
-        plan(args.report, args.case, args.lms)
+        plan(args.report, args.case, args.lms, llm_profile=args.llm_profile)
     elif args.action == "improve":
         if not args.case or not args.request:
             parser.error("Improvement requires --case and --request.")

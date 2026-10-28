@@ -3,6 +3,7 @@
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -141,3 +142,36 @@ def test_gate_disables_external_tracing_and_removes_inherited_credentials(gate, 
         assert env["LANGCHAIN_TRACING_V2"] == "false"
         assert env["LANGSMITH_TEST_TRACKING"] == "false"
         assert "LANGSMITH_API_KEY" not in env and "LANGCHAIN_API_KEY" not in env
+
+
+@pytest.mark.parametrize("code", [5, 32, 33, 123])
+def test_report_publication_retries_only_known_windows_replace_conflicts(
+    tmp_path, monkeypatch, code
+):
+    from scripts import _support
+
+    target = tmp_path / "report.json"
+    target.write_text('{"state":"old"}', encoding="utf-8")
+    original = Path.replace
+    calls = []
+    monkeypatch.setattr(_support, "sys", SimpleNamespace(platform="win32"))
+
+    def replace(source, destination):
+        calls.append(True)
+        if len(calls) == 1:
+            error = PermissionError("Synthetic conflict")
+            error.winerror = code
+            raise error
+        return original(source, destination)
+
+    monkeypatch.setattr(Path, "replace", replace)
+    if code in {5, 32, 33}:
+        _support.atomic_json(target, {"state": "new"})
+        assert json.loads(target.read_bytes())["state"] == "new"
+        assert len(calls) >= 2
+    else:
+        with pytest.raises(PermissionError):
+            _support.atomic_json(target, {"state": "new"})
+        assert json.loads(target.read_bytes())["state"] == "old"
+        assert len(calls) == 1
+    assert list(tmp_path.iterdir()) == [target]

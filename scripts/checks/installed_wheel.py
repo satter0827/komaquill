@@ -21,6 +21,7 @@ def main(wheel: Path, report_dir: Path) -> None:
         if (name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV") or name == "PYTEST_ADDOPTS":
             env.pop(name)
     env["KOMAQUILL_WHEEL"] = str(wheel)
+    env["KOMAQUILL_ACCEPTANCE_REPORT_DIR"] = str(report_dir / "failure-evidence")
     env["PYTHONUTF8"] = "1"
     subprocess.run(
         [

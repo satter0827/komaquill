@@ -443,7 +443,7 @@ def test_first_and_outer_startup_failures_survive_progress_recovery(project, mon
         )
 
     monkeypatch.setattr(control, "provider_call", download)
-    assert control.progress(receipt)["failure_code"] == "http_failed"
+    assert control.progress(receipt)["failure"].code == "http_failed"
     value = json.loads((project.state / f"startup-{receipt.runtime_id}.json").read_bytes())
     assert value["failure"]["exception_type"] == "ReadError"
     assert value["last_failure"]["exception_type"] == "CalledProcessError"

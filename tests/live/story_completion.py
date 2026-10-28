@@ -366,12 +366,14 @@ def baseline(report: Path, *, retry_failed: bool = False) -> None:
         elif case.baseline_reserved and case.baseline_render_id is None:
             raise RuntimeError("The reserved baseline identity is unresolved; do not resubmit.")
         if not case.baseline_reserved:
-            if verification_budget.path(project(report).root).exists():
-                verification_budget.reserve(
-                    project(report).root,
-                    "baseline:" + str(case.case_id),
-                    case.scene_count * case.config.candidates,
-                )
+            if verification_budget.path(
+                project(report).root
+            ).exists() and not verification_budget.reserve(
+                project(report).root,
+                "baseline:" + str(case.case_id),
+                case.scene_count * case.config.candidates,
+            ):
+                raise RuntimeError("Reconcile the existing baseline reservation first.")
             reserve(case, case.scene_count * case.config.candidates)
             case.baseline_reserved = True
         if retry_failed:
@@ -383,12 +385,14 @@ def baseline(report: Path, *, retry_failed: bool = False) -> None:
                 raise RuntimeError("The technical retry budget cannot cover every failed scene.")
             if not failed:
                 raise RuntimeError("No confirmed failed scenes are available for retry.")
-            if verification_budget.path(project(report).root).exists():
-                verification_budget.reserve(
-                    project(report).root,
-                    "retry:" + str(case.case_id),
-                    failed * case.config.candidates,
-                )
+            if verification_budget.path(
+                project(report).root
+            ).exists() and not verification_budget.reserve(
+                project(report).root,
+                "retry:" + str(case.case_id),
+                failed * case.config.candidates,
+            ):
+                raise RuntimeError("Reconcile the existing retry reservation first.")
             reserve(case, failed * case.config.candidates)
             case.retry_attempted = True
         save(report, case)
@@ -494,10 +498,14 @@ def improve(report: Path, request_path: Path) -> None:
                 sha256=hashlib.sha256(content.encode()).hexdigest(),
             ),
         )
-        if verification_budget.path(project(report).root).exists():
-            verification_budget.reserve(
-                project(report).root, "improvement:" + str(job.job_id), case.config.candidates
-            )
+        if verification_budget.path(
+            project(report).root
+        ).exists() and not verification_budget.reserve(
+            project(report).root,
+            "improvement:" + str(case.case_id) + ":" + request_sha,
+            case.config.candidates,
+        ):
+            raise RuntimeError("Reconcile the existing improvement reservation first.")
         reserve(case, case.config.candidates)
         case.improvements.append(job)
         save(report, case)

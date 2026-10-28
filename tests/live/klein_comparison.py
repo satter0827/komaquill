@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import time
 import tomllib
@@ -11,6 +12,7 @@ from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
 from typing import Literal
+from unittest.mock import patch
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from filelock import FileLock
@@ -95,7 +97,7 @@ def ui_matches(project: Project, api: Client, job: "Job", run, *, api_source: bo
 
 
 def export_ui(report: Path, job_id: str, view: Literal["app", "graph"]) -> Path:
-    _, config, jobs = load(report, executing=True)
+    frozen, config, jobs = load(report, executing=True)
     job = next(row for row in jobs if row.id == job_id)
     project = Project(report / "workspace")
     path = report / "interfaces" / (job.id + "-" + view + ".json")
@@ -105,10 +107,18 @@ def export_ui(report: Path, job_id: str, view: Literal["app", "graph"]) -> Path:
             if state["jobs"][job.id].get("interface") != view or not path.exists():
                 raise ValueError("Reconcile the reserved interface request before proceeding.")
             return path
+        if (
+            frozen.get("purpose") == "story_validation"
+            and job.profile.startswith("klein-")
+            and plan_decisions(report, frozen).get(job.case) != "accept"
+        ):
+            raise ValueError("Obtain a source-consistent real plan before a new image request.")
         if len(state["jobs"]) >= config.output_limit:
             raise ValueError("The image budget is exhausted.")
-        if verification_budget.path(project.root).exists():
-            verification_budget.reserve(project.root, job.id)
+        if verification_budget.path(project.root).exists() and not verification_budget.reserve(
+            project.root, job.id
+        ):
+            raise ValueError("Reconcile the existing output reservation before any submission.")
         state["jobs"][job.id] = {"status": "reserved", "interface": view}
         atomic_json(report / "state.json", state)
     _, workflow = job_workflow(project, job)
@@ -378,6 +388,36 @@ def review_conditions(report: Path, frozen: dict) -> dict:
     return result
 
 
+def plan_decisions(report: Path, frozen: dict) -> dict[str, str]:
+    """Apply attributed later plan reviews without rewriting the frozen inputs."""
+    from tests.live.story_suite import PlanReview
+
+    decisions = {
+        key: "accept"
+        if frozen.get("plan_origin", {}).get(key) == "local_llm"
+        else "functional_only"
+        for key in frozen["plans"]
+    }
+    path = report / "plan-reviews.json"
+    if path.exists():
+        rows = json.loads(path.read_bytes())
+        if not isinstance(rows, list):
+            raise ValueError("Plan observations must be an attributed review list.")
+        for raw in rows:
+            row = PlanReview.model_validate(raw)
+            plan = frozen["plans"].get(row.case_id)
+            if (
+                plan is None
+                or str(row.story_id) != plan["request"]["story_id"]
+                or row.source_sha256 != plan["request"]["source_sha256"]
+                or row.plan_sha256 != digest(plan)
+                or row.evaluator.kind != "ai"
+            ):
+                raise ValueError("The plan review does not identify the frozen source and plan.")
+            decisions[row.case_id] = row.decision
+    return decisions
+
+
 def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
     """Freeze every job, parent and expectation before any GPU is requested."""
     if report.exists():
@@ -470,6 +510,10 @@ def prepare(report: Path, parents_workspace: Path, parents_file: Path) -> None:
         report / "comparison.json",
         {
             "format_version": 2,
+            "purpose": "curated_comparison",
+            "unready_cases": [],
+            "case_groups": {key: cases()[key].group for key in config.cases},
+            "plan_origin": {key: "curated_comparison" for key in plans},
             "config": config.model_dump(mode="json"),
             "identity": project.identity(),
             "runner_sha256": runner_fingerprint(),
@@ -568,7 +612,9 @@ def load(report: Path, *, executing: bool = False):
     return frozen, config, jobs
 
 
-def start(report: Path, gpu: Literal["T4"] = "T4") -> None:
+def start(
+    report: Path, gpu: Literal["T4"] = "T4", *, models: tuple[str, ...] | None = None
+) -> None:
     """Prepare only selected assets and preserve the shared CU baseline."""
     frozen, config, _ = load(report, executing=True)
     project = Project(report / "workspace")
@@ -595,6 +641,16 @@ def start(report: Path, gpu: Literal["T4"] = "T4") -> None:
             if len(matches) != 1 or receipt.settings is None or receipt.settings.gpu != gpu:
                 raise ValueError("The current session ownership is unknown.")
             session_key = matches[0]
+        selected_models = list(
+            models if models is not None else receipt.settings.models if receipt else config.models
+        )
+        if (
+            not selected_models
+            or len(selected_models) != len(set(selected_models))
+            or not set(selected_models) <= set(config.models)
+            or (receipt is not None and tuple(selected_models) != receipt.settings.models)
+        ):
+            raise ValueError("Select only frozen models and retain an owned runtime selection.")
         if receipt is None:
             send_seconds, stop_seconds = verification_budget.begin(project.root, session_key)
         else:
@@ -624,27 +680,22 @@ def start(report: Path, gpu: Literal["T4"] = "T4") -> None:
                     ),
                 ).model_dump(mode="json"),
             )
-        models = list(config.models)
         values = {
-            "models": models,
-            "gpu": gpu,
-            "high_ram": False,
             "compute_unit_limit": budget.runtime_compute_unit_limit,
             "compute_unit_reserve": budget.compute_unit_reserve,
             "submission_timeout": send_seconds,
             "session_timeout": stop_seconds,
         }
-        (project.root / "komaquill.toml").write_text(
-            "\n".join(f"{key} = {json.dumps(value)}" for key, value in values.items()) + "\n",
-            encoding="utf-8",
-        )
         if shutil.disk_usage(project.root).free < config.minimum_free_bytes:
             raise ValueError("The required disk reserve is unavailable.")
         state["sessions"].setdefault(session_key, {"started_at": datetime.now(UTC).isoformat()})
-        state["sessions"][session_key]["status"] = "requested"
+        state["sessions"][session_key].update(status="requested", models=selected_models)
         atomic_json(report / "state.json", state)
     try:
-        Client(project.root).sessions.start(models=models, gpu=gpu, high_ram=False)
+        with patch.dict(
+            os.environ, {"KOMAQUILL_" + key.upper(): str(value) for key, value in values.items()}
+        ):
+            Client(project.root).sessions.start(models=selected_models, gpu=gpu, high_ram=False)
     except BaseException as error:
         with FileLock(str(report / ".operation.lock"), timeout=0):
             state = json.loads((report / "state.json").read_bytes())
@@ -773,6 +824,12 @@ def generate(
                     saved_candidate(project, api, job, record)
                     continue
                 raise ValueError("A reserved request has unknown acceptance; do not resubmit it.")
+            if (
+                frozen.get("purpose") == "story_validation"
+                and job.profile.startswith("klein-")
+                and plan_decisions(report, frozen).get(job.case) != "accept"
+            ):
+                continue
             if len(state["jobs"]) >= config.output_limit:
                 raise ValueError("The image budget is exhausted.")
             size = sum(
@@ -785,8 +842,10 @@ def generate(
             profile = project.settings().presets[job.profile].configured_parameters(job.parameters)
             if preset_fingerprint(profile) != job.preset_sha256:
                 raise ValueError("The frozen generation conditions changed.")
-            if verification_budget.path(project.root).exists():
-                verification_budget.reserve(project.root, job.id)
+            if verification_budget.path(project.root).exists() and not verification_budget.reserve(
+                project.root, job.id
+            ):
+                raise ValueError("Reconcile the existing output reservation before any submission.")
             state["jobs"][job.id] = {"status": "reserved", "source_sha256": job.source.sha256}
             atomic_json(report / "state.json", state)
         started = time.monotonic()
@@ -892,6 +951,7 @@ def job_status(record: dict, *, valid_saved: bool, review: Review | None) -> dic
 def summarize(report: Path) -> None:
     frozen, config, jobs = load(report)
     criteria = {"conditions": review_conditions(report, frozen)}
+    readiness = plan_decisions(report, frozen)
     api = Client(report / "workspace")
     project = Project(api.workspace)
     state = json.loads((report / "state.json").read_bytes())
@@ -938,6 +998,8 @@ def summarize(report: Path) -> None:
                 invalid_evaluations.append(str(row.evaluation_id))
     pair_rows = expected_pairs(jobs)
     for pair in pair_rows:
+        case_id = next(job.case for job in jobs if job.id == pair["first"])
+        pair["plan_eligible"] = readiness.get(case_id) not in {"reject", "undecided"}
         first = available.get(pair["first"])
         second = available.get(pair["second"])
         pair["result"] = "unrun" if first is None or second is None else "unreviewed"
@@ -970,35 +1032,43 @@ def summarize(report: Path) -> None:
                     job.id in reviewed and scene_approved(criteria, job, reviewed[job.id][1])
                     for job in selected
                 )
+                all_reviewed = all(job.id in reviewed for job in selected)
+                rejected = all_reviewed and any(
+                    reviewed[job.id][1].decision == "reject"
+                    or any(check.verdict == "mismatch" for check in reviewed[job.id][1].checks)
+                    for job in selected
+                )
+                quality_status = (
+                    "not_generated"
+                    if not complete
+                    else "unreviewed"
+                    if not all_reviewed
+                    else "accepted"
+                    if accepted
+                    else "rejected"
+                    if rejected
+                    else "undecided"
+                )
                 works.append(
                     {
                         "model": model,
                         "case": case,
                         "seed": seed,
                         "saved": complete,
-                        "quality_approved": accepted
-                        if complete and all(job.id in reviewed for job in selected)
-                        else None,
+                        "quality_approved": {"accepted": True, "rejected": False}.get(
+                            quality_status
+                        ),
                         "generation_status": "saved"
                         if complete
                         else "incomplete"
                         if any(job.id in state["jobs"] for job in selected)
                         else "not_submitted",
-                        "quality_status": "not_generated"
-                        if not complete
-                        else "unreviewed"
-                        if any(job.id not in reviewed for job in selected)
-                        else "accepted"
-                        if accepted
-                        else "rejected"
-                        if any(
-                            reviewed[job.id][1].decision == "reject"
-                            or any(
-                                check.verdict == "mismatch" for check in reviewed[job.id][1].checks
-                            )
-                            for job in selected
-                        )
-                        else "undecided",
+                        "quality_status": quality_status,
+                        "plan_origin": frozen.get("plan_origin", {}).get(case, "unknown"),
+                        "final_confirmation": model == "klein-4b"
+                        and frozen.get("case_groups", {}).get(case) == "confirmation"
+                        and frozen.get("plan_origin", {}).get(case) == "local_llm"
+                        and readiness.get(case) == "accept",
                     }
                 )
                 if complete:
@@ -1068,7 +1138,8 @@ def summarize(report: Path) -> None:
             }
         )
     complete = (
-        len(available) == len(jobs)
+        not frozen.get("unready_cases")
+        and len(available) == len(jobs)
         and len(reviewed) == len(jobs)
         and all(row["result"] not in {"unrun", "unreviewed"} for row in pair_rows)
     )
@@ -1080,6 +1151,25 @@ def summarize(report: Path) -> None:
             "execution_target": execution_target(report, frozen),
             "reader": project.identity(),
             "planned_images": len(jobs),
+            "unready_cases": frozen.get("unready_cases", []),
+            "semantic_approved_cases_at_freeze": sum(
+                value == "local_llm" for value in frozen.get("plan_origin", {}).values()
+            ),
+            "semantic_approved_cases": sum(
+                origin == "local_llm" and readiness.get(key) == "accept"
+                for key, origin in frozen.get("plan_origin", {}).items()
+            ),
+            "plan_decisions": readiness,
+            "confirmation_works_expected": sum(
+                value == "confirmation" for value in frozen.get("case_groups", {}).values()
+            )
+            * len(config.seeds),
+            "confirmation_works_saved": sum(
+                row["final_confirmation"] and row["saved"] for row in works
+            ),
+            "confirmation_works_approved": sum(
+                row["final_confirmation"] and row["quality_approved"] is True for row in works
+            ),
             "image_budget": config.output_limit,
             "technical_retry_budget": config.technical_retry_limit,
             "reserved_images": len(state["jobs"]),
@@ -1114,6 +1204,9 @@ def summarize(report: Path) -> None:
             "images": image_rows,
             "pairs": pair_rows,
             "pair_counts": dict(Counter(row["result"] for row in pair_rows)),
+            "eligible_pair_counts": dict(
+                Counter(row["result"] for row in pair_rows if row["plan_eligible"])
+            ),
             "invalid_image_job_ids": invalid_images,
             "invalid_evaluation_ids": invalid_evaluations,
             "evaluation_failure": evaluation_failure,

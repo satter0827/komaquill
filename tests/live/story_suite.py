@@ -148,6 +148,9 @@ def plan(
         folder.mkdir(parents=True, exist_ok=False)
         atomic_json(folder / "original.json", {"models": original})
         factory = stories.planner
+        application_plan = stories.plan_story
+        semantic_correction = None
+        semantic_parent = None
 
         class BudgetedPlanner:
             def __init__(self, delegate):
@@ -210,24 +213,63 @@ def plan(
                     review = previous[-1]
                     if review.source_sha256 != hashlib.sha256(case["source"].encode()).hexdigest():
                         raise ValueError("Repair feedback refers to a different source.")
-                    policy = options.planning.model_dump()
-                    policy["guidance"] = [
-                        *policy["guidance"],
-                        "A previous plan was rejected by the reviewer. Correct its cause while "
-                        "preserving the original source: " + review.reason,
-                    ]
-                    extra = (
-                        "\n[story.planning]\n"
-                        + "\n".join(
-                            name + " = " + json.dumps(value, ensure_ascii=False)
-                            for name, value in policy.items()
-                        )
-                        + "\n"
+                    previous_plan = FileStoryRepository(workspace).read(review.story_id)
+                    envelope = json.loads(
+                        (
+                            FileStoryRepository(workspace).folder(review.story_id) / "plan.json"
+                        ).read_bytes()
                     )
-                    atomic_bytes(config_path, original_config + extra.encode())
-                    atomic_json(folder / "repair-review.json", review.model_dump(mode="json"))
+                    if (
+                        envelope["sha256"] != review.plan_sha256
+                        or previous_plan.request.source_sha256 != review.source_sha256
+                    ):
+                        raise ValueError("The semantic review does not match its retained plan.")
+                    evidence = FileStoryRepository(workspace).planning_evidence(review.story_id)
+                    responses = [
+                        row["response"] for row in evidence["attempts"] if row.get("response")
+                    ]
+                    if not responses:
+                        raise ValueError("The rejected planning response is unavailable.")
+                    previous_output = responses[-1]["content"]
+                    from komaquill.domain.stories import StoryDraft
+
+                    retained = previous_plan.model_dump(mode="json")
+                    retained = {key: retained[key] for key in StoryDraft.model_fields}
+                    retained["scenes"] = [
+                        {
+                            key: value
+                            for key, value in scene.items()
+                            if key not in {"scene_id", "position", "characters"}
+                        }
+                        for scene in retained["scenes"]
+                    ]
+                    if json.loads(previous_output) != retained:
+                        raise ValueError("The retained response differs from the reviewed plan.")
+                    semantic_correction = json.dumps(
+                        {
+                            "previous_output": previous_output,
+                            "validation_errors": [{"code": "semantic_review", "loc": []}],
+                            "requirements": review.reason,
+                        },
+                        ensure_ascii=False,
+                    )
+                    semantic_parent = str(review.story_id)
+                    atomic_json(
+                        folder / "repair-review.json",
+                        {
+                            "review": review.model_dump(mode="json"),
+                            "previous_output_sha256": hashlib.sha256(
+                                previous_output.encode()
+                            ).hexdigest(),
+                        },
+                    )
+
+            def reviewed_plan(*args, **kwargs):
+                return application_plan(*args, initial_correction=semantic_correction, **kwargs)
+
             with (
                 patch.object(stories, "planner", budgeted),
+                patch.object(stories, "plan_story", reviewed_plan),
                 patch.dict(
                     os.environ,
                     {
@@ -275,6 +317,7 @@ def plan(
                         "story_id": str(story_id) if story_id else None,
                         "status": measured["status"],
                         "llm_profile": llm_profile,
+                        "semantic_repair_of": semantic_parent,
                         "measurement": str((folder / "measurement.json").relative_to(report)),
                     }
                 )

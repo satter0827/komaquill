@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import ShutdownResult
 from komaquill.domain.workflow import digest
-from komaquill.infrastructure.atomic import atomic_json
+from komaquill.infrastructure.atomic import atomic_json, replace_file
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.locations import Locations, RunPlacement, StorageIndex, story_folder
 from komaquill.infrastructure.monitor_state import alive, read_monitor
@@ -256,7 +256,7 @@ def migrate(project: Project, *, dry_run: bool = False) -> dict[str, Any]:
                 shutil.copy2(source, temporary)
                 if checksum(temporary) != row["sha256"]:
                     raise KomaquillError(code="storage_failed", stage="storage")
-                temporary.replace(target)
+                replace_file(temporary, target)
             row["copied"] = True
             atomic_json(checkpoint, state)
         locations.save(StorageIndex.model_validate(state["index"]))

@@ -123,3 +123,15 @@ def test_quality_is_unknown_until_a_valid_saved_image_is_reviewed(record, valid,
         "generation_status": status,
         "quality_status": quality,
     }
+
+
+def test_clock_rollback_does_not_refund_owned_time(tmp_path):
+    create(tmp_path)
+    now = datetime.now(UTC)
+    budget.begin(tmp_path, "first", now=now)
+    with pytest.raises(ValueError, match="clock"):
+        budget.begin(tmp_path, "first", now=now - timedelta(seconds=1))
+    budget.checkpoint(tmp_path, "first", stopped_at=now + timedelta(minutes=1), released=True)
+    with pytest.raises(ValueError, match="clock"):
+        budget.begin(tmp_path, "second", now=now)
+    assert len(budget.read(tmp_path).allocations) == 1

@@ -31,6 +31,9 @@ def scene_input(plan: StoryPlan, scene: Scene, profile: GenerationPreset) -> Com
         for subject in scene.subjects
     )
     prompt = joined(
+        f"Exactly {len(subjects)} visible subjects, arranged from left to right"
+        if subjects
+        else "Only the specified objects and setting are visible; no people or animals are present",
         scene.visual_description,
         scene.location or "",
         str(plan.planner.planning_policy.get("style", "")),

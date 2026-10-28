@@ -30,6 +30,7 @@ def plan_story(
     allow_real_llm: bool = False,
     repair_attempts: int = 1,
     max_images: int,
+    initial_correction: str | None = None,
 ) -> StoryPlan:
     """Repair invalid content once; never retry authentication, transport or truncation."""
     if planner.provenance.provider != "fake" and not allow_real_llm:
@@ -53,7 +54,7 @@ def plan_story(
     operation_failure = None
     try:
         schema = output_schema(request)
-        correction = None
+        correction = initial_correction
         for index in range(repair_attempts + 1):
             repository.prepare_attempt(request, provenance, schema, index + 1, correction)
             applied_correction = correction

@@ -55,6 +55,11 @@ class VerificationBudget(BaseModel):
             or any(count < 1 for count in self.reservations.values())
             or len({row.key for row in self.allocations}) != len(self.allocations)
             or any(not row.ownership_released for row in self.allocations[:-1])
+            or any(
+                current.started_at < previous.stopped_at
+                for previous, current in zip(self.allocations, self.allocations[1:], strict=False)
+                if previous.stopped_at is not None
+            )
             or self.submission_seconds >= self.session_seconds
         ):
             raise ValueError("The verification budget is inconsistent.")
@@ -67,13 +72,13 @@ class VerificationBudget(BaseModel):
         )
 
     def used_seconds(self, now: datetime) -> float:
+        if any(
+            now < row.started_at or (row.ownership_released and now < row.stopped_at)
+            for row in self.allocations
+        ):
+            raise ValueError("The verification clock moved behind an owned interval.")
         return sum(
-            max(
-                0,
-                (
-                    (row.stopped_at if row.ownership_released else now) - row.started_at
-                ).total_seconds(),
-            )
+            ((row.stopped_at if row.ownership_released else now) - row.started_at).total_seconds()
             for row in self.allocations
         )
 

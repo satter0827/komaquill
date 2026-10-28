@@ -12,12 +12,18 @@ from komaquill.domain.workflow import digest
 from komaquill.infrastructure.atomic import atomic_json
 from komaquill.infrastructure.configuration import Project
 from komaquill.infrastructure.stories.storage import FileStoryRepository
-from tests.live.klein_comparison import ComparisonConfig, Job, runner_fingerprint, scene_conditions
+from tests.live.klein_comparison import (
+    ComparisonConfig,
+    Job,
+    fixed_plan,
+    runner_fingerprint,
+    scene_conditions,
+)
 from tests.live.story_suite import PlanReview, load
 from tests.support.story_cases import cases
 
 
-def reviewed_plans(suite_report: Path) -> dict:
+def reviewed_plans(suite_report: Path, *, require_all: bool = True) -> dict:
     """Require source-matched, attributed approval of actual saved LLM plans."""
     suite = load(suite_report)
     corpus = cases()
@@ -46,16 +52,17 @@ def reviewed_plans(suite_report: Path) -> dict:
                 == corpus[case_id].source_sha256
                 and review.plan_sha256 == envelope["sha256"]
                 and review.evaluator.kind == "ai"
-                and plan.planner.provider != "fake"
+                and plan.planner.provider == "openai-compatible"
+                and plan.planner.profile == item.get("llm_profile")
             ):
                 selected[case_id] = plan
                 break
-    if set(selected) != set(suite.config.live_cases):
+    if require_all and set(selected) != set(suite.config.live_cases):
         raise ValueError("Every final story requires a semantically approved real LLM plan.")
     return selected
 
 
-def freeze(report: Path, suite_report: Path) -> None:
+def freeze(report: Path, suite_report: Path, *, functional_wai: bool = False) -> None:
     """Resolve all baseline jobs from the same approved plans before GPU allocation."""
     if (report / "comparison.json").exists():
         raise ValueError("Resume the immutable verification instead of overwriting it.")
@@ -65,11 +72,19 @@ def freeze(report: Path, suite_report: Path) -> None:
         )
     )
     config = ComparisonConfig.model_validate(specification["comparison"])
-    plans = reviewed_plans(suite_report)
-    if set(plans) != set(config.cases):
+    approved = reviewed_plans(suite_report, require_all=not functional_wai)
+    if not set(approved) <= set(config.cases):
         raise ValueError("The reviewed plans differ from the frozen verification cases.")
+    plans = dict(approved)
+    if functional_wai:
+        for key in specification["wai_cases"]:
+            if key not in plans:
+                plans[key] = fixed_plan(key, config)
+    plans = {key: plans[key] for key in config.cases if key in plans}
+    unready = [key for key in config.cases if key not in approved]
     project = Project(report / "workspace")
-    Client.initialize(project.root)
+    if not (project.root / "komaquill.toml").exists():
+        Client.initialize(project.root)
     (project.root / "komaquill.toml").write_text(
         'models = ["wai-illustrious", "klein-4b"]\n', encoding="utf-8"
     )
@@ -80,7 +95,9 @@ def freeze(report: Path, suite_report: Path) -> None:
     for model in config.models:
         profile = settings.presets[model]
         for case_id, plan in plans.items():
-            if model == "wai-illustrious" and case_id not in wai_cases:
+            if (model == "wai-illustrious" and case_id not in wai_cases) or (
+                model == "klein-4b" and case_id not in approved
+            ):
                 continue
             seeds = (
                 config.seeds
@@ -103,10 +120,16 @@ def freeze(report: Path, suite_report: Path) -> None:
                             preset_sha256=preset_fingerprint(profile),
                         )
                     )
-    if len(jobs) != config.baseline_limit:
+    if len(jobs) > config.baseline_limit or (not unready and len(jobs) != config.baseline_limit):
         raise ValueError("Baseline jobs differ from the approved verification allocation.")
     frozen = {
         "format_version": 2,
+        "purpose": "story_validation",
+        "unready_cases": unready,
+        "case_groups": {key: corpus[key].group for key in config.cases},
+        "plan_origin": {
+            key: "local_llm" if key in approved else "curated_wai_functional_only" for key in plans
+        },
         "config": config.model_dump(mode="json"),
         "identity": project.identity(),
         "runner_sha256": runner_fingerprint(),

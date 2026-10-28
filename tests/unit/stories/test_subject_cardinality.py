@@ -11,7 +11,18 @@ from tests.unit.stories.test_visual_specification import example
 
 
 @pytest.mark.parametrize("count", [0, 1, 2, 3])
-def test_actor_count_survives_planning_compilation_and_public_request(project, count):
+@pytest.mark.parametrize(
+    "profile_name",
+    [
+        "klein-4b",
+        "klein-4b-edit",
+        "klein-9b",
+        "klein-9b-edit",
+        "wai-illustrious",
+        "wai-illustrious-img2img",
+    ],
+)
+def test_actor_count_survives_planning_compilation_and_public_request(project, count, profile_name):
     value = example()
     value["scenes"][0]["subjects"] = [
         {"character": actor["key"], "action": "stands beside the curb"}
@@ -29,8 +40,12 @@ def test_actor_count_survives_planning_compilation_and_public_request(project, c
             "props": [],
         }
     )
-    profile = project.settings().presets["klein-4b"]
+    profile = project.settings().presets[profile_name]
     compiled = scene_input(plan, scene, profile)
+    if count:
+        assert compiled.prompt.startswith(f"Exactly {count} visible subjects")
+    else:
+        assert "no people or animals" in compiled.prompt
     assert len(compiled.subject_prompts) == count
     config = SceneRenderConfig(scene=1, model="klein-4b", subjects=compiled.subject_prompts)
     image = ImageInput(prompt=compiled.prompt, subjects=config.subjects)

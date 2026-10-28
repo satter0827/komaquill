@@ -13,7 +13,7 @@ from aiohttp import web
 
 from komaquill.domain.errors import failure_info
 from komaquill.domain.materials import Material
-from komaquill.infrastructure.atomic import atomic_json
+from komaquill.infrastructure.atomic import atomic_json, replace_file
 
 CHUNK_BYTES = 1024 * 1024
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"})
@@ -64,7 +64,7 @@ class Preservation:
                     size += len(chunk)
             sha = digest.hexdigest()
             target = self.blobs / sha
-            temporary.replace(target)
+            replace_file(temporary, target)
             bindings = {}
             if kind == "workflows":
                 graph = json.loads(target.read_bytes())

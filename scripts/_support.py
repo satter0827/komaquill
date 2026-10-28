@@ -4,12 +4,17 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
+WINDOWS_REPLACE_ERRORS = frozenset({5, 32, 33})
+REPLACE_TIMEOUT_SECONDS = 1.0
+REPLACE_RETRY_SECONDS = 0.05
 
 
 def message(key: str, **values: object) -> str:
@@ -30,7 +35,23 @@ def atomic_json(path: Path, data: object) -> None:
             json.dump(data, handle, ensure_ascii=False, indent=2)
             handle.flush()
             os.fsync(handle.fileno())
-        temporary.replace(path)
+        deadline = None
+        while True:
+            try:
+                temporary.replace(path)
+                break
+            except PermissionError as error:
+                if (
+                    sys.platform != "win32"
+                    or getattr(error, "winerror", None) not in WINDOWS_REPLACE_ERRORS
+                ):
+                    raise
+                now = time.monotonic()
+                if deadline is None:
+                    deadline = now + REPLACE_TIMEOUT_SECONDS
+                elif now >= deadline:
+                    raise
+                time.sleep(REPLACE_RETRY_SECONDS)
     finally:
         with suppress(OSError):
             temporary.unlink(missing_ok=True)

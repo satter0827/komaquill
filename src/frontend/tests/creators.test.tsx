@@ -33,7 +33,10 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
 
-async function draftEditor() {
+async function draftEditor(
+  path = '/characters/new',
+  kind: 'character' | 'story' = 'character',
+) {
   render(
     <QueryClientProvider
       client={
@@ -45,11 +48,15 @@ async function draftEditor() {
         })
       }
     >
-      <MemoryRouter initialEntries={['/characters/new']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route
-            path="/characters/:identity"
-            element={<LibraryPage kind="character" />}
+            path={
+              kind === 'character'
+                ? '/characters/:identity'
+                : '/stories/:identity'
+            }
+            element={<LibraryPage kind={kind} />}
           />
         </Routes>
       </MemoryRouter>
@@ -66,6 +73,45 @@ async function draftEditor() {
   await userEvent.click(screen.getByLabelText(m.allowReal))
   return screen.getByText(m.createDraft, { selector: 'button' })
 }
+
+it('applies draft text without changing the selected counterpart or claiming it is saved', async () => {
+  let job: CreationJob
+  server.use(
+    http.get(`${base}/api/v1/stories`, () =>
+      HttpResponse.json([
+        {
+          id: 'original',
+          name: 'Original',
+          revision: 0,
+          character_id: 'chosen',
+        },
+      ]),
+    ),
+    http.get(`${base}/api/v1/characters`, () =>
+      HttpResponse.json([{ id: 'chosen', name: 'Chosen' }]),
+    ),
+    http.post(`${base}/api/v1/creation-jobs`, async ({ request }) => {
+      const body = (await request.json()) as CreationRequest
+      job = {
+        id: body.operation_id,
+        request: body,
+        state: 'complete',
+        result: { name: 'New story', character_id: 'invented' },
+      }
+      return HttpResponse.json(job, { status: 202 })
+    }),
+    http.get(`${base}/api/v1/creation-jobs/:identity`, () =>
+      HttpResponse.json(job),
+    ),
+  )
+  const button = await draftEditor('/stories/original', 'story')
+  expect(screen.getByRole('status')).toHaveTextContent(m.saved)
+  await userEvent.click(button)
+  await userEvent.click(await screen.findByRole('button', { name: m.useDraft }))
+  expect(screen.getByLabelText(m.name)).toHaveValue('New story')
+  expect(screen.getByLabelText(m.defaultCharacter)).toHaveValue('chosen')
+  expect(screen.getByRole('status')).toBeEmptyDOMElement()
+})
 
 it('resolves a lost creation response with the original ID and input', async () => {
   const requests: CreationRequest[] = []
@@ -100,6 +146,44 @@ it('resolves a lost creation response with the original ID and input', async () 
   expect(await screen.findByRole('button', { name: m.useDraft })).toBeVisible()
   expect(requests).toHaveLength(2)
   expect(requests[0]).toEqual(requests[1])
+})
+
+it('allows correcting a creation rejected before acceptance', async () => {
+  const requests: CreationRequest[] = []
+  server.use(
+    http.post(`${base}/api/v1/creation-jobs`, async ({ request }) => {
+      const body = (await request.json()) as CreationRequest
+      requests.push(body)
+      return requests.length === 1
+        ? HttpResponse.json({ code: 'invalid_request' }, { status: 422 })
+        : HttpResponse.json(
+            {
+              id: body.operation_id,
+              request: body,
+              state: 'complete',
+              result: { name: 'Mira' },
+            },
+            { status: 202 },
+          )
+    }),
+    http.get(`${base}/api/v1/creation-jobs/:identity`, () =>
+      HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
+    ),
+  )
+  const button = await draftEditor()
+  await userEvent.click(button)
+  expect(await screen.findByText(m.errors.invalid_request)).toBeVisible()
+  await userEvent.clear(screen.getByLabelText(m.draftPrompt))
+  await userEvent.type(screen.getByLabelText(m.draftPrompt), 'A corrected idea')
+  await userEvent.click(screen.getByLabelText(m.allowReal))
+  expect(button).not.toBeDisabled()
+  expect(
+    screen.queryByRole('button', { name: m.retryRequest }),
+  ).not.toBeInTheDocument()
+  await userEvent.click(button)
+  await waitFor(() => expect(requests).toHaveLength(2))
+  expect(requests[1].operation_id).not.toBe(requests[0].operation_id)
+  expect(requests[1].prompt).toBe('A corrected idea')
 })
 
 it('keeps an accepted creation busy before the first status response', async () => {

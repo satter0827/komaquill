@@ -4,6 +4,7 @@
 
 | 記録 | 対象 |
 |---|---|
+| [個人設定とプリセットの再レビュー](results/creators-review.md) | 初期選択、受付状態、訂正と再確認、言語契約、ホームの復旧、再検証 |
 | [個人設定・プリセット・二言語対応](results/creators-and-play.md) | 新規9要件、実4B、実画像、DB移行、Node生成物、配布版 |
 | [ReactとAPIの再レビュー](results/react-review.md) | 保存復旧、DB移行、画面競合、関連検証、Windowsの停止処理と残る要件 |
 | [ReactとAPIの基本操作](results/react-chat.md) | モノレポ、会話保存、画面、画像境界、配布、関連検証の選択 |

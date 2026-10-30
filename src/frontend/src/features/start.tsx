@@ -45,12 +45,15 @@ export function NewConversation() {
     const list = choices(kind)
     if (search.has(kind))
       return list.find((preset) => preset.id === search.get(kind))
+    if (kind === 'character') {
+      const story = selected('story')
+      if (story && 'character_id' in story && story.character_id)
+        return list.find((preset) => preset.id === story.character_id)
+    }
     return (
-      list.find((preset) => preset.id === search.get(kind)) ??
       (kind === 'player'
         ? list.find((preset) => preset.id === preferences.value.player_id)
-        : undefined) ??
-      list[0]
+        : undefined) ?? list[0]
     )
   }
   const player = selected('player'),
@@ -141,7 +144,6 @@ export function NewConversation() {
                     onChange={(event) => change(kind, event.target.value)}
                   >
                     {!record && <option value="">{m.noPresets}</option>}
-                    {!record && <option value="">{m.noPresets}</option>}
                     {choices(kind).map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
@@ -151,11 +153,16 @@ export function NewConversation() {
                   </select>
                 </label>
                 <p className="subtle">
-                  {record?.description ||
-                    (record && 'appearance' in record
-                      ? record.appearance
-                      : '') ||
-                    m.noPresets}
+                  {record
+                    ? record.description ||
+                      ('appearance' in record
+                        ? record.appearance || record.role
+                        : record.opening ||
+                          record.world ||
+                          record.place ||
+                          record.goal) ||
+                      record.name
+                    : m.noPresets}
                 </p>
                 <Link
                   className="text-button"

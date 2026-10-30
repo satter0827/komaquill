@@ -96,6 +96,125 @@ function app(path: string, cache?: QueryClient) {
 }
 
 describe('conversation workflow', () => {
+  it.each(['/new', '/new?story=stories'])(
+    'uses the story counterpart on first entry at %s',
+    async (path) => {
+      server.use(
+        http.get(`${base}/api/v1/characters`, () =>
+          HttpResponse.json([
+            { id: 'first', name: 'First', sample: true, sample_locale: 'ja' },
+            {
+              id: 'recommended',
+              name: 'Recommended',
+              sample: true,
+              sample_locale: 'ja',
+            },
+          ]),
+        ),
+        http.get(`${base}/api/v1/stories`, () =>
+          HttpResponse.json([
+            {
+              id: 'stories',
+              name: 'Story',
+              character_id: 'recommended',
+              opening: 'A saved opening',
+              description: '',
+              sample: true,
+              sample_locale: 'ja',
+            },
+          ]),
+        ),
+      )
+      app(path)
+      await waitFor(() =>
+        expect(screen.getByLabelText(m.chooseCharacter)).toHaveValue(
+          'recommended',
+        ),
+      )
+      expect(screen.getByText('A saved opening')).toBeVisible()
+      expect(screen.queryByText(m.noPresets)).not.toBeInTheDocument()
+    },
+  )
+
+  it('keeps an explicit counterpart when a story recommends someone else', async () => {
+    server.use(
+      http.get(`${base}/api/v1/characters`, () =>
+        HttpResponse.json([
+          { id: 'chosen', name: 'Chosen', sample: true, sample_locale: 'ja' },
+          {
+            id: 'recommended',
+            name: 'Recommended',
+            sample: true,
+            sample_locale: 'ja',
+          },
+        ]),
+      ),
+      http.get(`${base}/api/v1/stories`, () =>
+        HttpResponse.json([
+          {
+            id: 'stories',
+            name: 'Story',
+            character_id: 'recommended',
+            sample: true,
+            sample_locale: 'ja',
+          },
+        ]),
+      ),
+    )
+    app('/new?story=stories&character=chosen')
+    await waitFor(() =>
+      expect(screen.getByLabelText(m.chooseCharacter)).toHaveValue('chosen'),
+    )
+  })
+
+  it('shows one empty selection when an explicitly selected preset is missing', async () => {
+    app('/new?story=missing')
+    await waitFor(() =>
+      expect(screen.getByLabelText(m.chooseCharacter)).toHaveValue(
+        'characters',
+      ),
+    )
+    const select = screen.getByLabelText(m.chooseStory) as HTMLSelectElement
+    expect(
+      [...select.options].filter((option) => option.value === ''),
+    ).toHaveLength(1)
+    expect(screen.getByRole('button', { name: m.create })).toBeDisabled()
+  })
+
+  it('keeps an accepted turn busy while its first status response is pending', async () => {
+    let release: () => void = () => {}
+    let polling = false
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server.use(
+      http.get(`${base}/api/v1/operations/:identity`, async ({ params }) => {
+        if (params.identity !== 'op')
+          return HttpResponse.json(
+            { code: 'request_not_found' },
+            { status: 404 },
+          )
+        polling = true
+        await pending
+        return HttpResponse.json({
+          id: 'op',
+          conversation_id: 'one',
+          state: 'complete',
+        })
+      }),
+    )
+    app('/conversations/one')
+    const input = await screen.findByRole('textbox', { name: m.messageLabel })
+    await userEvent.type(input, 'Hello')
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    try {
+      await waitFor(() => expect(polling).toBe(true))
+      await userEvent.type(input, 'Next')
+      expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
+    } finally {
+      release()
+    }
+  })
   it('preserves a new draft when an earlier submission is accepted', async () => {
     const cache = new QueryClient({
       defaultOptions: {

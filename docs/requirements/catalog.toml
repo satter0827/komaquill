@@ -31,6 +31,7 @@ tests = ["tests/integration/test_library.py", "tests/live/creators_acceptance.py
 [requirements.REQ-PLAY-COMPOSITION]
 summary = "個人設定・キャラクター・ストーリーを会話へ反映し作成から再開までの体験を整える"
 status = "implemented"
+implementation_note = "ストーリーの既定の相手を初回と再読込でも解決し、受付済み要求・入力拒否・受付不明を区別する。ホームの読込失敗は一覧を再確認できる。"
 acceptance = ["会話作成は保存済みの自分・キャラクター・ストーリーのプリセットから選ぶ流れを基本にする", "名前・概要・代表画像やバナーを確認して選択できる", "会話作成画面は選択と開始内容の確認を中心とし設定本文を毎回入力させない", "未作成の場合は各管理画面へ案内し保存後に会話作成の選択へ戻れる", "選んだ自分・登場人物・舞台を会話開始時に固定する", "固定定義・現在状態・履歴を分ける", "プリセットの後の編集が既存会話を暗黙に変更しない", "作る・選ぶ・遊ぶ・続きを開く流れで画面を再構成する", "通常画面では初見者に分かる文言を使い技術的な詳細を必要時に開く", "人物画像・バナー・場面画像の用途を分け適切な位置に表示する", "画面表示をReact、保存・合成・版・操作・LLM・画像の管理をPythonへ置く", "キーボード操作・拡大・狭い画面・読み上げを検査する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/frontend/src/features/start.tsx", "src/frontend/src/features/conversations.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]

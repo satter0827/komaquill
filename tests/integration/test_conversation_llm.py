@@ -6,10 +6,147 @@ from uuid import uuid4
 import pytest
 from komaquill.api import Client
 from komaquill.conversations.models import ConversationInput, SendInput
+from komaquill.library.models import CreationRequest
 
 
+def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkeypatch):
+    import langchain_openai
+    from langchain_core.messages import AIMessage
+
+    calls = []
+    schemas = []
+
+    class Model:
+        def __init__(self, **options):
+            self.model = options["model"]
+
+        def bind(self, **options):
+            schemas.append(options["response_format"]["json_schema"]["schema"])
+            return self
+
+        def invoke(self, messages, config):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "name": "A seaside shop",
+                        "character_id": str(uuid4()) if len(calls) == 1 else None,
+                    }
+                ),
+                response_metadata={"model_name": self.model},
+            )
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    api = Client.initialize(tmp_path)
+    result = api.library.creator.draft(
+        CreationRequest(
+            operation_id=uuid4(),
+            kind="story_draft",
+            prompt="A seaside shop",
+            locale="en",
+            llm_profile="lmstudio-4b",
+            allow_real_llm=True,
+        )
+    )
+    assert len(calls) == 2 and result.character_id is None
+    assert schemas[0]["properties"]["character_id"]["type"] == "null"
+    assert api.stories.get(api.stories.create(result).id).name == "A seaside shop"
+
+
+def test_operation_conditions_replace_frozen_prompt_defaults(tmp_path, monkeypatch):
+    import langchain_openai
+    from langchain_core.messages import AIMessage
+
+    calls = []
+
+    class Model:
+        def __init__(self, **options):
+            self.model = options["model"]
+
+        def bind(self, **options):
+            return self
+
+        def invoke(self, messages, config):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "text": "Here is the book.",
+                        "state": {},
+                        "scene": "An adult woman points at a book.",
+                    }
+                ),
+                response_metadata={"model_name": self.model},
+            )
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    api = Client.initialize(tmp_path)
+    conversation = api.conversations.create(
+        ConversationInput(
+            title="Frozen",
+            locale="ja",
+            images=False,
+            response_length="detailed",
+            llm_profile="lmstudio-4b",
+        )
+    )
+    api.conversations.responder.reply(
+        conversation,
+        SendInput(
+            operation_id=uuid4(),
+            text="Show the scene.",
+            locale="en",
+            images=True,
+            response_length="short",
+            allow_real_llm=True,
+        ),
+    )
+    context = json.loads(calls[0][0].content.splitlines()[-2])
+    effective = context["definition"]
+    assert effective["locale"] == "en" and effective["images"] is True
+    assert effective["response_length"] == "short"
+    assert api.conversations.get(conversation.id).definition == conversation.definition
+
+
+@pytest.mark.parametrize("kind", ["character_draft", "story_draft"])
+def test_english_drafts_preserve_requested_proper_names(tmp_path, monkeypatch, kind):
+    import langchain_openai
+    from langchain_core.messages import AIMessage
+
+    calls = []
+
+    class Model:
+        def __init__(self, **options):
+            self.model = options["model"]
+
+        def bind(self, **options):
+            return self
+
+        def invoke(self, messages, config):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps({"name": "栞", "description": "A quiet seaside bookshop."}),
+                response_metadata={"model_name": self.model},
+            )
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    api = Client.initialize(tmp_path)
+    result = api.library.creator.draft(
+        CreationRequest(
+            operation_id=uuid4(),
+            kind=kind,
+            prompt="Keep the name 栞.",
+            locale="en",
+            llm_profile="lmstudio-4b",
+            allow_real_llm=True,
+        )
+    )
+    assert result.name == "栞" and len(calls) == 1
+
+
+@pytest.mark.parametrize("first_scene", [None, "栞 points at a book."])
 def test_explicit_image_request_requires_an_english_scene_with_one_bounded_repair(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, first_scene
 ):
     import langchain_openai
     from langchain_core.messages import AIMessage
@@ -31,7 +168,7 @@ def test_explicit_image_request_requires_an_english_scene_with_one_bounded_repai
                     {
                         "text": "栞は静かに窓辺の本を指さした。",
                         "state": {},
-                        "scene": None
+                        "scene": first_scene
                         if len(calls) == 1
                         else "An adult woman with short silver hair and a black apron "
                         "points at a book beside a rainy window.",
@@ -43,7 +180,12 @@ def test_explicit_image_request_requires_an_english_scene_with_one_bounded_repai
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
     api = Client.initialize(tmp_path)
     conversation = api.conversations.create(
-        ConversationInput(title="Required image", llm_profile="lmstudio-4b", locale="ja")
+        ConversationInput(
+            title="Required image",
+            llm_profile="lmstudio-4b",
+            locale="ja",
+            character=json.dumps({"name": "栞"}),
+        )
     )
     reply = api.conversations.responder.reply(
         conversation,

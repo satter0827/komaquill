@@ -39,8 +39,15 @@ MIN_LANGUAGE_CHARACTERS = 12
 class IllustratedReply(Reply):
     scene: str = Field(
         min_length=1,
-        description="Required English image description, including appearance and setting.",
+        description=(
+            "Required English visual description, including appearance and setting. "
+            "Replace names with visible descriptions. Do not repeat the user's request."
+        ),
     )
+
+
+class StoryDraft(StoryInput):
+    character_id: None = None
 
 
 class ConversationSettings(BaseModel):
@@ -279,8 +286,10 @@ class StructuredResponder:
                                         "Correct the previous response. Return valid JSON matching "
                                         "the supplied schema. Follow the required output language "
                                         "exactly, including after a language switch. "
-                                        "Do not translate saved proper names or change facts. "
-                                        + correction
+                                        "Preserve saved proper names in visible text. "
+                                        "For images replace names with English "
+                                        "visual descriptions. "
+                                        "Do not change facts. " + correction
                                     )
                                 ),
                             ]
@@ -358,6 +367,10 @@ class StructuredResponder:
                 )
         language = "Japanese" if locale == "ja" else "English"
         definition = conversation.definition.model_dump(mode="json", exclude={"presets"})
+        definition["locale"] = locale
+        definition["images"] = (
+            request.images if request.images is not None else conversation.definition.images
+        )
         definition["response_length"] = (
             request.response_length or conversation.definition.response_length
         )
@@ -377,17 +390,18 @@ class StructuredResponder:
         messages: list[tuple[str, str]] = []
         for turn in conversation.turns[-self.settings.context_turns :]:
             messages.extend([("user", turn.user), ("assistant", turn.assistant)])
+        scene_contract = (
+            "The scene field must be a nonempty English visual description, never null. "
+            if request.images is True
+            else "The scene field must be null or an English visual description. "
+        )
         language_contract = (
             f"The JSON text field must be written in {language}. "
-            "The scene field must be null or an English visual description, "
-            "even when text is Japanese. "
-            "Do not write Japanese in the scene field."
+            + scene_contract
+            + "Replace character names in scene with their visible appearance. "
+            "Do not write Japanese in scene or repeat the user's request. "
+            "Image descriptions belong in scene, not in state."
         )
-        if request.images is True:
-            language_contract += (
-                " An image was explicitly requested: "
-                "scene must be a nonempty English description, never null."
-            )
         messages.append(("user", request.text + "\n\n" + language_contract))
         names: list[str] = []
         for text in [conversation.definition.user, conversation.definition.character]:
@@ -401,7 +415,7 @@ class StructuredResponder:
         def validate(reply: Reply) -> None:
             check_language(reply.text, locale, tuple(names))
             if reply.scene:
-                check_language(reply.scene, "en", tuple(names))
+                check_language(reply.scene, "en")
 
         return self.invoke(
             IllustratedReply if request.images is True else Reply,
@@ -416,7 +430,14 @@ class StructuredResponder:
 
     def draft(self, request: CreationRequest) -> CharacterInput | StoryInput:
         language = "Japanese" if request.locale == "ja" else "English"
-        schema = CharacterInput if request.kind == "character_draft" else StoryInput
+        schema = CharacterInput if request.kind == "character_draft" else StoryDraft
+
+        def validate(value: BaseModel) -> None:
+            names = tuple(
+                str(name) for name in value.model_dump(include={"name", "address"}).values() if name
+            )
+            check_language(value.model_dump_json(), request.locale, names)
+
         result = self.invoke(
             schema,
             request.operation_id,
@@ -426,7 +447,7 @@ class StructuredResponder:
             f"{language}. Preserve requested facts. Do not add identifiers or hidden reasoning.",
             [("user", request.prompt + f"\n\nWrite the draft in {language}.")],
             purpose="draft-",
-            validate=lambda value: check_language(value.model_dump_json(), request.locale),
+            validate=validate,
             correction=f"Write the draft fields in {language}.",
         )
         return cast(CharacterInput | StoryInput, result)

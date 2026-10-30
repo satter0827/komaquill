@@ -13,6 +13,19 @@ export function useCreation() {
   const mutation = useMutation({
     mutationFn: async (request: CreationRequest) =>
       (await createJob({ body: request })).data!,
+    onError: (error) => {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? error.code
+          : null
+      if (
+        code === 'invalid_request' ||
+        code === 'request_not_found' ||
+        code === 'operation_conflict'
+      ) {
+        setPrepared(null)
+      }
+    },
     onSuccess: (data) => {
       cache.setQueryData<CreationJob>(['creation', data.id], (current) =>
         current && ['complete', 'failed', 'interrupted'].includes(current.state)
@@ -85,14 +98,16 @@ export function CreationStatus({
           <p role="alert" className="error">
             {failure(creation.mutation.error)}
           </p>
-          <Button
-            disabled={creation.mutation.isPending}
-            onClick={() =>
-              creation.prepared && creation.start(creation.prepared)
-            }
-          >
-            {m.retryRequest}
-          </Button>
+          {creation.prepared && (
+            <Button
+              disabled={creation.mutation.isPending}
+              onClick={() =>
+                creation.prepared && creation.start(creation.prepared)
+              }
+            >
+              {m.retryRequest}
+            </Button>
+          )}
         </>
       )}
       {creation.job.error && (

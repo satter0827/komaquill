@@ -20,7 +20,7 @@ import { LibraryPage, loadPresets, PresetCard } from '../features/library'
 import { ImagesPage } from '../features/images'
 import { PreferencesPage } from '../features/preferences'
 import { RuntimePage } from '../features/runtime'
-import { useMessages, usePreferences } from './preferences'
+import { useFailure, useMessages, usePreferences } from './preferences'
 
 export function App() {
   const m = useMessages()
@@ -135,6 +135,7 @@ export function App() {
 
 function Home() {
   const m = useMessages()
+  const failure = useFailure()
   const { value } = usePreferences()
   const stories = useQuery({
     queryKey: ['stories'],
@@ -155,6 +156,22 @@ function Home() {
           {m.newConversation}
         </Link>
       </div>
+      {[stories, conversations].map(
+        (query, index) =>
+          query.error && (
+            <div key={index}>
+              <p role="alert" className="error">
+                {failure(query.error)}
+              </p>
+              <Button
+                onClick={() => void query.refetch()}
+                disabled={query.isFetching}
+              >
+                {m.refresh}
+              </Button>
+            </div>
+          ),
+      )}
       {!!conversations.data?.length && (
         <div className="home-section">
           <h2>{m.continueStory}</h2>

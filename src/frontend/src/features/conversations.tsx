@@ -9,7 +9,7 @@ import {
   getOperation,
   sendTurn,
 } from '../api/generated/sdk.gen'
-import type { SendInput } from '../api/generated/types.gen'
+import type { OperationView, SendInput } from '../api/generated/types.gen'
 import { POLL_INTERVAL_MS } from '../api/client'
 import { Button } from '../components/ui/button'
 import {
@@ -70,6 +70,12 @@ function ConversationView({ identity }: { identity: string }) {
     mutationFn: async (body: SendInput) =>
       (await sendTurn({ path: { identity }, body })).data!,
     onSuccess: (result, submitted) => {
+      cache.setQueryData<OperationView>(['operation', result.id], (previous) =>
+        previous &&
+        ['complete', 'failed', 'interrupted'].includes(previous.state)
+          ? previous
+          : result,
+      )
       setOperationId(result.id)
       setText((current) => (current === submitted.text ? '' : current))
       setAllowReal(false)

@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from komaquill.api import Client, CreationRequest, KomaquillError
+from komaquill.api import CharacterInput, Client, CreationRequest, KomaquillError, StoryInput
 from komaquill.conversations.models import SendInput
 from komaquill.library.models import ConversationStart, PresetRef
 from komaquill.library.service import sample_id
@@ -44,8 +44,9 @@ def main() -> None:
                 ("ja", "港町の古書店。短い銀髪と黒いエプロンの店主、栞。穏やかな成人女性。"),
                 (
                     "en",
-                    "A quiet seaside bookshop. Shiori, an adult shopkeeper "
-                    "with short silver hair and a black apron.",
+                    "A quiet seaside bookshop called Tidebound Books. "
+                    "The adult shopkeeper has short silver hair and a black apron. "
+                    "Keep the shopkeeper's name exactly as 栞.",
                 ),
             ]:
                 for kind in () if args.skip_drafts else ("character_draft", "story_draft"):
@@ -59,8 +60,22 @@ def main() -> None:
                     )
                     library.accept(request)
                     job = library.execute(request.operation_id)
+                    preset = None
+                    if job.state == "complete" and job.result is not None:
+                        preset = (
+                            api.characters.create(CharacterInput.model_validate(job.result))
+                            if kind == "character_draft"
+                            else api.stories.create(StoryInput.model_validate(job.result))
+                        )
                     report["cases"].append(
-                        {"kind": kind, "locale": locale, "result": job.model_dump(mode="json")}
+                        {
+                            "kind": kind,
+                            "locale": locale,
+                            "result": job.model_dump(mode="json"),
+                            "preset": preset.model_dump(mode="json")
+                            if preset is not None
+                            else None,
+                        }
                     )
                     save()
                     print(kind, locale, job.state, job.error, flush=True)
@@ -94,6 +109,29 @@ def main() -> None:
                 )
                 save()
                 print("conversation", locale, operation.state, operation.error, flush=True)
+            reply = api.conversations.responder.reply(
+                api.conversations.get(conversation.id),
+                SendInput(
+                    operation_id=uuid4(),
+                    text="栞が窓辺の本を指さす場面を描いてください。",
+                    locale="ja",
+                    images=True,
+                    allow_real_llm=True,
+                ),
+            )
+            report["cases"].append(
+                {
+                    "kind": "image_description",
+                    "locale": "ja",
+                    "reply": reply.model_dump(mode="json"),
+                }
+            )
+            save()
+            assert all(
+                case.get("result", case.get("operation", {})).get("state") == "complete"
+                for case in report["cases"]
+                if case["kind"] != "image_description"
+            )
         except KomaquillError as error:
             report["error"] = error.code.value
             raise

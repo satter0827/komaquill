@@ -75,6 +75,54 @@ test('generates and collects a standalone image', async ({ page }) => {
   await expect(image).toHaveJSProperty('naturalWidth', 8)
 })
 
+test('starts a saved story with its recommended counterpart after reopening', async ({
+  page,
+}) => {
+  await page.goto('/stories/new')
+  await page.getByLabel(ja.name, { exact: true }).fill('Clocktower')
+  await page
+    .getByLabel(ja.opening, { exact: true })
+    .fill('A visitor waits at the clocktower.')
+  await expect(
+    page.getByRole('option', { name: 'Shiori', exact: true }),
+  ).toHaveCount(0)
+  await page
+    .getByLabel(ja.defaultCharacter)
+    .selectOption({ label: 'Mira edited' })
+  await page.getByLabel(ja.autoImage).uncheck()
+  await page.getByRole('button', { name: ja.save, exact: true }).click()
+  await expect(page.getByRole('status').first()).toHaveText(ja.saved)
+  await page.getByRole('link', { name: ja.play, exact: true }).click()
+  await page
+    .locator('.preset-card')
+    .filter({
+      has: page.getByRole('heading', { name: 'Clocktower', exact: true }),
+    })
+    .getByRole('link', { name: ja.use + ' →', exact: true })
+    .click()
+  await expect(
+    page.getByLabel(ja.chooseCharacter).locator('option:checked'),
+  ).toHaveText('Mira edited')
+  await expect(
+    page.getByText('A visitor waits at the clocktower.', { exact: true }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(
+    page.getByLabel(ja.chooseCharacter).locator('option:checked'),
+  ).toHaveText('Mira edited')
+  await page.getByLabel(ja.profile).selectOption({ label: ja.localModel })
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Clocktower', exact: true }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(
+    page
+      .getByText('A visitor waits at the clocktower.', { exact: true })
+      .first(),
+  ).toBeVisible()
+})
+
 test('persists language and selects the paired English sample', async ({
   page,
 }) => {

@@ -442,11 +442,17 @@ function PresetEditor({
                   }
                 >
                   <option value="">{m.noDefault}</option>
-                  {characters.data?.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
+                  {characters.data
+                    ?.filter(
+                      (item) =>
+                        !item.sample ||
+                        item.sample_locale === preferences.value.locale,
+                    )
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
                 </select>
               </label>
             )}
@@ -656,15 +662,19 @@ function PresetEditor({
                         ))}
                     </dl>
                     <Button
-                      onClick={() =>
-                        setValue(
-                          Object.fromEntries(
+                      onClick={() => {
+                        setValue((previous) => ({
+                          ...previous,
+                          ...(Object.fromEntries(
                             Object.entries(draft.job.data!.result!).filter(
-                              ([, v]) => typeof v === 'string',
+                              ([key, v]) =>
+                                fields[kind].some((field) => field === key) &&
+                                typeof v === 'string',
                             ),
-                          ) as Fields,
-                        )
-                      }
+                          ) as Fields),
+                        }))
+                        setNotice('')
+                      }}
                     >
                       {m.useDraft}
                     </Button>

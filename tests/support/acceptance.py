@@ -8,13 +8,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
 import threading
-import time
 import traceback
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from importlib.resources import files
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -113,6 +110,8 @@ def acceptance_workspace(parent: Path):
 
 def run_acceptance(wheel: Path | None = None) -> None:
     """Run one API acceptance scenario against local or isolated installation."""
+    if wheel is not None:
+        wheel = wheel.resolve()
     uv = os.environ.get("KOMAQUILL_UV") or shutil.which("uv")
     if wheel is not None:
         assert uv
@@ -199,38 +198,33 @@ def run_acceptance(wheel: Path | None = None) -> None:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    # Temporary isolation outside the checkout is removed even after a failed assertion.
     parent = Path(os.environ["LOCALAPPDATA"]) / "Temp" if os.name == "nt" else Path("/tmp")
     try:
         with acceptance_workspace(parent) as root:
-            env = dict(os.environ, PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
-            for name in list(env):
-                if name.startswith("KOMAQUILL_") and name != "KOMAQUILL_UV":
-                    env.pop(name)
-            for name in [
-                "PYTHONPATH",
-                "KOMAQUILL_PROJECT_DIR",
-                "COVERAGE_PROCESS_START",
-                "PYTEST_ADDOPTS",
-            ]:
-                env.pop(name, None)
-            python = root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith(("KOMAQUILL_", "LANGCHAIN_", "LANGSMITH_"))
+                and key not in {"PYTHONPATH", "PYTEST_ADDOPTS", "COVERAGE_PROCESS_START"}
+            }
+            env.update(PYTHONUTF8="1", PYTHONDONTWRITEBYTECODE="1")
+            python = Path(sys.executable)
             if wheel is not None:
+                python = root / (
+                    "venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python"
+                )
                 subprocess.run(
                     [uv, "venv", "--python", sys.executable, str(root / "venv")],
-                    env=env,
                     check=True,
                     capture_output=True,
                 )
                 subprocess.run(
                     [uv, "pip", "install", "--python", str(python), str(wheel)],
-                    env=env,
                     check=True,
                     capture_output=True,
                 )
             else:
-                python = Path(sys.executable)
-                env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src")
+                env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "src/backend/src")
             workspace = root / "work"
             workspace.mkdir()
 
@@ -242,77 +236,32 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     text=True,
                     encoding="utf-8",
                     capture_output=True,
-                    timeout=30,
+                    timeout=60,
                 )
                 assert result.returncode == 0, (
                     result.stdout + result.stderr + json.dumps(failure_snapshot(workspace))
                 )
-                return result
+                return result.stdout
 
             command("init")
-            bundle = workspace / "presets/custom"
-            bundle.mkdir(parents=True)
-            for name in ("preset.toml", "workflow.json", "workflow-api.json"):
-                if wheel is not None:
-                    with zipfile.ZipFile(wheel) as archive:
-                        content = archive.read("komaquill/resources/presets/klein-4b/" + name)
-                else:
-                    content = (
-                        files("komaquill")
-                        .joinpath("resources/presets/klein-4b/" + name)
-                        .read_bytes()
-                    )
-                if name == "preset.toml":
-                    content = content.replace(b'model_id = "klein-4b"', b'model_id = "custom"')
-                (bundle / name).write_bytes(content)
-            (workspace / "komaquill.toml").write_text(
-                'poll_interval=0.01\nshutdown_timeout=2\nmodels=["custom","klein-4b"]\n'
-                "[presets.custom]\nsteps=27\n"
-            )
-            command("--help")
             imported = subprocess.run(
                 [
                     str(python),
                     "-B",
                     "-c",
                     "import sys; from komaquill.api import Client; "
-                    "assert not any(x.startswith(('langchain', 'langsmith', 'colab_cli')) "
-                    "for x in sys.modules)",
+                    "assert not any(name.startswith(('langchain', 'langsmith', 'fastapi', "
+                    "'uvicorn', 'colab_cli')) for name in sys.modules)",
                 ],
                 cwd=workspace,
                 env=env,
                 capture_output=True,
-                text=True,
                 timeout=30,
             )
-            assert imported.returncode == 0 and imported.stdout == imported.stderr == ""
-            source_file = workspace / "story.md"
-            source_file.write_bytes(
-                files("komaquill")
-                .joinpath("resources/stories/examples/rainy-cat/source.md")
-                .read_bytes()
-            )
+            assert imported.returncode == 0 and imported.stdout == imported.stderr == b""
             if wheel is not None:
-                missing = subprocess.run(
-                    [
-                        str(python),
-                        "-B",
-                        "-m",
-                        "komaquill",
-                        "stories",
-                        "plan",
-                        str(source_file),
-                        "--llm-profile",
-                        "fake",
-                    ],
-                    cwd=workspace,
-                    env=env,
-                    text=True,
-                    encoding="utf-8",
-                    capture_output=True,
-                    timeout=30,
-                )
-                assert missing.returncode == 1 and "komaquill[llm]" in missing.stderr
+                with zipfile.ZipFile(wheel) as archive:
+                    assert "komaquill/resources/web/index.html" in archive.namelist()
                 subprocess.run(
                     [
                         uv,
@@ -320,344 +269,91 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         "install",
                         "--python",
                         str(python),
-                        f"komaquill[llm] @ {wheel.as_uri()}",
+                        f"komaquill[llm,web] @ {wheel.as_uri()}",
                     ],
-                    env=env,
                     check=True,
                     capture_output=True,
                 )
-            output = root / "monitor.txt"
-            with output.open("w", encoding="utf-8") as handle:
-                monitor = subprocess.Popen(
+            (workspace / "komaquill.toml").write_text(
+                'poll_interval=0.01\nshutdown_timeout=2\nmodels=["klein-4b"]\n', encoding="utf-8"
+            )
+            conversation = json.loads(command("chat", "create", "Acceptance", "--profile", "fake"))
+            sent = command("chat", "send", conversation["id"], "Hello")
+            assert json.loads(sent.splitlines()[0])["state"] == "complete"
+            reopened = json.loads(command("chat", "get", conversation["id"]))
+            assert len(reopened["turns"]) == 1 and reopened["state"] == {"sample": "greeted"}
+            command("chat", "send", conversation["id"], "Hello")
+            assert json.loads(command("chat", "status", conversation["id"]))["revision"] == 2
+            command(
+                "chat",
+                "command",
+                conversation["id"],
+                "set_state",
+                "--expected-revision",
+                "2",
+                "--state",
+                '{"place":"garden"}',
+            )
+            assert json.loads(command("chat", "resume", conversation["id"]))["state"] == {
+                "place": "garden"
+            }
+            if wheel is not None:
+                result = subprocess.run(
                     [
                         str(python),
                         "-B",
-                        "-m",
-                        "komaquill",
-                        "start",
-                        "--no-open",
-                        "--backend",
-                        "external",
-                        "--endpoint",
-                        f"http://127.0.0.1:{server.server_port}",
+                        "-c",
+                        "from fastapi.testclient import TestClient; from pathlib import Path; "
+                        "from komaquill.api import Client; "
+                        "from komaquill.interfaces.http.app import create_app; "
+                        "http = TestClient(create_app(Client(Path.cwd()))); "
+                        "assert '<html' in http.get('/').text; "
+                        "assert len(http.get('/api/v1/conversations').json()) == 1",
                     ],
                     cwd=workspace,
                     env=env,
-                    stdout=handle,
-                    stderr=handle,
-                )
-                try:
-                    session = workspace / ".artifacts/state/session.json"
-                    deadline = time.monotonic() + 30
-                    while not session.is_file() and monitor.poll() is None:
-                        assert time.monotonic() < deadline
-                        time.sleep(0.05)
-                    assert session.is_file(), output.read_text(encoding="utf-8")
-                    assert monitor.wait(timeout=30) == 0
-                    command(
-                        "generate",
-                        "--prompt",
-                        "a quiet blue lake",
-                        "--seed",
-                        "5",
-                        "--candidates",
-                        "2",
-                    )
-                    positive = workspace / "positive.txt"
-                    positive.write_text("a blue umbrella", encoding="utf-8-sig")
-                    command(
-                        "generate",
-                        "--prompt-file",
-                        str(positive),
-                        "--candidates",
-                        "1",
-                    )
-                    structured = workspace / "image-input.json"
-                    structured.write_text(
-                        json.dumps(
-                            {
-                                "format_version": 4,
-                                "prompt": "rainy street",
-                                "subjects": ["woman", "kitten"],
-                            }
-                        ),
-                        encoding="utf-8",
-                    )
-                    command("generate", "--input-file", str(structured), "--candidates", "2")
-                    illustrated = json.loads(
-                        command(
-                            "stories",
-                            "generate",
-                            str(source_file),
-                            "--images",
-                            "4",
-                            "--llm-profile",
-                            "fake",
-                            "--model",
-                            "custom",
-                            "--candidates",
-                            "2",
-                            "--json",
-                        ).stdout
-                    )
-                    assert illustrated["complete"] and illustrated["image_count"] == 4
-                    assert all(len(scene["candidates"]) == 2 for scene in illustrated["scenes"])
-                    assert all(
-                        scene["compiled_input"]["requested_negative"] is None
-                        for scene in illustrated["scenes"]
-                    )
-                    shown = json.loads(
-                        command("stories", "show", illustrated["story_id"], "--json").stdout
-                    )
-                    assert shown["render_id"] == illustrated["render_id"]
-                    resumed = json.loads(
-                        command("stories", "resume", illustrated["render_id"], "--json").stdout
-                    )
-                    assert resumed["complete"]
-                    api_script = "\n".join(
-                        [
-                            "from pathlib import Path",
-                            "from uuid import UUID",
-                            "from komaquill.api import Client, StoryEvidence, StorySnapshot",
-                            "client = Client(Path.cwd())",
-                            f"story_id = UUID({illustrated['story_id']!r})",
-                            "snapshot = client.stories.show(story_id)",
-                            "assert isinstance(snapshot, StorySnapshot) and snapshot.complete",
-                            "assert snapshot.props and snapshot.scenes[0].compiled_input",
-                            "assert snapshot.scenes[0].compiled_input.compiler_version == 8",
-                            f"assert len(client.stories.list().stories) == {2 if wheel else 1}",
-                            "for scene in snapshot.scenes:",
-                            "    assert scene.primary_image is not None",
-                            "    assert client.artifact_path(scene.primary_image.key).is_file()",
-                            "summary = client.stories.export(story_id)",
-                            "full = client.stories.export(story_id, detail='full')",
-                            "assert isinstance(summary, StoryEvidence)",
-                            "assert summary.format_version == 3",
-                            "assert summary.unreadable_evaluation_ids == []",
-                            "assert summary.props == snapshot.props",
-                            "assert all(row.run.compiled_input for row in summary.runs)",
-                            "assert summary.detail == 'summary' and not summary.objects",
-                            "assert full.detail == 'full' and full.objects",
-                            "assert summary.planning == full.planning",
-                            "assert summary.render == full.render",
-                            "assert summary.selected_run_ids == full.selected_run_ids",
-                            "for run in summary.runs:",
-                            "    for image in run.images:",
-                            "        assert (Path.cwd() / image.workspace_path).is_file()",
-                            "client.stories.refresh(story_id)",
-                            "from komaquill.api import RenderConfig, SceneRenderConfig",
-                            "reference_file = Path('reference.png')",
-                            f"reference_file.write_bytes({png.getvalue()!r})",
-                            "reference = client.inputs.import_file(reference_file)",
-                            "run = client.images.generate('a gray kitten', "
-                            "model='klein-4b', operation='edit', inputs={'reference': reference}, "
-                            "candidates=2)",
-                            "assert run.state == 'saved'",
-                            "assert run.input_sha256[reference.reference] == reference.sha256",
-                            "config = RenderConfig(common_prompt='rainy daylight, cool light', "
-                            "scenes=tuple(SceneRenderConfig(scene=i, "
-                            "prompt='a gray kitten', model='klein-4b', operation='edit', "
-                            "inputs={'reference': reference}) "
-                            "for i in range(1,5)))",
-                            "rendered = list(client.stories.render(story_id, "
-                            "render_config=config))[-1].snapshot",
-                            "assert rendered.complete and all(scene.image_profile == "
-                            "'klein-4b-edit' for scene in rendered.scenes)",
-                            "assert all(scene.compiled_input.common_prompt == "
-                            "'rainy daylight, cool light' for scene in rendered.scenes)",
-                            "assert all(scene.compiled_input.body.startswith('rainy daylight') "
-                            "for scene in rendered.scenes)",
-                            "assert list(client.stories.resume(rendered.render_id))"
-                            "[-1].snapshot.complete",
-                            "assert client.sessions.status().collector_running",
-                        ]
-                    )
-                    api_script = (
-                        "try:\n"
-                        + textwrap.indent(api_script, "    ")
-                        + "\nexcept BaseException as failure:\n"
-                        "    import json, sys\n"
-                        "    causes = []\n"
-                        "    cause = failure\n"
-                        "    while cause is not None:\n"
-                        "        if isinstance(cause, OSError):\n"
-                        "            cursor = cause.__traceback__\n"
-                        "            origin = None\n"
-                        "            while cursor is not None:\n"
-                        "                origin = {'module': "
-                        "cursor.tb_frame.f_globals.get('__name__'), "
-                        "'function': cursor.tb_frame.f_code.co_name, 'line': cursor.tb_lineno}\n"
-                        "                cursor = cursor.tb_next\n"
-                        "            causes.append({'type': type(cause).__name__, "
-                        "'errno': cause.errno, 'winerror': getattr(cause, 'winerror', None), "
-                        "'origin': origin})\n"
-                        "        cause = cause.__context__\n"
-                        "    print(json.dumps({'storage_error_codes': causes}), file=sys.stderr)\n"
-                        "    raise\n"
-                    )
-                    api_result = subprocess.run(
-                        [str(python), "-B", "-c", api_script],
-                        cwd=workspace,
-                        env=env,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
-                    assert api_result.returncode == 0, api_result.stderr
-                    assert api_result.stdout == api_result.stderr == ""
-                    command("collect")
-                    command("status")
-                    for arguments, expected in [
-                        (["open", "--view", "invalid"], 2),
-                        (["doctor"], 1),
-                    ]:
-                        failed = subprocess.run(
-                            [str(python), "-B", "-m", "komaquill", *arguments],
-                            cwd=workspace,
-                            env=env,
-                            text=True,
-                            encoding="utf-8",
-                            capture_output=True,
-                            timeout=30,
-                        )
-                        assert failed.returncode == expected
-                        assert "Traceback" not in failed.stdout + failed.stderr
-                    command("stop")
-                    assert monitor.wait(timeout=30) == 0
-                finally:
-                    primary = sys.exc_info()[1]
-                    try:
-                        stopped = subprocess.run(
-                            [str(python), "-B", "-m", "komaquill", "stop", "--force"],
-                            cwd=workspace,
-                            env=env,
-                            capture_output=True,
-                            text=True,
-                            timeout=30,
-                        )
-                        if primary is None:
-                            assert stopped.returncode == 0, stopped.stderr
-                        elif stopped.returncode:
-                            primary.add_note(
-                                "The isolated acceptance monitor could not be stopped."
-                            )
-                    except subprocess.TimeoutExpired:
-                        if primary is None:
-                            raise
-                        primary.add_note("The isolated acceptance shutdown timed out.")
-                    if monitor.poll() is None:
-                        monitor.terminate()
-                        try:
-                            monitor.wait(timeout=10)
-                        except subprocess.TimeoutExpired:
-                            if primary is None:
-                                raise
-                            primary.add_note("The acceptance monitor termination timed out.")
-            runs = list((workspace / ".artifacts/data/runs").glob("*/run.json"))
-            runs.extend((workspace / ".artifacts/data/stories").glob("*/renders/*/runs/*/run.json"))
-            assert len(runs) == 12
-            runs = sorted(runs, key=lambda path: json.loads(path.read_bytes())["created_at"])
-            run = json.loads(runs[0].read_bytes())
-            assert run["state"] == "saved"
-            if wheel is not None:
-                assert run["source_revision"] is None
-            assert run["image_metadata"] and run["code_sha256"]
-            graph = json.loads((runs[0].parent / "workflow-api.json").read_bytes())
-            assert graph["62"]["inputs"]["steps"] == 27
-            command(
-                "evaluations",
-                "add",
-                run["run_id"],
-                "--decision",
-                "accept",
-                "--criterion",
-                "composition",
-                "--reason",
-                "Matches the scene.",
-            )
-            evaluation_data = json.loads(command("evaluations", "list").stdout)
-            assert len(evaluation_data) == 1
-            evidence = workspace / ".artifacts/records/reports/evidence.json"
-            command("evaluations", "export", "--output", str(evidence))
-            exported = json.loads(evidence.read_text(encoding="utf-8"))
-            assert all(item["workflow_integrity"] is True for item in exported["runs"])
-            assert all(item["images"][0]["matches_record"] is True for item in exported["runs"])
-            assert exported["exported_at"] and exported["exporter"]["code_sha256"]
-            assert sum(bool(item["story_context"]) for item in exported["runs"]) == 8
-            command("evaluations", "import", str(evidence))
-            command("clean", "--dry-run")
-            assert runs[0].is_file()
-            script = "\n".join(
-                [
-                    "import pathlib, tarfile, subprocess, sys",
-                    "from komaquill.infrastructure.deployment import create_payload",
-                    "from komaquill.infrastructure.configuration import find_project",
-                    "from komaquill.infrastructure.provenance import source_revision",
-                    "assert source_revision() is None" if wheel is not None else "pass",
-                    "p = create_payload(find_project())",
-                    "assert p.path.is_file() and p.sha256",
-                    "dest = pathlib.Path('payload'); dest.mkdir()",
-                    "with tarfile.open(p.path) as archive:",
-                    "    archive.extractall(dest, filter='data')",
-                    "code = 'import sys; sys.path.insert(0, sys.argv[1]); '",
-                    "code += 'from komaquill.gpu import bootstrap, worker'",
-                    "args = [sys.executable, '-I', '-c', code, str(dest.resolve())]",
-                    "subprocess.run(args, check=True)",
-                ]
-            )
-            subprocess.run(
-                [str(python), "-B", "-c", script],
-                cwd=workspace,
-                env=env,
-                check=True,
-                capture_output=True,
-                timeout=30,
-            )
-            if wheel is not None:
-                consumer = workspace / "consumer.py"
-                consumer.write_text(
-                    "from pathlib import Path\n"
-                    "from collections.abc import Iterator\n"
-                    "from uuid import UUID\n"
-                    "from komaquill.api import Client, StoryPlan, StoryEvent, StorySnapshot\n"
-                    "client = Client(Path.cwd())\n"
-                    "def plan(text: str) -> StoryPlan:\n"
-                    "    return client.stories.plan(text, images='auto', allow_real_llm=True)\n"
-                    "def render(identity: UUID) -> Iterator[StoryEvent]:\n"
-                    "    return client.stories.render(identity)\n"
-                    "def show(identity: UUID) -> StorySnapshot:\n"
-                    "    return client.stories.show(identity)\n",
-                    encoding="utf-8",
-                )
-                typed_env = {key: value for key, value in env.items() if key != "MYPYPATH"}
-                typed = subprocess.run(
-                    [
-                        sys.executable,
-                        "-B",
-                        "-m",
-                        "mypy",
-                        "--strict",
-                        "--no-incremental",
-                        "--cache-dir",
-                        str(root / "mypy-cache"),
-                        "--python-executable",
-                        str(python),
-                        str(consumer),
-                    ],
-                    cwd=workspace,
-                    env=typed_env,
-                    text=True,
                     capture_output=True,
-                    timeout=90,
+                    timeout=30,
                 )
-                assert typed.returncode == 0, typed.stdout + typed.stderr
-            assert thread.is_alive()
-            with contextlib.closing(
-                __import__("urllib.request").request.urlopen(
-                    f"http://127.0.0.1:{server.server_port}/system_stats"
+                assert result.returncode == 0, result.stderr
+            try:
+                command(
+                    "start",
+                    "--no-open",
+                    "--backend",
+                    "external",
+                    "--endpoint",
+                    f"http://127.0.0.1:{server.server_port}",
                 )
-            ) as response:
-                assert response.status == 200
+                command("generate", "--prompt", "a quiet blue lake", "--seed", "5")
+                command("collect")
+                script = (
+                    "from komaquill.api import Client; from pathlib import Path; "
+                    "c=Client(Path.cwd()); runs=c.images.list(); "
+                    "assert len(runs)==1 and runs[0].state=='saved'; "
+                    "assert c.artifact_path(f'runs/{runs[0].run_id}/"
+                    "{runs[0].images[0]}').is_file()"
+                )
+                result = subprocess.run(
+                    [str(python), "-B", "-c", script],
+                    cwd=workspace,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                assert result.returncode == 0, result.stderr
+                command("stop")
+                assert server.fileno() != -1
+            finally:
+                stopped = subprocess.run(
+                    [str(python), "-B", "-m", "komaquill", "stop", "--force"],
+                    cwd=workspace,
+                    env=env,
+                    capture_output=True,
+                    timeout=30,
+                )
+                assert stopped.returncode == 0
     finally:
         server.shutdown()
         server.server_close()

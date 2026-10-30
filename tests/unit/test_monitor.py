@@ -8,12 +8,11 @@ from uuid import uuid4
 
 import psutil
 import pytest
-
+from komaquill.adapters import monitor_state as state
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.monitor import MonitorState
-from komaquill.infrastructure import monitor_state as state
-from komaquill.infrastructure import supervisor
-from komaquill.interfaces import session_worker
+from komaquill.runtime import supervisor
+from komaquill.runtime import worker as session_worker
 
 
 def snapshot(project, **values):
@@ -26,6 +25,32 @@ def snapshot(project, **values):
         observed_at=datetime.now(UTC),
         **values,
     )
+
+
+def test_stop_wait_retries_a_transient_windows_snapshot_read(project, monkeypatch):
+    import sys
+    from pathlib import Path
+
+    from komaquill.adapters import atomic
+
+    row = snapshot(project, phase="stopped")
+    state.write_monitor(project, row)
+    original = Path.read_bytes
+    reads = []
+
+    def read(path):
+        if path.name == "monitor.json":
+            reads.append(True)
+            if len(reads) == 1:
+                error = PermissionError("private file access error")
+                error.winerror = 32
+                raise error
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read)
+    monkeypatch.setattr(atomic, "sys", SimpleNamespace(platform="win32", stderr=sys.stderr))
+    supervisor.wait_stopped(project, row, lambda _: None)
+    assert len(reads) == 2
 
 
 @pytest.mark.parametrize(
@@ -50,9 +75,7 @@ def test_process_identity_does_not_trust_a_pid_alone(project, monkeypatch, case)
             raise psutil.AccessDenied(pid)
         return SimpleNamespace(
             create_time=lambda: 2.0 if case == "pid_reused" else 1.0,
-            cmdline=lambda: (
-                ["unrelated"] if case == "unrelated" else ["komaquill.interfaces.session_worker"]
-            ),
+            cmdline=lambda: ["unrelated"] if case == "unrelated" else ["komaquill.runtime.worker"],
             is_running=lambda: True,
             status=lambda: psutil.STATUS_RUNNING,
         )
@@ -312,7 +335,7 @@ def test_authentication_uses_the_official_flow_before_detaching(project, monkeyp
 
 @pytest.mark.parametrize("case", ["valid", "invalid", "missing", "transport"])
 def test_progress_is_allowlisted_and_temporary_copies_are_removed(project, monkeypatch, case):
-    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.adapters.colab import Colab, Receipt
 
     control = Colab(project)
     receipt = Receipt(name="test", runtime_id=uuid4())
@@ -344,8 +367,8 @@ def test_corrupt_monitor_does_not_block_provider_shutdown(project):
 def test_progress_cleanup_failure_does_not_abort_startup(project, session, monkeypatch):
     from pathlib import Path
 
-    from komaquill.infrastructure.atomic import atomic_json
-    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.adapters.atomic import atomic_json
+    from komaquill.adapters.colab import Colab, Receipt
 
     control = Colab(project)
     receipt = Receipt(
@@ -377,17 +400,19 @@ def test_progress_cleanup_failure_does_not_abort_startup(project, session, monke
 def test_progress_transport_reads_the_file_published_by_the_gpu(project, tmp_path, monkeypatch):
     from pathlib import Path
 
-    from komaquill.gpu.progress import progress
-    from komaquill.infrastructure.colab import Colab, Receipt
-    from komaquill.infrastructure.configuration import GpuProject
-    from komaquill.infrastructure.paths import GpuPaths
+    from komaquill.adapters.colab import Colab, Receipt
+    from komaquill.adapters.paths import GpuPaths
+    from komaquill.adapters.worker_workspace import WorkerWorkspace
+    from komaquill.worker.progress import progress
 
     receipt = Receipt(name="owned", runtime_id=uuid4())
     server = tmp_path / "server"
     remote = server / "content" / f"komaquill-{receipt.runtime_id}"
     progress(remote, "dependencies")
     expected = GpuPaths(remote).logs / "progress.json"
-    assert expected.is_file() and expected.parent == GpuProject(remote).logs
+    assert (
+        expected.is_file() and expected.parent == WorkerWorkspace(remote, project.settings()).logs
+    )
     assert expected.parent != project.logs
     control = Colab(project)
 
@@ -415,7 +440,7 @@ def test_log_follow_does_not_reload_configuration(project, monkeypatch):
 def test_first_and_outer_startup_failures_survive_progress_recovery(project, monkeypatch):
     from pathlib import Path
 
-    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.adapters.colab import Colab, Receipt
 
     control = Colab(project)
     receipt = Receipt(name="test", runtime_id=uuid4())

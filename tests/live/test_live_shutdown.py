@@ -10,12 +10,11 @@ from uuid import uuid4
 
 import psutil
 import pytest
-
-from komaquill.infrastructure.colab import Colab, check_port
-from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.sessions.connection import connected
-from komaquill.infrastructure.storage import load_runs
-from komaquill.infrastructure.workflows import prepare
+from komaquill.adapters.colab import Colab, check_port
+from komaquill.adapters.storage import load_runs
+from komaquill.adapters.workflows import prepare
+from komaquill.adapters.workspace import find_project
+from komaquill.runtime.connection import connected
 
 
 @pytest.mark.parametrize("mode", ["normal", "recovery-force"])
@@ -38,7 +37,7 @@ def test_live_owned_shutdown(mode):
             while not any(run.prompt_id == identity for run in load_runs(project)):
                 assert time.monotonic() < deadline
                 time.sleep(0.1)
-            from komaquill.infrastructure.monitor_state import alive, read_monitor
+            from komaquill.adapters.monitor_state import alive, read_monitor
 
             monitor = read_monitor(project)
             assert monitor is not None and alive(monitor)

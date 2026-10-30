@@ -2,13 +2,12 @@
 
 import pytest
 from filelock import FileLock
-from typer.testing import CliRunner
-
+from komaquill.adapters import cleanup
+from komaquill.adapters.atomic import atomic_json
 from komaquill.application.cleanup import exclusion
+from komaquill.cli.main import app
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import cleanup
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.interfaces.cli import app
+from typer.testing import CliRunner
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,36 @@
+{
+  "name": "tools",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/docs/**/*",
+        "{workspaceRoot}/AGENTS.md",
+        "{workspaceRoot}/README.md",
+        "{workspaceRoot}/CONTRIBUTING.md"
+      ],
+      "options": {
+        "commands": [
+          "node scripts/python.mjs -m ruff check scripts bootstrap",
+          "node scripts/python.mjs -m ruff format --check scripts bootstrap",
+          "node scripts/python.mjs -m scripts.checks.documentation"
+        ],
+        "parallel": false
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/pyproject.toml"
+      ],
+      "options": {
+        "command": "node scripts/python.mjs -m mypy scripts bootstrap"
+      }
+    }
+  }
+}

@@ -49,8 +49,8 @@ def test_invalid_measurements_are_rejected(totals):
 @pytest.mark.parametrize("case", ["pass", "threshold", "inventory"])
 def test_coverage_gate_checks_source_inventory_and_configured_policy(tmp_path, monkeypatch, case):
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/app.py").write_text("pass")
+    (tmp_path / "src/backend/src").mkdir(parents=True)
+    (tmp_path / "src/backend/src/app.py").write_text("pass")
     (tmp_path / "scripts/gate.py").write_text("pass")
     (tmp_path / "pyproject.toml").write_text(
         "[tool.komaquill.coverage]\nline_minimum=90\nbranch_minimum=80"
@@ -63,7 +63,7 @@ def test_coverage_gate_checks_source_inventory_and_configured_policy(tmp_path, m
         "covered_branches": 80,
         "num_branches": 100,
     }
-    files = {"src/app.py": {}, "scripts/gate.py": {}}
+    files = {"src/backend/src/app.py": {}, "scripts/gate.py": {}}
     if case == "inventory":
         files["tests/test_app.py"] = {}
     (folder / "coverage.json").write_text(json.dumps({"files": files, "totals": totals}))
@@ -91,7 +91,8 @@ def test_coverage_gate_checks_source_inventory_and_configured_policy(tmp_path, m
 )
 def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
     expected = "1.2.3"
-    (tmp_path / "pyproject.toml").write_text('[project]\nversion="1.2.3"')
+    (tmp_path / "src/backend").mkdir(parents=True)
+    (tmp_path / "src/backend/pyproject.toml").write_text('[project]\nversion="1.2.3"')
     folder = tmp_path / ".artifacts/dist"
     folder.mkdir(parents=True)
     with zipfile.ZipFile(folder / f"komaquill-{expected}-py3-none-any.whl", "w") as archive:
@@ -101,7 +102,7 @@ def test_distribution_gate_checks_real_archives(tmp_path, monkeypatch, case):
         )
         if case == "editor_settings":
             archive.writestr(".vscode/settings.json", "{}")
-        from komaquill.infrastructure.provenance import package_contents
+        from komaquill.adapters.provenance import package_contents
 
         for name, content in package_contents():
             if case != "resources" or not name.endswith("/web/extension.js"):
@@ -175,9 +176,20 @@ def test_security_git_invocation_preserves_argument_boundaries(tmp_path, monkeyp
     assert calls == [["git", "-C", str(tmp_path), "show", "a b"]]
 
 
+def test_security_excludes_only_canonical_public_package_integrity():
+    line = "    resolution: {integrity: sha512-" + "A" * 86 + "==}"
+    assert security.is_public_package_integrity("pnpm-lock.yaml", line)
+    assert security.is_public_package_integrity(
+        "pnpm-lock.yaml", 'integrity: "sha512-' + "A" * 86 + '=="'
+    )
+    assert not security.is_public_package_integrity("private.yaml", line)
+    assert not security.is_public_package_integrity("pnpm-lock.yaml", line + " password: value")
+    assert not security.is_public_package_integrity("pnpm-lock.yaml", "token: " + "A" * 86)
+
+
 @pytest.mark.parametrize("case", ["matching", "different", "missing_uv"])
 def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, monkeypatch, case):
-    resource = tmp_path / "src/komaquill/resources/runtime/pylock.worker.toml"
+    resource = tmp_path / "src/backend/src/komaquill/resources/runtime/pylock.worker.toml"
     resource.parent.mkdir(parents=True)
     resource.write_text("locked\n")
     monkeypatch.setattr(
@@ -204,7 +216,7 @@ def test_gpu_lock_gate_detects_drift_without_resolving_dependencies(tmp_path, mo
 
 
 def test_worker_lock_writer_documents_public_hash_exceptions(tmp_path, monkeypatch):
-    resource = tmp_path / "src/komaquill/resources/runtime/pylock.worker.toml"
+    resource = tmp_path / "src/backend/src/komaquill/resources/runtime/pylock.worker.toml"
     resource.parent.mkdir(parents=True)
     monkeypatch.setattr(
         check_worker_lock, "__file__", str(tmp_path / "scripts/checks/worker_lock.py")
@@ -242,8 +254,9 @@ def test_e2e_gate_requires_one_wheel_and_clears_live_flags(tmp_path, monkeypatch
     calls = []
     monkeypatch.setattr(check_e2e.subprocess, "run", lambda command, **kw: calls.append(kw))
     if valid:
-        check_e2e.main(wheel, tmp_path / "reports")
-        assert calls[0]["env"]["KOMAQUILL_WHEEL"] == str(wheel)
+        selected = wheel / "komaquill-1.0-py3-none-any.whl"
+        check_e2e.main(selected, tmp_path / "reports")
+        assert calls[0]["env"]["KOMAQUILL_WHEEL"] == str(selected)
         assert "KOMAQUILL_LIVE" not in calls[0]["env"]
         assert "KOMAQUILL_LIVE_STOP" not in calls[0]["env"]
         assert "PYTEST_ADDOPTS" not in calls[0]["env"]

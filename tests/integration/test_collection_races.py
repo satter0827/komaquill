@@ -3,8 +3,8 @@
 import threading
 from uuid import uuid4
 
-from komaquill.application.generation import collect, mark_lost, new_run
-from komaquill.infrastructure.atomic import atomic_json
+from komaquill.adapters.atomic import atomic_json
+from komaquill.images.generation import collect, mark_lost, new_run
 
 
 def completed(project, session, stub):

@@ -1,12 +1,10 @@
 """Verify shared scene conditions and declared canvas geometry without GPU imports."""
 
 import pytest
-
+from komaquill.adapters.configuration import Settings
 from komaquill.domain.images import CompiledImageInput, compile_image_input, validate_inputs
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.presets import WorkflowImageSlot
-from komaquill.domain.rendering import RenderConfig, SceneRenderConfig
-from komaquill.infrastructure.configuration import Settings
 
 
 def image(kind="image", width=32):
@@ -56,13 +54,6 @@ def test_canvas_relative_image_dimensions_are_validated(missing):
     if not missing:
         inputs["foreground"] = image()
         validate_inputs(profile, inputs)
-
-
-def test_render_configuration_rejects_shared_conditions_in_old_format():
-    scene = SceneRenderConfig(scene=1, model="klein-4b")
-    with pytest.raises(ValueError):
-        RenderConfig(format_version=1, common_prompt="rain", scenes=(scene,))
-    assert RenderConfig(scenes=(scene,)).common_prompt == ""
 
 
 def test_old_compiled_input_cannot_claim_new_shared_conditions():

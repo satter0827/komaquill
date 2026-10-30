@@ -2,24 +2,27 @@
 
 ## 処理の分担
 
-CLIと公開Python APIが同じアプリケーション処理を呼び、GPU側のComfyUIが画像を生成します。Colabの認証とランタイム操作には公式Colab CLI、接続にはOpenSSH、生成にはComfyUI標準APIを使用します。
+ReactはHTTP APIを呼び、HTTPとCLIは公開Python APIの同じ処理を使います。GPU側のComfyUIが画像を生成します。Colabの認証とランタイム操作には公式Colab CLI、接続にはOpenSSH、生成にはComfyUI標準APIを使用します。
 
 | 区分 | 責務 |
 |---|---|
-| api | 明示した作業場所で使う機能別サービスの組み立て |
+| api・composition | 作業場所と機能別サービスの組み立て |
+| conversations | 会話と状態の確定、画像処理の呼出し |
+| images | 画像の送信、照合、回収、完了待ち |
+| runtime | 実行環境の起動、所有、監視、終了 |
 | domain | 要求、状態、設定スナップショット、エラーコード |
-| application | 生成、照合、回収、終了の判断 |
-| interfaces | CLI引数、入力、英語表示、終了コード |
-| infrastructure | HTTP、Colab CLI、SSH、ファイル保存、資格情報、接続の維持 |
-| gpu | GPU側の環境準備とComfyUI起動 |
+| application | 終了調整、準備、評価の判断 |
+| cli・interfaces/http | 端末とHTTPの入力、結果の表示・変換 |
+| adapters | HTTP、Colab CLI、SSH、ファイル保存、資格情報、接続の維持 |
+| worker | GPU側の環境準備とComfyUI起動 |
 
 生成・回収はGenerationBackendとRunRepositoryのProtocolを使用します。Workspaceが設定、ワークフロー、出自、保存契約を束ねます。終了調整はShutdownActionsを受け取り、プロバイダーやファイル操作を直接呼びません。具体的な実装は接続・作業フォルダーの入口で組み立てます。DBや別の画面を追加する場合も、業務処理とこれらの契約を再利用します。
 
 ## 設定の優先順位
 
-CLI／Pythonの指定、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。ネストした設定は指定項目だけを上書きします。接続とGPU環境は起動時に検証し、保存・回収・終了で同じ値を使用します。ストーリー計画の設定は操作ごと、画像条件は生成試行ごとに確定します。再開では元の試行条件を使用します。認証情報は設定へ含めません。
+CLI／Pythonの指定、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。ネストした設定は指定項目だけを上書きします。接続とGPU環境は起動時に検証し、保存・回収・終了で同じ値を使用します。長時間動くサーバーの接続設定は起動時、画像条件は生成試行ごとに確定します。再開では元の試行条件を使用します。認証情報は設定へ含めません。
 
-Pythonと依存の正本はpyproject.toml、uv.lock、.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime/versions.toml、モデルと生成プリセットはresources/modelsとresources/presetsで固定します。
+Pythonと依存の正本はsrc/backend/pyproject.toml、同じフォルダーのuv.lock、ルートの.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime/versions.toml、モデルと生成プリセットはresources/modelsとresources/presetsで固定します。
 
 ## GPUへの転送
 
@@ -41,7 +44,7 @@ Google認証と公式CLIの管理ファイルは標準のユーザーフォル�
 
 ## 資源とGPUの所有
 
-拡散モデル、テキストエンコーダー、LoRA、VAEの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はinfrastructure/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
+拡散モデル、テキストエンコーダー、LoRA、VAEの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はadapters/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
 
 Colabの確保・実行・初回転送は公式CLIを使います。状態確認と対象指定の終了には同じ固定パッケージのClientを使い、公式CLIのローカルキャッシュを生存確認の根拠にしません。SSHは固定した公式実装の`_run_proxy_bridge`へ、プロバイダーで照合した一時SessionStateを渡します。この内部関数への依存は一つのアダプターに限定します。公式CLIのSSHコマンドには記録欠損時の自動確保があるため、再接続には使用しません。
 
@@ -59,42 +62,14 @@ worker_execution_timeoutは公式Colab CLIがコード実行を待つ時間で�
 
 ComfyUI上の拡張は標準の書き込みと生成要求を観測し、一時領域に不変の版を作ります。ローカル監視は画像回収とは別に素材を回収し、内容と参照記録を保存してから確認を返します。停止時は新しい要求を抑止し、処理中の標準書き込みが完了してから最終回収へ進みます。
 
-保存形式の版は[Runの契約](../../src/komaquill/domain/models.py)、[素材の契約](../../src/komaquill/domain/materials.py)、[準備要求の契約](../../src/komaquill/domain/assets.py)を正本とします。既存の画像・履歴・取得済みログは書き換えません。DBや別の画面へ拡張する場合も、生成・保存の契約と実行環境の制御を分離します。
+保存形式の版は[Runの契約](../../src/backend/src/komaquill/domain/models.py)、[素材の契約](../../src/backend/src/komaquill/domain/materials.py)、[準備要求の契約](../../src/backend/src/komaquill/domain/assets.py)を正本とします。既存の画像・履歴・取得済みログは書き換えません。生成・保存の契約と実行環境の制御を分離します。
 
-## ソースの配置
+## 製品コードと保存の境界
 
-| 配置 | 責務 |
-|---|---|
-| domain | 状態・設定・モデル・失敗の契約 |
-| application | 生成・回収・終了・準備・整理の判断と必要な境界 |
-| infrastructure/sessions | 接続、起動、監視、終了の具体的な調整 |
-| infrastructure/inspection.py | GPUとローカル記録の独立した状態取得 |
-| interfaces/cli.py | CLIの入力と表示 |
-| interfaces/comfyui | 標準HTTP拡張、素材観測、配信するJavaScript |
-| gpu | 一時環境の準備とComfyUI起動 |
-| resources/settings | 運用上の既定値 |
-| resources/models | 共有するモデルの固定定義 |
-| resources/presets/ID | 生成セットの設定・標準グラフ・ローカル描画方針 |
-| resources/runtime | 固定バージョンとGPU依存ロック |
+製品コードは`src/frontend`、`src/backend`、`src/contracts`に置きます。会話と画面の構成は[ローカルWebアプリケーション](web.md)を参照してください。
 
-具体的な依存方向はImport Linterで検査します。ComfyUI用インターフェースはGPUへ配布しますが、CLI・Colab制御・ローカル監視は配布しません。詳細な状態と失敗は[契約](contracts.md)を参照してください。
+設定ロードはadapters/configuration、作業場所と具体的な保存・生成境界はadapters/workspace、会話の組み立てはcompositionが担当します。CLIとHTTPは同じ機能別公開サービスを呼びます。
 
-## ローカルとGPUの保存先
+新規の会話・操作・画像・評価の構造化記録はSQLiteを正本とし、バイナリはArtifactStoreへ保存します。画像の回収は通信を共通ロックの外で行い、要求単位の排他と確定前の再読込みで保存済み状態の後退を防ぎます。ファイルの保存成功を確認してからDBをsavedへ進めます。
 
-WorkspacePathsはローカルのdata・records・state・runtimeなどを分けます。GpuPathsは一時ランタイムの配置を定義し、GpuProjectと起動前の進捗発行・取得で共有します。ローカルの保全分類をGPU側の進捗・ログへ無条件に適用しません。両者のファイル対応は発行と取得を結ぶテストで確認します。
-
-## 保存と回収の境界
-
-生成履歴はRunRepository、実体ファイルはArtifactStoreを使用します。通信はアプリケーション側で調整し、共有する状態更新ロックを保持したまま待機しません。要求・素材単位の排他と、確定前の状態・セッション再読込みで二重回収と終了後の状態後退を防ぎます。モデルは共通のハッシュ検証を使い、確認済みの不変ファイルを再利用します。
-
-
-## ストーリーとLLM
-
-物語の計画と画像生成の試行を分離します。LLMの具体型はinfrastructure/stories内に限定し、application/storiesは専用Protocolを使います。状態取得は保存済み計画と既存Runから導出し、CLIと将来の画面で共有します。LLMの指示・接続設定・追加依存はGPUへ転送しません。詳細は[ストーリーの契約](stories.md)を参照してください。
-
-
-公式CLIのコード実行はcolab_executionのアダプターで準備完了待ちと失敗時の接続終了を補います。固定SDKの非公開接続オブジェクトへの参照はこのアダプターに限定し、実行要求の再送は行いません。SSHの内部ブリッジはcolab_bridgeへ分離しています。
-
-## 短編漫画の実行
-
-計画と画像レビューをLLMの役割とし、条件固定、生成、選択規則、保存、組版は通常のプログラムで処理します。構成図と判断は[設計判断](../decisions/0009-klein-completion.md)を参照してください。常駐する汎用エージェント基盤は持ちません。
+旧Storyとファイル形式の画像履歴はarchiveで読み取り専用に扱います。画像回収、監視、停止から旧Storyの閲覧用再構築を呼びません。旧計画とKlein固有の比較・全体組版の生成入口は廃止しました。

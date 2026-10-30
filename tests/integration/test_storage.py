@@ -6,8 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-from komaquill.infrastructure import atomic as storage
+from komaquill.adapters import atomic as storage
 
 
 @pytest.mark.parametrize("case", ["sharing", "sharing_twice", "permanent", "posix", "unknown"])
@@ -74,3 +73,26 @@ def test_a_real_windows_reader_does_not_stop_atomic_state_updates(tmp_path):
         assert target.read_bytes() == b"new"
     finally:
         reader.close()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows file locking semantics")
+def test_snapshot_read_recovers_from_a_real_windows_byte_lock(tmp_path):
+    import msvcrt
+
+    target = tmp_path / "snapshot.json"
+    target.write_bytes(b"snapshot")
+    with target.open("r+b", buffering=0) as holder:
+        msvcrt.locking(holder.fileno(), msvcrt.LK_NBLCK, 1)
+        with pytest.raises(PermissionError):
+            target.read_bytes()
+
+        def release():
+            holder.seek(0)
+            msvcrt.locking(holder.fileno(), msvcrt.LK_UNLCK, 1)
+
+        timer = threading.Timer(0.1, release)
+        timer.start()
+        try:
+            assert storage.read_bytes(target) == b"snapshot"
+        finally:
+            timer.join()

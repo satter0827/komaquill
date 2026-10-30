@@ -6,8 +6,9 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
-from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.workflows import prepare, resource_json
+from komaquill.adapters.configuration import Settings
+from komaquill.adapters.workflows import prepare, resource_json
+from komaquill.adapters.workspace import find_project
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,7 +25,7 @@ def test_workflow_exports_have_identical_connections_and_parameters():
                 continue
             link = links[socket["link"]]
             assert node["inputs"][socket["name"]] == [str(link[1]), link[2]]
-    from komaquill.infrastructure.configuration import Settings
+    from komaquill.adapters.configuration import Settings
 
     profile = Settings().presets["klein-4b"]
     for binding in profile.bindings:
@@ -36,7 +37,9 @@ def test_workflow_exports_have_identical_connections_and_parameters():
 
 
 def test_prepared_workflow_records_the_same_requested_values():
-    api, ui = prepare("a cabin", 123, "test-id")
+    api, ui = prepare(
+        "a cabin", 123, "test-id", profile_name="klein-4b", settings=Settings(models=["klein-4b"])
+    )
     nodes = {node["id"]: node for node in ui["nodes"]}
     assert api["10"]["inputs"]["string_b"] == nodes[10]["widgets_values"][1] == "a cabin"
     assert api["73"]["inputs"]["noise_seed"] == nodes[73]["widgets_values"][0] == 123
@@ -54,7 +57,7 @@ def test_import_has_no_filesystem_side_effects(tmp_path):
         [
             sys.executable,
             "-c",
-            "import komaquill.interfaces.cli, komaquill.gpu.worker, komaquill.infrastructure.colab",
+            "import komaquill.cli.main, komaquill.worker.worker, komaquill.adapters.colab",
         ],
         cwd=tmp_path,
         env=env,
@@ -76,7 +79,7 @@ def test_module_entrypoint_and_metadata_agree():
 
 def test_subdirectory_uses_the_project_artifacts(monkeypatch):
     monkeypatch.delenv("KOMAQUILL_PROJECT_DIR", raising=False)
-    monkeypatch.chdir(ROOT / "src/komaquill")
+    monkeypatch.chdir(ROOT / "src/backend/src/komaquill")
     assert find_project().artifacts == ROOT / ".artifacts"
 
 
@@ -98,7 +101,7 @@ def test_generation_paths_agree_across_entrypoints_and_tools():
     files = [
         "bootstrap/_environment.ps1",
         "bootstrap/setup.ps1",
-        "src/komaquill/gpu/bootstrap.py",
+        "src/backend/src/komaquill/worker/bootstrap.py",
         "scripts/check.py",
         ".github/workflows/check.yml",
         ".vscode/tasks.json",

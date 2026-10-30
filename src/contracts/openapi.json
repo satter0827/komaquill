@@ -1,0 +1,2389 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Komaquill API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/settings": {
+      "get": {
+        "summary": "Settings",
+        "operationId": "get_settings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations": {
+      "get": {
+        "summary": "List Conversations",
+        "operationId": "list_conversations",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Conversation"
+                  },
+                  "type": "array",
+                  "title": "Response List Conversations"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Conversation",
+        "operationId": "create_conversation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}": {
+      "get": {
+        "summary": "Conversation",
+        "operationId": "get_conversation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/operations": {
+      "get": {
+        "summary": "Conversation Operations",
+        "operationId": "get_conversation_operations",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OperationView"
+                  },
+                  "title": "Response Get Conversation Operations"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/turns": {
+      "post": {
+        "summary": "Send",
+        "operationId": "send_turn",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/commands": {
+      "post": {
+        "summary": "Command",
+        "operationId": "apply_command",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StateCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/resume": {
+      "post": {
+        "summary": "Resume",
+        "operationId": "resume_conversation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operations/{identity}": {
+      "get": {
+        "summary": "Operation",
+        "operationId": "get_operation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/images": {
+      "get": {
+        "summary": "Images",
+        "operationId": "list_images",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Run"
+                  },
+                  "type": "array",
+                  "title": "Response List Images"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit Image",
+        "operationId": "submit_image",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inputs": {
+      "post": {
+        "summary": "Import Input",
+        "operationId": "import_input",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "image",
+                "mask"
+              ],
+              "type": "string",
+              "default": "image",
+              "title": "Kind"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "contentMediaType": "application/octet-stream",
+                "maxLength": 20971520,
+                "title": "Content"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InputArtifact"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/images/{identity}": {
+      "get": {
+        "summary": "Get Image",
+        "operationId": "get_image",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/images/{identity}/collect": {
+      "post": {
+        "summary": "Collect Image",
+        "operationId": "collect_image",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/images/{identity}/files/{index}": {
+      "get": {
+        "summary": "Image File",
+        "operationId": "get_image_file",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime": {
+      "get": {
+        "summary": "Runtime",
+        "operationId": "get_runtime",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/refresh": {
+      "post": {
+        "summary": "Refresh Runtime",
+        "operationId": "refresh_runtime",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/views": {
+      "get": {
+        "summary": "Runtime Views",
+        "operationId": "get_runtime_views",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Get Runtime Views"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/workflows/{profile}/{view}": {
+      "get": {
+        "summary": "Runtime Workflow",
+        "operationId": "get_runtime_workflow",
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Profile"
+            }
+          },
+          {
+            "name": "view",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "app",
+                "graph"
+              ],
+              "type": "string",
+              "title": "View"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/start": {
+      "post": {
+        "summary": "Start Runtime",
+        "operationId": "start_runtime",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/stop": {
+      "post": {
+        "summary": "Stop Runtime",
+        "operationId": "stop_runtime",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CompiledImageInput": {
+        "properties": {
+          "format_version": {
+            "type": "integer",
+            "const": 5,
+            "title": "Format Version",
+            "default": 5
+          },
+          "compiler_version": {
+            "type": "integer",
+            "const": 8,
+            "title": "Compiler Version",
+            "default": 8
+          },
+          "preset_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Preset Sha256"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "requested_negative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Negative"
+          },
+          "negative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative"
+          },
+          "common_prompt": {
+            "type": "string",
+            "title": "Common Prompt",
+            "default": ""
+          },
+          "subject_prompts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subject Prompts"
+          },
+          "quality_enabled": {
+            "type": "boolean",
+            "title": "Quality Enabled"
+          },
+          "positive_prefix": {
+            "type": "string",
+            "title": "Positive Prefix"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "positive": {
+            "type": "string",
+            "title": "Positive"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InputArtifact"
+            },
+            "type": "object",
+            "title": "Inputs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preset_sha256",
+          "prompt",
+          "subject_prompts",
+          "quality_enabled",
+          "positive_prefix",
+          "body",
+          "positive"
+        ],
+        "title": "CompiledImageInput",
+        "description": "Freeze the original directions and exact positive conditioning for generation."
+      },
+      "Conversation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/ConversationInput"
+          },
+          "state": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "State"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition"
+        ],
+        "title": "Conversation"
+      },
+      "ConversationInput": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "scenario": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Scenario",
+            "default": ""
+          },
+          "character": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Character",
+            "default": ""
+          },
+          "user": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "User",
+            "default": ""
+          },
+          "instructions": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Instructions",
+            "default": ""
+          },
+          "initial_state": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Initial State"
+          },
+          "images": {
+            "type": "boolean",
+            "title": "Images",
+            "default": false
+          },
+          "llm_profile": {
+            "type": "string",
+            "title": "Llm Profile",
+            "default": "fake"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "ConversationInput"
+      },
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "preparation_timeout",
+          "authentication_failed",
+          "browser_failed",
+          "colab_failed",
+          "collection_failed",
+          "connection_failed",
+          "diagnostics_failed",
+          "generation_failed",
+          "generation_timeout",
+          "http_failed",
+          "identity_mismatch",
+          "image_invalid",
+          "internal_error",
+          "invalid_evaluation",
+          "real_llm_not_allowed",
+          "llm_dependencies_missing",
+          "llm_unavailable",
+          "context_limit_exceeded",
+          "story_plan_invalid",
+          "story_replan_required",
+          "invalid_story_count",
+          "image_backend_unavailable",
+          "fake_story_mismatch",
+          "invalid_configuration",
+          "invalid_output",
+          "invalid_request",
+          "invalid_response",
+          "log_timeout",
+          "log_unavailable",
+          "missing_image",
+          "operation_failed",
+          "operation_busy",
+          "operation_conflict",
+          "fake_input_mismatch",
+          "request_not_found",
+          "runtime_ended",
+          "shutdown_timeout",
+          "stopping",
+          "publication_failed",
+          "migration_required",
+          "storage_failed",
+          "submission_unknown",
+          "unsupported_asset",
+          "extension_unavailable",
+          "unsupported_image",
+          "unsupported_batch"
+        ],
+        "title": "ErrorCode",
+        "description": "Identify safe, machine-readable product failure categories."
+      },
+      "FailureInfo": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/OperationStage"
+          },
+          "exception_type": {
+            "type": "string",
+            "title": "Exception Type"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "stage",
+          "exception_type"
+        ],
+        "title": "FailureInfo",
+        "description": "Describe a failure without copying exception messages or response bodies."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImageInput": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "prompt"
+        ],
+        "title": "ImageInput"
+      },
+      "ImageMetadata": {
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ImageRef"
+          },
+          "output_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Node"
+          },
+          "batch_index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Index"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "auxiliary",
+              "unknown"
+            ],
+            "title": "Role",
+            "default": "unknown"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "saved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sha256",
+          "size_bytes",
+          "width",
+          "height",
+          "source"
+        ],
+        "title": "ImageMetadata",
+        "description": "Describe bytes that were verified and written to local storage."
+      },
+      "ImageRef": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "subfolder": {
+            "type": "string",
+            "title": "Subfolder",
+            "default": ""
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "output",
+              "temp"
+            ],
+            "title": "Type",
+            "default": "output"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename"
+        ],
+        "title": "ImageRef",
+        "description": "Reference an image reported by ComfyUI."
+      },
+      "InputArtifact": {
+        "properties": {
+          "format_version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "title": "Format Version",
+            "default": 2
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "png",
+                  "jpg",
+                  "webp"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "mask"
+            ],
+            "title": "Kind",
+            "default": "image"
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^inputs/[a-f0-9]{64}/content$",
+            "title": "Key"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Size Bytes"
+          },
+          "width": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Height"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "sha256",
+          "name",
+          "size_bytes",
+          "width",
+          "height"
+        ],
+        "title": "InputArtifact",
+        "description": "Reference immutable validated local bytes independently of a GPU endpoint."
+      },
+      "OperationStage": {
+        "type": "string",
+        "enum": [
+          "check",
+          "cleanup",
+          "colab_control",
+          "collection",
+          "communication",
+          "connection",
+          "disconnect",
+          "display",
+          "finalize",
+          "evaluation",
+          "generation",
+          "gpu_stop",
+          "history_validation",
+          "image_collection",
+          "image_validation",
+          "log_cleanup",
+          "log_collection",
+          "log_download",
+          "log_timeout",
+          "operation",
+          "preparation",
+          "release",
+          "response_validation",
+          "storage",
+          "submission",
+          "story_planning",
+          "story_rendering",
+          "summary"
+        ],
+        "title": "OperationStage",
+        "description": "Identify the operation phase independently of displayed text."
+      },
+      "OperationView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "running",
+              "complete",
+              "failed",
+              "interrupted"
+            ],
+            "title": "State"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "image_state": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "pending",
+              "submitted",
+              "failed"
+            ],
+            "title": "Image State",
+            "default": "disabled"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "image_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "image_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Error Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "conversation_id",
+          "state"
+        ],
+        "title": "OperationView"
+      },
+      "OutputSpec": {
+        "properties": {
+          "primary_node": {
+            "type": "string",
+            "title": "Primary Node"
+          },
+          "candidates": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Candidates"
+          },
+          "stages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "primary_node",
+          "candidates"
+        ],
+        "title": "OutputSpec",
+        "description": "Identify final candidates and their requested batch size."
+      },
+      "ProfileView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "model"
+        ],
+        "title": "ProfileView"
+      },
+      "PromptSource": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^/\\\\]+$",
+            "title": "Name"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative",
+              "input"
+            ],
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "sha256",
+          "content",
+          "role"
+        ],
+        "title": "PromptSource",
+        "description": "Retain original UTF-8 input without an absolute path."
+      },
+      "RetainedImageInput": {
+        "properties": {
+          "format_version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "title": "Format Version",
+            "default": 1
+          },
+          "compiler_version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "title": "Compiler Version",
+            "default": 1
+          },
+          "preset_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Preset Sha256"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "common_prompt": {
+            "type": "string",
+            "title": "Common Prompt",
+            "default": ""
+          },
+          "requested_negative": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Negative"
+          },
+          "subject_prompts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subject Prompts"
+          },
+          "quality_enabled": {
+            "type": "boolean",
+            "title": "Quality Enabled"
+          },
+          "positive_prefix": {
+            "type": "string",
+            "title": "Positive Prefix"
+          },
+          "negative_prefix": {
+            "type": "string",
+            "title": "Negative Prefix"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "positive": {
+            "type": "string",
+            "title": "Positive"
+          },
+          "negative": {
+            "type": "string",
+            "title": "Negative"
+          },
+          "negative_body": {
+            "type": "string",
+            "title": "Negative Body"
+          },
+          "subject_positives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subject Positives"
+          },
+          "layout": {
+            "type": "string",
+            "enum": [
+              "global",
+              "single",
+              "left-right",
+              "layered"
+            ],
+            "title": "Layout"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InputArtifact"
+            },
+            "type": "object",
+            "title": "Inputs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preset_sha256",
+          "prompt",
+          "requested_negative",
+          "subject_prompts",
+          "quality_enabled",
+          "positive_prefix",
+          "negative_prefix",
+          "body",
+          "positive",
+          "negative",
+          "negative_body",
+          "subject_positives",
+          "layout"
+        ],
+        "title": "RetainedImageInput",
+        "description": "Retain original directions and the exact effective conditioning text."
+      },
+      "RetainedPositiveImageInput": {
+        "properties": {
+          "format_version": {
+            "type": "integer",
+            "const": 4,
+            "title": "Format Version",
+            "default": 4
+          },
+          "compiler_version": {
+            "type": "integer",
+            "const": 7,
+            "title": "Compiler Version",
+            "default": 7
+          },
+          "preset_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Preset Sha256"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "common_prompt": {
+            "type": "string",
+            "title": "Common Prompt",
+            "default": ""
+          },
+          "subject_prompts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Subject Prompts"
+          },
+          "quality_enabled": {
+            "type": "boolean",
+            "title": "Quality Enabled"
+          },
+          "positive_prefix": {
+            "type": "string",
+            "title": "Positive Prefix"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "positive": {
+            "type": "string",
+            "title": "Positive"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InputArtifact"
+            },
+            "type": "object",
+            "title": "Inputs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preset_sha256",
+          "prompt",
+          "subject_prompts",
+          "quality_enabled",
+          "positive_prefix",
+          "body",
+          "positive"
+        ],
+        "title": "RetainedPositiveImageInput",
+        "description": "Freeze the original directions and exact positive conditioning for generation."
+      },
+      "RetainedPromptSource": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^/\\\\]+$",
+            "title": "Name"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative",
+              "input"
+            ],
+            "title": "Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "sha256",
+          "content",
+          "role"
+        ],
+        "title": "RetainedPromptSource",
+        "description": "Retain original UTF-8 input without an absolute path."
+      },
+      "Run": {
+        "properties": {
+          "compiled_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompiledImageInput"
+              },
+              {
+                "$ref": "#/components/schemas/RetainedPositiveImageInput"
+              },
+              {
+                "$ref": "#/components/schemas/RetainedImageInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compiled Input"
+          },
+          "output_spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutputSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_sources": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PromptSource"
+                },
+                {
+                  "$ref": "#/components/schemas/RetainedPromptSource"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Input Sources",
+            "default": []
+          },
+          "format_version": {
+            "type": "integer",
+            "title": "Format Version",
+            "default": 5
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Run Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "runtime_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Runtime Id"
+          },
+          "prompt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Id"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "unknown",
+              "queued",
+              "saved",
+              "failed",
+              "lost"
+            ],
+            "title": "State",
+            "default": "prepared"
+          },
+          "app_version": {
+            "type": "string",
+            "title": "App Version"
+          },
+          "source_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision"
+          },
+          "code_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Sha256"
+          },
+          "remote_code_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Code Sha256"
+          },
+          "remote_source_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Source Revision"
+          },
+          "comfy_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comfy Revision"
+          },
+          "frontend_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frontend Version"
+          },
+          "model_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Sha256"
+          },
+          "input_sha256": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Input Sha256"
+          },
+          "asset_sha256": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Asset Sha256"
+          },
+          "workflow_sha256": {
+            "type": "string",
+            "title": "Workflow Sha256"
+          },
+          "images": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Images"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "saved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved At"
+          },
+          "first_candidate_available_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Candidate Available At"
+          },
+          "generation_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Started At"
+          },
+          "generation_completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Completed At"
+          },
+          "image_metadata": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ImageMetadata"
+            },
+            "type": "object",
+            "title": "Image Metadata"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collection_failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FailureInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "runtime_id",
+          "app_version",
+          "source_revision",
+          "remote_source_revision",
+          "comfy_revision",
+          "frontend_version",
+          "workflow_sha256"
+        ],
+        "title": "Run",
+        "description": "Retain generation conditions for collection after reconnecting."
+      },
+      "RuntimeStart": {
+        "properties": {
+          "backend": {
+            "type": "string",
+            "enum": [
+              "external",
+              "colab"
+            ],
+            "title": "Backend",
+            "default": "external"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RuntimeStart"
+      },
+      "SendInput": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "allow_real_llm": {
+            "type": "boolean",
+            "title": "Allow Real Llm",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "text"
+        ],
+        "title": "SendInput"
+      },
+      "SessionStatus": {
+        "properties": {
+          "gpu": {
+            "type": "string",
+            "title": "Gpu",
+            "default": "absent"
+          },
+          "collector_running": {
+            "type": "boolean",
+            "title": "Collector Running",
+            "default": false
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection"
+          },
+          "monitor_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitor Phase"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "preparation_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preparation Count",
+            "default": 0
+          },
+          "material_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Count",
+            "default": 0
+          },
+          "pending": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending"
+          },
+          "lost_count": {
+            "type": "integer",
+            "title": "Lost Count",
+            "default": 0
+          },
+          "unreadable": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unreadable"
+          }
+        },
+        "type": "object",
+        "title": "SessionStatus",
+        "description": "Keep unavailable observations distinct from an empty queue."
+      },
+      "SettingsView": {
+        "properties": {
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileView"
+            },
+            "type": "array",
+            "title": "Profiles"
+          },
+          "sample_input": {
+            "type": "string",
+            "title": "Sample Input"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profiles",
+          "sample_input"
+        ],
+        "title": "SettingsView"
+      },
+      "StateCommand": {
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": [
+              "reset_state",
+              "set_state"
+            ],
+            "title": "Command"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "state": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "State"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "command",
+          "expected_revision"
+        ],
+        "title": "StateCommand"
+      },
+      "Turn": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "user": {
+            "type": "string",
+            "title": "User"
+          },
+          "assistant": {
+            "type": "string",
+            "title": "Assistant"
+          },
+          "state": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "State"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id"
+          },
+          "scene": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "user",
+          "assistant",
+          "state"
+        ],
+        "title": "Turn"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

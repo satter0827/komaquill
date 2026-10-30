@@ -6,14 +6,10 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from komaquill.api import Client, KomaquillError
+from komaquill.api import images as services
+from komaquill.images.generation import collect, submit_generation
 from PIL import Image
-from typer.testing import CliRunner
-
-from komaquill.api import Client, KomaquillError, RenderConfig, SceneRenderConfig, services, stories
-from komaquill.application.generation import collect, submit_generation
-from komaquill.infrastructure.stories.storage import FileStoryRepository
-from komaquill.interfaces.cli import app
-from tests.support.stories import source
 
 
 def configure(project, session, client, monkeypatch):
@@ -24,7 +20,6 @@ def configure(project, session, client, monkeypatch):
         yield client, active
 
     monkeypatch.setattr(services, "connected", connected)
-    monkeypatch.setattr(stories, "connected", connected)
     return Client(project.root), active
 
 
@@ -111,8 +106,8 @@ def test_changed_or_corrupt_observed_graph_does_not_rewrite_a_saved_run(
 def test_observed_graph_recovers_after_a_run_checkpoint_failure(
     project, session, client, stub, monkeypatch
 ):
+    from komaquill.adapters import storage
     from komaquill.domain.workflow import digest
-    from komaquill.infrastructure import storage
 
     api, _, run, record, _ = pinned_reference_run(project, session, client, stub, monkeypatch)
     original_hash = run.workflow_sha256
@@ -173,71 +168,6 @@ def test_invalid_materials_fail_before_generation(
     with pytest.raises(KomaquillError):
         api.images.generate("kitten", model="klein-4b", operation="edit", inputs=inputs)
     assert stub.submissions == stub.upload_calls == 0
-
-
-def test_scene_profiles_and_materials_are_frozen_and_resume_does_not_repeat(
-    project, session, client, stub, monkeypatch
-):
-    api, active = configure(project, session, client, monkeypatch)
-    plan = api.stories.plan(source(), images=4, llm_profile="fake")
-    image = api.inputs.import_file(image_file(project.root))
-    config = RenderConfig(
-        common_prompt="rainy street, overcast light",
-        scenes=tuple(
-            SceneRenderConfig(
-                scene=i,
-                model="klein-4b",
-                operation="edit",
-                prompt=f"scene {i}",
-                inputs={"reference": image},
-                parameters={"aniedit_strength": 0.4 + i / 20},
-            )
-            for i in range(1, 5)
-        ),
-    )
-    final = list(api.stories.render(plan.request.story_id, render_config=config, seed=80))[
-        -1
-    ].snapshot
-    assert final.complete and stub.submissions == 4
-    saved = FileStoryRepository(project).render(final.render_id)
-    assert [row.preset["parameters"]["aniedit_strength"] for row in saved.scenes] == pytest.approx(
-        [
-            0.45,
-            0.5,
-            0.55,
-            0.6,
-        ]
-    )
-    assert all(row.compiled_input.inputs["reference"] == image for row in saved.scenes)
-    assert all(
-        row.compiled_input.common_prompt == config.common_prompt
-        and row.compiled_input.body.startswith(config.common_prompt)
-        for row in saved.scenes
-    )
-    assert list(api.stories.resume(final.render_id))[-1].snapshot.complete
-    assert stub.submissions == 4
-    summary = api.stories.export(plan.request.story_id)
-    assert all(run.run.input_sha256 for run in summary.runs)
-
-
-def test_all_scenes_are_validated_before_any_request(project, session, client, stub, monkeypatch):
-    api, active = configure(project, session, client, monkeypatch)
-    plan = api.stories.plan(source(), images=4, llm_profile="fake")
-    image = api.inputs.import_file(image_file(project.root))
-    config = RenderConfig(
-        scenes=tuple(
-            SceneRenderConfig(
-                scene=i,
-                model="klein-4b",
-                operation="edit",
-                inputs={"reference": image} if i != 4 else {},
-            )
-            for i in range(1, 5)
-        )
-    )
-    with pytest.raises(KomaquillError):
-        list(api.stories.render(plan.request.story_id, render_config=config))
-    assert stub.submissions == 0
 
 
 def test_failed_intermediate_collection_retries_without_promoting_success(
@@ -311,93 +241,11 @@ def test_invalid_stage_parameters_fail_before_upload(
     assert stub.submissions == stub.upload_calls == 0
 
 
-def test_cli_resolves_materials_relative_to_each_input_file(
-    project, session, client, stub, monkeypatch
-):
-    api, _ = configure(project, session, client, monkeypatch)
-    folder = project.root / "files"
-    folder.mkdir()
-    image_file(folder)
-    path = folder / "image.json"
-    path.write_text(
-        json.dumps(
-            {
-                "format_version": 4,
-                "prompt": "a cat",
-                "inputs": {"reference": "input.png"},
-                "parameters": {"aniedit_strength": 0.25},
-            }
-        )
-    )
-    result = CliRunner().invoke(
-        app,
-        [
-            "--project",
-            str(project.root),
-            "generate",
-            "--model",
-            "klein-4b",
-            "--operation",
-            "edit",
-            "--input-file",
-            str(path),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    plan = api.stories.plan(source(), images=1, llm_profile="fake")
-    path = folder / "render.json"
-    path.write_text(
-        json.dumps(
-            {
-                "format_version": 4,
-                "scenes": [
-                    {
-                        "scene": 1,
-                        "model": "klein-4b",
-                        "operation": "edit",
-                        "inputs": {"reference": "input.png"},
-                    }
-                ],
-            }
-        )
-    )
-    result = CliRunner().invoke(
-        app,
-        [
-            "--project",
-            str(project.root),
-            "stories",
-            "render",
-            str(plan.request.story_id),
-            "--render-file",
-            str(path),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert stub.submissions == 2
-    path.write_text('{"scenes":[{}]}')
-    result = CliRunner().invoke(
-        app,
-        [
-            "--project",
-            str(project.root),
-            "stories",
-            "render",
-            str(plan.request.story_id),
-            "--render-file",
-            str(path),
-        ],
-    )
-    assert result.exit_code != 0 and "Traceback" not in result.output
-    assert stub.submissions == 2
-
-
 @pytest.mark.parametrize("filename", ["content", "image.bin", "source.png"])
 def test_import_uses_real_image_format_for_standard_ui_choices(project, filename):
-    from PIL import Image
-
+    from komaquill.adapters.inputs import import_file
     from komaquill.domain.materials import InputArtifact
-    from komaquill.infrastructure.inputs import import_file
+    from PIL import Image
 
     path = project.root / filename
     Image.new("RGB", (16, 16), "blue").save(path, format="PNG")

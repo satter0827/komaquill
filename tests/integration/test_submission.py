@@ -2,9 +2,8 @@
 
 import httpx
 import pytest
-
+from komaquill.adapters.comfyui import ComfyClient
 from komaquill.domain.errors import KomaquillError, SubmissionUnknown
-from komaquill.infrastructure.comfyui import ComfyClient
 
 
 @pytest.mark.parametrize(
@@ -41,8 +40,7 @@ def test_non_unicode_submission_response_remains_unknown_and_is_recovered(
     project, client, session, stub, monkeypatch
 ):
     import httpx
-
-    from komaquill.application.generation import collect, generate
+    from komaquill.images.generation import collect, generate
 
     original_request = client.request
 

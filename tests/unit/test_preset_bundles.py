@@ -6,12 +6,11 @@ from importlib.resources import files
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
+from komaquill.adapters.configuration import Settings
+from komaquill.adapters.preset_catalog import bundle
+from komaquill.adapters.workflows import prepare
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.configuration import Settings
-from komaquill.infrastructure.preset_catalog import bundle
-from komaquill.infrastructure.workflows import prepare
+from pydantic import ValidationError
 
 
 def copy_bundle(project, name="klein-4b"):
@@ -84,7 +83,7 @@ def test_invalid_bundles_fail_before_start(project, case):
 
 
 def test_packaged_graphs_are_independent_copies():
-    settings = Settings()
+    settings = Settings(models=["klein-4b"])
     first, ui = prepare("one", 1, "first", settings=settings)
     first["4"]["inputs"]["unet_name"] = "changed"
     ui["nodes"].clear()

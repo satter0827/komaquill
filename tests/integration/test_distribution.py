@@ -13,13 +13,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from komaquill.adapters import deployment as deployment
+from komaquill.adapters import provenance as provenance
+from komaquill.adapters.configuration import Settings
+from komaquill.adapters.workspace import initialize
+from komaquill.cli import main as cli
 from pydantic import ValidationError
 from typer.testing import CliRunner
-
-from komaquill.infrastructure import deployment as deployment
-from komaquill.infrastructure import provenance as provenance
-from komaquill.infrastructure.configuration import Settings, initialize
-from komaquill.interfaces import cli as cli
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -76,7 +76,7 @@ def test_payload_is_reproducible_and_excludes_local_data(project, monkeypatch):
     assert first.sha256 == hashlib.sha256(content).hexdigest()
     with tarfile.open(fileobj=io.BytesIO(content)) as archive:
         names = archive.getnames()
-        assert "komaquill/gpu/bootstrap.py" in names
+        assert "komaquill/worker/bootstrap.py" in names
         assert "komaquill/resources/runtime/pylock.worker.toml" in names
         assert all(
             name.startswith("komaquill/") or name in {"manifest.json", "komaquill.toml"}
@@ -91,19 +91,19 @@ def test_payload_is_reproducible_and_excludes_local_data(project, monkeypatch):
 
 
 def test_fingerprint_hashes_the_archived_snapshot_once(project, monkeypatch):
-    entries = [("komaquill/gpu/worker.py", b"worker bytes")]
+    entries = [("komaquill/worker/worker.py", b"worker bytes")]
     monkeypatch.setattr(deployment, "gpu_contents", lambda: iter(entries))
     monkeypatch.setattr(deployment, "source_revision", lambda: "revision")
     payload = deployment.create_payload(project)
     assert payload.code_sha256 == provenance.code_sha256(entries)
     assert provenance.code_sha256(entries) != provenance.code_sha256(
-        [("komaquill/gpu/worker.py", b"other")]
+        [("komaquill/worker/worker.py", b"other")]
     )
 
 
 @pytest.mark.parametrize("case", ["installed", "no_git", "success", "failure"])
 def test_git_is_optional_and_never_reads_the_workspace_repository(tmp_path, monkeypatch, case):
-    package = tmp_path / "src/komaquill"
+    package = tmp_path / "src/backend/src/komaquill"
     package.mkdir(parents=True)
     monkeypatch.setattr(provenance, "files", lambda _: package)
     if case != "installed":
@@ -139,7 +139,11 @@ def test_payload_allowlist_and_fixed_versions():
     assert runtime["python_version"] == (root / ".python-version").read_text().strip()
     assert not list((root / "scripts").glob("worker*"))
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    assert config["tool"]["coverage"]["run"]["source"] == ["src", "scripts", "bootstrap"]
+    assert config["tool"]["coverage"]["run"]["source"] == [
+        "src/backend/src",
+        "scripts",
+        "bootstrap",
+    ]
     assert "*/tests/*" in config["tool"]["coverage"]["run"]["omit"]
 
 
@@ -150,9 +154,9 @@ def test_powershell_entrypoints_parse_and_create_only_project_artifacts(tmp_path
     root = Path(__file__).resolve().parents[2]
     (tmp_path / "bootstrap").mkdir()
     shutil.copyfile(root / "bootstrap/_environment.ps1", tmp_path / "bootstrap/_environment.ps1")
-    catalog = tmp_path / "src/komaquill/resources/messages.json"
+    catalog = tmp_path / "scripts/messages.json"
     catalog.parent.mkdir(parents=True)
-    shutil.copyfile(root / "src/komaquill/resources/messages.json", catalog)
+    shutil.copyfile(root / "scripts/messages.json", catalog)
     command = """
     $ErrorActionPreference = 'Stop'
     foreach ($folder in @('bootstrap', 'scripts')) {

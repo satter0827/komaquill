@@ -3,10 +3,9 @@
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from komaquill.cli import main as cli
+from komaquill.runtime import inspection, views
 from typer.testing import CliRunner
-
-from komaquill.infrastructure import inspection, views
-from komaquill.interfaces import cli as cli
 
 
 def test_missing_connection_has_actionable_error(project):
@@ -55,7 +54,7 @@ def test_status_without_a_session_never_creates_gpu(project, monkeypatch):
 def test_collect_reports_partial_save_and_returns_failure(
     project, client, session, stub, monkeypatch
 ):
-    from komaquill.infrastructure.workflows import resource_json
+    from komaquill.adapters.workflows import resource_json
 
     @contextmanager
     def connection(_project):
@@ -66,9 +65,10 @@ def test_collect_reports_partial_save_and_returns_failure(
     record = next(iter(stub.history.values()))
     record["outputs"]["9"]["images"][0]["filename"] = "broken.png"
     stub.invalid_images.add("broken.png")
-    from komaquill.api import services
 
-    monkeypatch.setattr(services, "connected", connection)
+    from komaquill.api import images as image_services
+
+    monkeypatch.setattr(image_services, "connected", connection)
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "collect"])
     assert result.exit_code == 1
     assert "Saved: 1" in result.output and "collect" in result.output
@@ -78,9 +78,9 @@ def test_collect_reports_partial_save_and_returns_failure(
 def test_status_separates_lost_requests_from_pending(project, session):
     from uuid import uuid4
 
-    from komaquill.application.generation import mark_lost, new_run
-    from komaquill.infrastructure.atomic import atomic_json
-    from komaquill.infrastructure.storage import save_run
+    from komaquill.adapters.atomic import atomic_json
+    from komaquill.adapters.storage import save_run
+    from komaquill.images.generation import mark_lost, new_run
 
     save_run(project, new_run(project, session, uuid4(), {}))
     mark_lost(project, session.runtime_id)
@@ -94,8 +94,8 @@ def test_status_separates_lost_requests_from_pending(project, session):
 def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
     from uuid import uuid4
 
-    from komaquill.infrastructure.atomic import atomic_json
-    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.adapters.atomic import atomic_json
+    from komaquill.adapters.colab import Colab, Receipt
 
     colab = Colab(project)
     receipt = Receipt(name="starting", runtime_id=uuid4(), source_revision="a" * 40)
@@ -114,8 +114,8 @@ def test_status_does_not_wait_on_allocation_lock(project, monkeypatch):
 def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypatch):
     from uuid import uuid4
 
-    from komaquill.infrastructure.atomic import atomic_json
-    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.adapters.atomic import atomic_json
+    from komaquill.adapters.colab import Colab, Receipt
 
     colab = Colab(project)
     receipt = Receipt(name="uncertain", runtime_id=uuid4(), source_revision="a" * 40)

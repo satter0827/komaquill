@@ -1,6 +1,6 @@
 # 状態とエラーの契約
 
-この文書は実装済みの保存・失敗・終了の境界を説明します。フィールドと列挙値の正本は[domain](../../src/komaquill/domain/models.py)と[エラー定義](../../src/komaquill/domain/errors.py)です。
+この文書は実装済みの保存・失敗・終了の境界を説明します。フィールドと列挙値の正本は[domain](../../src/backend/src/komaquill/domain/models.py)と[エラー定義](../../src/backend/src/komaquill/domain/errors.py)です。
 
 ## 生成要求
 

@@ -11,10 +11,9 @@ from string import Formatter
 from textwrap import dedent
 
 import pytest
-
 from komaquill import messages
+from komaquill.adapters import provenance
 from komaquill.domain.errors import ErrorCode, KomaquillError
-from komaquill.infrastructure import provenance
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -28,7 +27,7 @@ def test_catalog_keys_are_unique_and_error_categories_are_explained():
         return result
 
     data = json.loads(
-        (ROOT / "src/komaquill/resources/messages.json").read_text(encoding="utf-8"),
+        (ROOT / "src/backend/src/komaquill/resources/messages.json").read_text(encoding="utf-8"),
         object_pairs_hook=unique,
     )
     assert all("error." + code.value in data for code in ErrorCode)
@@ -38,10 +37,15 @@ def test_catalog_keys_are_unique_and_error_categories_are_explained():
 def test_literal_message_references_and_named_values_match_the_catalog():
     data = messages.catalog()
     for path in [
-        *(ROOT / "src").rglob("*.py"),
+        *(ROOT / "src/backend/src").rglob("*.py"),
         *(ROOT / "scripts").rglob("*.py"),
         *(ROOT / "bootstrap").rglob("*.py"),
     ]:
+        data = (
+            json.loads((ROOT / "scripts/messages.json").read_bytes())
+            if path.is_relative_to(ROOT / "scripts") or path.is_relative_to(ROOT / "bootstrap")
+            else messages.catalog()
+        )
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call):
                 continue
@@ -78,14 +82,14 @@ def test_gpu_fingerprint_ignores_cli_only_code_and_text(monkeypatch):
     original = list(provenance.package_contents())
     baseline = provenance.code_sha256(provenance.gpu_contents())
     changed = [
-        (name, content + b"\n# local edit" if name.endswith("interfaces/cli.py") else content)
+        (name, content + b"\n# local edit" if name.endswith("cli/main.py") else content)
         for name, content in original
     ]
     monkeypatch.setattr(provenance, "package_contents", lambda: iter(changed))
     assert provenance.code_sha256(provenance.gpu_contents()) == baseline
     assert provenance.code_sha256(changed) != provenance.code_sha256(original)
     gpu = dict(provenance.gpu_contents())
-    assert "komaquill/interfaces/cli.py" not in gpu
+    assert "komaquill/cli/main.py" not in gpu
     assert "komaquill/infrastructure/colab.py" not in gpu
     text = json.loads(gpu["komaquill/resources/messages.json"])
     assert "text.describe_the_image_to_generate" not in text
@@ -103,8 +107,8 @@ def test_transferred_workflows_use_their_complete_reduced_catalog(tmp_path):
         import tomllib
         from importlib.resources import files
         from komaquill.domain.configuration import RuntimeSettings
-        from komaquill.infrastructure.preset_catalog import catalog
-        from komaquill.infrastructure.workflows import prepare
+        from komaquill.adapters.preset_catalog import catalog
+        from komaquill.adapters.workflows import prepare
 
         defaults = tomllib.loads(files('komaquill').joinpath(
             'resources/settings/defaults.toml').read_text())
@@ -144,7 +148,7 @@ def test_catalog_loader_rejects_missing_or_invalid_content(monkeypatch, tmp_path
 def test_extension_catalog_and_executable_resources_are_packaged():
     import re
 
-    package = ROOT / "src/komaquill"
+    package = ROOT / "src/backend/src/komaquill"
     scripts = list((package / "interfaces/comfyui/web").glob("*.js"))
     assert scripts
     for path in scripts:

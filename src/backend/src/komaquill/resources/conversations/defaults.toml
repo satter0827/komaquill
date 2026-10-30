@@ -1,0 +1,17 @@
+# Conversation processing limits and selectable connection profiles.
+request_timeout = 300.0
+max_output_tokens = 4096
+repair_attempts = 1
+context_turns = 12
+max_input_characters = 32768
+
+[llm_profiles.fake]
+provider = "fake"
+model = "fake-list"
+
+[llm_profiles.lmstudio-4b]
+provider = "openai-compatible"
+model = "qwen/qwen3.5-4b"
+base_url = "http://127.0.0.1:1234/v1"
+require_model_match = true
+temperature = 0.3

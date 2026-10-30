@@ -2,6 +2,21 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Open Web App",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "komaquill",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
+      "justMyCode": true,
+      "args": [
+        "web",
+        "--open"
+      ],
+      "subProcess": false
+    },
+    {
       "name": "Start Session",
       "type": "debugpy",
       "request": "launch",
@@ -68,123 +83,6 @@
         "generate",
         "--input-file",
         "${input:imageInputFile}"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "Resume Story",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "resume",
-        "${input:renderId}"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "Render Saved Story",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "render",
-        "${input:storyId}",
-        "--render-file",
-        "${input:renderFile}"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "List Stories",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "list"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "Show Story",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "show",
-        "${input:storyId}"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "Export Story",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "export",
-        "${input:storyId}",
-        "--detail",
-        "${input:evidenceDetail}"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "Plan Story (LM Studio)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "plan",
-        "${input:storyFile}",
-        "--allow-real-llm"
-      ],
-      "subProcess": false
-    },
-    {
-      "name": "Generate Story (LM Studio)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "komaquill",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "envFile": "${workspaceFolder}/.artifacts/runtime/vscode.env",
-      "justMyCode": true,
-      "args": [
-        "stories",
-        "generate",
-        "${input:storyFile}",
-        "--allow-real-llm"
       ],
       "subProcess": false
     },
@@ -381,46 +279,9 @@
       "default": "--dry-run"
     },
     {
-      "id": "storyFile",
-      "type": "promptString",
-      "description": "Enter the UTF-8 story file path"
-    },
-    {
-      "id": "storyId",
-      "type": "promptString",
-      "description": "Enter the story ID"
-    },
-    {
-      "id": "renderId",
-      "type": "promptString",
-      "description": "Enter the rendering ID to resume with its original settings"
-    },
-    {
-      "id": "evidenceDetail",
-      "type": "pickString",
-      "description": "Choose summary for comparison or full for complete records",
-      "options": [
-        {
-          "label": "Summary",
-          "value": "summary"
-        },
-        {
-          "label": "Full Records",
-          "value": "full"
-        }
-      ],
-      "default": "summary"
-    },
-    {
       "id": "imageInputFile",
       "type": "promptString",
       "description": "Enter the image-input JSON file path"
-    },
-    {
-      "id": "renderFile",
-      "type": "promptString",
-      "description": "Scene render settings JSON file",
-      "default": "render.json"
     },
     {
       "id": "imageModel",

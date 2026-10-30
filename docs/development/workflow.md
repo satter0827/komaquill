@@ -2,54 +2,33 @@
 
 ## 環境を準備する
 
-[CONTRIBUTING](../../CONTRIBUTING.md#環境を構築する)に従って導入します。bootstrapは環境の導入・有効化・依存更新、scriptsは品質検査、testsはテストと検証コードを担当します。[開発規約](../../AGENTS.md)を正本とします。
+[CONTRIBUTING](../../CONTRIBUTING.md#環境を構築する)に従ってPython環境を導入し、ルートで`pnpm install`を実行します。Pythonの依存はbackend、画面の依存はfrontend、検証とJavaScriptのlockfileはルートで管理します。
 
-## 品質検査を実行する
+## 変更に応じて検証する
 
-作業フォルダーのルートから実行します。Check Projectも同じ入口を使用します。
-
-| レベル | 対象 |
+| コマンド | 対象 |
 |---|---|
-| L1 | 整形、lint、strict mypy、依存方向、文書、作業ツリーの秘密情報 |
-| L2 | L1に加え、各言語のテスト、GPU依存ロック、カバレッジ、実プロセスでの基本操作 |
-| L3 | L2に加え、隔離ビルド、配布物、隔離wheelの基本操作、Git履歴の秘密情報 |
+| `pnpm check` | 基準版との共通祖先以降の変更を扱う。Pythonはimport依存から関連テストを選択 |
+| `pnpm check:ci` | 基準版から影響を受けるプロジェクトの全テストとビルド |
+| `pnpm check:all` | 全プロジェクト、カバレッジ、配布物、隔離導入の検証 |
+| `pnpm build` | Reactをビルドし、画面を同梱するwheelとsdistを作成 |
 
-```powershell
-python scripts/check.py --level 2
-python scripts/check.py --level 3
-python scripts/check.py --level 3 --plan --json
-python scripts/check.py --level 3 --status --json
-```
+`node scripts/python.mjs scripts/check.py --scope daily --plan`で対象プロジェクト、`node scripts/python.mjs scripts/affected.py --plan`でPythonの選択理由とテストを確認できます。比較基準の既定値はnx.jsonのdefaultBaseが正本です。`NX_BASE`を指定するとNxとPythonで同じ値を使用します。コミット済み・ステージ済み・作業中・新規・削除の変更を含めます。Reactの変更からPythonの全テストを呼び出す依存は設定しません。
 
-既定はL2です。上位レベルは下位の全検査を含みます。GPU、Google認証、有料APIは要求しません。依存導入には配布元への通信が必要です。生成操作の検査はlocalhostの代替サーバーを使用します。
-
-実行計画には検査ID、必要環境、コマンド、前提となる検査を含めます。個別調査では--check installed-wheelのように指定できます。前提工程も実行しますが、レベル全体の成功としては登録しません。
+lint、型検査、テスト、ビルドをNxの別タスクとして定義します。入力と出力は各project.jsonを正本とします。API契約は`pnpm contracts`でOpenAPIとTypeScriptクライアントを生成します。
 
 ## 結果を確認する
 
-結果は.artifacts/records/reports/quality/実行IDに保存します。gate.jsonには対象コミット、入力ハッシュ、工程の時刻、終了コード、失敗種別、未実行理由を記録します。実行管理と結果保存は製品モジュールをimportしません。
+検証全体の対象範囲、基準版、入力ハッシュ、時刻、終了結果、出力ログは`.artifacts/records/reports/checks/`、Pythonの選択とJUnitは`.artifacts/records/reports/affected/`へ保存します。Nxのタスクキャッシュは`.artifacts/cache/nx/`です。キャッシュは静的検査、画面、契約、ビルドとE2Eに使用します。Pythonの関連テストは実行範囲を毎回記録するためタスクキャッシュから復元しません。現在のGPU・プロバイダー観測にもキャッシュを使用しません。
 
-latest-attempt-lN.jsonは最新実行、latest-success-lN.jsonは最新の全工程成功です。statusのmatches_current_inputsで現在と同じ入力を検査した結果か確認します。古い成功は現在の成功を意味しません。
+局所検証の成功を全体成功として扱いません。中断、不足環境、入力変更があった実行は成功として記録しません。実LLMとGPUの検査は日常の検証から分離します。
 
-失敗工程に依存する検査は省略し、独立した秘密情報検査は続けます。中断、入力変更、部分実行では最新成功を更新しません。WindowsとLinuxのCIもL3を実行し、qualityとsecurityを維持します。
+カバレッジは製品・検査・環境更新のPythonを未実行ファイルも含めて計測し、testsを除外します。閾値は[pyproject.toml](../../pyproject.toml)を正本とし、行と分岐を独立して判定します。
 
-カバレッジは製品・検査・環境更新のPythonを、未実行ファイルも含めて計測します。testsは除外します。対象と行・分岐の閾値は[pyproject.toml](../../pyproject.toml)を正本とします。PowerShellは構文・引数・終了コード・出力先をWindowsで別途検査します。
+## 配布と依存更新
 
-## 依存を更新する
+`pnpm build`は`.artifacts/build/`で配布用ソースを組み立て、`.artifacts/dist/`へ出力します。Reactのビルド結果を追跡対象へ書き戻しません。通常の利用者にNode.jsを要求しません。
 
-pyproject.tomlとuv.lockを更新した後、GPU用の固定依存を明示的に書き出します。
+Python依存を更新する場合はbackendのuv.lockを更新し、`python -m bootstrap.update_worker_lock`でGPU転送用ロックを出力します。実機検査では日時、対象ハッシュ、環境、期待結果との差、停止確認を記録します。
 
-```powershell
-python -m bootstrap.update_worker_lock
-python scripts/check.py --level 3
-```
-
-品質検査は追跡対象ファイルを書き換えません。GPU用依存はworkerグループから出力し、ローカルへ導入しません。公開ハッシュの検査除外には理由を残します。
-
-Pythonの版は.python-versionとGPUの固定定義を揃えます。ComfyUIの更新時は同じ版のrequirements.txtをtests/fixturesへ保存し、ロックとの対応を確認します。
-
-## 公開する
-
-PRで変更と関連検証をまとめます。接続・保存・GPU転送の変更は[検証戦略](../verification/strategy.md)に従って実機でも確認します。
-
-バージョンの正本はpyproject.tomlです。SemVerを基本とし、事前版はPEP 440を使います。必須チェックが成功したmainから宣言版と一致するタグを作成します。公開済みタグの変更とPyPIへの自動公開は行いません。
+mainへの変更はPRで行い、qualityとsecurityの成功を確認します。マージは所有者が行います。

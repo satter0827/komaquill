@@ -1,0 +1,84 @@
+"""Import image and mask bytes into the existing immutable material store."""
+
+import hashlib
+import io
+from pathlib import Path
+from typing import Literal
+
+from filelock import FileLock
+from PIL import Image
+
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.materials import workspace_identity
+from komaquill.adapters.workspace import RuntimeWorkspace
+from komaquill.domain.errors import KomaquillError
+from komaquill.domain.materials import InputArtifact, Material
+from komaquill.domain.models import ImageRef
+
+IMAGE_EXTENSIONS: dict[str, Literal["png", "jpg", "webp"]] = {
+    "PNG": "png",
+    "JPEG": "jpg",
+    "WEBP": "webp",
+}
+
+
+def import_file(
+    project: RuntimeWorkspace, path: Path, kind: Literal["image", "mask"]
+) -> InputArtifact:
+    """Preserve original bytes and reject masks with ambiguous color semantics."""
+    return import_bytes(project, path.read_bytes(), path.name, kind)
+
+
+def import_bytes(
+    project: RuntimeWorkspace, content: bytes, name: str, kind: Literal["image", "mask"]
+) -> InputArtifact:
+    """Preserve an uploaded input without treating its display name as a path."""
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    if (
+        not name
+        or name in {".", ".."}
+        or any(
+            value.name != name or value.is_absolute()
+            for value in (PurePosixPath(name), PureWindowsPath(name))
+        )
+    ):
+        raise KomaquillError(code="invalid_request", stage="image_validation", retryable=False)
+    metadata = project.artifacts_store.inspect_image(content, ImageRef(filename=name))
+    with Image.open(io.BytesIO(content)) as image:
+        if image.format not in {"PNG", "JPEG", "WEBP"} or getattr(image, "n_frames", 1) != 1:
+            raise KomaquillError(
+                code="unsupported_image", stage="image_validation", retryable=False
+            )
+        if kind == "mask" and (image.format != "PNG" or image.mode not in {"1", "L"}):
+            raise KomaquillError(code="invalid_request", stage="image_validation", retryable=False)
+        extension = IMAGE_EXTENSIONS[image.format]
+    item = InputArtifact(
+        format_version=3,
+        extension=extension,
+        kind=kind,
+        key=f"inputs/{metadata.sha256}/content",
+        sha256=metadata.sha256,
+        name=name,
+        size_bytes=metadata.size_bytes,
+        width=metadata.width,
+        height=metadata.height,
+    )
+    project.state.mkdir(parents=True, exist_ok=True)
+    with FileLock(str(project.state / ".materials.lock")):
+        workspace_id = workspace_identity(project)
+        project.artifacts_store.write(item.key, content)
+        record = Material(
+            workspace_id=workspace_id,
+            kind="inputs",
+            name=item.name,
+            reference=item.reference,
+            sha256=item.sha256,
+            size_bytes=item.size_bytes,
+            state="saved",
+        )
+        identity = hashlib.sha256(f"{kind}:{item.sha256}:{item.name}".encode()).hexdigest()
+        target = project.data / "inputs/records" / f"local-{identity}.json"
+        if not target.exists():
+            atomic_json(target, record.model_dump(mode="json"))
+    return item

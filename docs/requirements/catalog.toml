@@ -1,73 +1,170 @@
 format_version = 1
 
+[requirements.REQ-CHAT-LIBRARY]
+summary = "wheelから導入する独立した汎用チャットBOTライブラリとしシナリオや人物を引数・設定で指定する"
+status = "implemented"
+acceptance = ["公開入口をkomaquill.apiとしCLIも同じ処理を呼ぶ", "利用アプリからシナリオ・キャラ・ユーザー・初期状態・応答方針・接続先を渡せる", "日常・SF・中世・空想世界を作例への固定なしで扱う", "キャラ設定と画像接続なしでも文章チャットを使える", "wheel導入後に別アプリから作成・反復入力・状態取得・再開できる", "旧作品の読取り専用の一覧・取得・書き出しをarchiveへ分離する", "GPU・DB・LLMの具体的SDKやドライバーの型を業務処理と公開入力へ漏らさない"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-CHAT-REFACTOR]
+summary = "製品コードを共通ルートへ集約し責務・名称・モジュール粒度と不要な実装を整理する"
+status = "implemented"
+acceptance = ["全製品の責務と依存を確認し機能を第一の区切りとして配置する", "会話のConversationとGPUのRuntimeを区別する", "設定ロード・保存・生成・接続の組み立てを分離する", "同じ原因を持つ箇所を確認し必要な範囲で修正する", "後方互換の別名・旧パスへのフォールバック・重複実装・未使用設定を残さない", "Storyの公開モードを廃止し既存データを推測変換しない", "既存ブラウザ・単発生成・回収・所有・評価の保全を維持する", "新配置の依存・GPU転送物・配布物を検査する"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-CHAT-TURN]
+summary = "繰り返し入力できる会話へ短い場面描写・会話・必要な擬音擬態語と画像を関連付ける"
+status = "implemented"
+acceptance = ["長い小説や全場面の事前計画を要求しない", "ターンの文章・採用した状態変更・描く瞬間を対応付ける", "保存した設定と履歴から再開する", "画像失敗で文章と状態を後退させない", "受付不明の要求を自動再送しない"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-CHAT-STATE]
+summary = "定義・現在状態・履歴を分けLLMなしで今の状況を確認する"
+status = "in_progress"
+implementation_note = "状態は文字列の辞書を扱う。シナリオごとの項目宣言、更新権限、公開範囲の制約は未実装。"
+acceptance = ["固定設定・現在状態・有効な方針・状態の版を区別する", "場所・時間・登場対象・衣装・所持品・進行中の出来事を取得できる", "シナリオ固有のパラメータを宣言した型と更新権限で検証する", "statusでLLM・GPU・画像生成を起動しない", "非公開情報・未確定・破損を扱い空の状態と推測しない", "文脈の予算を超えても確定設定と現在状態を保持する"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-CHAT-COMMAND]
+summary = "コマンドで状態と会話方針を明示的に変更する"
+status = "in_progress"
+implementation_note = "状態の設定・初期化と版の競合検出を実装。ターン限定の方針、コマンド自体の操作IDと変更履歴は未実装。"
+acceptance = ["コマンドをLLMへ解釈させず検証する", "状態の確定変更と生成への指示を区別する", "次のターン限定と継続適用を区別する", "適用前後の版と操作IDを保存する", "不明な項目と変更権限のない操作を拒否する", "CLIの対話終了とGPU停止を区別する"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-CHAT-PROCESSING]
+summary = "一回の構造化応答をプログラムで検証し確定状態と有限の呼び出しで会話を処理する"
+status = "implemented"
+acceptance = ["会話サービスが受付・順序・上限・保存確定を管理する", "通常一回のLLM応答から本文・状態変更案・描く場面を受け取る", "LLMはDBとGPUを直接変更しない", "修正と使用量を失敗を含めて記録し無限ループを作らない", "中断後は保存済み応答とチェックポイントを再利用する", "本文確定後は画像完了待ちで次の会話入力を妨げない", "会話の排他で状態取得・画像回収・GPU停止を妨げない"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py"]
+
+[requirements.REQ-CHAT-DATABASE]
+summary = "SQLiteを初版の正本としPostgreSQLやSupabaseへ変更できる保存境界を設ける"
+status = "implemented"
+acceptance = ["構造化記録と画像等の実体保存を分離する", "応答・状態更新・画像要求を短いトランザクションで確定する", "通信中にDBトランザクションを保持しない", "操作IDと状態の版で重複と競合を検出する", "DB移行・バックアップ復旧・途中失敗を検査する", "同じ状態のJSONとDBへの二重更新をしない", "新規要求はCLI・HTTP・監視・停止で同じ保存境界を共有し旧記録の読取りを隔離する", "新規評価はDBへ保存し対象の出自を保持して旧作品・評価を変更しない", "GPU所有と監視の記録は既存の専用ファイルを正本として保持する", "保存方式の切替前に既存監視と所有する実行環境の終了を確認する", "PostgreSQLとSupabaseは初版に実装せず互換を未検証と明示する"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_durability.py"]
+
+[requirements.REQ-CHAT-IMAGES]
+summary = "標準WAIと差し替え可能な生成セットで会話画像・単発画像・既存ブラウザを共通処理する"
+status = "implemented"
+acceptance = ["標準はWAIと対応LoRAへ統一しライブラリでは一式を差し替えられる", "会話なしでCLI・Python API・App Mode・Node Graphの単発画像生成を使える", "positiveとnegativeの利用者入力へ生成セットの適切な品質条件を既定合成する", "LLMへモデル固有の品質語やLoRA名を要求しない", "元入力・適用済み入力・seed・グラフを保持し再開で再合成しない", "APIと画面の条件を一致させ観測時に品質語を二重適用しない", "未対応のモデル能力を送信前に拒否し未知の資源を自動導入しない"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-CHAT-VERIFICATION]
+summary = "Reactと実サーバーで基本操作を完成させFake検証と実接続確認を区別する"
+status = "in_progress"
+acceptance = ["構造化Fake応答を世界観の異なる入力列と対で管理する", "SQLite実DBとlocalhostで失敗・競合・中断・再開を確認する", "Reactから会話作成・送信・状態確認・再読み込み・再開・単発生成・画像表示を確認する", "画面だけの模擬実装や仮の成功応答を完成として扱わない", "実LLMは操作ごとの明示許可を維持しSDK再試行と外部トレースを無効にする", "T4と標準画面でWAI・LoRA・会話画像・単発・保存・終了を別途確認する", "隔離環境でライブラリ単体の利用とWeb用追加依存による同梱画面の起動を確認する", "精度向上を初版の完成条件へ混在させず保存・接続・文章の好み・画質を分けて記録する"]
+sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
+
+[requirements.REQ-MONOREPO]
+summary = "ReactとPythonとAPI契約をsrcへ集約し内部の責務と検証単位を分離する"
+status = "implemented"
+acceptance = ["製品コードをsrc/frontend・src/backend・src/contractsへ集約する", "Pythonの依存定義とuv.lockをbackendで管理し不要なワークスペース分割をしない", "CLIとHTTPは同じ公開Python APIを呼び業務処理からHTTPやReactへ逆依存しない", "ソースの再配置で既存の作品・履歴・ログ・個人設定を初期化しない", "ライブラリ単体の隔離導入でWeb依存の混入を検出する", "Pythonの配布物へビルド済みReact画面を含めWeb用追加依存だけで起動できる", "ReactとPythonの検証を独立させ配布工程で両方の成果物を結合する", "Reactだけの変更でGPU転送物のハッシュが変わらない"]
+sources = ["src/backend/pyproject.toml", "src/frontend/package.json", "scripts/affected.py"]
+tests = ["tests/unit/test_affected.py"]
+
+[requirements.REQ-MONOREPO-CHECKS]
+summary = "変更範囲と検証の深さを分け局所修正で全プロジェクトの検証を繰り返さない"
+status = "implemented"
+acceptance = ["Nxへタスクと入力・依存関係を集約し旧累積ゲートと二重実行しない", "修正中は関連検証・PRは影響するプロジェクト全体・公開前は全体を確認する", "Reactだけの変更でPythonライブラリ全体のテストを選択しない", "HTTP契約と共有処理の変更では利用側も検証する", "配布のReact依存をPython単体テストへ持ち込まない", "新規・削除・未コミットの変更を含め代表的な差分で検証対象の選択を確認する", "対象・選択理由・入力ハッシュ・キャッシュ再利用・未実行を記録する", "部分検証を全体成功へ昇格させず既存のPython計測対象と閾値を維持する", "qualityとsecurityを維持しAGENTS・CI・エディター・操作手順を実装と同時に更新する"]
+sources = ["src/backend/pyproject.toml", "src/frontend/package.json", "scripts/affected.py"]
+tests = ["tests/unit/test_affected.py"]
+
+[requirements.REQ-WEB-APP]
+summary = "React画面から会話と画像の基本操作を行い保存済みの結果と失敗を確認する"
+status = "implemented"
+acceptance = ["同じPCのブラウザーで会話一覧・新規作成・送信・状態確認・再開を利用できる", "画像と人物設定なしでも文章チャットを利用できる", "保存確定後に本文を表示し画像の進捗・保存・失敗を区別する", "会話なしの単発生成と保存画像の表示を利用できる", "GPU開始・再確認・停止と既存App Mode・Node Graphの入口を設ける", "ブラウザー再読み込みや再接続で送信済み要求を自動再送しない", "初版の対象操作に未接続のボタンや仮の成功応答を残さない"]
+sources = ["src/frontend/src/app/shell.tsx", "src/frontend/src/features/conversations.tsx"]
+tests = ["tests/e2e/web/workflow.spec.ts", "src/frontend/tests/conversations.test.tsx"]
+
+[requirements.REQ-HTTP-API]
+summary = "公開Python APIを共有するローカルHTTP APIと版付きの型契約でReactへ接続する"
+status = "implemented"
+acceptance = ["HTTP入口を入力検証・公開API呼び出し・結果変換に限定する", "会話・操作・入力素材・画像・実行環境の入口を提供する", "操作IDと入力の一致を検査して重複と競合を検出する", "同じ作業場所の会話送信を直列化し状態取得・画像回収・GPU停止を妨げない", "受付と本文保存の完了と画像保存の完了を区別する", "実行権とチェックポイントを永続化し再起動で受付不明の外部要求を自動再送しない", "OpenAPIからTypeScriptクライアントを生成し定義との差分を確認する", "ループバックで画面とAPIを同時配信しAPIの404をHTMLへ変換しない", "ブラウザーへ秘密情報・例外本文・任意の物理パスを渡さない"]
+sources = ["src/backend/src/komaquill/interfaces/http/app.py", "src/contracts/openapi.json"]
+tests = ["tests/integration/test_conversations.py", "tests/e2e/web/workflow.spec.ts"]
+
 [requirements.REQ-GENERATE]
 summary = "CLIと標準画面から画像を生成し、実行条件と画像をローカルへ保存する"
 status = "implemented"
 acceptance = ["CLI・App Mode・Node Graphから生成できる", "保存失敗を成功として扱わず再回収できる"]
-sources = ["src/komaquill/application/generation.py", "src/komaquill/infrastructure/storage.py"]
+sources = ["src/backend/src/komaquill/images/generation.py", "src/backend/src/komaquill/adapters/storage.py"]
 tests = ["tests/integration/test_generation.py", "tests/integration/test_storage.py"]
 
 [requirements.REQ-OWNERSHIP]
 summary = "所有するGPUだけを操作し、確認・回収・停止で追加確保しない"
 status = "implemented"
 acceptance = ["所有IDとアカウントを照合する", "外部ComfyUIを停止しない"]
-sources = ["src/komaquill/infrastructure/colab.py", "src/komaquill/application/lifecycle.py"]
+sources = ["src/backend/src/komaquill/adapters/colab.py", "src/backend/src/komaquill/runtime/lifecycle.py"]
 tests = ["tests/integration/test_colab_provider.py", "tests/unit/test_lifecycle.py"]
 
 [requirements.REQ-QUALITY]
 summary = "GPUなしで検査し、全工程が成功した場合だけ成功を確定する"
-status = "implemented"
-acceptance = ["L1・L2・L3を累積しGPUなしで実行できる", "中断・起動失敗・入力変更・個別検査で全体の最新成功を更新しない", "行90%以上・分岐80%以上を独立判定する"]
+status = "in_progress"
+acceptance = ["変更の影響を受けるプロジェクトと関連テストを選択する", "中断・不足環境・入力変更と局所成功を区別する", "行90%以上・分岐80%以上を独立判定する"]
 sources = ["scripts/check.py", "scripts/checks/coverage.py"]
-tests = ["tests/unit/test_quality.py", "tests/unit/test_gate.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py"]
+tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py"]
 
 [requirements.REQ-BUNDLES]
 summary = "利用者が生成セットをフォルダー単位で追加・置換できる"
 status = "implemented"
 acceptance = ["標準ワークフローと設定を一式で扱う", "GPU確保前に参照を検証する"]
-sources = ["src/komaquill/infrastructure/preset_catalog.py", "src/komaquill/infrastructure/workflows.py"]
+sources = ["src/backend/src/komaquill/adapters/preset_catalog.py", "src/backend/src/komaquill/adapters/workflows.py"]
 tests = ["tests/unit/test_preset_bundles.py", "tests/unit/test_presets.py"]
 
 [requirements.REQ-CLEAN]
 summary = "保全対象を削除せず、再作成可能な生成物だけを整理する"
 status = "implemented"
 acceptance = ["プレビューできる", "使用中・用途不明のデータを除外する", "削除結果を記録する"]
-sources = ["src/komaquill/infrastructure/cleanup.py", "src/komaquill/application/cleanup.py"]
+sources = ["src/backend/src/komaquill/adapters/cleanup.py", "src/backend/src/komaquill/application/cleanup.py"]
 tests = ["tests/unit/test_cleanup.py", "tests/integration/test_cleanup_processes.py"]
 
 [requirements.REQ-STORY]
 summary = "ストーリーから自動または指定枚数の場面を計画し本文と画像を順次保存する"
-status = "implemented"
+status = "retired"
 acceptance = ["1〜8場面の計画全体を検証する", "本文・原文参照・補足と画像を関連付ける", "計画と試行を分けて再生成・再開する", "実LLMを明示許可し日常ゲートではFakeを使う", "4Bと9Bを接続プロファイルで選び自動フォールバックしない", "保存済み場面を重複生成せず部分失敗を報告する"]
-sources = ["src/komaquill/domain/stories.py", "src/komaquill/application/stories/planning.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/infrastructure/stories/llm.py", "src/komaquill/infrastructure/stories/storage.py", "src/komaquill/interfaces/stories.py"]
-tests = ["tests/unit/stories/test_automatic.py", "tests/unit/stories/test_planning.py", "tests/unit/stories/test_llm_comparison.py", "tests/unit/stories/test_rendering.py", "tests/integration/stories/test_cli.py", "tests/integration/stories/test_llm.py", "tests/structure/test_stories.py"]
+sources = []
+tests = []
 
+
+replacement = "REQ-CHAT-LIBRARY"
+
+retired_source_revision = "91b503b1ee40a71506cc6c26fbf42e64a227651c" # pragma: allowlist secret Public baseline commit.
 [requirements.REQ-SESSION]
 summary = "端末終了後も一つの監視で接続と回収を維持する"
 status = "implemented"
 acceptance = ["二重起動とPID再利用を識別する", "起動時の検証済み設定を共有する"]
-sources = ["src/komaquill/infrastructure/supervisor.py", "src/komaquill/infrastructure/sessions/startup.py"]
+sources = ["src/backend/src/komaquill/runtime/supervisor.py", "src/backend/src/komaquill/runtime/startup.py"]
 tests = ["tests/unit/test_monitor.py", "tests/integration/test_startup.py"]
 
 [requirements.REQ-ASSETS]
 summary = "確認した公開モデルをハッシュで管理し必要なものだけ準備する"
 status = "implemented"
 acceptance = ["取得前に容量・取得元を確認する", "再利用・取消・再開を扱う", "認証付き取得を作業領域へ保存し照合後に追加コピーせず確定する", "不正な取得ファイルで既存モデルを上書きしない"]
-sources = ["src/komaquill/infrastructure/preparation.py", "src/komaquill/infrastructure/asset_download.py", "src/komaquill/interfaces/comfyui/api.py"]
+sources = ["src/backend/src/komaquill/adapters/preparation.py", "src/backend/src/komaquill/adapters/asset_download.py", "src/backend/src/komaquill/interfaces/comfyui/api.py"]
 tests = ["tests/unit/test_assets.py", "tests/unit/test_preparation.py", "tests/unit/test_downloads.py"]
 
 [requirements.REQ-MATERIALS]
 summary = "入力画像・マスク・明示保存ワークフローを版ごとに保持する"
 status = "implemented"
 acceptance = ["上書き前の版を残す", "保存時の入力版を復元する"]
-sources = ["src/komaquill/infrastructure/materials.py", "src/komaquill/interfaces/comfyui/preservation.py"]
+sources = ["src/backend/src/komaquill/adapters/materials.py", "src/backend/src/komaquill/interfaces/comfyui/preservation.py"]
 tests = ["tests/unit/test_materials.py", "tests/integration/test_preservation.py"]
 
 [requirements.REQ-PACKAGE]
 summary = "リポジトリ外でもwheelから初期化・生成・GPU転送できる"
 status = "implemented"
 acceptance = ["Gitと編集可能インストールへ依存しない", "生成物と秘密情報を配布しない"]
-sources = ["src/komaquill/infrastructure/provenance.py", "scripts/checks/distribution.py"]
+sources = ["src/backend/src/komaquill/adapters/provenance.py", "scripts/checks/distribution.py"]
 tests = ["tests/e2e/test_wheel.py", "tests/integration/test_distribution.py"]
 
 [requirements.REQ-DOCS]
@@ -81,89 +178,109 @@ tests = ["tests/unit/test_docs.py"]
 summary = "過去の生成へ人とAIの評価を関連付け、分析用の条件と画像参照を出力する"
 status = "implemented"
 acceptance = ["採否・選好・基準・根拠・評価者とAIの版を保存する", "訂正は追記し生成条件を変更しない", "未評価の生成も分析用に出力する"]
-sources = ["src/komaquill/domain/evaluations.py", "src/komaquill/application/evaluations.py", "src/komaquill/infrastructure/evaluations.py"]
+sources = ["src/backend/src/komaquill/domain/evaluations.py", "src/backend/src/komaquill/application/evaluations.py", "src/backend/src/komaquill/adapters/evaluations.py"]
 tests = ["tests/unit/test_evaluations.py", "tests/integration/test_acceptance.py"]
 
 [requirements.REQ-PYTHON]
 summary = "wheelを導入したPythonからCLIと同じ処理を利用する"
 status = "implemented"
 acceptance = ["明示した作業場所で計画・生成・取得・再開を行う", "importで通信やファイル作成を行わない", "公開型と追加依存の境界を検証する"]
-sources = ["src/komaquill/api/client.py", "src/komaquill/api/stories.py", "src/komaquill/api/services.py"]
+sources = ["src/backend/src/komaquill/api/client.py", "src/backend/src/komaquill/api/images.py"]
 tests = ["tests/integration/test_public_api.py"]
 
 [requirements.REQ-STORY-STORAGE]
 summary = "作品内で本文と画像を順番に閲覧し既存データを保全して移行する"
-status = "implemented"
+status = "retired"
 acceptance = ["画像の正本を作品内へ集約する", "移行中断後に再開し原本を照合する", "配置表を記録から再構築する", "閲覧用出力の失敗を画像保存と分ける"]
-sources = ["src/komaquill/infrastructure/locations.py", "src/komaquill/infrastructure/migration.py", "src/komaquill/infrastructure/stories/publication.py"]
-tests = ["tests/integration/stories/test_storage.py"]
+sources = []
+tests = []
 
+
+replacement = "REQ-CHAT-LIBRARY"
+
+retired_source_revision = "91b503b1ee40a71506cc6c26fbf42e64a227651c" # pragma: allowlist secret Public baseline commit.
 [requirements.REQ-STORY-EVIDENCE]
 summary = "失敗を隔離し、変更された作品を更新して比較用の要約と原本を取得する"
-status = "implemented"
+status = "retired"
 acceptance = ["保存成功と終端到達を区別する", "破損記録を未送信として再送しない", "無変更時に全作品を再構築しない", "要約と詳細の条件・集計が一致し画像を解決できる", "原文・計画・試行・配置の同一性と参照を検証する", "閲覧用更新の失敗でも後続画像を生成する", "破損した任意評価を明示して正常分を出力する"]
-sources = ["src/komaquill/domain/story_evidence.py", "src/komaquill/infrastructure/stories/evidence.py", "src/komaquill/infrastructure/stories/publication.py"]
-tests = ["tests/integration/stories/test_failures.py", "tests/integration/stories/test_publication.py", "tests/integration/stories/test_story_evidence.py", "tests/integration/stories/test_integrity.py"]
+sources = []
+tests = []
 
+
+replacement = "REQ-CHAT-LIBRARY"
+
+retired_source_revision = "91b503b1ee40a71506cc6c26fbf42e64a227651c" # pragma: allowlist secret Public baseline commit.
 [requirements.REQ-STORY-VISUALS]
 summary = "物語の役割と小物を明示し、公開グラフと固定入力で画像生成を比較する"
-status = "in_progress"
+status = "retired"
 acceptance = ["新規計画の種別・対象・動作・小物参照を検証する", "品質用のプロンプトを既定で適用し設定で無効化する", "生成試行の入力を固定し再開時に再合成しない", "APIと標準画面の条件を揃えて元入力と実行条件を保存する", "過去形式を推測で補わず画像と履歴を保持する", "実画像で対象の数・種別・小物の所有関係・動作の基準を満たす"]
-sources = ["src/komaquill/domain/images.py", "src/komaquill/application/stories/image_inputs.py", "src/komaquill/resources/presets/klein-4b/preset.toml"]
-tests = ["tests/unit/test_image_inputs.py", "tests/unit/stories/test_visual_specification.py", "tests/integration/test_acceptance.py"]
+sources = []
+tests = []
 
+
+replacement = "REQ-CHAT-LIBRARY"
+
+retired_source_revision = "91b503b1ee40a71506cc6c26fbf42e64a227651c" # pragma: allowlist secret Public baseline commit.
 [requirements.REQ-CANDIDATES]
 summary = "標準バッチで候補を生成し、場面の送信と回収を制限付きで重ねる"
 status = "implemented"
 acceptance = ["場面数と候補数を分ける", "主出力と補助画像を区別し全候補を保存する", "部分保存を表示し再回収で状態を後退させない", "受付不明・停止・中断後に二重送信しない", "再開で条件と待機期限を維持する"]
-sources = ["src/komaquill/application/generation.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/domain/models.py"]
-tests = ["tests/unit/test_candidates.py", "tests/unit/stories/test_pipeline.py"]
+sources = ["src/backend/src/komaquill/images/generation.py", "src/backend/src/komaquill/domain/models.py"]
+tests = ["tests/unit/test_candidates.py"]
 
 [requirements.REQ-PROMPT-FILES]
 summary = "直接・UTF-8・JSON入力を同じ画像生成へ適用する"
 status = "implemented"
 acceptance = ["入力方法を同じ処理へ適用する", "競合・不正入力・廃止した負入力を送信前に拒否する", "元のファイル名・内容・SHA256を保持する", "標準画面でプロンプトと候補数を編集する"]
-sources = ["src/komaquill/interfaces/image_inputs.py", "src/komaquill/interfaces/cli.py", "src/komaquill/resources/presets/klein-4b/workflow.json"]
+sources = ["src/backend/src/komaquill/cli/image_inputs.py", "src/backend/src/komaquill/cli/main.py", "src/backend/src/komaquill/resources/presets/klein-4b/workflow.json"]
 tests = ["tests/unit/test_prompt_files.py", "tests/integration/test_acceptance.py", "tests/unit/test_presets.py"]
 
 [requirements.REQ-WORKFLOW-INPUTS]
 summary = "画像・マスクと場面別の生成セットを固定して実行・再開する"
 status = "implemented"
 acceptance = ["素材をハッシュ付きで保全し標準APIで転送する", "全場面の入力・型・寸法・設定範囲を送信前に検証する", "素材と工程条件を保存し再開で変更しない", "送信グラフと観測グラフを分け観測条件と保存ハッシュを一致させる", "失敗要求の公開済み中間出力を回収し生成失敗と区別する"]
-sources = ["src/komaquill/domain/rendering.py", "src/komaquill/infrastructure/inputs.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/application/generation.py", "src/komaquill/infrastructure/storage.py"]
+sources = ["src/backend/src/komaquill/adapters/inputs.py", "src/backend/src/komaquill/images/generation.py", "src/backend/src/komaquill/adapters/storage.py"]
 tests = ["tests/integration/test_workflow_inputs.py", "tests/unit/test_story_workflows.py", "tests/integration/test_acceptance.py"]
 
 [requirements.REQ-STORY-COMPLETION]
 summary = "確定した場面を先に保存し、仮選択と画質評価を分けて限定的に改善する"
-status = "implemented"
+status = "retired"
 acceptance = ["画質の不合格で後続場面を止めない", "原文・計画・生成条件を保全する", "再開で出力数と時間上限をリセットしない", "改善Runと元画像を評価付きで参照する", "評価範囲と根拠を保持し局所評価を場面合格へ広げない", "範囲・確認項目・評価者の変更は訂正として追記する", "本文を省略せず共通の文字サイズと実際の行数で組版する", "専用セッションを終了し既存セッションを変更しない"]
-sources = ["src/komaquill/api/stories.py", "src/komaquill/application/stories/rendering.py", "src/komaquill/infrastructure/stories/publication.py"]
-tests = ["tests/integration/stories/test_completion.py", "tests/live/story_completion.py", "tests/live/completion_report.py", "tests/unit/test_completion_page.py"]
+sources = []
+tests = []
 
+
+replacement = "REQ-CHAT-LIBRARY"
+
+retired_source_revision = "91b503b1ee40a71506cc6c26fbf42e64a227651c" # pragma: allowlist secret Public baseline commit.
 [requirements.REQ-KLEIN]
 summary = "Kleinの生成・編集をCLI・Python API・標準画面で共有する"
 status = "implemented"
 acceptance = ["GPU確保前に配布情報とアクセス権を確認し、GPU上で実体を照合する", "AniEditを標準ノードで接続し、WAIは系列に対応するDetail Tweakerを使う", "APIと画面の条件を一致させる", "Kleinでは負入力を拒否し、WAIでは未指定・空・明示指定を区別する", "旧記録を現在の生成設定型から分離する"]
-sources = ["src/komaquill/domain/presets.py", "src/komaquill/infrastructure/colab.py", "src/komaquill/resources/presets/klein-4b/preset.toml", "src/komaquill/resources/presets/klein-4b-edit/preset.toml"]
+sources = ["src/backend/src/komaquill/domain/presets.py", "src/backend/src/komaquill/adapters/colab.py", "src/backend/src/komaquill/resources/presets/klein-4b/preset.toml", "src/backend/src/komaquill/resources/presets/klein-4b-edit/preset.toml"]
 tests = ["tests/unit/test_presets.py", "tests/unit/test_story_workflows.py", "tests/integration/test_workflow_inputs.py", "tests/integration/test_colab_control.py"]
 
 [requirements.REQ-STORY-SUITE]
 summary = "複数題材の原文から完成までを共通処理と固定予算で検証する"
-status = "in_progress"
+status = "retired"
 acceptance = ["8題材の原文とFake応答を対で検証する", "対象数と場面数に依存せず入力と組版を扱う", "可視対象の数と対象なしの条件を描画入力へ保持する", "後からの意味評価の訂正を現在の適格性へ反映する", "評価と一致した実LLM計画だけを実生成へ渡す", "呼び出し・画像・時間・容量の上限を再開で戻さない", "初回と改善後の品質・保存・未実施を分けて集計する"]
-sources = ["src/komaquill/domain/stories.py", "src/komaquill/domain/images.py", "src/komaquill/application/stories/image_inputs.py"]
-tests = ["tests/integration/stories/test_story_suite.py", "tests/unit/stories/test_subject_cardinality.py", "tests/unit/stories/test_suite_controls.py", "tests/unit/test_completion_page.py", "tests/unit/test_completion_reviews.py", "tests/live/story_suite.py", "tests/live/completion_report.py", "tests/live/verification_budget.py", "tests/live/story_validation.py", "tests/unit/test_verification_budget.py"]
+sources = []
+tests = []
 
+
+replacement = "REQ-CHAT-LIBRARY"
+
+retired_source_revision = "91b503b1ee40a71506cc6c26fbf42e64a227651c" # pragma: allowlist secret Public baseline commit.
 [requirements.REQ-KLEIN-SWITCH]
 summary = "Klein 4B・9BとGPUを明示選択し、確定した条件と予算で比較する"
 status = "implemented"
 acceptance = ["モデルと操作から6セットを解決し、CLI・API・標準画面で共有する", "規模が混在する資源と廃止した入力を送信前に拒否する", "GPUとHigh RAMを優先順位に従って起動時に固定する", "残CU・CU毎時・割当数・観測時刻を型付きで返す", "CUの基準残高を再開と次のセッションへ引き継ぐ", "PC保存を行わず、Colabで直接取得・取消・SHA256照合を行う", "保存・画質・選好・未実施を分け、同じ条件の比較だけを集計する"]
-sources = ["src/komaquill/domain/usage.py", "src/komaquill/infrastructure/compute_budget.py", "src/komaquill/api/services.py", "src/komaquill/infrastructure/colab.py"]
-tests = ["tests/unit/test_klein_switching.py", "tests/unit/test_compute_budget.py", "tests/unit/test_remote_models.py", "tests/integration/test_klein_comparison.py", "tests/integration/test_colab_provider.py", "tests/live/klein_comparison.py"]
+sources = ["src/backend/src/komaquill/domain/usage.py", "src/backend/src/komaquill/adapters/compute_budget.py", "src/backend/src/komaquill/api/images.py", "src/backend/src/komaquill/adapters/colab.py"]
+tests = ["tests/unit/test_klein_switching.py", "tests/unit/test_compute_budget.py", "tests/unit/test_remote_models.py", "tests/integration/test_colab_provider.py"]
 
 [requirements.REQ-MODEL-INTERFACE]
 summary = "共通の場面計画をモデルと操作で描画し、モデル本体をColabへ直接取得する"
 status = "in_progress"
 acceptance = ["公開入力をmodelとoperation、起動入力をmodelsへ統一する", "KleinとWAIに対応する基本設定をApp Modeで調整する", "旧記録を読み取り専用で保持し、新規生成へ流用しない", "認証情報をSSH標準入力だけで渡し、PCとGPUへトークンファイルを作らない", "同じ計画・seedで両モデルを比較し、保存と画質を分ける", "停止確認と一覧・ハッシュ記録後に不要なモデルを削除する", "準備期限を要求作成時刻から固定しSSH引き渡し後も取得を制限する"]
-sources = ["src/komaquill/domain/configuration.py", "src/komaquill/infrastructure/model_auth.py", "src/komaquill/gpu/models.py", "src/komaquill/infrastructure/asset_download.py", "src/komaquill/resources/presets/wai-illustrious/preset.toml"]
-tests = ["tests/unit/test_model_interface.py", "tests/unit/test_remote_models.py", "tests/unit/test_downloads.py", "tests/integration/test_extension.py", "tests/integration/test_preparation_deadlines.py", "tests/unit/test_gpu_preparation.py", "tests/unit/test_preparation.py", "tests/integration/test_klein_comparison.py"]
+sources = ["src/backend/src/komaquill/domain/configuration.py", "src/backend/src/komaquill/adapters/model_auth.py", "src/backend/src/komaquill/worker/models.py", "src/backend/src/komaquill/adapters/asset_download.py", "src/backend/src/komaquill/resources/presets/wai-illustrious/preset.toml"]
+tests = ["tests/unit/test_model_interface.py", "tests/unit/test_remote_models.py", "tests/unit/test_downloads.py", "tests/integration/test_extension.py", "tests/integration/test_preparation_deadlines.py", "tests/unit/test_gpu_preparation.py", "tests/unit/test_preparation.py"]

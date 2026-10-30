@@ -1,0 +1,8 @@
+packages:
+  - src/frontend
+storeDir: .artifacts/cache/pnpm
+verifyDepsBeforeRun: false
+allowBuilds:
+  esbuild: true
+  nx: true
+  msw: false

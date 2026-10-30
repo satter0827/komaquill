@@ -17,10 +17,17 @@ REPLACE_TIMEOUT_SECONDS = 1.0
 REPLACE_RETRY_SECONDS = 0.05
 
 
+def comparison_base() -> str:
+    """Use the same explicit comparison base for Nx and Python selection."""
+    return os.environ.get("NX_BASE") or str(
+        json.loads((ROOT / "nx.json").read_bytes())["defaultBase"]
+    )
+
+
 def message(key: str, **values: object) -> str:
     """Read the shared catalog without importing the package being checked."""
     try:
-        data = json.loads((ROOT / "src/komaquill/resources/messages.json").read_bytes())
+        data = json.loads((ROOT / "scripts/messages.json").read_bytes())
         return str(data[key]).format(**values)
     except (OSError, ValueError, KeyError):
         return "Message definitions are unavailable. Restore the source files."
@@ -71,7 +78,15 @@ def input_fingerprint(root: Path) -> str:
     """Fingerprint source inputs while excluding generated storage and bytecode."""
     digest = hashlib.sha256()
     names = ("src", "scripts", "tests", "bootstrap", "docs", ".vscode", ".github", ".githooks")
-    paths = [p for name in names for p in (root / name).rglob("*") if p.is_file()]
+    paths: list[Path] = []
+    for name in names:
+        for folder, children, files in os.walk(root / name):
+            children[:] = [
+                name
+                for name in children
+                if name not in {"node_modules", "__pycache__", ".artifacts", ".git"}
+            ]
+            paths.extend(Path(folder) / name for name in files)
     paths.extend(p for p in root.iterdir() if p.is_file() and p.name != ".DS_Store")
     for path in sorted(set(paths)):
         if "__pycache__" in path.parts or path.suffix == ".pyc" or path.is_symlink():

@@ -3,8 +3,8 @@
 from contextlib import nullcontext
 from uuid import uuid4
 
-from komaquill.application.generation import generate
 from komaquill.domain.models import Session
+from komaquill.images.generation import generate
 
 
 class MemoryRepository:
@@ -90,7 +90,7 @@ def test_generation_uses_only_replaceable_contracts():
             return self
 
         def settings(self):
-            from komaquill.infrastructure.configuration import Settings
+            from komaquill.adapters.configuration import Settings
 
             return Settings(
                 poll_interval=0.001,

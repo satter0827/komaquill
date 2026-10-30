@@ -1,19 +1,13 @@
 """Verify immutable image inputs across public configuration and replay boundaries."""
 
-import json
-
 import pytest
-
-from komaquill.application.generation import generate
-from komaquill.application.stories.rendering import create_render
+from komaquill.adapters.configuration import Settings
+from komaquill.adapters.workflows import prepare
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import compile_image_input
 from komaquill.domain.presets import GenerationPreset
-from komaquill.domain.stories import PlanningValidationError, StoryDraft, validate_draft
-from komaquill.infrastructure.configuration import Settings
-from komaquill.infrastructure.workflows import prepare
-from tests.support.stories import planned, request
+from komaquill.images.generation import generate
 
 
 @pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit"])
@@ -37,44 +31,6 @@ def test_preset_fingerprint_survives_default_expansion_and_json_replay(name):
         profile_name=name,
     )
     assert (graph, ui) == expected
-
-
-@pytest.mark.parametrize("subjects", [("",), ("  ", "cat"), ("human", "")])
-def test_empty_visible_subject_is_rejected_before_any_request(
-    project, session, client, stub, subjects
-):
-    active = session.model_copy(update={"settings": project.settings()})
-    with pytest.raises(KomaquillError) as error:
-        generate(project, client, active, "a street", 42, subjects=subjects)
-    assert error.value.code == "invalid_request"
-    assert stub.submissions == 0
-    assert project.repository.load() == []
-
-
-@pytest.mark.parametrize("seed", [-1, 2**64, -(2**64)])
-def test_invalid_story_seed_is_not_silently_wrapped_or_persisted(project, session, seed):
-    repository, plan = planned(project)
-    active = session.model_copy(update={"settings": project.settings()})
-    before = repository.renders(plan.request.story_id)
-    with pytest.raises(KomaquillError) as error:
-        create_render(repository, project, active, plan.request.story_id, "klein-4b", seed)
-    assert error.value.code == "invalid_request"
-    assert repository.renders(plan.request.story_id) == before
-
-
-@pytest.mark.parametrize("identifier", ["c2", "o1", "p1"])
-def test_visible_reference_ids_are_not_diffusion_prompt_text(identifier):
-    from importlib.resources import files
-
-    value = json.loads(
-        files("komaquill")
-        .joinpath("resources/stories/examples/rainy-cat/plan-4.json")
-        .read_text(encoding="utf-8")
-    )
-    value["scenes"][0]["props"][0]["state"] = "held above " + identifier
-    with pytest.raises(PlanningValidationError) as error:
-        validate_draft(StoryDraft.model_validate(value), request())
-    assert any(issue.path == ("scenes", 0, "props", 0, "state") for issue in error.value.issues)
 
 
 @pytest.mark.parametrize("seed", [True, 0.5, -1, 2**64])
@@ -130,37 +86,6 @@ def test_self_consistent_but_wrong_quality_conditions_are_rejected():
     with pytest.raises(KomaquillError) as error:
         prepare("unused", 42, "test", settings=settings, compiled_input=changed)
     assert error.value.code == "invalid_configuration"
-
-
-def test_invalid_public_story_seed_does_not_call_llm_or_backend(project, monkeypatch):
-    from komaquill.api import Client, stories
-    from tests.support.stories import source
-
-    def unexpected(*args, **kwargs):
-        pytest.fail("Invalid inputs must fail before runtime or LLM access")
-
-    monkeypatch.setattr(stories, "connected", unexpected)
-    with pytest.raises(KomaquillError) as error:
-        list(Client(project.root).stories.generate(source(), llm_profile="fake", seed=-1))
-    assert error.value.code == "invalid_request"
-
-
-def test_scene_limit_cannot_exceed_supported_planning_contract(project):
-    from pydantic import ValidationError
-
-    from komaquill.infrastructure.stories.configuration import settings
-
-    with pytest.raises(ValidationError):
-        settings(project, max_images=9)
-
-
-def test_maximum_valid_seed_wraps_only_subsequent_scene_seeds(project, session):
-    repository, plan = planned(project)
-    active = session.model_copy(update={"settings": project.settings()})
-    render = create_render(
-        repository, project, active, plan.request.story_id, "klein-4b", 2**64 - 1
-    )
-    assert [scene.seed for scene in render.scenes] == [2**64 - 1, 0, 1, 2]
 
 
 def test_legacy_blank_subject_metadata_remains_readable():

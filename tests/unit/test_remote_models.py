@@ -6,11 +6,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
+from komaquill.adapters import colab as module
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.colab import Colab, Receipt
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import colab as module
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, Receipt
 
 
 @pytest.mark.parametrize("owned", [True, False])

@@ -2,43 +2,23 @@
 
 ## 環境を構築する
 
-[必要な環境](README.md#必要な環境)を用意し、PowerShell 7でリポジトリのフォルダーを開きます。
+WindowsではPowerShellから`./bootstrap/setup.ps1`を実行します。Pythonは`.artifacts/runtime/venv/`に作成します。続いてルートで`pnpm install`を実行します。
 
 ```powershell
-./bootstrap/setup.ps1 -InstallExtensions
-. ./bootstrap/activate.ps1
-python scripts/check.py --level 2
+pnpm dev
+pnpm check
 ```
-
-終了コード0で完了することを確認します。品質検査にGPU、Google認証、モデルのダウンロードは必要ありません。LinuxではPython 3.12とuvを導入し、uv sync --locked --extra colab-clientで環境を準備します。CIはWindowsとLinuxで同じ検査を実行します。
 
 ## 変更する
 
-最新mainからfeat/内容、fix/内容、docs/内容などの作業ブランチを作成します。[開発規約](AGENTS.md)に従い、設計・保存・秘密情報・文言・検証の規約を確認してください。scriptsは品質ゲート、bootstrapは導入処理、testsはテストを担当します。
+[要件台帳](docs/requirements/catalog.toml)と[現在の構成](docs/current/web.md)を確認し、製品、テスト、要件、操作手順を一緒に更新します。文書・コミット・PRの説明は日本語、識別子・コード内の説明・製品の表示文言は英語とします。
 
-[文書の索引](docs/README.md)から対象の要件ID・受入条件・現在設計を確認し、実装・テスト・操作手順を同じPRで更新します。未実装の計画と対象版の検証結果は別に管理します。
-
-対応する不具合を再現するテストを追加し、同じ原因のある箇所も確認します。設定値と固定バージョンの管理方法は[構成と設定](docs/current/architecture.md)、依存更新と配布物の検証は[開発とリリース](docs/development/workflow.md)を参照してください。
+関連する変更と検証を一つのPRにまとめます。保存済み作品、個人設定、秘密情報、実行中のGPU所有を保全します。不要な互換入口と重複する処理は残しません。
 
 ## 検証する
 
-```powershell
-python scripts/check.py --level 2
-```
-
-終了コード0で完了することを確認します。日常はL2で整形確認、lint、型検査、構造検査、テスト、作業ツリーの秘密情報を検査します。公開前とCIはL3で配布物、隔離wheel E2E、取得済みGit履歴の秘密情報も検査します。src・scripts・bootstrapのPythonを未実行ファイルも含めて計測し、testsを除外して行90%以上・分岐80%以上を独立判定します。検査結果は.artifacts/records/reports/quality/実行ID/、配布物は.artifacts/dist/実行ID/へ保存します。wheel検証はリポジトリ外の一時環境を作成し、終了時に削除します。
-
-GPU、SSH、起動・回収・終了を変更した場合は[実機検証](docs/verification/strategy.md)も実施します。作品・モデル・履歴・秘密情報は公開しないでください。
+日常は`pnpm check`、PRは`pnpm check:ci`、公開前は`pnpm check:all`と`pnpm build`を実行します。検証範囲、キャッシュ、結果、配布の扱いは[開発とリリース](docs/development/workflow.md)を参照してください。GPUと実LLMは自動検証へ含めません。
 
 ## PRとリリース
 
-PRには問題、変更後の動作、検証結果、残る制約を記載します。関連する変更は一つのPRへまとめ、実装と回帰検証が揃う単位でコミットします。必須のqualityとsecurityを通し、mainへのマージはリポジトリ所有者が行います。
-
-バージョンと公開手順は[開発とリリース](docs/development/workflow.md#公開する)を参照してください。
-
-公開前は python scripts/check.py --level 3 を実行します。レベルと結果の確認方法は[開発とリリース](docs/development/workflow.md)を参照してください。
-
-
-## ストーリーの変更
-
-ソース用setupはllm追加依存も導入します。手動のuv syncでは--extra llmを指定してください。日常ゲートでは実LLM・GPUを使いません。FakeListLLMと擬似ComfyUIで部分失敗・中断・再開・JSON出力を検査します。実LLM検証は[検証戦略](docs/verification/strategy.md)の別入口で行います。指示・原文・可視出力をGitへ含めないことなど、[開発規約](AGENTS.md#ストーリーとllm)も確認してください。
+mainへの変更はPRを使い、qualityとsecurityを維持します。コミットとPRは変更の目的、結果、検証を日本語で説明します。リポジトリ所有者がマージします。

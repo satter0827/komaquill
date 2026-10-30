@@ -1,0 +1,30 @@
+{
+  "name": "contracts",
+  "targets": {
+    "generate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node scripts/contracts.mjs --write"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/src/backend/src/komaquill/interfaces/http/**/*.py",
+        "{workspaceRoot}/src/backend/src/komaquill/conversations/models.py",
+        "{workspaceRoot}/openapi-ts.config.ts",
+        "{workspaceRoot}/src/backend/src/komaquill/domain/**/*.py",
+        "{workspaceRoot}/scripts/contracts.py",
+        "{workspaceRoot}/scripts/contracts.mjs",
+        "{workspaceRoot}/src/frontend/src/api/generated/**/*",
+        "{workspaceRoot}/src/backend/uv.lock"
+      ],
+      "options": {
+        "command": "node scripts/contracts.mjs"
+      }
+    }
+  }
+}

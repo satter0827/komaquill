@@ -113,7 +113,7 @@ Setup Environmentで導入し、Python: Select Interpreterで.artifacts/runtime/
 
 Prepare WorkflowはJSONのパス、Stop Sessionは通常・強制、Clean Generated Filesはプレビュー・整理を選びます。整理の既定はプレビューです。Show Status、Check Connection、Collect Results、Show Logsも同じCLIを使います。Run CLI with Argumentsでは任意の引数、Debug Sessionでは前面監視を実行します。画面だけを閉じてもGPUは終了しないため、Stop Sessionを実行してください。
 
-品質検査はCheck Project、配布物作成はBuild Packageを使います。これらはCLIの別実装を持たず、選択したPythonと既存スクリプトを呼び出します。
+品質検査はCheck RuntimeWorkspace、配布物作成はBuild Packageを使います。これらはCLIの別実装を持たず、選択したPythonと既存スクリプトを呼び出します。
 
 ## グラフを編集する
 

@@ -9,10 +9,10 @@ from uuid import uuid4
 
 import httpx
 import pytest
-
+from komaquill.adapters.comfyui import ComfyClient
+from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.domain.models import Session
-from komaquill.infrastructure.comfyui import ComfyClient
-from komaquill.infrastructure.configuration import Project
+
 from tests.support.comfy import ComfyStub
 from tests.support.presets import asset
 
@@ -39,10 +39,11 @@ def offline_network(monkeypatch):
 @pytest.fixture
 def project(tmp_path):
     (tmp_path / "komaquill.toml").write_text(
-        "poll_interval = 0.001\ngeneration_timeout = 1.0\nstory_max_in_flight = 1\n"
+        'models = ["klein-4b"]\npoll_interval = 0.001\ngeneration_timeout = 1.0\n'
+        "story_max_in_flight = 1\n"
         + "".join(f"[presets.{name}]\nbatch_size = 1\n" for name in ("klein-4b", "klein-4b-edit"))
     )
-    return Project(tmp_path)
+    return RuntimeWorkspace(tmp_path)
 
 
 @pytest.fixture

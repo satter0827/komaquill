@@ -3,8 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
-
-from komaquill.infrastructure import colab_execution
+from komaquill.adapters import colab_execution
 
 
 def test_cold_http_discovery_uses_control_deadline_without_replaying_execution(monkeypatch):

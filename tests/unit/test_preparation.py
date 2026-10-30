@@ -6,10 +6,10 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
-
+from komaquill.adapters import preparation as module
 from komaquill.domain.assets import Preparation
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import preparation as module
+
 from tests.unit.test_assets import asset
 
 
@@ -116,7 +116,7 @@ def test_preparation_jobs_preserve_local_bytes_and_report_safe_errors(
         if case in {"failed", "cancel", "report_failed"}:
             raise OSError("private-exception")
 
-    from komaquill.infrastructure.atomic import atomic_json
+    from komaquill.adapters.atomic import atomic_json
 
     atomic_json(control.project.session_file, session.model_dump(mode="json"))
 
@@ -205,7 +205,7 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
 
 
 def test_bindings_are_scoped_to_the_verified_runtime(coordinator, session):
-    from komaquill.infrastructure.atomic import atomic_json
+    from komaquill.adapters.atomic import atomic_json
 
     control, client = coordinator
     atomic_json(control.project.session_file, session.model_dump(mode="json"))
@@ -229,7 +229,7 @@ def test_managed_start_requires_a_functioning_extension(monkeypatch, available):
 
 
 def test_registered_model_plan_uses_verified_local_capacity(coordinator, monkeypatch):
-    from komaquill.infrastructure.asset_store import model_path, register
+    from komaquill.adapters.asset_store import model_path, register
 
     control, client = coordinator
     model = asset(size_bytes=5)

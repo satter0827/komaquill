@@ -52,13 +52,13 @@ def validate(root: Path) -> list[str]:
     for identity, requirement in registry.get("requirements", {}).items():
         if not re.fullmatch(r"REQ-[A-Z][A-Z0-9-]*", identity):
             errors.append("requirements:identity")
-        if requirement.get("status") not in {"planned", "in_progress", "implemented"}:
+        if requirement.get("status") not in {"planned", "in_progress", "implemented", "retired"}:
             errors.append(f"{identity}:status")
         if not requirement.get("summary") or not requirement.get("acceptance"):
             errors.append(f"{identity}:acceptance")
         for field, prefix in (
             ("sources", ("src/", "scripts/", "bootstrap/")),
-            ("tests", ("tests/",)),
+            ("tests", ("tests/", "src/frontend/tests/")),
         ):
             references = requirement.get(field, [])
             if requirement.get("status") == "implemented" and not references:

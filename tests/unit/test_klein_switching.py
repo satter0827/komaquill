@@ -3,15 +3,14 @@
 from inspect import signature
 
 import pytest
-from pydantic import ValidationError
-
-from komaquill.api import Client, RenderConfig, SceneRenderConfig, services
+from komaquill.adapters.configuration import Settings
+from komaquill.adapters.workflows import assets, prepare
+from komaquill.api import Client
+from komaquill.api import runtime as services
 from komaquill.domain.configuration import RetainedRuntimeSettings
-from komaquill.domain.images import ImageInput
 from komaquill.domain.models import Session
 from komaquill.domain.status import SessionStatus
-from komaquill.infrastructure.configuration import Settings
-from komaquill.infrastructure.workflows import assets, prepare
+from pydantic import ValidationError
 
 
 @pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit", "klein-9b", "klein-9b-edit"])
@@ -34,18 +33,9 @@ def test_cross_family_resources_are_rejected_before_allocation(role):
         Settings.model_validate(data)
 
 
-@pytest.mark.parametrize("value", [None, "", "extra hands"])
-def test_input_contracts_reject_removed_fields(value):
-    with pytest.raises(ValidationError):
-        ImageInput.model_validate({"prompt": "a street", "profile": value})
-    with pytest.raises(ValidationError):
-        SceneRenderConfig.model_validate({"scene": 1, "profile": "klein-4b", "negative": value})
-    assert RenderConfig.model_fields["format_version"].default == 4
-
-
 def test_public_interfaces_have_no_negative_parameter(project):
     api = Client(project.root)
-    for operation in (api.images.generate, api.stories.generate, api.stories.render):
+    for operation in (api.images.generate, api.images.submit):
         assert "profile" not in signature(operation).parameters
     assert "negative" in signature(api.images.generate).parameters
 
@@ -73,9 +63,9 @@ def test_gpu_and_memory_overrides_are_frozen_with_cli_precedence(project, monkey
         "start",
         lambda project, *args, **kwargs: captured.append(project.settings()),
     )
-    monkeypatch.setattr(services.SessionService, "status", lambda _: SessionStatus())
+    monkeypatch.setattr(services.RuntimeService, "status", lambda _: SessionStatus())
     api = Client(project.root)
-    api.sessions.start(gpu="A100", high_ram=True, models=["klein-9b"])
+    api.runtime.start(gpu="A100", high_ram=True, models=["klein-9b"])
     snapshot = captured[0]
     assert (snapshot.gpu, snapshot.high_ram) == ("A100", True)
     assert snapshot.profiles == ("klein-9b", "klein-9b-edit")
@@ -122,8 +112,8 @@ def test_optional_settings_remain_exact_in_json_and_produce_valid_gpu_toml(proje
     import tarfile
     import tomllib
 
+    from komaquill.adapters.deployment import create_payload
     from komaquill.domain.configuration import RuntimeSettings
-    from komaquill.infrastructure.deployment import create_payload
 
     project = project.configured(
         project.settings().model_copy(update={"submission_timeout": None, "session_timeout": None})

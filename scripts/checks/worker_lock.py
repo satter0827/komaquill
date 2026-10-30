@@ -33,7 +33,7 @@ def exported(root: Path) -> str:
                 str(exported),
                 "--quiet",
             ],
-            cwd=root,
+            cwd=root / "src/backend",
             check=True,
             stdout=subprocess.DEVNULL,
         )
@@ -49,7 +49,7 @@ def exported(root: Path) -> str:
 def main() -> None:
     """Compare the exported lock without modifying tracked files."""
     root = Path(__file__).resolve().parents[2]
-    expected = root / "src/komaquill/resources/runtime/pylock.worker.toml"
+    expected = root / "src/backend/src/komaquill/resources/runtime/pylock.worker.toml"
     if exported(root) != expected.read_text(encoding="utf-8"):
         raise SystemExit(message("quality.gpu_dependencies_differ_from_uv_lock_export_the"))
     print(message("quality.gpu_dependencies_match_uv_lock"))

@@ -4,46 +4,10 @@ import json
 from contextlib import contextmanager
 from uuid import uuid4
 
-import pytest
-
-from komaquill.api import Client, Evaluation, StorySnapshot, services, stories
-from komaquill.infrastructure.diagnostics import operation_scope, record_event
-from tests.support.stories import source
-
-
-def test_python_plan_uses_text_without_console_or_gpu(project, monkeypatch, capsys):
-    def forbidden(*args):
-        raise AssertionError("Planning must not connect to an image backend")
-
-    monkeypatch.setattr(stories, "connected", forbidden)
-    client = Client(project.root)
-    plan = client.stories.plan(source(), llm_profile="fake")
-    snapshot = client.stories.show(plan.request.story_id)
-    assert isinstance(snapshot, StorySnapshot)
-    assert snapshot.image_count == 4 and not snapshot.complete
-    assert client.stories.export(plan.request.story_id).source.text == source()
-    assert capsys.readouterr() == ("", "")
-
-
-def test_python_progress_and_resume_share_saved_results(
-    project, session, client, monkeypatch, capsys
-):
-    active = session.model_copy(update={"settings": project.settings()})
-
-    @contextmanager
-    def connect(_):
-        yield client, active
-
-    monkeypatch.setattr(stories, "connected", connect)
-    api = Client(project.root)
-    events = list(api.stories.generate(source(), llm_profile="fake", images=1, seed=7))
-    final = events[-1].snapshot
-    assert final.complete and final.scenes[0].primary_image
-    assert api.artifact_path(final.scenes[0].primary_image.key).is_file()
-    assert final.render_id
-    resumed = list(api.stories.resume(final.render_id))
-    assert resumed[-1].snapshot.scenes[0].run_id == final.scenes[0].run_id
-    assert capsys.readouterr() == ("", "")
+from komaquill.adapters.diagnostics import operation_scope, record_event
+from komaquill.api import Client, Evaluation
+from komaquill.api import images as services
+from komaquill.api import runtime as runtime_services
 
 
 def test_python_image_and_evaluation_services_use_common_records(
@@ -97,10 +61,18 @@ def test_operation_ids_do_not_inherit_a_stopped_session(project):
 
 def test_session_service_does_not_authenticate_interactively_by_default(project, monkeypatch):
     seen = []
-    monkeypatch.setattr(services.supervisor, "start", lambda *args, **kwargs: seen.append(kwargs))
+    monkeypatch.setattr(
+        runtime_services.supervisor, "start", lambda *args, **kwargs: seen.append(kwargs)
+    )
     api = Client(project.root)
-    monkeypatch.setattr(services.inspection, "inspect", lambda _: "observed")
-    assert api.sessions.start() == "observed"
+    monkeypatch.setattr(
+        runtime_services.inspection,
+        "inspect",
+        lambda _: __import__("komaquill.domain.status", fromlist=["SessionStatus"]).SessionStatus(
+            gpu="active"
+        ),
+    )
+    assert api.runtime.start().gpu == "active"
     assert seen == [{"interactive_auth": False}]
 
 
@@ -135,61 +107,3 @@ def test_child_operation_id_preserves_an_explicit_operation(project, monkeypatch
     record_event(project, "setup", "failed")
     events = [json.loads(row) for row in (project.logs / "cli.jsonl").read_text().splitlines()]
     assert [row["operation_id"] for row in events] == [str(child), str(current), None]
-
-
-def test_public_reads_and_invalid_configuration_use_typed_safe_failures(project):
-    from komaquill.api import ErrorCode, KomaquillError
-
-    api = Client(project.root)
-    with pytest.raises(KomaquillError) as missing:
-        api.stories.show(uuid4())
-    assert missing.value.code == ErrorCode.REQUEST_NOT_FOUND
-    assert missing.value.retryable is False
-    (project.root / "komaquill.toml").write_text("invalid [")
-    with pytest.raises(KomaquillError) as invalid:
-        api.stories.plan("private source", llm_profile="fake")
-    assert invalid.value.code == ErrorCode.INVALID_CONFIGURATION
-    assert "private source" not in str(invalid.value)
-
-
-def test_story_follow_does_not_reload_configuration(project, session, client, monkeypatch):
-    active = session.model_copy(update={"settings": project.settings()})
-
-    @contextmanager
-    def connect(_):
-        yield client, active
-
-    monkeypatch.setattr(stories, "connected", connect)
-    intervals = []
-    monkeypatch.setattr(stories.time, "sleep", intervals.append)
-    api = Client(project.root)
-    plan = api.stories.plan(source(), images=1, llm_profile="fake")
-    following = api.stories.follow(plan.request.story_id)
-    assert next(following).complete is False
-    assert list(api.stories.render(plan.request.story_id))[-1].snapshot.complete
-    (project.root / "komaquill.toml").write_text("invalid [")
-    assert next(following).complete
-    with pytest.raises(StopIteration):
-        next(following)
-    assert intervals == [0.001]
-
-
-def test_parallel_planning_reports_busy_before_calling_a_model(project, monkeypatch):
-    from komaquill.api import KomaquillError
-    from komaquill.infrastructure.stories.llm import serialized_planning
-
-    (project.root / "komaquill.toml").write_text("[story]\nrequest_timeout=0.01\n")
-    api = Client(project.root)
-    original = stories.planner
-
-    def forbidden(*args, **kwargs):
-        raise AssertionError("A busy workspace must not call the model")
-
-    monkeypatch.setattr(stories, "planner", forbidden)
-    with serialized_planning(project, 1), pytest.raises(KomaquillError) as error:
-        api.stories.plan(source(), llm_profile="fake")
-    assert error.value.code == "operation_failed" and error.value.retryable
-    assert error.value.details["reason"] == "planning_busy"
-    assert not list((project.data / "stories").glob("*/request.json"))
-    monkeypatch.setattr(stories, "planner", original)
-    assert api.stories.plan(source(), llm_profile="fake").scenes

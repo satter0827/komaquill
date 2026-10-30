@@ -3,13 +3,13 @@
 from uuid import uuid4
 
 import pytest
-
-from komaquill.application.generation import new_run
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.storage import load_runs, load_session, save_run
+from komaquill.adapters.workflows import resource_json
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.sessions import connection, monitor, shutdown, startup
-from komaquill.infrastructure.storage import load_runs, load_session, save_run
-from komaquill.infrastructure.workflows import resource_json
+from komaquill.images.generation import new_run
+from komaquill.runtime import connection, monitor, shutdown, startup
+
 from tests.support.provider import stopped as confirmed_stop
 from tests.support.session_controls import patch_session
 
@@ -78,7 +78,7 @@ def test_stale_stop_request_does_not_stop_new_runtime(project, session):
 
 
 def owned_colab(project, session, client, monkeypatch):
-    from komaquill.infrastructure.colab import Colab, Receipt
+    from komaquill.adapters.colab import Colab, Receipt
 
     colab = Colab(project)
     receipt = Receipt(
@@ -168,7 +168,7 @@ def test_stop_does_not_end_replacement_runtime(project, session, monkeypatch):
 def test_external_restart_excludes_offline_jobs_but_recovers_recorded_jobs(
     project, client, session, stub, monkeypatch
 ):
-    from komaquill.application.generation import collect
+    from komaquill.images.generation import collect
 
     patch_session(monkeypatch, "ComfyClient", lambda *args, **kwargs: client)
     monkeypatch.setattr(client, "close", lambda: None)
@@ -267,7 +267,7 @@ def test_interrupt_during_log_recovery_still_stops_gpu(project, client, session,
 
 
 def test_shutdown_freezes_new_submissions_before_collection(project, client, session, monkeypatch):
-    from komaquill.application.generation import generate
+    from komaquill.images.generation import generate
 
     colab, receipt = owned_colab(project, session, client, monkeypatch)
 
@@ -309,7 +309,7 @@ def test_unexpected_shutdown_error_still_stops_gpu_and_retains_receipt(
 def test_external_stop_without_monitor_blocks_new_submissions(
     project, client, session, monkeypatch
 ):
-    from komaquill.application.generation import generate
+    from komaquill.images.generation import generate
 
     session.backend = "external"
     atomic_json(project.session_file, session.model_dump(mode="json"))

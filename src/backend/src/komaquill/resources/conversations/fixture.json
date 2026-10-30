@@ -1,0 +1,8 @@
+{
+  "input": "Hello",
+  "response": {
+    "text": "Hello. This is a saved sample response for checking conversation storage and display.",
+    "state": {"sample": "greeted"},
+    "scene": null
+  }
+}

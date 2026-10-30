@@ -6,6 +6,7 @@
 |---|---|---|
 | 利用を始める | [README](../README.md) | [操作](guides/usage.md) |
 | 要件を変更する | [目的と範囲](product/scope.md) | [要件台帳](requirements/catalog.toml) |
+| 会話とReact画面を使う | [会話画面](guides/web.md) | [現在の設計](current/web.md)、[統合計画](plans/roleplay-chat.md) |
 | コードを変更する | [開発規約](../AGENTS.md) | [現在の構成](current/architecture.md)、[変更・検証](development/workflow.md) |
 | Pythonから利用する | [Python API](guides/python-api.md) | [現在の構成](current/architecture.md) |
 | ストーリーから生成する | [ストーリーの生成](guides/stories.md) | [計画・生成・保存の契約](current/stories.md) |
@@ -21,6 +22,8 @@
 ## 文書の状態と正本
 
 `current/`は実装済みの構成と契約、`plans/`は未完了の計画を扱います。要件台帳のstatusは実装状態であり、実機で確認済みという意味ではありません。検証の対象版・日時・環境は`verification/`で別に確認します。
+
+実装範囲と残る受入条件は[会話ライブラリ・APIサーバー・React画面の統合計画](plans/roleplay-chat.md)で管理します。製品コードをsrcへまとめ、その中でReact、Python、API契約を分け、画面から会話と画像の基本操作を完成させる計画です。既存ブラウザと単発画像生成も維持します。旧Storyの新規生成入口は廃止し、既存記録はarchiveへ分離しました。最新の確認結果と残存課題は[ReactとAPIの再レビュー](verification/results/react-review.md)を参照してください。
 
 設定値・固定バージョン・エラーコードの正本はコードと設定です。文書には責務、使い方、制約、参照先を記載します。変更するときは要件ID、受入条件、実装、テスト、操作・運用手順を同じPRで対応付けます。
 

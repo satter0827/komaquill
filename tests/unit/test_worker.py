@@ -10,15 +10,14 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-
 from komaquill.domain.errors import KomaquillError
-from komaquill.gpu import bootstrap as bootstrap
-from komaquill.gpu import worker as worker
+from komaquill.worker import bootstrap as bootstrap
+from komaquill.worker import worker as worker
 
 
 @pytest.mark.parametrize("case", ["download", "cached", "checksum", "missing"])
 def test_bootstrap_verifies_tools_and_starts_isolated_worker(tmp_path, monkeypatch, case):
-    script = tmp_path / "komaquill/gpu/bootstrap.py"
+    script = tmp_path / "komaquill/worker/bootstrap.py"
     config = tmp_path / "komaquill/resources/runtime/versions.toml"
     config.parent.mkdir(parents=True)
     config.write_text('uv_version="test-version"\npython_version="3.12.15"')
@@ -71,7 +70,7 @@ def test_bootstrap_verifies_tools_and_starts_isolated_worker(tmp_path, monkeypat
         assert uv.is_file() and len(commands) == 3
         assert commands[0][0][1:3] == ["venv", "--python"]
         assert "--require-hashes" in commands[1][0]
-        assert commands[2][0][2:4] == ["-m", "komaquill.gpu.worker"]
+        assert commands[2][0][2:4] == ["-m", "komaquill.worker.worker"]
         assert all(
             command[1]["env"]["TMPDIR"] == str(tmp_path / ".artifacts/tmp") for command in commands
         )
@@ -146,6 +145,9 @@ class Server:
     "case", ["success", "cpu", "early_exit", "timeout", "server_error", "retry"]
 )
 def test_worker_health_environment_and_cleanup(project, monkeypatch, case):
+    (project.root / "manifest.json").write_text(
+        json.dumps({"settings": project.settings().model_dump(mode="json")}), encoding="utf-8"
+    )
     monkeypatch.setitem(
         sys.modules,
         "torch",
@@ -220,14 +222,14 @@ def test_transferred_extension_loads_from_comfy_working_directory(project, monke
     import subprocess
     import tomllib
 
-    from komaquill.infrastructure.deployment import create_payload
+    from komaquill.adapters.deployment import create_payload
 
     payload = create_payload(project)
     root = project.artifacts / "tmp/worker-import"
     root.mkdir(parents=True)
     with tarfile.open(payload.path) as archive:
         archive.extractall(root, filter="data")
-    script = root / "komaquill/gpu/bootstrap.py"
+    script = root / "komaquill/worker/bootstrap.py"
     monkeypatch.setattr(bootstrap, "__file__", str(script))
     uv = root / ".artifacts/runtime/tools/uv"
     uv.parent.mkdir(parents=True)
@@ -309,8 +311,8 @@ def test_transferred_extension_loads_from_comfy_working_directory(project, monke
 
 
 def test_bootstrap_failure_cannot_overwrite_the_first_model_failure(project):
-    from komaquill.gpu.progress import progress
-    from komaquill.infrastructure.paths import GpuPaths
+    from komaquill.adapters.paths import GpuPaths
+    from komaquill.worker.progress import progress
 
     progress(project.root, "model_preparation", "klein-encoder")
     first = {
@@ -333,8 +335,8 @@ def test_bootstrap_failure_cannot_overwrite_the_first_model_failure(project):
 def test_unexpected_worker_failure_is_retained_before_outer_process_failure(
     project, monkeypatch, capsys
 ):
-    from komaquill.gpu.progress import progress
-    from komaquill.infrastructure.paths import GpuPaths
+    from komaquill.adapters.paths import GpuPaths
+    from komaquill.worker.progress import progress
 
     def unavailable():
         raise OSError("private exception details")

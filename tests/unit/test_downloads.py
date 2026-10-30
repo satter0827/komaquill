@@ -5,17 +5,17 @@ from contextlib import contextmanager
 
 import httpx
 import pytest
-
+from komaquill.adapters import asset_download
+from komaquill.adapters.asset_store import model_path
+from komaquill.adapters.downloads import fetch_model
+from komaquill.adapters.worker_workspace import WorkerWorkspace
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import asset_download
-from komaquill.infrastructure.asset_store import model_path
-from komaquill.infrastructure.configuration import GpuProject
-from komaquill.infrastructure.downloads import fetch_model
+
 from tests.support.presets import asset
 
 
 def test_verified_model_is_reused_without_download(project, monkeypatch):
-    project = GpuProject(project.root, project.settings())
+    project = WorkerWorkspace(project.root, project.settings())
     content = b"verified model"
     model = asset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
     target = model_path(project.models, model)
@@ -25,13 +25,13 @@ def test_verified_model_is_reused_without_download(project, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("The verified file must be reused.")
 
-    monkeypatch.setattr("komaquill.infrastructure.downloads.download_asset", forbidden)
+    monkeypatch.setattr("komaquill.adapters.downloads.download_asset", forbidden)
     assert fetch_model(project, model) == target
 
 
 @pytest.mark.parametrize("case", ["valid", "invalid", "http"])
 def test_download_verifies_bytes_before_publication_and_redacts_errors(project, monkeypatch, case):
-    project = GpuProject(project.root, project.settings())
+    project = WorkerWorkspace(project.root, project.settings())
     content = b"verified upstream model"
     model = asset().model_copy(
         update={
@@ -73,7 +73,7 @@ def test_pc_cannot_acquire_model_bodies(project):
 
 
 def test_gpu_provider_credentials_are_headers_only(project, monkeypatch):
-    project = GpuProject(project.root, project.settings())
+    project = WorkerWorkspace(project.root, project.settings())
     content = b"authenticated weights"
     model = asset("klein-encoder").model_copy(
         update={"sha256": hashlib.sha256(content).hexdigest(), "size_bytes": len(content)}
@@ -94,7 +94,7 @@ def test_gpu_provider_credentials_are_headers_only(project, monkeypatch):
 
 
 def test_preflight_uses_streaming_get_for_sources_rejecting_head(monkeypatch):
-    from komaquill.infrastructure import model_auth
+    from komaquill.adapters import model_auth
 
     observed = []
     monkeypatch.setattr(model_auth, "credentials", lambda: {})
@@ -122,7 +122,7 @@ def test_preflight_uses_streaming_get_for_sources_rejecting_head(monkeypatch):
     ],
 )
 def test_preflight_classifies_safe_failures(monkeypatch, status, content_type, expected):
-    from komaquill.infrastructure import model_auth
+    from komaquill.adapters import model_auth
 
     monkeypatch.setattr(model_auth, "credentials", lambda: {})
 
@@ -213,9 +213,9 @@ def test_reused_model_event_identifies_content_and_gpu(project, monkeypatch):
     import json
     from uuid import uuid4
 
-    from komaquill.infrastructure.paths import GpuPaths
+    from komaquill.adapters.paths import GpuPaths
 
-    gpu = GpuProject(project.root, project.settings())
+    gpu = WorkerWorkspace(project.root, project.settings())
     content = b"verified model"
     model = asset().model_copy(update={"sha256": hashlib.sha256(content).hexdigest()})
     target = model_path(gpu.models, model)

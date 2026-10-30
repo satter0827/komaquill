@@ -5,10 +5,9 @@ from pathlib import Path
 from typing import Literal
 
 from filelock import FileLock
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
-
+from komaquill.adapters.atomic import atomic_json
 from komaquill.domain.workflow import digest
-from komaquill.infrastructure.atomic import atomic_json
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class Allocation(BaseModel):

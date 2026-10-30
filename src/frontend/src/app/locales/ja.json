@@ -130,7 +130,7 @@
   "banner": "ストーリーの画像",
   "createImage": "画像を作る",
   "autoImage": "接続済みなら、保存後に画像も作る",
-  "imageNotConnected": "設定は保存されています。画像を作るには生成先へ接続してください。",
+  "imageNotConnected": "画像の生成先へ接続すると、保存後に画像を作れます。",
   "noImage": "画像はまだありません",
   "imageReady": "画像ができました",
   "imagePreparing": "画像を作っています…",

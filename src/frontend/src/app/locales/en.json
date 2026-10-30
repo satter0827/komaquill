@@ -130,7 +130,7 @@
   "banner": "Story cover",
   "createImage": "Create image",
   "autoImage": "Create an image after saving when connected",
-  "imageNotConnected": "Your settings are saved. Connect an image server to create the picture.",
+  "imageNotConnected": "Connect an image server to create a picture after saving.",
   "noImage": "No image yet",
   "imageReady": "Image ready",
   "imagePreparing": "Creating the image…",

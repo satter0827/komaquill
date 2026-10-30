@@ -43,6 +43,12 @@ const fields = {
   story: ['name', 'description', 'world', 'opening', 'place', 'goal'],
 } as const
 type Fields = Record<string, string>
+type ImageChoice = {
+  automatic: boolean
+  locale: 'ja' | 'en'
+  llm_profile: string
+  allow_real_llm: boolean
+}
 
 export async function loadPresets(kind: Kind): Promise<Preset[]> {
   if (kind === 'player') return (await api.listPlayers()).data!
@@ -312,30 +318,45 @@ function PresetEditor({
     queryFn: () => loadPresets('character'),
     enabled: kind === 'story',
   })
-  const runtime = useQuery({
+  const connectionQuery = {
     queryKey: ['image-connection'],
     queryFn: async () => (await api.refreshRuntime()).data!,
-    enabled: kind !== 'player',
+  }
+  const runtime = useQuery({ ...connectionQuery, enabled: kind !== 'player' })
+  const connected = !runtime.isError && runtime.data?.connection === 'connected'
+  const imageChoice = (): ImageChoice => ({
+    automatic: autoImage,
+    locale: preferences.value.locale,
+    llm_profile: generationProfile,
+    allow_real_llm: allow,
   })
-  const connected = runtime.data?.connection === 'connected'
-  const imageRequest = (record: Preset, permitted: boolean) => {
+  const imageRequest = (record: Preset, choice: ImageChoice) => {
     media.start({
       kind: kind === 'character' ? 'portrait' : 'banner',
       target_id: record.id,
       expected_revision: record.revision ?? 0,
-      locale: preferences.value.locale,
-      llm_profile: generationProfile,
-      allow_real_llm: permitted,
+      locale: choice.locale,
+      llm_profile: choice.llm_profile,
+      allow_real_llm: choice.allow_real_llm,
     })
   }
   const mutation = useMutation({
-    mutationFn: () => save(kind, value, current),
-    onSuccess: async (record) => {
+    mutationFn: async (choice: ImageChoice) => ({
+      record: await save(kind, value, current),
+      choice,
+    }),
+    onSuccess: async ({ record, choice }) => {
       setCurrent(record)
       setNotice(m.saved)
-      if (kind !== 'player' && autoImage && connected)
-        imageRequest(record, allow)
-      setAllow(false)
+      if (kind !== 'player' && choice.automatic) {
+        try {
+          const observation = await cache.fetchQuery(connectionQuery)
+          if (observation.connection === 'connected')
+            imageRequest(record, choice)
+        } catch {
+          // Connection errors are shown with the image preview; the preset is saved.
+        }
+      }
       await cache.invalidateQueries({ queryKey: [keys[kind]] })
       if (returnTo?.startsWith('/new')) {
         const url = new URL(returnTo, 'http://localhost')
@@ -387,7 +408,8 @@ function PresetEditor({
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            mutation.mutate()
+            mutation.mutate(imageChoice())
+            setAllow(false)
           }}
         >
           <fieldset disabled={mutation.isPending}>
@@ -551,18 +573,27 @@ function PresetEditor({
                 )}
               </div>
               <p className="subtle">
-                {connected ? m.noImage : m.imageNotConnected}
+                {imageRecord?.image_id
+                  ? m.imageReady
+                  : connected
+                    ? m.noImage
+                    : m.imageNotConnected}
               </p>
               {current && (
                 <Button
                   onClick={() => {
-                    imageRequest(current, allow)
+                    imageRequest(current, imageChoice())
                     setAllow(false)
                   }}
                   disabled={media.busy}
                 >
                   {m.createImage}
                 </Button>
+              )}
+              {runtime.error && (
+                <p className="error" role="alert">
+                  {failure(runtime.error)}
+                </p>
               )}
               <CreationStatus creation={media} />
               {imageRecord?.image_job_id && (

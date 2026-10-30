@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createJob, getJob } from '../api/generated/sdk.gen'
-import type { CreationRequest } from '../api/generated/types.gen'
+import type { CreationJob, CreationRequest } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { POLL_INTERVAL_MS } from '../api/client'
 import { Button } from '../components/ui/button'
@@ -14,6 +14,11 @@ export function useCreation() {
     mutationFn: async (request: CreationRequest) =>
       (await createJob({ body: request })).data!,
     onSuccess: (data) => {
+      cache.setQueryData<CreationJob>(['creation', data.id], (current) =>
+        current && ['complete', 'failed', 'interrupted'].includes(current.state)
+          ? current
+          : data,
+      )
       setIdentity(data.id)
       setPrepared(null)
       for (const key of ['characters', 'stories'])
@@ -54,6 +59,7 @@ export function useCreation() {
     prepared,
     busy:
       mutation.isPending ||
+      (!!prepared && mutation.isError) ||
       (!!job.data &&
         ['accepted', 'running', 'submitted'].includes(job.data.state)),
   }
@@ -80,6 +86,7 @@ export function CreationStatus({
             {failure(creation.mutation.error)}
           </p>
           <Button
+            disabled={creation.mutation.isPending}
             onClick={() =>
               creation.prepared && creation.start(creation.prepared)
             }

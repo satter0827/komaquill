@@ -13,9 +13,10 @@ def test_cli_chat_create_send_read_and_failure_are_safe(project):
     assert result.exit_code == 0, result.output
     identity = json.loads(result.output)["id"]
     sent = runner.invoke(app, [*prefix, "send", identity, "Hello"])
-    assert sent.exit_code == 0 and "sample response" in sent.output
+    assert sent.exit_code == 0
     saved = runner.invoke(app, [*prefix, "get", identity])
-    assert len(json.loads(saved.output)["turns"]) == 1
+    turns = json.loads(saved.output)["turns"]
+    assert len(turns) == 1 and turns[0]["assistant"] in sent.output
     assert json.loads(runner.invoke(app, [*prefix, "list"]).output)["id"] == identity
     assert json.loads(runner.invoke(app, [*prefix, "status", identity]).output)["revision"] == 1
     changed = runner.invoke(

@@ -33,6 +33,8 @@ class ImageInput(BaseModel):
     prompt: str = Field(min_length=1, max_length=20000)
     seed: int | None = Field(default=None, ge=0)
     model: str | None = None
+    llm_profile: str = "fake"
+    allow_real_llm: bool = False
 
 
 class RuntimeStart(BaseModel):
@@ -89,6 +91,10 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         if client is None:
             raise KomaquillError(code="invalid_configuration")
         return client
+
+    from komaquill.interfaces.http.library import bind_library
+
+    bind_library(app, selected)
 
     @app.middleware("http")
     async def local_only(
@@ -239,7 +245,12 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
     @app.post("/api/v1/images", response_model=Run, status_code=202, operation_id="submit_image")
     def submit_image(body: ImageInput) -> Run:
         return selected().images.submit(
-            body.prompt, run_id=body.request_id, seed=body.seed, model=body.model
+            body.prompt,
+            run_id=body.request_id,
+            seed=body.seed,
+            model=body.model,
+            llm_profile=body.llm_profile,
+            allow_real_llm=body.allow_real_llm,
         )
 
     @app.get("/api/v1/images/{identity}", response_model=Run, operation_id="get_image")

@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import traceback
 import zipfile
@@ -303,12 +304,52 @@ def run_acceptance(wheel: Path | None = None) -> None:
                         str(python),
                         "-B",
                         "-c",
-                        "from fastapi.testclient import TestClient; from pathlib import Path; "
-                        "from komaquill.api import Client; "
-                        "from komaquill.interfaces.http.app import create_app; "
-                        "http = TestClient(create_app(Client(Path.cwd()))); "
-                        "assert '<html' in http.get('/').text; "
-                        "assert len(http.get('/api/v1/conversations').json()) == 1",
+                        textwrap.dedent("""
+                            from pathlib import Path
+                            from uuid import uuid4
+                            from fastapi.testclient import TestClient
+                            from komaquill.api import Client
+                            from komaquill.interfaces.http.app import create_app
+                            with TestClient(create_app(Client(Path.cwd()))) as http:
+                                assert '<html' in http.get('/').text
+                                assert len(http.get('/api/v1/conversations').json()) == 1
+                                prefs = http.get('/api/v1/preferences').json()
+                                assert prefs['locale'] == 'ja'
+                                for collection in ('players', 'characters', 'stories'):
+                                    url = '/api/v1/' + collection
+                                    saved = http.post(url, json={'name': 'Created'}).json()
+                                    item = url + '/' + saved['id']
+                                    assert http.get(item).json()['name'] == 'Created'
+                                    updated = http.put(item + '?expected_revision=0',
+                                        json={'name': 'Updated'})
+                                    assert updated.status_code == 200
+                                    assert http.post(item + '/duplicate').status_code == 201
+                                    deleted = http.delete(item + '?expected_revision=1')
+                                    assert deleted.status_code == 204
+                                prefs['locale'] = 'en'
+                                changed = http.put('/api/v1/preferences', json=prefs)
+                                assert changed.status_code == 200
+                                assert http.get('/api/v1/preferences').json()['locale'] == 'en'
+                                selection = {}
+                                for kind, collection in [('player', 'players'),
+                                        ('character', 'characters'), ('story', 'stories')]:
+                                    values = http.get('/api/v1/' + collection).json()
+                                    value = next(v for v in values if v['sample_locale'] == 'ja')
+                                    selection[kind] = {'id': value['id'],
+                                        'revision': value['revision']}
+                                result = http.post('/api/v1/conversations/from-presets',
+                                    json={**selection, 'locale': 'ja'}).json()
+                                identity = result['id']
+                                turn_url = '/api/v1/conversations/' + identity + '/turns'
+                                operation = http.post(turn_url,
+                                    json={'operation_id': str(uuid4()), 'text': 'Hello'}).json()
+                                saved = http.get('/api/v1/operations/' + operation['id']).json()
+                                assert saved['state'] == 'complete'
+                                restored = http.get('/api/v1/conversations/' + identity).json()
+                                assert len(restored['turns']) == 1
+                                assert restored['definition']['presets']['character']['id'] == (
+                                    selection['character']['id'])
+                        """),
                     ],
                     cwd=workspace,
                     env=env,

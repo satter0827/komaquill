@@ -118,7 +118,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0004"
+                == "0005"
             )
         storage.engine.dispose()
 
@@ -243,7 +243,7 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
         command.downgrade(config, "0003")
-    Database(tmp_path / ".artifacts/data/komaquill.sqlite3").engine.dispose()
+    Database(tmp_path / ".artifacts/data/komaquill.sqlite3", migrate=True).engine.dispose()
     assert len(api.conversations.get(conversation.id).turns) == 1
     assert (
         api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello")).state

@@ -1,0 +1,12 @@
+{
+  "ja": {
+    "player": {"name":"つむぎ","address":"つむぎさん","role":"旅人","appearance":"赤いコート","description":"港町を訪れた旅人。青い封筒を持っている。"},
+    "character": {"name":"栞","role":"古書店の店主","appearance":"成人女性。短い銀髪、黒いエプロン。","personality":"穏やかで少し冗談を言う。","speech":"丁寧で親しみやすい。","relationship":"初めて店を訪れた相手。"},
+    "story": {"name":"雨の日の古書店","description":"雨宿りから始まる、小さな出会い。","world":"港町の古書店。魔法は存在しない。","opening":"雨の午後、古書店で店主と話し始める。","place":"古書店の店内","goal":"店主と話し、気になる本を探す。"}
+  },
+  "en": {
+    "player": {"name":"Tsumugi","address":"Tsumugi","role":"Traveler","appearance":"A red coat","description":"A traveler visiting a harbor town, carrying a blue envelope."},
+    "character": {"name":"Shiori","role":"Bookseller","appearance":"An adult woman with short silver hair and a black apron.","personality":"Calm, with a gentle sense of humor.","speech":"Warm and polite.","relationship":"Meeting a visitor for the first time."},
+    "story": {"name":"The Rainy Bookshop","description":"A quiet encounter while sheltering from the rain.","world":"A bookshop in a harbor town, without magic.","opening":"On a rainy afternoon, a traveler begins talking with the bookseller.","place":"Inside the bookshop","goal":"Meet the bookseller and find an interesting book."}
+  }
+}

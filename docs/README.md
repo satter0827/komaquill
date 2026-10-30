@@ -18,6 +18,7 @@
 | 設計判断を確認する | [設計判断](decisions/0001-native-interfaces.md) | [契約](current/contracts.md) |
 | 受入検証を行う | [検証戦略](verification/strategy.md) | [検証記録](verification/README.md) |
 | 今後の機能を検討する | [今後の候補](plans/future.md) | [保存の設計判断](decisions/0002-preservation-and-cleanup.md) |
+| 個人設定・プリセットを使う | [会話画面](guides/web.md) | [設定と作成の契約](current/creators.md)、[計画](plans/creators-and-play.md)、[検証記録](verification/results/creators-and-play.md) |
 
 ## 文書の状態と正本
 

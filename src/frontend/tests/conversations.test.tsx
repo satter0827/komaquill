@@ -5,15 +5,29 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import {
-  NewConversation,
-  ConversationPage,
-} from '../src/features/conversations'
+import { ConversationPage } from '../src/features/conversations'
+import { NewConversation } from '../src/features/start'
+import m from '../src/app/locales/ja.json'
 import { client } from '../src/api/generated/client.gen'
 
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  ...(['players', 'characters', 'stories'] as const).map((collection) =>
+    http.get(`${base}/api/v1/${collection}`, () =>
+      HttpResponse.json([
+        {
+          id: collection,
+          name: collection,
+          revision: 0,
+          sample: true,
+          sample_locale: 'ja',
+          description: '',
+          image_id: null,
+        },
+      ]),
+    ),
+  ),
   http.get(`${base}/api/v1/conversations/one/operations`, () =>
     HttpResponse.json([]),
   ),
@@ -23,7 +37,7 @@ const server = setupServer(
       sample_input: 'Hello',
     }),
   ),
-  http.post(`${base}/api/v1/conversations`, () =>
+  http.post(`${base}/api/v1/conversations/from-presets`, () =>
     HttpResponse.json({
       id: 'one',
       definition: { title: 'A new scene', llm_profile: 'fake' },
@@ -106,9 +120,9 @@ describe('conversation workflow', () => {
       ),
     )
     app('/conversations/one', cache)
-    const input = await screen.findByRole('textbox', { name: 'Message' })
+    const input = await screen.findByRole('textbox', { name: m.messageLabel })
     await userEvent.type(input, 'Hello')
-    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
     await userEvent.clear(input)
     await userEvent.type(input, 'Next draft')
     release!()
@@ -117,23 +131,23 @@ describe('conversation workflow', () => {
   })
   it('creates a conversation and opens the saved result', async () => {
     app('/new')
-    await userEvent.type(screen.getByLabelText('Title'), 'A new scene')
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Create conversation' }),
+    await waitFor(() =>
+      expect(screen.getByLabelText(m.chooseCharacter)).toHaveValue(
+        'characters',
+      ),
     )
+    await userEvent.click(screen.getByRole('button', { name: m.create }))
     expect(
       await screen.findByRole('heading', { name: 'A new scene' }),
     ).toBeVisible()
   })
   it('disables duplicate sending while a reply is pending', async () => {
     app('/conversations/one')
-    const input = await screen.findByRole('textbox', { name: 'Message' })
+    const input = await screen.findByRole('textbox', { name: m.messageLabel })
     await userEvent.type(input, 'Hello')
-    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Preparing a reply',
-    )
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    expect(await screen.findByRole('status')).toHaveTextContent(m.pending)
+    expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
   })
   it('reuses the request ID and body after a lost response', async () => {
     const requests: unknown[] = []
@@ -160,12 +174,12 @@ describe('conversation workflow', () => {
     )
     app('/conversations/one')
     await userEvent.type(
-      await screen.findByRole('textbox', { name: 'Message' }),
+      await screen.findByRole('textbox', { name: m.messageLabel }),
       'Hello',
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Retry the same request' }),
+      await screen.findByRole('button', { name: m.retryRequest }),
     )
     expect(requests).toHaveLength(2)
     expect(requests[0]).toEqual(requests[1])
@@ -184,19 +198,20 @@ describe('conversation workflow', () => {
         async ({ request }) => {
           commands.push(await request.json())
           return HttpResponse.json(
-            { message: 'State changed. Reopen the editor.' },
+            { code: 'operation_conflict' },
             { status: 409 },
           )
         },
       ),
     )
     app('/conversations/one', cache)
+    await userEvent.click(await screen.findByText(m.details))
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Edit state' }),
+      await screen.findByRole('button', { name: m.editState }),
     )
-    await userEvent.clear(screen.getByLabelText('State values (JSON)'))
+    await userEvent.clear(screen.getByLabelText(m.stateValues))
     await userEvent.type(
-      screen.getByLabelText('State values (JSON)'),
+      screen.getByLabelText(m.stateValues),
       '{{"place":"draft"}',
     )
     act(() =>
@@ -208,11 +223,13 @@ describe('conversation workflow', () => {
         revision: 1,
       }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Save state' }))
+    await userEvent.click(screen.getByRole('button', { name: m.saveState }))
     expect(commands).toEqual([
       { command: 'set_state', expected_revision: 0, state: { place: 'draft' } },
     ])
-    expect(await screen.findByRole('alert')).toHaveTextContent('State changed')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      m.errors.operation_conflict,
+    )
   })
   it('requires resolving a lost response even when its operation is known', async () => {
     server.use(
@@ -229,13 +246,13 @@ describe('conversation workflow', () => {
     )
     app('/conversations/one')
     await userEvent.type(
-      await screen.findByRole('textbox', { name: 'Message' }),
+      await screen.findByRole('textbox', { name: m.messageLabel }),
       'Hello',
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
     expect(
-      await screen.findByRole('button', { name: 'Retry the same request' }),
+      await screen.findByRole('button', { name: m.retryRequest }),
     ).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
   })
 })

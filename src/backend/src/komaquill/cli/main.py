@@ -118,6 +118,13 @@ def operation(ctx: typer.Context) -> Iterator[RuntimeWorkspace]:
         raise typer.Exit(1) from None
 
 
+@app.command("migrate", help=message("storage.migrate_help"))
+def migrate_command(ctx: typer.Context) -> None:
+    with operation(ctx) as project:
+        report = Client(project.root).migrate()
+        typer.echo(message("storage.migrated", path=report))
+
+
 def _record_failure(ctx: typer.Context, error: BaseException) -> None:
     from komaquill.adapters.diagnostics import record_event
     from komaquill.domain.errors import failure_info
@@ -243,6 +250,8 @@ def generate_command(
         int | None, typer.Option(min=0, max=2**64 - 1, help=message("text.random_seed"))
     ] = None,
     model: Annotated[str | None, typer.Option(help=message("model.select_help"))] = None,
+    llm_profile: Annotated[str, typer.Option(help=message("stories.llm_profile_help"))] = "fake",
+    allow_real_llm: Annotated[bool, typer.Option(help=message("stories.allow_real_help"))] = False,
     operation_kind: Annotated[
         Literal["generate", "edit"] | None,
         typer.Option("--operation", help=message("model.operation_help")),
@@ -285,6 +294,8 @@ def generate_command(
             input_sources=sources,
             inputs=inputs,
             parameters=value.parameters,
+            llm_profile=llm_profile,
+            allow_real_llm=allow_real_llm,
         )
         if run.output_spec is None:
             typer.echo(message("images.saved_outputs", count=len(run.images)))

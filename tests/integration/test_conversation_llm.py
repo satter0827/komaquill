@@ -8,6 +8,52 @@ from komaquill.api import Client
 from komaquill.conversations.models import ConversationInput, SendInput
 
 
+def test_explicit_image_request_requires_an_english_scene_with_one_bounded_repair(
+    tmp_path, monkeypatch
+):
+    import langchain_openai
+    from langchain_core.messages import AIMessage
+
+    schemas, calls = [], []
+
+    class Model:
+        def __init__(self, **options):
+            self.model = options["model"]
+
+        def bind(self, **options):
+            schemas.append(options["response_format"]["json_schema"]["schema"])
+            return self
+
+        def invoke(self, messages, config):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "text": "栞は静かに窓辺の本を指さした。",
+                        "state": {},
+                        "scene": None
+                        if len(calls) == 1
+                        else "An adult woman with short silver hair and a black apron "
+                        "points at a book beside a rainy window.",
+                    }
+                ),
+                response_metadata={"model_name": self.model},
+            )
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    api = Client.initialize(tmp_path)
+    conversation = api.conversations.create(
+        ConversationInput(title="Required image", llm_profile="lmstudio-4b", locale="ja")
+    )
+    reply = api.conversations.responder.reply(
+        conversation,
+        SendInput(operation_id=uuid4(), text="描いてください", images=True, allow_real_llm=True),
+    )
+    assert len(calls) == 2 and reply.scene.startswith("An adult woman")
+    assert schemas[0]["properties"]["scene"]["type"] == "string"
+    assert all(sum(message.type == "system" for message in messages) == 1 for messages in calls)
+
+
 @pytest.mark.parametrize(
     "case", ["valid", "repair", "invalid", "wrong_model", "unavailable", "refusal"]
 )
@@ -36,7 +82,9 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
             return AIMessage(
                 content="invalid" if invalid else response,
                 response_metadata={
-                    "model_name": "wrong" if case == "wrong_model" else "qwen/qwen3.5-4b"
+                    "model_name": "wrong"
+                    if case == "wrong_model"
+                    else "qwen3.5-4b-uncensored-hauhaucs-aggressive"
                 },
                 additional_kwargs={"refusal": "refused"} if case == "refusal" else {},
             )
@@ -57,10 +105,12 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
     assert "A private prompt" in records[0].read_text()
     record = json.loads(records[0].read_bytes())
     assert len(record["instructions_sha256"]) == 64
-    assert record["model"] == "qwen/qwen3.5-4b" and "usage" in record
+    assert record["model"] == "qwen3.5-4b-uncensored-hauhaucs-aggressive" and "usage" in record
     assert record["status"] == ("failed" if case == "unavailable" else "response_received")
     if case != "unavailable":
-        assert record["response_model"] == ("wrong" if case == "wrong_model" else "qwen/qwen3.5-4b")
+        assert record["response_model"] == (
+            "wrong" if case == "wrong_model" else "qwen3.5-4b-uncensored-hauhaucs-aggressive"
+        )
     if case in {"valid", "repair"}:
         assert result.state == "complete"
         assert client.conversations.get(conversation.id).state == {"place": "home"}
@@ -89,7 +139,7 @@ def test_context_limit_preserves_fixed_data_and_bounds_history(tmp_path, monkeyp
             calls.append(list(messages))
             return AIMessage(
                 content='{"text":"Saved","state":{},"scene":null}',
-                response_metadata={"model_name": "qwen/qwen3.5-4b"},
+                response_metadata={"model_name": "qwen3.5-4b-uncensored-hauhaucs-aggressive"},
             )
 
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
@@ -130,5 +180,6 @@ def test_context_limit_preserves_fixed_data_and_bounds_history(tmp_path, monkeyp
     else:
         assert result.state == "complete" and len(calls) == 1
         assert len(calls[0]) < 27
-        assert "fixed scenario" in calls[0][1].content
-        assert calls[0][-1].content == "Current message"
+        assert "fixed scenario" in calls[0][0].content
+        assert sum(message.type == "system" for message in calls[0]) == 1
+        assert calls[0][-1].content.startswith("Current message\n\n")

@@ -1,8 +1,43 @@
 {
-  "input": "Hello",
-  "response": {
-    "text": "Hello. This is a saved sample response for checking conversation storage and display.",
-    "state": {"sample": "greeted"},
-    "scene": null
+  "en": {
+    "inputs": [
+      "Hello"
+    ],
+    "response": {
+      "text": "Hello, Tsumugi. Come in out of the rain. Is there a book you are looking for?",
+      "state": {
+        "sample": "greeted",
+        "place": "Inside the bookshop"
+      },
+      "scene": null
+    },
+    "unbound_response": {
+      "text": "Hello. Where would you like our story to begin?",
+      "state": {
+        "sample": "greeted"
+      },
+      "scene": null
+    }
+  },
+  "ja": {
+    "inputs": [
+      "こんにちは",
+      "Hello"
+    ],
+    "response": {
+      "text": "「こんにちは、つむぎさん。雨が落ち着くまで、どうぞごゆっくり」\n栞はカウンターの向こうで微笑んだ。",
+      "state": {
+        "sample": "greeted",
+        "place": "古書店の店内"
+      },
+      "scene": null
+    },
+    "unbound_response": {
+      "text": "こんにちは。どんな物語を始めましょうか。",
+      "state": {
+        "sample": "greeted"
+      },
+      "scene": null
+    }
   }
 }

@@ -1,0 +1,8 @@
+# Purpose-specific image framing. Model capabilities validate these overrides.
+[portrait]
+width = 768
+height = 1024
+
+[banner]
+width = 1280
+height = 720

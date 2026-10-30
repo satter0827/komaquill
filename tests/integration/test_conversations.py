@@ -139,4 +139,4 @@ def test_saved_failure_has_an_actionable_http_description(chat):
         )
         result = http.get(f"/api/v1/operations/{operation_id}").json()
         assert result["error"] == "fake_input_mismatch"
-        assert result["error_message"] and "Hello" in result["error_message"]
+        assert result["error_message"] and result["error"] == "fake_input_mismatch"

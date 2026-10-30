@@ -9,10 +9,14 @@ import {
   listImages,
   submitImage,
 } from '../api/generated/sdk.gen'
-import { failure, POLL_INTERVAL_MS } from '../api/client'
+import { POLL_INTERVAL_MS } from '../api/client'
 import { Button } from '../components/ui/button'
-import messages from '../app/messages.json'
-import { formatMessage } from '../app/messages'
+import {
+  useFailure,
+  useMessages,
+  useFormatMessage,
+  usePreferences,
+} from '../app/preferences'
 
 export function ImageResult({
   identity,
@@ -21,6 +25,9 @@ export function ImageResult({
   identity: string
   operationId?: string
 }) {
+  const messages = useMessages()
+  const failure = useFailure()
+  const formatMessage = useFormatMessage()
   const cache = useQueryClient()
   const operation = useQuery({
     queryKey: ['operation', operationId],
@@ -55,11 +62,10 @@ export function ImageResult({
       ))}
       <p className="subtle">
         {operation.data?.image_state === 'failed'
-          ? (operation.data.image_error_message ??
-            formatMessage('imageFailed', {
-              code: operation.data.image_error ?? 'operation_failed',
-            }))
-          : (image.data?.state ?? messages.imageWaiting)}
+          ? failure({ code: operation.data.image_error })
+          : image.data?.state === 'saved'
+            ? messages.imageReady
+            : messages.imagePreparing}
       </p>
       {image.data && image.data.state !== 'saved' && (
         <Button onClick={() => collect.mutate()} disabled={collect.isPending}>
@@ -77,15 +83,19 @@ export function ImageResult({
         </p>
       )}
       {image.data?.failure && (
-        <p className="error">{image.data.failure.code}</p>
+        <p className="error">{failure(image.data.failure)}</p>
       )}
     </div>
   )
 }
 
 export function ImagesPage() {
+  const [allowReal, setAllowReal] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [prepared, setPrepared] = useState<ImageInput | null>(null)
+  const messages = useMessages()
+  const failure = useFailure()
+  const preferences = usePreferences()
   const cache = useQueryClient()
   const images = useQuery({
     queryKey: ['images'],
@@ -107,7 +117,12 @@ export function ImagesPage() {
         className="image-form"
         onSubmit={(event) => {
           event.preventDefault()
-          const body = prepared ?? { request_id: crypto.randomUUID(), prompt }
+          const body = prepared ?? {
+            request_id: crypto.randomUUID(),
+            prompt,
+            llm_profile: preferences.value.llm_profile,
+            allow_real_llm: allowReal,
+          }
           setPrepared(body)
           submit.mutate(body)
         }}
@@ -122,6 +137,15 @@ export function ImagesPage() {
             onChange={(event) => setPrompt(event.target.value)}
           />
         </label>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={allowReal}
+            onChange={(event) => setAllowReal(event.target.checked)}
+          />
+          {messages.allowReal}
+        </label>
+        <p className="subtle">{messages.configureModel}</p>
         <Button
           className="primary"
           type="submit"

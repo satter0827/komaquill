@@ -15,6 +15,13 @@ class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class PresetSnapshot(Record):
+    id: UUID
+    revision: int
+    name: str
+    image_id: UUID | None = None
+
+
 class ConversationInput(Record):
     title: str = Field(min_length=1, max_length=120)
     scenario: str = Field(default="", max_length=20000)
@@ -24,6 +31,10 @@ class ConversationInput(Record):
     initial_state: dict[str, str] = Field(default_factory=dict)
     images: bool = False
     llm_profile: str = "fake"
+    locale: Literal["ja", "en"] = "en"
+    response_length: Literal["short", "standard", "detailed"] = "standard"
+    presets: dict[str, PresetSnapshot] = Field(default_factory=dict)
+    sample: bool = False
 
 
 class ConnectionProfile(Record):
@@ -55,12 +66,21 @@ class SendInput(Record):
     operation_id: UUID
     text: str = Field(min_length=1, max_length=20000)
     allow_real_llm: bool = False
+    locale: Literal["ja", "en"] | None = None
+    images: bool | None = None
+    response_length: Literal["short", "standard", "detailed"] | None = None
 
 
 class Reply(Record):
-    text: str = Field(min_length=1, max_length=20000)
+    text: str = Field(
+        min_length=1,
+        max_length=20000,
+        description="Visible dialogue in the explicitly requested response language.",
+    )
     state: dict[str, str]
-    scene: str | None
+    scene: str | None = Field(
+        description="English visual description including appearance and setting, or null."
+    )
 
 
 class Operation(Record):

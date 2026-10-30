@@ -5,6 +5,114 @@ export type ClientOptions = {
 };
 
 /**
+ * CharacterInput
+ */
+export type CharacterInput = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Appearance
+     */
+    appearance?: string;
+    /**
+     * Role
+     */
+    role?: string;
+    /**
+     * Address
+     */
+    address?: string;
+    /**
+     * Personality
+     */
+    personality?: string;
+    /**
+     * Speech
+     */
+    speech?: string;
+    /**
+     * Background
+     */
+    background?: string;
+    /**
+     * Relationship
+     */
+    relationship?: string;
+};
+
+/**
+ * CharacterPreset
+ */
+export type CharacterPreset = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Image Id
+     */
+    image_id: string | null;
+    /**
+     * Image Job Id
+     */
+    image_job_id: string | null;
+    /**
+     * Sample
+     */
+    sample: boolean;
+    /**
+     * Sample Locale
+     */
+    sample_locale: 'ja' | 'en' | null;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Appearance
+     */
+    appearance: string;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Address
+     */
+    address: string;
+    /**
+     * Personality
+     */
+    personality: string;
+    /**
+     * Speech
+     */
+    speech: string;
+    /**
+     * Background
+     */
+    background: string;
+    /**
+     * Relationship
+     */
+    relationship: string;
+};
+
+/**
  * CompiledImageInput
  *
  * Freeze the original directions and exact positive conditioning for generation.
@@ -133,6 +241,126 @@ export type ConversationInput = {
      * Llm Profile
      */
     llm_profile?: string;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Response Length
+     */
+    response_length?: 'short' | 'standard' | 'detailed';
+    /**
+     * Presets
+     */
+    presets?: {
+        [key: string]: PresetSnapshot;
+    };
+    /**
+     * Sample
+     */
+    sample?: boolean;
+};
+
+/**
+ * ConversationStart
+ */
+export type ConversationStart = {
+    player: PresetRef;
+    character: PresetRef;
+    story: PresetRef;
+    /**
+     * Title
+     */
+    title?: string;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
+    /**
+     * Images
+     */
+    images?: boolean;
+};
+
+/**
+ * CreationJob
+ */
+export type CreationJob = {
+    /**
+     * Id
+     */
+    id: string;
+    request: CreationRequest;
+    /**
+     * State
+     */
+    state: 'accepted' | 'running' | 'submitted' | 'complete' | 'failed' | 'interrupted';
+    /**
+     * Original
+     */
+    original?: string;
+    /**
+     * Prompt En
+     */
+    prompt_en?: string | null;
+    /**
+     * Result
+     */
+    result?: CharacterInput | StoryInput | null;
+    /**
+     * Image Id
+     */
+    image_id?: string | null;
+    /**
+     * Error
+     */
+    error?: string | null;
+    /**
+     * Created At
+     */
+    created_at?: string;
+};
+
+/**
+ * CreationRequest
+ */
+export type CreationRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Kind
+     */
+    kind: 'character_draft' | 'story_draft' | 'portrait' | 'banner';
+    /**
+     * Target Id
+     */
+    target_id?: string | null;
+    /**
+     * Expected Revision
+     */
+    expected_revision?: number | null;
+    /**
+     * Prompt
+     */
+    prompt?: string;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
 };
 
 /**
@@ -140,7 +368,7 @@ export type ConversationInput = {
  *
  * Identify safe, machine-readable product failure categories.
  */
-export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'storage_failed' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
+export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'storage_failed' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
  * FailureInfo
@@ -194,6 +422,14 @@ export type ImageInput = {
      * Model
      */
     model?: string | null;
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
 };
 
 /**
@@ -378,6 +614,156 @@ export type OutputSpec = {
     stages?: {
         [key: string]: string;
     };
+};
+
+/**
+ * PlayerInput
+ */
+export type PlayerInput = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Appearance
+     */
+    appearance?: string;
+    /**
+     * Role
+     */
+    role?: string;
+    /**
+     * Address
+     */
+    address?: string;
+};
+
+/**
+ * PlayerPreset
+ */
+export type PlayerPreset = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Image Id
+     */
+    image_id: string | null;
+    /**
+     * Image Job Id
+     */
+    image_job_id: string | null;
+    /**
+     * Sample
+     */
+    sample: boolean;
+    /**
+     * Sample Locale
+     */
+    sample_locale: 'ja' | 'en' | null;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * Appearance
+     */
+    appearance: string;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Address
+     */
+    address: string;
+};
+
+/**
+ * Preferences
+ */
+export type Preferences = {
+    /**
+     * Revision
+     */
+    revision?: number;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Player Id
+     */
+    player_id?: string | null;
+    /**
+     * Font Size
+     */
+    font_size?: 'normal' | 'large';
+    /**
+     * Density
+     */
+    density?: 'comfortable' | 'compact';
+    /**
+     * Response Length
+     */
+    response_length?: 'short' | 'standard' | 'detailed';
+    /**
+     * Image Frequency
+     */
+    image_frequency?: 'off' | 'manual' | 'automatic';
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
+};
+
+/**
+ * PresetRef
+ */
+export type PresetRef = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Revision
+     */
+    revision: number;
+};
+
+/**
+ * PresetSnapshot
+ */
+export type PresetSnapshot = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Image Id
+     */
+    image_id?: string | null;
 };
 
 /**
@@ -733,6 +1119,18 @@ export type SendInput = {
      * Allow Real Llm
      */
     allow_real_llm?: boolean;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en' | null;
+    /**
+     * Images
+     */
+    images?: boolean | null;
+    /**
+     * Response Length
+     */
+    response_length?: 'short' | 'standard' | 'detailed' | null;
 };
 
 /**
@@ -818,6 +1216,98 @@ export type StateCommand = {
 };
 
 /**
+ * StoryInput
+ */
+export type StoryInput = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * World
+     */
+    world?: string;
+    /**
+     * Opening
+     */
+    opening?: string;
+    /**
+     * Place
+     */
+    place?: string;
+    /**
+     * Goal
+     */
+    goal?: string;
+    /**
+     * Character Id
+     */
+    character_id?: string | null;
+};
+
+/**
+ * StoryPreset
+ */
+export type StoryPreset = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Image Id
+     */
+    image_id: string | null;
+    /**
+     * Image Job Id
+     */
+    image_job_id: string | null;
+    /**
+     * Sample
+     */
+    sample: boolean;
+    /**
+     * Sample Locale
+     */
+    sample_locale: 'ja' | 'en' | null;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Description
+     */
+    description: string;
+    /**
+     * World
+     */
+    world: string;
+    /**
+     * Opening
+     */
+    opening: string;
+    /**
+     * Place
+     */
+    place: string;
+    /**
+     * Goal
+     */
+    goal: string;
+    /**
+     * Character Id
+     */
+    character_id: string | null;
+};
+
+/**
  * Turn
  */
 export type Turn = {
@@ -880,6 +1370,646 @@ export type ValidationError = {
         [key: string]: unknown;
     };
 };
+
+export type GetPreferencesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/preferences';
+};
+
+export type GetPreferencesResponses = {
+    /**
+     * Successful Response
+     */
+    200: Preferences;
+};
+
+export type GetPreferencesResponse = GetPreferencesResponses[keyof GetPreferencesResponses];
+
+export type SavePreferencesData = {
+    body: Preferences;
+    path?: never;
+    query?: never;
+    url: '/api/v1/preferences';
+};
+
+export type SavePreferencesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SavePreferencesError = SavePreferencesErrors[keyof SavePreferencesErrors];
+
+export type SavePreferencesResponses = {
+    /**
+     * Successful Response
+     */
+    200: Preferences;
+};
+
+export type SavePreferencesResponse = SavePreferencesResponses[keyof SavePreferencesResponses];
+
+export type ListPlayersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/players';
+};
+
+export type ListPlayersResponses = {
+    /**
+     * Response List Players
+     *
+     * Successful Response
+     */
+    200: Array<PlayerPreset>;
+};
+
+export type ListPlayersResponse = ListPlayersResponses[keyof ListPlayersResponses];
+
+export type CreatePlayerData = {
+    body: PlayerInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/players';
+};
+
+export type CreatePlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreatePlayerError = CreatePlayerErrors[keyof CreatePlayerErrors];
+
+export type CreatePlayerResponses = {
+    /**
+     * Successful Response
+     */
+    201: PlayerPreset;
+};
+
+export type CreatePlayerResponse = CreatePlayerResponses[keyof CreatePlayerResponses];
+
+export type DeletePlayerData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+    };
+    url: '/api/v1/players/{identity}';
+};
+
+export type DeletePlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeletePlayerError = DeletePlayerErrors[keyof DeletePlayerErrors];
+
+export type DeletePlayerResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeletePlayerResponse = DeletePlayerResponses[keyof DeletePlayerResponses];
+
+export type GetPlayerData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/players/{identity}';
+};
+
+export type GetPlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetPlayerError = GetPlayerErrors[keyof GetPlayerErrors];
+
+export type GetPlayerResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlayerPreset;
+};
+
+export type GetPlayerResponse = GetPlayerResponses[keyof GetPlayerResponses];
+
+export type UpdatePlayerData = {
+    body: PlayerInput;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+    };
+    url: '/api/v1/players/{identity}';
+};
+
+export type UpdatePlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdatePlayerError = UpdatePlayerErrors[keyof UpdatePlayerErrors];
+
+export type UpdatePlayerResponses = {
+    /**
+     * Successful Response
+     */
+    200: PlayerPreset;
+};
+
+export type UpdatePlayerResponse = UpdatePlayerResponses[keyof UpdatePlayerResponses];
+
+export type DuplicatePlayerData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/players/{identity}/duplicate';
+};
+
+export type DuplicatePlayerErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DuplicatePlayerError = DuplicatePlayerErrors[keyof DuplicatePlayerErrors];
+
+export type DuplicatePlayerResponses = {
+    /**
+     * Successful Response
+     */
+    201: PlayerPreset;
+};
+
+export type DuplicatePlayerResponse = DuplicatePlayerResponses[keyof DuplicatePlayerResponses];
+
+export type ListCharactersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/characters';
+};
+
+export type ListCharactersResponses = {
+    /**
+     * Response List Characters
+     *
+     * Successful Response
+     */
+    200: Array<CharacterPreset>;
+};
+
+export type ListCharactersResponse = ListCharactersResponses[keyof ListCharactersResponses];
+
+export type CreateCharacterData = {
+    body: CharacterInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/characters';
+};
+
+export type CreateCharacterErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateCharacterError = CreateCharacterErrors[keyof CreateCharacterErrors];
+
+export type CreateCharacterResponses = {
+    /**
+     * Successful Response
+     */
+    201: CharacterPreset;
+};
+
+export type CreateCharacterResponse = CreateCharacterResponses[keyof CreateCharacterResponses];
+
+export type DeleteCharacterData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+    };
+    url: '/api/v1/characters/{identity}';
+};
+
+export type DeleteCharacterErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteCharacterError = DeleteCharacterErrors[keyof DeleteCharacterErrors];
+
+export type DeleteCharacterResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteCharacterResponse = DeleteCharacterResponses[keyof DeleteCharacterResponses];
+
+export type GetCharacterData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/characters/{identity}';
+};
+
+export type GetCharacterErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetCharacterError = GetCharacterErrors[keyof GetCharacterErrors];
+
+export type GetCharacterResponses = {
+    /**
+     * Successful Response
+     */
+    200: CharacterPreset;
+};
+
+export type GetCharacterResponse = GetCharacterResponses[keyof GetCharacterResponses];
+
+export type UpdateCharacterData = {
+    body: CharacterInput;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+    };
+    url: '/api/v1/characters/{identity}';
+};
+
+export type UpdateCharacterErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateCharacterError = UpdateCharacterErrors[keyof UpdateCharacterErrors];
+
+export type UpdateCharacterResponses = {
+    /**
+     * Successful Response
+     */
+    200: CharacterPreset;
+};
+
+export type UpdateCharacterResponse = UpdateCharacterResponses[keyof UpdateCharacterResponses];
+
+export type DuplicateCharacterData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/characters/{identity}/duplicate';
+};
+
+export type DuplicateCharacterErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DuplicateCharacterError = DuplicateCharacterErrors[keyof DuplicateCharacterErrors];
+
+export type DuplicateCharacterResponses = {
+    /**
+     * Successful Response
+     */
+    201: CharacterPreset;
+};
+
+export type DuplicateCharacterResponse = DuplicateCharacterResponses[keyof DuplicateCharacterResponses];
+
+export type ListStoriesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/stories';
+};
+
+export type ListStoriesResponses = {
+    /**
+     * Response List Stories
+     *
+     * Successful Response
+     */
+    200: Array<StoryPreset>;
+};
+
+export type ListStoriesResponse = ListStoriesResponses[keyof ListStoriesResponses];
+
+export type CreateStoryData = {
+    body: StoryInput;
+    path?: never;
+    query?: never;
+    url: '/api/v1/stories';
+};
+
+export type CreateStoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateStoryError = CreateStoryErrors[keyof CreateStoryErrors];
+
+export type CreateStoryResponses = {
+    /**
+     * Successful Response
+     */
+    201: StoryPreset;
+};
+
+export type CreateStoryResponse = CreateStoryResponses[keyof CreateStoryResponses];
+
+export type DeleteStoryData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+    };
+    url: '/api/v1/stories/{identity}';
+};
+
+export type DeleteStoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DeleteStoryError = DeleteStoryErrors[keyof DeleteStoryErrors];
+
+export type DeleteStoryResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DeleteStoryResponse = DeleteStoryResponses[keyof DeleteStoryResponses];
+
+export type GetStoryData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/stories/{identity}';
+};
+
+export type GetStoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetStoryError = GetStoryErrors[keyof GetStoryErrors];
+
+export type GetStoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: StoryPreset;
+};
+
+export type GetStoryResponse = GetStoryResponses[keyof GetStoryResponses];
+
+export type UpdateStoryData = {
+    body: StoryInput;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+    };
+    url: '/api/v1/stories/{identity}';
+};
+
+export type UpdateStoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type UpdateStoryError = UpdateStoryErrors[keyof UpdateStoryErrors];
+
+export type UpdateStoryResponses = {
+    /**
+     * Successful Response
+     */
+    200: StoryPreset;
+};
+
+export type UpdateStoryResponse = UpdateStoryResponses[keyof UpdateStoryResponses];
+
+export type DuplicateStoryData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/stories/{identity}/duplicate';
+};
+
+export type DuplicateStoryErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DuplicateStoryError = DuplicateStoryErrors[keyof DuplicateStoryErrors];
+
+export type DuplicateStoryResponses = {
+    /**
+     * Successful Response
+     */
+    201: StoryPreset;
+};
+
+export type DuplicateStoryResponse = DuplicateStoryResponses[keyof DuplicateStoryResponses];
+
+export type StartConversationData = {
+    body: ConversationStart;
+    path?: never;
+    query?: never;
+    url: '/api/v1/conversations/from-presets';
+};
+
+export type StartConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartConversationError = StartConversationErrors[keyof StartConversationErrors];
+
+export type StartConversationResponses = {
+    /**
+     * Successful Response
+     */
+    201: Conversation;
+};
+
+export type StartConversationResponse = StartConversationResponses[keyof StartConversationResponses];
+
+export type CreateJobData = {
+    body: CreationRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/creation-jobs';
+};
+
+export type CreateJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CreateJobError = CreateJobErrors[keyof CreateJobErrors];
+
+export type CreateJobResponses = {
+    /**
+     * Successful Response
+     */
+    202: CreationJob;
+};
+
+export type CreateJobResponse = CreateJobResponses[keyof CreateJobResponses];
+
+export type GetJobData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/creation-jobs/{identity}';
+};
+
+export type GetJobErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetJobError = GetJobErrors[keyof GetJobErrors];
+
+export type GetJobResponses = {
+    /**
+     * Successful Response
+     */
+    200: CreationJob;
+};
+
+export type GetJobResponse = GetJobResponses[keyof GetJobResponses];
 
 export type GetSettingsData = {
     body?: never;

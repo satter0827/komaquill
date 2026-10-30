@@ -8,6 +8,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from komaquill.api.archive import ArchiveService
     from komaquill.conversations.service import ConversationService
+    from komaquill.library.models import (
+        CharacterInput,
+        CharacterPreset,
+        PlayerInput,
+        PlayerPreset,
+        StoryInput,
+        StoryPreset,
+    )
+    from komaquill.library.service import LibraryService, PresetService
 
 from komaquill.adapters.workspace import find_project, initialize
 from komaquill.api._errors import api_operation
@@ -36,11 +45,34 @@ class Client:
     def workspace(self) -> Path:
         return self._project.root
 
+    def migrate(self) -> Path:
+        from komaquill.adapters.database_migration import migrate
+
+        return migrate(self.workspace)
+
     @cached_property
     def conversations(self) -> "ConversationService":
         from komaquill.composition import conversations
 
         return conversations(self.workspace, self.images)
+
+    @cached_property
+    def library(self) -> "LibraryService":
+        from komaquill.composition import library
+
+        return library(self.workspace, self.conversations, self.images)
+
+    @property
+    def players(self) -> "PresetService[PlayerInput, PlayerPreset]":
+        return self.library.players
+
+    @property
+    def characters(self) -> "PresetService[CharacterInput, CharacterPreset]":
+        return self.library.characters
+
+    @property
+    def stories(self) -> "PresetService[StoryInput, StoryPreset]":
+        return self.library.stories
 
     @cached_property
     def operations(self) -> OperationService:

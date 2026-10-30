@@ -13,7 +13,7 @@
         "commands": [
           "node scripts/python.mjs -m ruff check src/backend/src tests",
           "node scripts/python.mjs -m ruff format --check src/backend/src tests",
-          "node scripts/python.mjs -c \"from importlinter.cli import lint_imports; lint_imports()\" --cache-dir .artifacts/cache/import-linter",
+          "node scripts/python.mjs -c \"from importlinter.cli import lint_imports; raise SystemExit(lint_imports(cache_dir='.artifacts/cache/import-linter'))\"",
           "node scripts/python.mjs -m scripts.checks.worker_lock",
           "node --test tests/js/*.test.mjs"
         ],

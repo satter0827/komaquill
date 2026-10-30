@@ -1,141 +1,24 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowUp, PanelRight, Sparkles } from 'lucide-react'
+import { ArrowUp, PanelRight, Sparkles } from 'lucide-react'
 import {
   applyCommand,
-  createConversation,
   getConversation,
   getConversationOperations,
   getOperation,
-  getSettings,
   sendTurn,
 } from '../api/generated/sdk.gen'
-import type { ConversationInput, SendInput } from '../api/generated/types.gen'
-import { failure, POLL_INTERVAL_MS } from '../api/client'
+import type { SendInput } from '../api/generated/types.gen'
+import { POLL_INTERVAL_MS } from '../api/client'
 import { Button } from '../components/ui/button'
-import messages from '../app/messages.json'
-import { formatMessage } from '../app/messages'
+import {
+  useFailure,
+  useFormatMessage,
+  useMessages,
+  usePreferences,
+} from '../app/preferences'
 import { ImageResult } from './images'
-
-export function NewConversation() {
-  const navigate = useNavigate()
-  const cache = useQueryClient()
-  const [definition, setDefinition] = useState<ConversationInput>({
-    title: '',
-    scenario: '',
-    character: '',
-    user: '',
-    instructions: '',
-    llm_profile: 'fake',
-    images: false,
-  })
-  const profiles = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await getSettings()).data!,
-  })
-  const mutation = useMutation({
-    mutationFn: async () =>
-      (await createConversation({ body: definition })).data!,
-    onSuccess: async (conversation) => {
-      await cache.invalidateQueries({ queryKey: ['conversations'] })
-      navigate(`/conversations/${conversation.id}`)
-    },
-  })
-  return (
-    <section className="page form-page">
-      <button className="text-button" onClick={() => navigate('/')}>
-        <ArrowLeft size={16} />
-        {messages.back}
-      </button>
-      <div className="eyebrow">{messages.newEyebrow}</div>
-      <h1>{messages.newConversation}</h1>
-      <p className="subtle">{messages.newDescription}</p>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          mutation.mutate()
-        }}
-      >
-        {(
-          ['title', 'scenario', 'character', 'user', 'instructions'] as const
-        ).map((key) => (
-          <label key={key}>
-            {messages[key]}
-            {key === 'title' ? (
-              <input
-                required
-                maxLength={120}
-                value={definition.title}
-                onChange={(event) =>
-                  setDefinition({ ...definition, title: event.target.value })
-                }
-              />
-            ) : (
-              <textarea
-                rows={key === 'scenario' ? 3 : 2}
-                value={definition[key] ?? ''}
-                onChange={(event) =>
-                  setDefinition({ ...definition, [key]: event.target.value })
-                }
-              />
-            )}
-          </label>
-        ))}
-        <label>
-          {messages.profile}
-          <select
-            value={definition.llm_profile}
-            onChange={(event) =>
-              setDefinition({ ...definition, llm_profile: event.target.value })
-            }
-          >
-            {profiles.data?.profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.id} ·{' '}
-                {profile.provider === 'fake'
-                  ? messages.fixedSample
-                  : profile.model}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={definition.images}
-            onChange={(event) =>
-              setDefinition({ ...definition, images: event.target.checked })
-            }
-          />
-          {messages.includeImages}
-        </label>
-        {definition.llm_profile === 'fake' && (
-          <p className="notice">{messages.sampleNotice}</p>
-        )}
-        {mutation.error && (
-          <p role="alert" className="error">
-            {failure(mutation.error)}
-          </p>
-        )}
-        {profiles.error && (
-          <p role="alert" className="error">
-            {failure(profiles.error)}
-          </p>
-        )}
-        <Button
-          type="submit"
-          className="primary"
-          disabled={
-            mutation.isPending || !definition.title.trim() || !profiles.data
-          }
-        >
-          {messages.create}
-        </Button>
-      </form>
-    </section>
-  )
-}
 
 export function ConversationPage() {
   const { identity = '' } = useParams()
@@ -144,6 +27,11 @@ export function ConversationPage() {
 
 function ConversationView({ identity }: { identity: string }) {
   const cache = useQueryClient()
+  const messages = useMessages()
+  const failure = useFailure()
+  const formatMessage = useFormatMessage()
+  const preferences = usePreferences()
+  const [includeImage, setIncludeImage] = useState(false)
   const [text, setText] = useState('')
   const [allowReal, setAllowReal] = useState(false)
   const [operationId, setOperationId] = useState<string | null>(null)
@@ -256,6 +144,33 @@ function ConversationView({ identity }: { identity: string }) {
     !!text.trim() &&
     (fake || allowReal)
   const latestOperation = operation.data ?? savedOperations.data?.[0]
+  const snapshots = conversation.definition.presets
+  const stateLabels = {
+    place: messages.currentPlace,
+    time: messages.currentTime,
+    goal: messages.goal,
+    relationship: messages.relationship,
+  }
+  const visibleState = Object.entries(conversation.state ?? {}).filter(
+    ([key]) => key in stateLabels,
+  )
+  const content = (raw: string | undefined) => {
+    try {
+      const value = JSON.parse(raw ?? '{}') as Record<string, string>
+      return (
+        value.opening ||
+        value.description ||
+        value.world ||
+        value.appearance ||
+        value.role ||
+        value.name ||
+        raw ||
+        ''
+      )
+    } catch {
+      return raw ?? ''
+    }
+  }
   return (
     <div className={`conversation-layout ${showState ? '' : 'state-hidden'}`}>
       <section className="conversation-main">
@@ -271,12 +186,23 @@ function ConversationView({ identity }: { identity: string }) {
             <PanelRight size={18} />
           </Button>
         </header>
+        {snapshots?.story?.image_id && (
+          <div className="conversation-banner">
+            <img
+              src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
+              alt={snapshots.story.name}
+            />
+          </div>
+        )}
         <div className="turns" aria-live="polite">
           {(conversation.turns ?? []).length === 0 && (
             <div className="conversation-empty">
               <Sparkles size={30} />
               <h2>{messages.newChapter}</h2>
-              <p>{conversation.definition.scenario || messages.beginMessage}</p>
+              <p>
+                {content(conversation.definition.scenario) ||
+                  messages.beginMessage}
+              </p>
             </div>
           )}
           {(conversation.turns ?? []).map((turn) => (
@@ -288,7 +214,7 @@ function ConversationView({ identity }: { identity: string }) {
               <div className="assistant-message">
                 <span className="message-label">
                   <Sparkles size={14} />
-                  {messages.brand.toUpperCase()}
+                  {snapshots?.character?.name ?? messages.character}
                 </span>
                 <p>{turn.assistant}</p>
                 {turn.image_id && (
@@ -308,7 +234,12 @@ function ConversationView({ identity }: { identity: string }) {
         </div>
         <div className="composer-area">
           {fake ? (
-            <p className="sample-hint">{messages.sampleNotice}</p>
+            <p className="sample-hint">
+              {messages.sampleNotice}{' '}
+              <Button onClick={() => setText(messages.sampleInput)}>
+                {messages.sampleAction}
+              </Button>
+            </p>
           ) : (
             <label className="checkbox permission">
               <input
@@ -337,12 +268,18 @@ function ConversationView({ identity }: { identity: string }) {
           )}
           {latestOperation?.error && (
             <p role="alert" className="error">
-              {latestOperation.error_message ??
-                formatMessage('operationError', {
-                  state: latestOperation.state,
-                  code: latestOperation.error,
-                })}
+              {failure({ code: latestOperation.error })}
             </p>
+          )}
+          {preferences.value.image_frequency === 'manual' && !fake && (
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={includeImage}
+                onChange={(event) => setIncludeImage(event.target.checked)}
+              />
+              {messages.includeNextImage}
+            </label>
           )}
           <form
             className="composer"
@@ -353,6 +290,12 @@ function ConversationView({ identity }: { identity: string }) {
                   operation_id: crypto.randomUUID(),
                   text,
                   allow_real_llm: allowReal,
+                  locale: preferences.value.locale,
+                  response_length: preferences.value.response_length,
+                  images:
+                    preferences.value.image_frequency === 'automatic' ||
+                    (preferences.value.image_frequency === 'manual' &&
+                      includeImage),
                 }
                 setPrepared(body)
                 setOperationId(body.operation_id)
@@ -377,93 +320,102 @@ function ConversationView({ identity }: { identity: string }) {
               <ArrowUp size={20} />
             </Button>
           </form>
-          <p className="composer-footer">
-            {messages.local} · {messages.composerNote}
-          </p>
+          <p className="composer-footer">{messages.local}</p>
         </div>
       </section>
       <aside className="state-panel">
+        {snapshots?.character?.image_id && (
+          <img
+            className="character-portrait"
+            src={`/api/v1/images/${snapshots.character.image_id}/files/0`}
+            alt={snapshots.character.name}
+          />
+        )}
         <div className="eyebrow">{messages.context}</div>
         <h2>{messages.currentState}</h2>
         <div className="state-items">
-          {Object.entries(conversation.state ?? {}).map(([key, value]) => (
+          {visibleState.map(([key, value]) => (
             <div key={key}>
-              <span>{key}</span>
+              <span>{stateLabels[key as keyof typeof stateLabels]}</span>
               <p>{value}</p>
             </div>
           ))}
-          {!Object.keys(conversation.state ?? {}).length && (
-            <p className="subtle">{messages.noState}</p>
-          )}
+          {!visibleState.length && <p className="subtle">{messages.noState}</p>}
         </div>
         <h3>{messages.scenario}</h3>
         <p className="state-description">
-          {conversation.definition.scenario || messages.openConversation}
+          {content(conversation.definition.scenario) ||
+            messages.openConversation}
         </p>
         {conversation.definition.character && (
           <>
             <h3>{messages.character}</h3>
             <p className="state-description">
-              {conversation.definition.character}
+              {content(conversation.definition.character)}
             </p>
           </>
         )}
-        <span className="revision">
-          {formatMessage('revision', { revision: conversation.revision ?? 0 })}
-        </span>
-        {stateDraft === null ? (
+        <details className="story-details">
+          <summary>{messages.details}</summary>
+          <span className="revision">
+            {formatMessage('revision', {
+              revision: conversation.revision ?? 0,
+            })}
+          </span>
+          {stateDraft === null ? (
+            <Button
+              disabled={busy}
+              onClick={() =>
+                setStateDraft({
+                  value: JSON.stringify(conversation.state, null, 2),
+                  revision: conversation.revision ?? 0,
+                })
+              }
+            >
+              {messages.editState}
+            </Button>
+          ) : (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                updateState.mutate()
+              }}
+            >
+              <label>
+                {messages.stateValues}
+                <textarea
+                  rows={6}
+                  value={stateDraft.value}
+                  onChange={(event) =>
+                    setStateDraft({ ...stateDraft, value: event.target.value })
+                  }
+                />
+              </label>
+              <Button type="submit" disabled={busy || updateState.isPending}>
+                {messages.saveState}
+              </Button>
+              <Button onClick={() => setStateDraft(null)}>
+                {messages.cancel}
+              </Button>
+            </form>
+          )}
+          {updateState.error && (
+            <p role="alert" className="error">
+              {failure(updateState.error)}
+            </p>
+          )}
           <Button
-            disabled={busy}
-            onClick={() =>
-              setStateDraft({
-                value: JSON.stringify(conversation.state, null, 2),
-                revision: conversation.revision ?? 0,
-              })
-            }
+            onClick={() => reset.mutate()}
+            disabled={busy || reset.isPending}
           >
-            {messages.editState}
+            {messages.resetState}
           </Button>
-        ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              updateState.mutate()
-            }}
-          >
-            <label>
-              {messages.stateValues}
-              <textarea
-                rows={6}
-                value={stateDraft.value}
-                onChange={(event) =>
-                  setStateDraft({ ...stateDraft, value: event.target.value })
-                }
-              />
-            </label>
-            <Button type="submit" disabled={busy || updateState.isPending}>
-              {messages.saveState}
-            </Button>
-            <Button onClick={() => setStateDraft(null)}>
-              {messages.cancel}
-            </Button>
-          </form>
-        )}
-        {updateState.error && (
-          <p role="alert" className="error">
-            {failure(updateState.error)}
-          </p>
-        )}
-        <Button
-          onClick={() => reset.mutate()}
-          disabled={busy || reset.isPending}
-        >
-          {messages.resetState}
-        </Button>
-        {reset.error && (
-          <p role="alert" className="error">
-            {failure(reset.error)}
-          </p>
-        )}
+          {reset.error && (
+            <p role="alert" className="error">
+              {failure(reset.error)}
+            </p>
+          )}
+        </details>
       </aside>
     </div>
   )

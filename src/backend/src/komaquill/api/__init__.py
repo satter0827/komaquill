@@ -20,8 +20,22 @@ from komaquill.domain.materials import InputArtifact as InputArtifact
 from komaquill.domain.models import Run as Run
 from komaquill.domain.status import SessionStatus as SessionStatus
 from komaquill.domain.usage import AccountUsage as AccountUsage
+from komaquill.library.models import CharacterInput as CharacterInput
+from komaquill.library.models import ConversationStart as ConversationStart
+from komaquill.library.models import CreationRequest as CreationRequest
+from komaquill.library.models import PlayerInput as PlayerInput
+from komaquill.library.models import Preferences as Preferences
+from komaquill.library.models import PresetRef as PresetRef
+from komaquill.library.models import StoryInput as StoryInput
 
 __all__ = [
+    "CharacterInput",
+    "ConversationStart",
+    "CreationRequest",
+    "PlayerInput",
+    "Preferences",
+    "PresetRef",
+    "StoryInput",
     "AccountUsage",
     "Client",
     "CompiledImageInput",

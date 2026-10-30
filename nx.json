@@ -37,7 +37,8 @@
       "{workspaceRoot}/scripts/nx.mjs",
       "{workspaceRoot}/.github/workflows/**/*",
       "{workspaceRoot}/.python-version",
-      "{workspaceRoot}/pnpm-workspace.yaml"
+      "{workspaceRoot}/pnpm-workspace.yaml",
+      "{workspaceRoot}/bootstrap/node-environment.mjs"
     ]
   },
   "targetDefaults": {

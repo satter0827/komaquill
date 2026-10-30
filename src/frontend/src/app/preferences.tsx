@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getPreferences, savePreferences } from '../api/generated/sdk.gen'
 import type { Preferences } from '../api/generated/types.gen'
+import { Button } from '../components/ui/button'
 import { failure } from '../api/client'
 import { formatMessage, messageCatalog } from './messages'
 import type { MessageKey } from './messages'
@@ -56,6 +57,28 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.fontSize = value.font_size
     document.documentElement.dataset.density = value.density
   }, [value.locale, value.font_size, value.density])
+  if (!query.data) {
+    const messages = messageCatalog(value.locale)
+    return (
+      <main className="page">
+        {query.error ? (
+          <>
+            <p role="alert" className="error">
+              {failure(query.error, value.locale)}
+            </p>
+            <Button
+              onClick={() => void query.refetch()}
+              disabled={query.isFetching}
+            >
+              {messages.refresh}
+            </Button>
+          </>
+        ) : (
+          <p role="status">{messages.loading}</p>
+        )}
+      </main>
+    )
+  }
   return (
     <Context.Provider
       value={{

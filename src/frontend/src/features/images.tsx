@@ -103,6 +103,15 @@ export function ImagesPage() {
   })
   const submit = useMutation({
     mutationFn: (body: ImageInput) => submitImage({ body }),
+    onError: (error) => {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? error.code
+          : null
+      if (code === 'real_llm_not_allowed' || code === 'fake_input_mismatch') {
+        setPrepared(null)
+      }
+    },
     onSuccess: () => {
       setPrepared(null)
       return cache.invalidateQueries({ queryKey: ['images'] })
@@ -124,6 +133,7 @@ export function ImagesPage() {
             allow_real_llm: allowReal,
           }
           setPrepared(body)
+          setAllowReal(false)
           submit.mutate(body)
         }}
       >
@@ -152,7 +162,9 @@ export function ImagesPage() {
           disabled={submit.isPending || !prompt.trim()}
         >
           <Image size={17} />
-          {submit.isError ? messages.retryRequest : messages.generate}
+          {submit.isError && prepared
+            ? messages.retryRequest
+            : messages.generate}
         </Button>
       </form>
       {submit.error && (

@@ -34,9 +34,13 @@ test('saves, duplicates and edits a character with an automatically generated im
   await page.getByRole('button', { name: ja.save, exact: true }).click()
   await expect(page.getByRole('status').first()).toHaveText(ja.saved)
   await page.getByRole('button', { name: ja.retryCollection }).click()
-  await expect(
-    page.getByRole('img', { name: ja.imageAlt.replace('{index}', '1') }),
-  ).toBeVisible()
+  const portrait = page
+    .locator('.cover-preview')
+    .getByRole('img', { name: 'Mira', exact: true })
+  await expect(portrait).toBeVisible()
+  await expect(portrait).toHaveJSProperty('naturalWidth', 8)
+  await page.reload()
+  await expect(portrait).toHaveJSProperty('naturalWidth', 8)
   await page.getByRole('button', { name: ja.duplicate }).click()
   await expect(
     page.locator('.preset-card h2').filter({ hasText: 'Mira' }),

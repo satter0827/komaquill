@@ -1,6 +1,6 @@
 """Patch a shared adapter dependency at each session composition boundary."""
 
-from komaquill.infrastructure.sessions import connection, monitor, shutdown, startup
+from komaquill.runtime import connection, monitor, shutdown, startup
 
 
 def patch_session(monkeypatch, name, value):

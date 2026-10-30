@@ -89,8 +89,8 @@ def test_opening_reconciliation_preserves_unknown_cost_without_claiming_attribut
         },
     }
     # Use an account-bound parent for this independent scenario.
+    from komaquill.adapters.atomic import atomic_json
     from komaquill.domain.workflow import digest
-    from komaquill.infrastructure.atomic import atomic_json
 
     parent["compute_budget"]["latest"]["account_sha256"] = "a" * 64
     value.parent_sha256 = digest(parent)
@@ -104,25 +104,6 @@ def test_opening_reconciliation_preserves_unknown_cost_without_claiming_attribut
     assert retained.opening_balance == 128.27
     with pytest.raises(ValueError):
         budget.reconcile_opening_usage(tmp_path, parent, usage)
-
-
-@pytest.mark.parametrize(
-    "record,valid,status,quality",
-    [
-        ({}, False, "not_submitted", "not_generated"),
-        ({"status": "reserved"}, False, "acceptance_unknown", "not_generated"),
-        ({"status": "failed", "run_id": "known"}, False, "generation_failed", "not_generated"),
-        ({"status": "saved"}, False, "invalid_saved", "not_generated"),
-        ({"status": "saved"}, True, "saved", "unreviewed"),
-    ],
-)
-def test_quality_is_unknown_until_a_valid_saved_image_is_reviewed(record, valid, status, quality):
-    from tests.live.klein_comparison import job_status
-
-    assert job_status(record, valid_saved=valid, review=None) == {
-        "generation_status": status,
-        "quality_status": quality,
-    }
 
 
 def test_clock_rollback_does_not_refund_owned_time(tmp_path):

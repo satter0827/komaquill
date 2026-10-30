@@ -5,22 +5,21 @@ import json
 from uuid import uuid4
 
 import pytest
-from PIL import Image
-from pydantic import ValidationError
-from typer.testing import CliRunner
-
-from komaquill.application.evaluations import register
-from komaquill.application.generation import new_run
-from komaquill.domain.errors import KomaquillError
-from komaquill.domain.evaluations import Evaluation, Evaluator
-from komaquill.domain.models import ImageRef
-from komaquill.infrastructure.evaluations import (
-    FileEvaluationRepository,
+from komaquill.adapters.evaluations import (
+    EvaluationRepository,
     export_evidence,
     read_import,
     select,
 )
-from komaquill.interfaces.cli import app
+from komaquill.application.evaluations import register
+from komaquill.cli.main import app
+from komaquill.domain.errors import KomaquillError
+from komaquill.domain.evaluations import Evaluation, Evaluator
+from komaquill.domain.models import ImageRef
+from komaquill.images.generation import new_run
+from PIL import Image
+from pydantic import ValidationError
+from typer.testing import CliRunner
 
 
 @pytest.fixture
@@ -94,13 +93,15 @@ def test_provenance_and_mode_validation(history):
 
 
 def test_registration_is_append_only_and_reimport_is_idempotent(project, history):
-    repository = FileEvaluationRepository(project)
+    repository = EvaluationRepository(project)
     first = evaluation(history[0])
     register(project.repository, repository, [first])
-    path = project.evaluations / f"{first.evaluation_id}.json"
-    original = path.read_bytes()
+    original = repository.load()
     register(project.repository, repository, [first])
-    assert path.read_bytes() == original
+    assert (
+        next(row for row in repository.load() if row.evaluation_id == first.evaluation_id)
+        == original[0]
+    )
     correction = evaluation(history[0], supersedes=first.evaluation_id)
     register(project.repository, repository, [correction])
     assert len(select(project, history[0].run_id)) == 2
@@ -109,7 +110,10 @@ def test_registration_is_append_only_and_reimport_is_idempotent(project, history
         register(project.repository, repository, [first.model_copy(update={"reason": "changed"})])
     with pytest.raises(KomaquillError):
         repository.append(first.model_copy(update={"reason": "changed"}))
-    assert path.read_bytes() == original
+    assert (
+        next(row for row in repository.load() if row.evaluation_id == first.evaluation_id)
+        == original[0]
+    )
 
 
 @pytest.mark.parametrize("case", ["missing", "pending", "image", "fingerprint", "supersedes"])
@@ -120,7 +124,14 @@ def test_invalid_references_do_not_write_evaluations(project, history, case):
         item.run_id = uuid4()
     elif case == "pending":
         run.state = "queued"
-        project.repository.save(run)
+        from komaquill.adapters.database import database, images
+
+        with database(project.data / "komaquill.sqlite3").engine.begin() as connection:
+            connection.execute(
+                images.update()
+                .where(images.c.id == str(run.run_id))
+                .values(payload=run.model_dump_json())
+            )
     elif case == "image":
         item.image = "../outside.png"
     elif case == "fingerprint":
@@ -128,8 +139,8 @@ def test_invalid_references_do_not_write_evaluations(project, history, case):
     else:
         item.supersedes = uuid4()
     with pytest.raises(KomaquillError):
-        register(project.repository, FileEvaluationRepository(project), [item])
-    assert not list(project.evaluations.glob("*.json"))
+        register(project.repository, EvaluationRepository(project), [item])
+    assert EvaluationRepository(project).load() == []
 
 
 def test_export_includes_unevaluated_runs_and_real_conditions(project, history, tmp_path):
@@ -233,7 +244,7 @@ def test_instruction_snapshot_preserves_exact_utf8_and_rejects_naive_time(histor
 
 def test_export_detects_missing_and_changed_images_without_rewriting_history(project, history):
     run = history[0]
-    original = (project.runs / str(run.run_id) / "run.json").read_bytes()
+    original = project.repository.read(run.run_id).model_dump_json()
     path = project.runs / str(run.run_id) / run.images[0]
     path.write_bytes(b"changed")
     image = export_evidence(project, run.run_id)["runs"][0]["images"][0]
@@ -241,11 +252,11 @@ def test_export_detects_missing_and_changed_images_without_rewriting_history(pro
     path.unlink()
     image = export_evidence(project, run.run_id)["runs"][0]["images"][0]
     assert image["observed"] is None
-    assert (project.runs / str(run.run_id) / "run.json").read_bytes() == original
+    assert project.repository.read(run.run_id).model_dump_json() == original
 
 
 def test_import_rejects_broken_json_and_export_never_replaces_existing_file(tmp_path):
-    from komaquill.infrastructure.evaluations import write_export
+    from komaquill.adapters.evaluations import write_export
 
     path = tmp_path / "data.json"
     path.write_text("{")

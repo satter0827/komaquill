@@ -4,7 +4,7 @@
 
 2026年10月26日から27日にかけて、普段利用する作業フォルダーからKleinを起動し、過去の生成物の見直し、標準画面の確認、限定的な改善、文書化と容量整理を行った。関連要件はREQ-KLEIN、REQ-ASSETS、REQ-STORY-COMPLETION、REQ-STORY-VISUALS、REQ-CLEANである。
 
-実機の対象コミットは90e1bddf213a2dc4fe83747d8991068ec635a46c。製品コードの内容ハッシュは0fee511622bc785bab4a416bb661fdccd1c79819f1a656d41e4d135cb1303a96。最終文書とテストだけの追記は、実機で実行した製品コードと区別する。使用資源の定義と固定版は[モデル定義](../../../src/komaquill/resources/models)を正本とする。
+実機の対象コミットは90e1bddf213a2dc4fe83747d8991068ec635a46c。製品コードの内容ハッシュは0fee511622bc785bab4a416bb661fdccd1c79819f1a656d41e4d135cb1303a96。最終文書とテストだけの追記は、実機で実行した製品コードと区別する。使用資源の定義と固定版は[モデル定義](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/resources/models)を正本とする。
 
 ## 保存済み生成物の見直し
 

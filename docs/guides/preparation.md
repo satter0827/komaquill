@@ -9,7 +9,7 @@ hf auth login
 python -m keyring set komaquill-models civitai
 ```
 
-公開取得できる配布元ではAPIキーは不要です。Detail Tweakerは作者のHugging Face配布を使用します。取得先、固定版、サイズ、SHA256、利用条件は[モデル定義](../../src/komaquill/resources/models/)で確認します。アクセス確認では少量のGETを使い、HEADだけでは権限不足と判断しません。PCへモデル本体を保存しません。
+公開取得できる配布元ではAPIキーは不要です。Detail Tweakerは作者のHugging Face配布を使用します。取得先、固定版、サイズ、SHA256、利用条件は[モデル定義](../../src/backend/src/komaquill/resources/models/)で確認します。アクセス確認では少量のGETを使い、HEADだけでは権限不足と判断しません。PCへモデル本体を保存しません。
 
 ## 起動と追加準備
 

@@ -7,8 +7,7 @@ from pathlib import Path
 
 import psutil
 import pytest
-
-from komaquill.infrastructure import cleanup
+from komaquill.adapters import cleanup
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Linux venv executable resolves outside the workspace")

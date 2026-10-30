@@ -2,7 +2,7 @@ name: Checks
 on:
   pull_request:
   push:
-    branches: [main, 'feat/**', 'fix/**', 'chore/**']
+    branches: [main, 'feat/**', 'fix/**', 'chore/**', 'codex/**']
     tags: ['v*']
 permissions:
   contents: read
@@ -43,8 +43,22 @@ jobs:
             Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/google/fonts/295d98a7a0c17c68f1341eaeea354e7960ea70d3/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf' -OutFile $fontPath -TimeoutSec 120
           }
           if ((Get-FileHash -LiteralPath $fontPath -Algorithm SHA256).Hash -ne 'c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f') { exit 1 } # pragma: allowlist secret Public font SHA256.
-      - name: Check quality and installed wheel
-        run: uv run --locked --extra colab-client --extra llm python scripts/check.py --level 3
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - name: Install dependencies
+        run: |
+          uv sync --project src/backend --locked --group dev --all-extras
+          pnpm install --frozen-lockfile
+          node scripts/playwright.mjs install chromium
+      - name: Check affected projects
+        env:
+          NX_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -or $env:NX_BASE -match '^0+$') { pnpm check:all } else { pnpm check:ci }
+      - name: Build distributions
+        run: pnpm build
   quality:
     name: quality
     needs: checks
@@ -68,4 +82,4 @@ jobs:
           version: '0.13.5'
           enable-cache: false
       - name: Check publishable files
-        run: uv run --locked python scripts/check.py --check secrets-history
+        run: uv run --project src/backend --locked --group dev python -m scripts.checks.secrets --scope history --report-dir .artifacts/records/reports/security

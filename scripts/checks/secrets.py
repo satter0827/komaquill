@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import subprocess
 from datetime import UTC, datetime
 from importlib.metadata import version
@@ -12,6 +13,19 @@ from detect_secrets.core.scan import scan_diff, scan_file
 from detect_secrets.settings import default_settings
 
 from scripts._support import atomic_json, message
+
+
+def is_public_package_integrity(filename: str, line: str) -> bool:
+    """Exclude only canonical pnpm integrity fields, keeping other lockfile text scanned."""
+    return (
+        filename == "pnpm-lock.yaml"
+        and re.fullmatch(
+            r"\s*(?:resolution: \{integrity: sha512-[A-Za-z0-9+/]{86}==\}"
+            r'|integrity: "sha512-[A-Za-z0-9+/]{86}==")\s*',
+            line,
+        )
+        is not None
+    )
 
 
 def git_text(root: Path, *arguments: str) -> str:
@@ -34,6 +48,12 @@ def main(report_dir: Path | None = None, *, scope: str = "history") -> None:
     ).split("\0")
     findings: list[dict[str, str | int]] = []
     with default_settings() as settings:
+        settings.configure_filters(
+            [
+                *({"path": path, **config} for path, config in settings.filters.items()),
+                {"path": "scripts.checks.secrets.is_public_package_integrity"},
+            ]
+        )
         settings.disable_filters(
             "detect_secrets.filters.common.is_ignored_due_to_verification_policies"
         )

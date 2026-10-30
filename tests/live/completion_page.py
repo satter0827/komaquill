@@ -6,11 +6,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from komaquill.adapters.atomic import atomic_bytes
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
-
-from komaquill.infrastructure.atomic import atomic_bytes
 
 PAGE_SIZE = (2480, 3508)
 PAGE_MARGIN = 120

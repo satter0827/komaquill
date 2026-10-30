@@ -3,9 +3,8 @@
 import json
 from pathlib import Path
 
+from komaquill.cli.main import app
 from typer.testing import CliRunner
-
-from komaquill.interfaces.cli import app
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -69,9 +68,8 @@ def test_tasks_keep_process_arguments_and_quality_dependencies_explicit():
 
 
 def test_all_cli_help_is_explicit_and_independent_of_docstrings(monkeypatch):
+    from komaquill.cli.main import generate_command
     from typer.main import get_command
-
-    from komaquill.interfaces.cli import generate_command
 
     monkeypatch.setattr(generate_command, "__doc__", "Internal docstring sentinel")
     command = get_command(app)
@@ -91,17 +89,6 @@ def test_malformed_workspace_configuration_has_a_safe_error(project):
     result = CliRunner().invoke(app, ["--project", str(project.root), "start"])
     assert result.exit_code == 1 and "Traceback" not in result.output
     assert "configuration" in result.output
-
-
-def test_real_story_launches_follow_the_workspace_profile():
-    config = json.loads((ROOT / ".vscode/launch.json").read_bytes())
-    entries = [
-        entry
-        for entry in config["configurations"]
-        if isinstance(entry["args"], list) and "--allow-real-llm" in entry["args"]
-    ]
-    assert entries
-    assert all("--llm-profile" not in entry["args"] for entry in entries)
 
 
 def test_image_entry_preserves_preset_defaults_and_file_entry_accepts_both_prompts():

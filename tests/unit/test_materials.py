@@ -7,11 +7,10 @@ from uuid import uuid4
 
 import httpx
 import pytest
-
+from komaquill.adapters import materials as module
+from komaquill.adapters.atomic import atomic_bytes, atomic_json
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.materials import Material
-from komaquill.infrastructure import materials as module
-from komaquill.infrastructure.atomic import atomic_bytes, atomic_json
 
 
 def material(content=b"image", **changes):
@@ -67,7 +66,7 @@ def test_each_file_recovers_independently_and_acknowledges_after_durable_save(
     )
     collector = module.MaterialCollector(project, client, {"control": "test"})
     if case == "storage":
-        from komaquill.infrastructure import artifacts
+        from komaquill.adapters import artifacts
 
         original = artifacts.atomic_bytes
 
@@ -180,8 +179,8 @@ def test_material_references_cannot_redirect_storage(reference):
 
 
 def test_save_notifications_wait_for_required_inputs_and_ignore_other_runtimes(project, session):
-    from komaquill.application.generation import new_run
-    from komaquill.infrastructure.storage import save_run
+    from komaquill.adapters.storage import save_run
+    from komaquill.images.generation import new_run
 
     atomic_json(project.session_file, session.model_dump(mode="json"))
     current = new_run(project, session, uuid4(), {})

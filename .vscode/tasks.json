@@ -32,18 +32,16 @@
       "command": "${command:python.interpreterPath}",
       "args": [
         "${workspaceFolder}/scripts/check.py",
-        "--level",
-        "${input:qualityLevel}"
+        "--scope",
+        "${input:checkScope}"
       ]
     },
     {
       "label": "Build Package",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
+      "command": "pnpm",
       "args": [
-        "${workspaceFolder}/scripts/check.py",
-        "--check",
-        "distribution"
+        "build"
       ],
       "problemMatcher": [],
       "group": {
@@ -54,15 +52,15 @@
   ],
   "inputs": [
     {
-      "id": "qualityLevel",
+      "id": "checkScope",
       "type": "pickString",
-      "description": "Choose the cumulative check level",
+      "description": "Choose the verification scope",
       "options": [
-        "2",
-        "1",
-        "3"
+        "daily",
+        "ci",
+        "all"
       ],
-      "default": "2"
+      "default": "daily"
     }
   ]
 }

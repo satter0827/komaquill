@@ -53,15 +53,13 @@ komaquill generate --prompt "a small cabin in a sunny forest, illustration"
 
 候補数は`--candidates`で指定します。プロンプトをファイルから渡す場合は`--prompt-file positive.txt`、対象別の説明も含める場合は`--input-file image-input.json`を使います。入力形式は[操作](docs/guides/usage.md)を参照してください。保存先が表示されたら、.artifacts/data/runs/実行ID/の画像を確認します。プロンプト、seed、ワークフロー、画像の検証情報も同じフォルダーへ保存します。
 
-## ストーリーから生成する
+## 会話画面を使う
 
-LM Studioの4BモデルとLocal Serverを準備し、UTF-8の原文ファイルを指定します。実モデルの呼び出し許可は操作ごとに必要です。
+ソースから開発する場合は、Python環境の導入後にルートで`pnpm install`と`pnpm dev`を実行し、表示されたローカルURLを開きます。
 
-```powershell
-komaquill stories generate ./story.txt --allow-real-llm
-```
+会話の作成、反復入力、状態の確認、保存と復元、単発画像生成、実行環境の管理を行えます。`fake`は`Hello`に対する固定サンプルです。任意の文章は実モデルのプロファイルを選び、送信ごとに実行を許可します。
 
-保存できた候補から本文と画像の保存先を表示します。`--candidates`は各場面の候補数で、`--images`の場面数とは別です。`.artifacts/data/stories/README.md`から作品を選び、各生成試行の`story.md`で本文と画像を順番に読めます。枚数は出来事と描画方針から自動で選びます。固定する場合は`--images 4`を指定します。上限は既定で8枚です。計画だけの保存、再生成、中断後の再開、構造化出力は[ストーリーの生成](docs/guides/stories.md)を参照してください。画像やブラウザーを自動起動しません。
+配布版は`web`追加依存を導入し、`komaquill --project 作業フォルダー web --open`で起動します。Reactはwheelに同梱し、利用者の環境にNode.jsを要求しません。詳しくは[会話画面の操作](docs/guides/web.md)を参照してください。
 
 ## ComfyUIの画面を使う
 

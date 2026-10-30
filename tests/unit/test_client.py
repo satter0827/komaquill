@@ -4,11 +4,10 @@ import base64
 
 import httpx
 import pytest
-from pydantic import ValidationError
-
+from komaquill.adapters.comfyui import ComfyClient
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Session
-from komaquill.infrastructure.comfyui import ComfyClient
+from pydantic import ValidationError
 
 
 @pytest.mark.parametrize(
@@ -104,7 +103,7 @@ def test_non_unicode_json_response_raises_safe_error():
     ],
 )
 def test_model_choices_support_both_standard_node_schemas(definition, expected):
-    from komaquill.infrastructure.comfyui import input_choices
+    from komaquill.adapters.comfyui import input_choices
 
     nodes = {"Loader": {"input": {"required": {"model_name": definition}}}}
     assert input_choices(nodes, "Loader", "model_name") == expected

@@ -9,7 +9,7 @@ def main() -> None:
     """Write the explicit dependency-update output only on request."""
     root = Path(__file__).resolve().parents[1]
     content = exported(root)
-    (root / "src/komaquill/resources/runtime/pylock.worker.toml").write_text(
+    (root / "src/backend/src/komaquill/resources/runtime/pylock.worker.toml").write_text(
         content, encoding="utf-8"
     )
 

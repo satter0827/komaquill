@@ -6,14 +6,13 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-
+from komaquill.adapters import asset_download as download
+from komaquill.adapters import model_sources as sources
+from komaquill.adapters.asset_store import model_path, register, verified_cache, verify_file
 from komaquill.application.preparation import requirements
 from komaquill.domain.assets import workflow_models
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.presets import ModelPreset
-from komaquill.infrastructure import asset_download as download
-from komaquill.infrastructure import model_sources as sources
-from komaquill.infrastructure.asset_store import model_path, register, verified_cache, verify_file
 
 
 def asset(content=b"model", **changes):
@@ -250,7 +249,7 @@ def test_standard_requirements_exclude_muted_and_unavailable_or_nonimage_nodes()
 
 
 def test_model_inventory_tracks_verified_local_sources(project):
-    from komaquill.infrastructure.asset_store import inventory
+    from komaquill.adapters.asset_store import inventory
 
     local = asset().model_copy(update={"url": None, "local_only": True})
     path = model_path(project.models, local)

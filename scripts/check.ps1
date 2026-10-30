@@ -1,8 +1,6 @@
-param([ValidateSet(1, 2, 3)][int]$Level = 2, [switch]$Plan, [switch]$Json, [string[]]$Check)
+param([ValidateSet('daily', 'ci', 'all')][string]$Scope = 'daily', [switch]$Plan)
 . "$PSScriptRoot/../bootstrap/_environment.ps1"
-$arguments = @("$PSScriptRoot/check.py", '--level', "$Level")
+$arguments = @("$PSScriptRoot/check.py", '--scope', $Scope)
 if ($Plan) { $arguments += '--plan' }
-if ($Json) { $arguments += '--json' }
-foreach ($identity in $Check) { $arguments += @("--check", $identity) }
 & $KomaquillPython @arguments
 exit $LASTEXITCODE

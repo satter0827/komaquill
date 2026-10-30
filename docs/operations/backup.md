@@ -2,7 +2,7 @@
 
 ## 退避する
 
-`stop`後に`status`で所有GPUと監視の停止を確認します。.artifacts/data、.artifacts/records、komaquill.toml、利用者が追加したpresetsを、利用者が管理する保存先へコピーします。ファイル一覧とSHA256を記録し、コピー後に照合します。stateは復旧用の秘密情報を含むため、安全な保存先へ分けて保管します。
+`stop`後に`status`で所有GPUと監視の停止を確認し、Webサーバーと会話を送信するCLIも終了します。SQLiteへ書き込むプロセスがない状態で、DBと同じフォルダーの関連ファイルを一式で保全します。.artifacts/data、.artifacts/records、komaquill.toml、利用者が追加したpresetsを、利用者が管理する保存先へコピーします。ファイル一覧とSHA256を記録し、コピー後に照合します。stateは復旧用の秘密情報を含むため、安全な保存先へ分けて保管します。
 
 runtime・cache・tmpは再作成できます。data/modelsの台帳は作品とともに保全します。画像生成用のモデル本体はGPUで再取得するため、PCへの保存をバックアップの前提にしません。cleanはバックアップの代わりにはなりません。
 

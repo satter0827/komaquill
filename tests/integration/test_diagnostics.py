@@ -12,21 +12,20 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.colab import Colab, Receipt
+from komaquill.adapters.diagnostics import record_event
+from komaquill.adapters.storage import load_runs, load_session, run_dir
+from komaquill.adapters.workflows import resource_json
+from komaquill.api import runtime as services
+from komaquill.cli import main as cli
+from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
+from komaquill.domain.models import ShutdownResult
+from komaquill.images.generation import collect, generate, generation_times, new_run
+from komaquill.runtime import monitor, shutdown, startup, views
 from PIL import Image
 from typer.testing import CliRunner
 
-from komaquill.api import services
-from komaquill.application.generation import collect, generate, generation_times, new_run
-from komaquill.domain.errors import KomaquillError, RuntimeEnded, failure_info
-from komaquill.domain.models import ShutdownResult
-from komaquill.infrastructure import views
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, Receipt
-from komaquill.infrastructure.diagnostics import record_event
-from komaquill.infrastructure.sessions import monitor, shutdown, startup
-from komaquill.infrastructure.storage import load_runs, load_session, run_dir
-from komaquill.infrastructure.workflows import resource_json
-from komaquill.interfaces import cli as cli
 from tests.support.provider import stopped as confirmed_stop
 from tests.support.session_controls import patch_session
 
@@ -47,9 +46,9 @@ def test_saved_images_record_integrity_and_server_times(project, client, session
     assert run.generation_started_at == datetime.fromtimestamp(1, UTC)
     assert run.generation_completed_at == datetime.fromtimestamp(2.5, UTC)
     assert run.saved_at is not None and run.updated_at >= run.saved_at
-    before = (run_dir(project, run.run_id) / "run.json").read_bytes()
+    before = project.repository.read(run.run_id).model_dump_json()
     assert collect(project, client, session).saved == 0
-    assert (run_dir(project, run.run_id) / "run.json").read_bytes() == before
+    assert project.repository.read(run.run_id).model_dump_json() == before
 
 
 def test_partial_images_are_reused_and_tampered_images_are_repaired(project, client, session, stub):
@@ -131,9 +130,9 @@ def test_unknown_server_times_are_not_invented(project, session, messages):
 
 def test_event_log_appends_safe_failures_and_survives_parallel_processes(project):
     code = (
-        "from pathlib import Path; from komaquill.infrastructure.diagnostics import record_event; "
-        "from komaquill.infrastructure.configuration import Project; import sys; "
-        "p=Project(Path(sys.argv[1])); "
+        "from pathlib import Path; from komaquill.adapters.diagnostics import record_event; "
+        "from komaquill.adapters.workspace import RuntimeWorkspace; import sys; "
+        "p=RuntimeWorkspace(Path(sys.argv[1])); "
         "[record_event(p,'check','ok') for _ in range(5)]"
     )
     children = [
@@ -274,9 +273,8 @@ def test_status_uses_saved_settings_even_if_configuration_is_invalid(project, se
 
 
 def test_timeouts_must_be_finite():
+    from komaquill.adapters.configuration import Settings
     from pydantic import ValidationError
-
-    from komaquill.infrastructure.configuration import Settings
 
     with pytest.raises(ValidationError):
         Settings(request_timeout=float("inf"))
@@ -285,8 +283,8 @@ def test_timeouts_must_be_finite():
 def test_unknown_submission_records_safe_failure_before_reconciliation(
     project, client, session, stub
 ):
+    from komaquill.adapters.storage import load_runs
     from komaquill.domain.errors import SubmissionUnknown
-    from komaquill.infrastructure.storage import load_runs
 
     stub.drop_response = True
     with pytest.raises(SubmissionUnknown):
@@ -324,8 +322,8 @@ def test_log_temporary_cleanup_failure_does_not_skip_other_files(project, monkey
 def test_forced_shutdown_reports_lost_count_without_claiming_full_collection(
     project, client, session, monkeypatch
 ):
-    from komaquill.application.generation import new_run
-    from komaquill.infrastructure.storage import save_run
+    from komaquill.adapters.storage import save_run
+    from komaquill.images.generation import new_run
 
     run = new_run(project, session, uuid4(), {})
     save_run(project, run)
@@ -349,7 +347,7 @@ def test_forced_shutdown_reports_lost_count_without_claiming_full_collection(
 def test_gpu_events_keep_owned_ids_without_changing_collection_location(tmp_path, monkeypatch):
     from uuid import uuid4
 
-    from komaquill.infrastructure.paths import GpuPaths
+    from komaquill.adapters.paths import GpuPaths
 
     runtime, operation = uuid4(), uuid4()
     monkeypatch.setenv("KOMAQUILL_RUNTIME_ID", str(runtime))

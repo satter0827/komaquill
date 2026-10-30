@@ -2,12 +2,12 @@
 
 import hashlib
 
-from komaquill.infrastructure.asset_store import model_path, register
-from komaquill.infrastructure.configuration import Project
-from komaquill.infrastructure.workflows import assets
+from komaquill.adapters.asset_store import model_path, register
+from komaquill.adapters.workflows import assets
+from komaquill.adapters.workspace import RuntimeWorkspace
 
 
-def stage_models(project: Project) -> None:
+def stage_models(project: RuntimeWorkspace) -> None:
     """Keep fake model contents explicit and prevent real downloads in tests."""
     payloads = {
         model.name: f"Offline model fixture: {model.name}".encode()

@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "cacheDirectory": ".artifacts/cache/nx",
+  "workspaceDataDirectory": ".artifacts/cache/nx/workspace",
+  "useDaemonProcess": false,
+  "namedInputs": {
+    "default": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/node_modules/**/*",
+      "environment"
+    ],
+    "python": [
+      "{projectRoot}/src/**/*",
+      "{projectRoot}/pyproject.toml",
+      "{projectRoot}/uv.lock",
+      "{workspaceRoot}/pyproject.toml",
+      "environment"
+    ],
+    "frontend": [
+      "{projectRoot}/**/*",
+      "!{projectRoot}/node_modules/**/*",
+      "{workspaceRoot}/pnpm-lock.yaml",
+      "{workspaceRoot}/.prettierrc.json",
+      "environment"
+    ],
+    "environment": [
+      {
+        "env": "OS"
+      },
+      {
+        "runtime": "node --version"
+      },
+      {
+        "runtime": "node scripts/python.mjs --version"
+      },
+      "{workspaceRoot}/scripts/python.mjs",
+      "{workspaceRoot}/scripts/nx.mjs",
+      "{workspaceRoot}/.github/workflows/**/*",
+      "{workspaceRoot}/.python-version",
+      "{workspaceRoot}/pnpm-workspace.yaml"
+    ]
+  },
+  "targetDefaults": {
+    "lint": {
+      "cache": true
+    },
+    "typecheck": {
+      "cache": true
+    },
+    "test": {
+      "cache": true
+    },
+    "build": {
+      "cache": true
+    }
+  },
+  "defaultBase": "origin/main"
+}

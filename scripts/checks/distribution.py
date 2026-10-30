@@ -15,9 +15,9 @@ from scripts._support import message
 def main(dist_dir: Path | None = None) -> None:
     """Compare the wheel, sdist, declaration and release tag versions."""
     root = Path(__file__).resolve().parents[2]
-    expected = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
-        "version"
-    ]
+    expected = tomllib.loads((root / "src/backend/pyproject.toml").read_text(encoding="utf-8"))[
+        "project"
+    ]["version"]
     if expected != version("komaquill"):
         raise SystemExit(
             message("quality.synchronize_the_environment_to_match_the_declared_version")
@@ -37,7 +37,7 @@ def main(dist_dir: Path | None = None) -> None:
         metadata = Parser().parsestr(wheel.read(metadata_name).decode())
         if metadata["Version"] != expected:
             raise SystemExit(message("quality.the_wheel_version_does_not_match_the_declaration"))
-        from komaquill.infrastructure.provenance import package_contents
+        from komaquill.adapters.provenance import package_contents
 
         required = {name for name, _ in package_contents()}
         if not required.issubset(names):

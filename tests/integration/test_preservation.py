@@ -9,7 +9,6 @@ from uuid import uuid4
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-
 from komaquill.interfaces.comfyui.api import Extension
 from komaquill.interfaces.comfyui.preservation import Preservation
 

@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import pytest
+from komaquill.adapters.atomic import atomic_bytes
 
-from komaquill.infrastructure.atomic import atomic_bytes
 from scripts import check
 
 

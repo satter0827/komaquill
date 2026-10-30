@@ -31,7 +31,7 @@
 
 途中版の累積L2は1,142件成功、3件スキップ、行93.93%、分岐84.90%でした。送信期限の追加修正後、期限とGPU入口の関連8件は成功しています。同じ製品ソースの累積L3は1,147件成功、3件スキップ、行94.22%、分岐85.03%、隔離wheel受入1件成功で、14工程すべて成功しました。後続の文書修正は参照検査と手動レビューで確認し、最終の提出内容はCIの累積L3でも検査します。対象の内容ハッシュと成否は品質ゲートとPRの検証欄が正本です。
 
-回帰事例は[準備期限](../../../tests/integration/test_preparation_deadlines.py)、[GPUの準備入口](../../../tests/unit/test_gpu_preparation.py)、[完走と評価範囲](../../../tests/integration/stories/test_completion.py)にあります。原文や認証情報を診断へ転載せず、対象版、再現、原因、修正、検査結果は非公開レポートへ記録します。
+回帰事例は[準備期限](../../../tests/integration/test_preparation_deadlines.py)、[GPUの準備入口](../../../tests/unit/test_gpu_preparation.py)、[完走と評価範囲](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/tests/integration/stories/test_completion.py)にあります。原文や認証情報を診断へ転載せず、対象版、再現、原因、修正、検査結果は非公開レポートへ記録します。
 
 WAIの実生成・img2img・LoRA比較は、自動承認レビューで拒否された送信への確認が未回答のため保留です。9Bの取得・実生成と二段階生成は今回の対象外です。過去の隔離wheelの不定期な監視終了は再現条件と原因が未確定であり、今回の成功だけで解決扱いにしません。新しい期限処理のGPU実機確認も未実施として残します。
 

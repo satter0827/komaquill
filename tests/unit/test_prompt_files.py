@@ -5,9 +5,8 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
+from komaquill.cli.image_inputs import image_input
 from komaquill.domain.errors import KomaquillError
-from komaquill.interfaces.image_inputs import image_input
 
 
 @pytest.mark.parametrize("bom", [False, True])

@@ -1,0 +1,76 @@
+"""Open native ComfyUI views without replacing its workflow editor."""
+
+import subprocess
+import sys
+from collections.abc import Callable
+from typing import Literal
+from urllib.parse import urlencode
+
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.workflows import prepare, select
+from komaquill.adapters.workspace import RuntimeWorkspace
+from komaquill.domain.errors import KomaquillError
+from komaquill.domain.models import Session
+from komaquill.messages import message
+
+
+def open_view(
+    project: RuntimeWorkspace,
+    session: Session,
+    view: Literal["app", "graph"] = "app",
+    profile_name: str | None = None,
+    echo: Callable[[str], None] = print,
+    *,
+    strict: bool = True,
+) -> bool:
+    """Open a prepared profile, retaining the monitor if automatic launch fails."""
+    project = project.configured(session.settings)
+    name, profile = select(project.settings(), profile_name)
+    if session.backend == "colab":
+        url = (
+            session.endpoint
+            + "/?"
+            + urlencode({"template": f"{name}_{view}", "source": "komaquill"})
+        )
+    else:
+        _, workflow = prepare(
+            profile.sample_prompt,
+            1,
+            name,
+            settings=project.settings(),
+            profile_name=name,
+        )
+        workflow["extra"]["linearMode"] = view == "app"
+        path = project.runtime / "workflows" / f"{name}_{view}.json"
+        atomic_json(path, workflow)
+        echo(message("text.load_this_workflow_in_comfyui_path", path=path))
+        url = session.endpoint + "/"
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, webbrowser; sys.exit(not webbrowser.open(sys.argv[1]))",
+                url,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=project.settings().control_timeout,
+            check=False,
+        )
+        opened = result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        opened = False
+    if not opened:
+        if strict:
+            raise KomaquillError(
+                display_key="text.cannot_open_the_browser_open_this_url_url",
+                details={"url": url},
+                code="browser_failed",
+                retryable=False,
+            )
+        echo(message("text.cannot_open_the_browser_open_this_url_url", url=url))
+        return False
+    echo(message("text.browser_opened_keep_start_running_to_save_results"))
+    return True

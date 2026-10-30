@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyPreparedModels, assetRows, prepareWorkflow } from "../../src/komaquill/interfaces/comfyui/web/preparation.js";
+import { applyPreparedModels, assetRows, prepareWorkflow } from "../../src/backend/src/komaquill/interfaces/comfyui/web/preparation.js";
 const text = {"ui.unknown_size": "unknown", "ui.confirm": "Prepare?"};
 test("model plan preserves unknown capacity and content identity", () => {
   assert.deepEqual(assetRows({assets: [{filename: "same.sft", sha256: "a", url: "https://source"}], reused: ["a/same.sft"]}, "unknown"), ["same.sft | unknown | https://source | true"]);

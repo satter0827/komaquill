@@ -8,8 +8,7 @@ from uuid import uuid4
 
 import pytest
 from filelock import Timeout
-
-from komaquill.gpu import models
+from komaquill.worker import models
 
 
 @pytest.mark.parametrize("case", ["no_session_deadline", "session_deadline", "already_running"])

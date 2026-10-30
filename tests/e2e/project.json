@@ -1,0 +1,34 @@
+{
+  "name": "e2e",
+  "implicitDependencies": [
+    "frontend",
+    "backend",
+    "contracts"
+  ],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": [
+        {
+          "projects": [
+            "frontend"
+          ],
+          "target": "build"
+        }
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/tests/support/**/*.py",
+        "{workspaceRoot}/playwright.config.ts",
+        "^default"
+      ],
+      "outputs": [
+        "{workspaceRoot}/.artifacts/records/reports/playwright"
+      ],
+      "options": {
+        "command": "node scripts/playwright.mjs test"
+      }
+    }
+  }
+}

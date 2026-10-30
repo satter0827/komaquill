@@ -1,16 +1,15 @@
 """Test interrupted monitoring and malformed data without hiding other requests."""
 
 import json
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
-
-from komaquill.application.generation import collect, new_run
+from komaquill.adapters.storage import load_runs, save_run, stop_request
+from komaquill.adapters.workflows import resource_json
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.sessions import connection, monitor, shutdown, startup
-from komaquill.infrastructure.storage import load_runs, save_run, stop_request
-from komaquill.infrastructure.workflows import resource_json
+from komaquill.images.generation import collect, new_run
+from komaquill.runtime import connection, monitor, shutdown, startup
+
 from tests.support.session_controls import patch_session
 
 
@@ -18,12 +17,25 @@ def test_invalid_folder_does_not_block_other_runs_or_get_overwritten(project, cl
     broken = project.runs / "unexpected-folder"
     broken.mkdir(parents=True)
     original = b"original-invalid-record"
-    (broken / "run.json").write_bytes(original)
+    from komaquill.adapters.database import database, images
+
+    with database(project.data / "komaquill.sqlite3").engine.begin() as connection:
+        connection.execute(
+            images.insert().values(id="unexpected-folder", payload=original.decode())
+        )
     client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "healthy")
     report = collect(project, client, session)
     assert report.saved == 1 and len(report.errors) == 1
     assert "unexpected-folder" in str(report.errors[0])
-    assert (broken / "run.json").read_bytes() == original
+    from sqlalchemy import select
+
+    with database(project.data / "komaquill.sqlite3").engine.connect() as connection:
+        assert (
+            connection.execute(
+                select(images.c.payload).where(images.c.id == "unexpected-folder")
+            ).scalar_one()
+            == original.decode()
+        )
     with pytest.raises(KomaquillError):
         load_runs(project)
 
@@ -118,22 +130,3 @@ def test_external_shutdown_keeps_unfinished_requests_recoverable(project, client
     assert run.state == "queued" and run.pending
     report = json.loads((project.logs / str(session.runtime_id) / "shutdown.json").read_bytes())
     assert report["gpu"] == "not_managed" and report["pending_ids"] == [str(run.run_id)]
-
-
-def test_quality_entrypoint_returns_tool_failure_without_traceback(tmp_path, monkeypatch, capsys):
-    import subprocess
-
-    from scripts import check
-
-    def fail(*args, **kwargs):
-        raise subprocess.CalledProcessError(7, args[0])
-
-    monkeypatch.setattr(check.subprocess, "run", fail)
-    monkeypatch.setattr(check.sys, "argv", ["check.py", "--check", "secrets-worktree"])
-    namespace = {"__name__": "__main__", "__file__": str(tmp_path / "scripts/check.py")}
-    with pytest.raises(SystemExit) as error:
-        exec(
-            compile(Path(check.__file__).read_text(encoding="utf-8"), check.__file__, "exec"),
-            namespace,
-        )
-    assert error.value.code == 1 and "Project checks failed" in capsys.readouterr().err

@@ -1,12 +1,11 @@
 """Validate standard Klein exports and immutable resource selection."""
 
 import pytest
-from pydantic import ValidationError
-
+from komaquill.adapters.configuration import Settings
+from komaquill.adapters.workflows import assets, prepare, resource_json, select
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.presets import ModelPreset
-from komaquill.infrastructure.configuration import Settings
-from komaquill.infrastructure.workflows import assets, prepare, resource_json, select
+from pydantic import ValidationError
 
 
 @pytest.mark.parametrize("name", ["klein-4b", "klein-4b-edit", "klein-9b", "klein-9b-edit"])
@@ -41,7 +40,7 @@ def test_profile_exports_match_api_connections_and_widget_values(name):
 
 
 def test_selected_profiles_deduplicate_all_five_shared_resources():
-    settings = Settings()
+    settings = Settings(models=["klein-4b"])
     assert set(settings.presets) == {
         "klein-4b",
         "klein-4b-edit",
@@ -97,7 +96,7 @@ def test_workspace_profile_overrides_and_frozen_snapshot(project, monkeypatch):
     ],
 )
 def test_unsafe_or_ambiguous_asset_sources_are_rejected(changes):
-    model = Settings().assets["klein-4b"].model_dump()
+    model = Settings(models=["klein-4b"]).assets["klein-4b"].model_dump()
     with pytest.raises(ValidationError):
         ModelPreset.model_validate({**model, **changes})
 
@@ -105,7 +104,7 @@ def test_unsafe_or_ambiguous_asset_sources_are_rejected(changes):
 def test_graph_provenance_uses_the_actual_five_resources(project, session):
     from uuid import uuid4
 
-    from komaquill.application.generation import new_run
+    from komaquill.images.generation import new_run
 
     active = session.model_copy(update={"settings": project.settings()})
     graph, _ = prepare("a kitten", 42, "test", settings=active.settings)
@@ -123,7 +122,7 @@ def test_graph_provenance_uses_the_actual_five_resources(project, session):
 def test_graph_provenance_handles_malformed_inputs(project, session, inputs):
     from uuid import uuid4
 
-    from komaquill.application.generation import new_run
+    from komaquill.images.generation import new_run
 
     active = session.model_copy(update={"settings": project.settings()})
     run = new_run(project, active, uuid4(), {"4": {"inputs": inputs}})

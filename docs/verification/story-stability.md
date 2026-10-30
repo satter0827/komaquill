@@ -2,9 +2,9 @@
 
 ## 準備
 
-[検証設定](../../tests/fixtures/story-validation/config.toml)と原文を実行前に固定する。[計画補助](../../tests/live/story_suite.py)は対応するFakeを構造検証へ使い、実測では明示したローカルLLMだけを呼ぶ。`--llm-profile`で計画用4B・9Bを選ぶ。呼び出し数は構造修正を含め送信前に加算する。
+[検証設定](../../tests/fixtures/story-validation/config.toml)と原文を実行前に固定する。[計画補助](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/tests/live/story_suite.py)は対応するFakeを構造検証へ使い、実測では明示したローカルLLMだけを呼ぶ。`--llm-profile`で計画用4B・9Bを選ぶ。呼び出し数は構造修正を含め送信前に加算する。
 
-計画の構造成功と原文一致を分けて記録する。[確定処理](../../tests/live/story_validation.py)は実LLMの保存済み計画、原文と計画のハッシュ、AIの採否を確認して画像要求へ変換する。未承認の題材をFakeへ置き換えて最終検証に含めない。意味の修正では保存済み応答と原文の対応を照合し、前の応答と評価内容を標準の会話へ渡す。全体の描画方針へ題材固有の修正を混ぜない。
+計画の構造成功と原文一致を分けて記録する。[確定処理](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/tests/live/story_validation.py)は実LLMの保存済み計画、原文と計画のハッシュ、AIの採否を確認して画像要求へ変換する。未承認の題材をFakeへ置き換えて最終検証に含めない。意味の修正では保存済み応答と原文の対応を照合し、前の応答と評価内容を標準の会話へ渡す。全体の描画方針へ題材固有の修正を混ぜない。
 
 計画上限に達した場合は追加呼び出しを行わない。`functional_wai=True`はWAIの機能確認だけに照合済み固定計画を許可し、未達題材と計画の由来を保存する。Kleinの作品確認は意味が合格した実LLM計画だけを使う。未生成・未評価は品質不合格の真偽値へ潰さず、確認用作品の分母は元の受入条件を維持する。
 

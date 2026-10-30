@@ -4,13 +4,12 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+from komaquill.adapters import colab_entry as colab_entry
+from komaquill.adapters.workflows import resource_json
+from komaquill.cli import main as cli
+from komaquill.domain.errors import failure_info
 from pydantic import BaseModel, ValidationError
 from typer.testing import CliRunner
-
-from komaquill.domain.errors import failure_info
-from komaquill.infrastructure import colab_entry as colab_entry
-from komaquill.infrastructure.workflows import resource_json
-from komaquill.interfaces import cli as cli
 
 
 @pytest.mark.parametrize("exit_code", [0, 7])

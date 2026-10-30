@@ -5,11 +5,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
+from komaquill.adapters import compute_budget
+from komaquill.adapters.colab import Colab
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.usage import AccountUsage, ComputeBudget
-from komaquill.infrastructure import compute_budget
-from komaquill.infrastructure.colab import Colab
 
 
 def observation(balance=100, count=0, rate=0, age=0, account="a" * 64):

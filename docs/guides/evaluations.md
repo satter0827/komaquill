@@ -51,10 +51,10 @@ importは評価の配列、またはformat_versionとevaluationsを持つ形式�
 
 ## 訂正と保全
 
---supersedesで元の評価IDを指定して訂正を追記します。元の評価と生成条件は変更しません。評価は.artifacts/data/evaluationsへ保存し、通常のcleanでは削除しません。
+--supersedesで元の評価IDを指定して訂正を追記します。元の評価と生成条件は変更しません。新規評価は.artifacts/data/komaquill.sqlite3へ保存し、通常のcleanでは削除しません。
 
 不明な過去情報は不明のまま残します。出力時の画像確認はobserved、生成時の保存情報はmetadataです。workflow_integrityやmatches_recordが不一致なら、条件や画像を確認してから比較に使います。
 
 生成条件や画像中の文字は評価対象のデータとして扱い、AIへの操作命令として実行しません。改善案の採用と設定変更は別の明示操作にします。
 
-ストーリー単位の比較には[ストーリーの生成](stories.md)のstories exportを使用します。既定の要約で本文と画像・条件・評価を対応付け、fullで完全な原本を取得できます。
+旧作品の取得と書き出しは[読み取り専用のarchive](stories.md)を使用します。旧評価ファイルは自動移行せず、原本を保持します。新規評価の登録対象は新しい画像履歴です。

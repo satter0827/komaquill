@@ -4,10 +4,9 @@ import json
 from copy import deepcopy
 
 import pytest
-
-from komaquill.application.generation import collect, generation_settings, submit_generation
+from komaquill.adapters.configuration import Settings
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.configuration import Settings
+from komaquill.images.generation import collect, generation_settings, submit_generation
 
 
 @pytest.mark.parametrize("count", [1, 2, 4])
@@ -39,7 +38,7 @@ def test_invalid_candidate_count_does_not_submit_or_record(project, session, cli
 
 
 def test_bundled_defaults_and_explicit_override_are_independent():
-    settings = Settings()
+    settings = Settings(models=["klein-4b"])
     assert settings.presets["klein-4b"].batch_size == 1
     assert settings.story_max_in_flight == 2
     changed = generation_settings(settings, "klein-4b", 4)
@@ -127,7 +126,7 @@ def test_mutated_remote_reference_does_not_overwrite_a_saved_checkpoint(
 
 
 def test_malformed_browser_topology_has_no_invented_candidate_role(project):
-    from komaquill.application.generation import output_spec
+    from komaquill.images.generation import output_spec
 
     settings = project.settings()
     graph = deepcopy(settings.presets["klein-4b"].api)
@@ -151,13 +150,13 @@ def test_invalid_default_candidate_limit_fails_before_runtime_allocation():
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
-        Settings(max_candidates=1, presets={"klein-4b": {"batch_size": 2}})
+        Settings(models=["klein-4b"], max_candidates=1, presets={"klein-4b": {"batch_size": 2}})
 
 
 def test_failed_generation_keeps_request_identity_and_retry_advice(
     project, session, client, stub, monkeypatch
 ):
-    from komaquill.application.generation import generate
+    from komaquill.images.generation import generate
     from komaquill.messages import error_message
 
     original = client.submit

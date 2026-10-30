@@ -1,0 +1,20 @@
+{
+  "name": "komaquill-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "check": "node scripts/python.mjs scripts/check.py --scope daily",
+    "check:ci": "node scripts/python.mjs scripts/check.py --scope ci",
+    "check:all": "node scripts/python.mjs scripts/check.py --scope all",
+    "build": "node scripts/nx.mjs run backend:package",
+    "contracts": "node scripts/nx.mjs run contracts:generate"
+  },
+  "devDependencies": {
+    "nx": "24.0.2",
+    "prettier": "^3.6.2",
+    "@hey-api/openapi-ts": "^0.95.0",
+    "@playwright/test": "^1.56.0"
+  },
+  "type": "module"
+}

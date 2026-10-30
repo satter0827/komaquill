@@ -1,11 +1,10 @@
 """Test reconciliation, partial persistence and browser generation."""
 
 import pytest
-
-from komaquill.application.generation import collect, generate
+from komaquill.adapters.storage import load_runs, run_dir
+from komaquill.adapters.workflows import resource_json
 from komaquill.domain.errors import KomaquillError, SubmissionUnknown
-from komaquill.infrastructure.storage import load_runs, run_dir
-from komaquill.infrastructure.workflows import resource_json
+from komaquill.images.generation import collect, generate
 
 
 def test_generate_saves_image_and_conditions(project, client, session, stub):
@@ -187,8 +186,8 @@ def test_browser_queue_is_recorded_before_completion(project, client, session, s
 def test_lost_runs_never_return_to_pending(project, client, session, stub):
     from uuid import uuid4
 
-    from komaquill.application.generation import mark_lost, new_run
-    from komaquill.infrastructure.storage import save_run
+    from komaquill.adapters.storage import save_run
+    from komaquill.images.generation import mark_lost, new_run
 
     run = new_run(project, session, uuid4(), {})
     save_run(project, run)
@@ -198,7 +197,7 @@ def test_lost_runs_never_return_to_pending(project, client, session, stub):
 
 
 def test_shutdown_request_prevents_new_submission(project, client, session, stub):
-    from komaquill.infrastructure.atomic import atomic_json
+    from komaquill.adapters.atomic import atomic_json
 
     atomic_json(project.state / "stop.json", {"runtime_id": str(session.runtime_id), "force": True})
     with pytest.raises(KomaquillError):
@@ -210,7 +209,7 @@ def test_shutdown_request_prevents_new_submission(project, client, session, stub
 def test_lost_state_is_preserved_when_submission_response_arrives_late(
     project, client, session, monkeypatch
 ):
-    from komaquill.application.generation import mark_lost
+    from komaquill.images.generation import mark_lost
 
     original = client.submit
 
@@ -231,7 +230,7 @@ def test_local_save_failure_does_not_block_other_runs_or_store_exception_text(
 
     client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "first-browser")
     client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "second-browser")
-    from komaquill.infrastructure import atomic as storage
+    from komaquill.adapters import atomic as storage
 
     original = storage.atomic_bytes
     calls = []
@@ -268,19 +267,30 @@ def test_unreadable_local_run_does_not_block_other_jobs(project, client, session
     folder = run_dir(project, broken_id)
     folder.mkdir(parents=True)
     damaged = b"invalid-json-private-sentinel"
-    (folder / "run.json").write_bytes(damaged)
+    from komaquill.adapters.database import database, images
+
+    with database(project.data / "komaquill.sqlite3").engine.begin() as connection:
+        connection.execute(images.insert().values(id=str(broken_id), payload=damaged.decode()))
     client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "healthy-browser")
     result = collect(project, client, session)
     assert result.saved == 1
     assert result.errors == (broken_id,)
-    assert (folder / "run.json").read_bytes() == damaged
+    from sqlalchemy import select
+
+    with database(project.data / "komaquill.sqlite3").engine.connect() as connection:
+        assert (
+            connection.execute(
+                select(images.c.payload).where(images.c.id == str(broken_id))
+            ).scalar_one()
+            == damaged.decode()
+        )
 
 
 def test_malformed_known_job_reports_its_original_run_id(project, client, session, stub):
     from uuid import uuid4
 
-    from komaquill.application.generation import new_run
-    from komaquill.infrastructure.storage import save_run
+    from komaquill.adapters.storage import save_run
+    from komaquill.images.generation import new_run
 
     prompt_id = client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "browser")
     run = new_run(project, session, uuid4(), resource_json("presets/klein-4b/workflow-api.json"))
@@ -312,8 +322,19 @@ def test_corrupt_record_is_not_overwritten_by_remote_history(project, client, se
     folder = run_dir(project, identity)
     folder.mkdir(parents=True)
     original = b"original-damaged-record"
-    (folder / "run.json").write_bytes(original)
+    from komaquill.adapters.database import database, images
+
+    with database(project.data / "komaquill.sqlite3").engine.begin() as connection:
+        connection.execute(images.insert().values(id=str(identity), payload=original.decode()))
     result = collect(project, client, session)
     assert result.errors == (identity,)
-    assert (folder / "run.json").read_bytes() == original
+    from sqlalchemy import select
+
+    with database(project.data / "komaquill.sqlite3").engine.connect() as connection:
+        assert (
+            connection.execute(
+                select(images.c.payload).where(images.c.id == str(identity))
+            ).scalar_one()
+            == original.decode()
+        )
     assert not list(folder.glob("images/*"))

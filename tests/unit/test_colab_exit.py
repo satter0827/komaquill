@@ -5,8 +5,7 @@ from types import SimpleNamespace
 import click
 import pytest
 import typer
-
-from komaquill.infrastructure import colab_entry
+from komaquill.adapters import colab_entry
 
 
 @pytest.mark.parametrize("exception", [typer.Exit, click.exceptions.Exit])

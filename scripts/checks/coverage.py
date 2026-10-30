@@ -49,7 +49,7 @@ def main(report_path: Path | None = None) -> None:
     )
     expected = {
         path.relative_to(root).as_posix()
-        for base in ("src", "scripts", "bootstrap")
+        for base in ("src/backend/src", "scripts", "bootstrap")
         for path in (root / base).rglob("*.py")
     }
     measured = {Path(name).as_posix() for name in report["files"]}

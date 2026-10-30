@@ -4,6 +4,8 @@
 
 | 記録 | 対象 |
 |---|---|
+| [ReactとAPIの再レビュー](results/react-review.md) | 保存復旧、DB移行、画面競合、関連検証、Windowsの停止処理と残る要件 |
+| [ReactとAPIの基本操作](results/react-chat.md) | モノレポ、会話保存、画面、画像境界、配布、関連検証の選択 |
 | [モデル共通化の再レビュー](results/model-interface-review.md) | 準備期限、評価範囲、訂正根拠の修正と生成物の再確認 |
 | [モデル共通化と直接取得](results/model-interface.md) | AniEdit・WAIの共通入力、GPU直接取得、Klein四題材、原因修正、モデル削除と未実施 |
 | [複数題材による計画とKlein](results/multi-story-validation.md) | 8題材の構造、4Bの拒否を含む計画実測、共通原因の修正と未達 |

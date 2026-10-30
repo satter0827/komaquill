@@ -4,7 +4,7 @@
 
 確認日時は2026年10月27日から28日、基点は`8c3600469fb51e300d3f5dfce3108580608046fd`です。製品版は`0.1.0.dev0`、最終製品ソースのSHA256は`5dbfa1abe73bc05155c1634b5a6ffa8ed7670b87585cb7904eac3281d45f4960`です。実機で動作したGPUコードのSHA256は`8efb005c8375b159439c8d178c04282a5ba8a24d53bd972a6da63e07cb857dc5`です。実機後の素材形式・文言・期限コードの修正と、実行済み版を区別します。
 
-非公開の入力、画像、条件、評価、訂正、終了結果、削除一覧は`.artifacts/records/reports/model-interface-20261027`へ保存しています。モデルの固定版と利用条件は[資源定義](../../../src/komaquill/resources/models)、予算は[検証用設定](../../../tests/fixtures/klein-comparison/config.toml)が正本です。
+非公開の入力、画像、条件、評価、訂正、終了結果、削除一覧は`.artifacts/records/reports/model-interface-20261027`へ保存しています。モデルの固定版と利用条件は[資源定義](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/resources/models)、予算は[検証用設定](../../../tests/fixtures/klein-comparison/config.toml)が正本です。
 
 ## 実装と実機の範囲
 

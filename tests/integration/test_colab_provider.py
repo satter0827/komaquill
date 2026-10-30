@@ -7,13 +7,12 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
-from komaquill.application.lifecycle import ShutdownActions, shutdown
+from komaquill.adapters import colab_bridge as bridge
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.colab import Colab, Receipt
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import RuntimeObservation
-from komaquill.infrastructure import colab_bridge as bridge
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, Receipt
+from komaquill.runtime.lifecycle import ShutdownActions, shutdown
 
 SUBJECT = hashlib.sha256(b"account-subject").hexdigest()
 
@@ -263,7 +262,7 @@ def test_bounded_provider_child_validates_output_without_revealing_stderr(
 ):
     import subprocess
 
-    from komaquill.infrastructure import colab as module
+    from komaquill.adapters import colab as module
 
     control = Colab(project)
     monkeypatch.setattr(control, "provider_command", lambda *args: ["provider", *args])

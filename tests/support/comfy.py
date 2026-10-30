@@ -8,9 +8,8 @@ from email.parser import BytesParser
 from uuid import uuid4
 
 import httpx
-from PIL import Image
-
 from komaquill.domain.models import JsonObject, Session
+from PIL import Image
 
 
 def multipart_input(content_type: str, content: bytes) -> tuple[str, str, bytes]:

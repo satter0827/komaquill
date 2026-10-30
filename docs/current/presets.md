@@ -2,11 +2,11 @@
 
 ## 選択と責務
 
-公開入力は`model`と`operation`です。モデルは`klein-4b`、`klein-9b`、`wai-illustrious`、操作は`generate`と`edit`を指定します。既定モデルは[運用設定](../../src/komaquill/resources/settings/defaults.toml)が正本です。9B専用の引数や自動切替はありません。
+公開入力は`model`と`operation`です。モデルは`klein-4b`、`klein-9b`、`wai-illustrious`、操作は`generate`と`edit`を指定します。既定モデルは[運用設定](../../src/backend/src/komaquill/resources/settings/defaults.toml)が正本です。9B専用の引数や自動切替はありません。
 
 起動時の`models`が有効なモデルを決めます。各モデルに対応する生成・編集の固定グラフを配信し、未選択モデルの重みは取得しません。内部の生成セットIDは公開モデル名と操作から解決します。旧`profile`・`image_profile`入力の読み替えは行いません。
 
-資源は[モデル定義](../../src/komaquill/resources/models/)、グラフ・初期条件・入力範囲は[生成セット](../../src/komaquill/resources/presets/)が正本です。用途、系列、標準ローダーの接続を起動前に検査します。資源数やLoRA本数を共通処理へ固定しません。
+資源は[モデル定義](../../src/backend/src/komaquill/resources/models/)、グラフ・初期条件・入力範囲は[生成セット](../../src/backend/src/komaquill/resources/presets/)が正本です。用途、系列、標準ローダーの接続を起動前に検査します。資源数やLoRA本数を共通処理へ固定しません。
 
 Kleinは規模に対応するDistilled本体、ponpoke版Uncensoredエンコーダー、共通VAEとAniEditを使います。WAIはIllustrious用checkpointとDetail Tweakerを使います。Ponyのscoreタグ、CLIP skip、追加の埋め込みモデルは使用しません。資源の固定版、SHA256、利用条件は各定義を参照してください。
 
@@ -30,6 +30,6 @@ CLI、Python API、App Mode、Node Graphは同じ設定と標準JSONを使用し
 
 PCでは取得元、固定版、サイズ、SHA256、利用条件、アクセス権を確認します。重みはColabへ直接取得し、照合後にComfyUIを起動します。認証はPCの標準ストアから読み、所有IDとGPUコードを確認したSSH接続の標準入力だけで渡します。モデル用のPC保存、SCP転送、アップロード、ローカル保存待ちは行いません。[準備手順](../guides/preparation.md)を参照してください。
 
-起動時に確定した設定を生成・回収・終了で共有します。保存済みの旧設定と入力は専用の読み取り型で扱い、元の値、実行グラフ、ハッシュを変更しません。旧契約の新規生成と自動再送は行いません。版の正本は[設定型](../../src/komaquill/domain/configuration.py)、[画像入力型](../../src/komaquill/domain/images.py)、[場面設定型](../../src/komaquill/domain/rendering.py)です。
+起動時に確定した設定を生成・回収・終了で共有します。保存済みの旧設定と入力は専用の読み取り型で扱い、元の値、実行グラフ、ハッシュを変更しません。旧契約の新規生成と自動再送は行いません。版の正本は[設定型](../../src/backend/src/komaquill/domain/configuration.py)、[画像入力型](../../src/backend/src/komaquill/domain/images.py)、[場面設定型](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/domain/rendering.py)です。
 
 ブラウザーの復元タブ、利用者が保存したワークフロー、現在の配信テンプレートは別の保存物です。モデル切替で利用者の未保存編集や保存物を自動削除しません。起動元、実行版、資源、配信グラフを照合して現在の構成を確認します。

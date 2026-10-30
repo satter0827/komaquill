@@ -4,17 +4,16 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
-from typer.testing import CliRunner
-
-from komaquill.api import services
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.colab import Colab, Receipt
+from komaquill.adapters.storage import load_session
+from komaquill.api import runtime as services
+from komaquill.cli import main as cli
 from komaquill.domain.errors import FailureInfo, KomaquillError
 from komaquill.domain.models import ShutdownResult
-from komaquill.infrastructure import views
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, Receipt
-from komaquill.infrastructure.sessions import connection, startup
-from komaquill.infrastructure.storage import load_session
-from komaquill.interfaces import cli as cli
+from komaquill.runtime import connection, startup, views
+from typer.testing import CliRunner
+
 from tests.support.provider import stopped as confirmed_stop
 from tests.support.session_controls import patch_session
 
@@ -173,8 +172,8 @@ def cli_connection(project, session, client, monkeypatch):
 @pytest.mark.parametrize("case", ["ready", "nodes", "model", "cpu"])
 def test_doctor_reports_actual_generation_requirements(cli_connection, client, monkeypatch, case):
     original = client.json
+    from komaquill.adapters.configuration import Settings
     from komaquill.domain.presets import MODEL_INPUT_ROLES
-    from komaquill.infrastructure.configuration import Settings
 
     settings = Settings()
     nodes = {
@@ -205,7 +204,9 @@ def test_doctor_reports_actual_generation_requirements(cli_connection, client, m
 
 @pytest.mark.parametrize("prompt", ["a cabin", ""])
 def test_generate_cli_prompts_and_returns_saved_path(cli_connection, monkeypatch, prompt):
-    monkeypatch.setattr(services, "connected", cli.connected)
+    from komaquill.api import images as image_services
+
+    monkeypatch.setattr(image_services, "connected", cli.connected)
     monkeypatch.setattr(cli.typer, "prompt", lambda _: prompt)
     result = cli_connection("generate")
     assert result.exit_code == (0 if prompt else 1), result.output

@@ -3,9 +3,9 @@
 from uuid import uuid4
 
 import pytest
+from komaquill.images.generation import Collection
+from komaquill.runtime.lifecycle import ShutdownActions, shutdown
 
-from komaquill.application.generation import Collection
-from komaquill.application.lifecycle import ShutdownActions, shutdown
 from tests.support.provider import stopped as confirmed_stop
 
 
@@ -79,28 +79,3 @@ def test_material_preservation_does_not_prevent_gpu_shutdown(case):
     assert result.materials == {"partial": "incomplete", "capture_failed": "failed"}.get(case, "ok")
     assert released is (case != "finalize_failed")
     assert "private-error" not in result.model_dump_json()
-
-
-@pytest.mark.parametrize("raises", [False, True])
-def test_projection_failure_does_not_retain_a_confirmed_stopped_gpu(raises):
-    def publish():
-        if raises:
-            raise OSError("private-projection-error")
-        return ("story-id",)
-
-    actions = ShutdownActions(
-        collect=lambda: Collection(0, 0, 0),
-        logs=lambda: (),
-        stop=confirmed_stop,
-        disconnect=lambda: None,
-        finalize=lambda: (),
-        persist=lambda result: None,
-        release=lambda: None,
-        display=lambda result: None,
-        forced=lambda: False,
-        publish=publish,
-    )
-    result, released = shutdown(uuid4(), False, actions)
-    assert released and result.gpu == "stopped" and result.history == "ok"
-    assert result.publications == "failed" and result.errors
-    assert "private-projection-error" not in result.model_dump_json()

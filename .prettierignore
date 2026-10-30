@@ -1,0 +1,3 @@
+src/frontend/src/api/generated/
+pnpm-lock.yaml
+.artifacts/

@@ -4,10 +4,9 @@ import json
 from uuid import uuid4
 
 import pytest
-
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.colab import Colab, Receipt
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, Receipt
 
 
 def controller(project, monkeypatch):
@@ -110,7 +109,7 @@ def test_official_cli_entrypoint_does_not_create_a_runtime(project):
     import sys
 
     result = subprocess.run(
-        [sys.executable, "-m", "komaquill.infrastructure.colab_entry", "version"],
+        [sys.executable, "-m", "komaquill.adapters.colab_entry", "version"],
         capture_output=True,
         text=True,
         check=True,
@@ -154,7 +153,7 @@ def test_uncertain_allocation_is_not_reported_as_terminated(project, monkeypatch
 def test_exception_diagnostic_never_contains_message_or_locals(project, monkeypatch, capsys):
     import types
 
-    from komaquill.infrastructure import colab_entry as colab_entry
+    from komaquill.adapters import colab_entry as colab_entry
 
     class FailingApp:
         pretty_exceptions_enable = True
@@ -187,8 +186,7 @@ def test_owned_child_processes_are_terminated_together():
     from contextlib import suppress
 
     import psutil
-
-    from komaquill.infrastructure.colab import terminate
+    from komaquill.adapters.colab import terminate
 
     child_code = "import time; time.sleep(60)"
     parent_code = (
@@ -217,12 +215,12 @@ def test_owned_child_processes_are_terminated_together():
 def test_cleanup_after_monitor_crash_only_stops_owned_official_processes(project, monkeypatch):
     from types import SimpleNamespace
 
-    from komaquill.infrastructure import colab as module
+    from komaquill.adapters import colab as module
 
     colab, _ = controller(project, monkeypatch)
     receipt = Receipt(name="owned", runtime_id=uuid4(), source_revision="a" * 40)
 
-    def process(config, name, module_name="komaquill.infrastructure.colab_entry"):
+    def process(config, name, module_name="komaquill.adapters.colab_entry"):
         return SimpleNamespace(
             info={
                 "cmdline": [

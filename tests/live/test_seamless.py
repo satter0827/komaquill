@@ -11,12 +11,11 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from komaquill.adapters.materials import blob, records
+from komaquill.adapters.storage import load_runs
+from komaquill.adapters.workspace import find_project
+from komaquill.runtime.connection import connected
 from PIL import Image
-
-from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.materials import blob, records
-from komaquill.infrastructure.sessions.connection import connected
-from komaquill.infrastructure.storage import load_runs
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("KOMAQUILL_LIVE") != "1", reason="Requires an explicitly started ComfyUI"
@@ -241,9 +240,8 @@ def test_native_mask_upload_preserves_the_composited_input():
 
 def test_monitor_and_ssh_recovery_reuses_the_owned_runtime():
     import psutil
-
-    from komaquill.infrastructure.colab import Colab
-    from komaquill.infrastructure.monitor_state import alive, read_monitor
+    from komaquill.adapters.colab import Colab
+    from komaquill.adapters.monitor_state import alive, read_monitor
 
     project = find_project(Path(os.environ["KOMAQUILL_PROJECT_DIR"]))
     control = Colab(project)

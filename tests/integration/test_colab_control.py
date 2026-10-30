@@ -6,11 +6,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
+from komaquill.adapters import colab as module
+from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.colab import Colab, Receipt
 from komaquill.domain.errors import AllocationRefused, KomaquillError
-from komaquill.infrastructure import colab as module
-from komaquill.infrastructure.atomic import atomic_json
-from komaquill.infrastructure.colab import Colab, Receipt
 
 
 @pytest.fixture
@@ -153,7 +152,7 @@ def test_prepare_transfers_verified_snapshot_and_keeps_execution_attached(contro
     atomic_json(control.receipt_file, receipt.model_dump(mode="json"))
     commands = []
 
-    from komaquill.infrastructure import deployment as deployment
+    from komaquill.adapters import deployment as deployment
 
     monkeypatch.setattr(deployment, "source_revision", lambda: "revision")
 

@@ -5,9 +5,8 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
-
 from komaquill.domain.errors import KomaquillError
-from komaquill.infrastructure import views
+from komaquill.runtime import views
 
 
 @pytest.mark.parametrize("result", [False, "exception", "timeout", True])

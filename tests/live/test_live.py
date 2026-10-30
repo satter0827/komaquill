@@ -6,13 +6,12 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from komaquill.adapters.storage import load_runs
+from komaquill.adapters.workflows import prepare
+from komaquill.adapters.workspace import find_project
+from komaquill.runtime.connection import connected
+from komaquill.runtime.monitor import drain
 from websockets.sync.client import connect
-
-from komaquill.infrastructure.configuration import find_project
-from komaquill.infrastructure.sessions.connection import connected
-from komaquill.infrastructure.sessions.monitor import drain
-from komaquill.infrastructure.storage import load_runs
-from komaquill.infrastructure.workflows import prepare
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("KOMAQUILL_LIVE") != "1", reason="Requires an explicitly started ComfyUI"

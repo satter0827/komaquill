@@ -1,0 +1,113 @@
+{
+  "name": "backend",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "python",
+        "{workspaceRoot}/tests/js/**/*",
+        "{workspaceRoot}/scripts/checks/worker_lock.py",
+        "{workspaceRoot}/tests/**/*.py"
+      ],
+      "options": {
+        "commands": [
+          "node scripts/python.mjs -m ruff check src/backend/src tests",
+          "node scripts/python.mjs -m ruff format --check src/backend/src tests",
+          "node scripts/python.mjs -c \"from importlinter.cli import lint_imports; lint_imports()\" --cache-dir .artifacts/cache/import-linter",
+          "node scripts/python.mjs -m scripts.checks.worker_lock",
+          "node --test tests/js/*.test.mjs"
+        ],
+        "parallel": false
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "python"
+      ],
+      "options": {
+        "command": "node scripts/python.mjs -m mypy src/backend/src"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "python",
+        "{workspaceRoot}/tests/**/*.py",
+        "{workspaceRoot}/scripts/**/*.py",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/scripts/messages.json",
+        "{workspaceRoot}/.vscode/**/*.json",
+        {
+          "runtime": "node scripts/python.mjs scripts/affected.py --selection-hash"
+        },
+        "{workspaceRoot}/tests/fixtures/**/*"
+      ],
+      "options": {
+        "command": "node scripts/python.mjs scripts/affected.py"
+      },
+      "configurations": {
+        "ci": {
+          "command": "node scripts/python.mjs scripts/affected.py --all --coverage"
+        }
+      },
+      "cache": false
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": [
+        {
+          "projects": [
+            "frontend"
+          ],
+          "target": "build"
+        }
+      ],
+      "options": {
+        "commands": [
+          "node scripts/python.mjs scripts/package.py",
+          "node scripts/python.mjs -m scripts.checks.distribution"
+        ],
+        "parallel": false
+      },
+      "inputs": [
+        "python",
+        "{workspaceRoot}/scripts/package.py",
+        "{workspaceRoot}/scripts/checks/distribution.py",
+        "{workspaceRoot}/tests/support/acceptance.py",
+        "{workspaceRoot}/tests/support/comfy.py",
+        {
+          "dependentTasksOutputFiles": "**/*"
+        },
+        "{workspaceRoot}/scripts/checks/installed_wheel.py",
+        "{workspaceRoot}/tests/e2e/test_wheel.py"
+      ],
+      "outputs": [
+        "{workspaceRoot}/.artifacts/dist/*.whl",
+        "{workspaceRoot}/.artifacts/dist/*.tar.gz",
+        "{workspaceRoot}/.artifacts/records/reports/distribution"
+      ],
+      "configurations": {
+        "ci": {
+          "commands": [
+            "node scripts/python.mjs scripts/package.py",
+            "node scripts/python.mjs -m scripts.checks.distribution",
+            "node scripts/python.mjs -m scripts.checks.installed_wheel --dist-dir .artifacts/dist --report-dir .artifacts/records/reports/distribution"
+          ],
+          "parallel": false
+        }
+      }
+    },
+    "package": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "command": "node -e \"process.stdout.write('.artifacts/dist\\n')\""
+      }
+    }
+  }
+}

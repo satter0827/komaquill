@@ -404,7 +404,12 @@ class LibraryService:
                 )
                 job = job.model_copy(update={"state": "submitted", "image_id": job.id})
         except KomaquillError as error:
-            job = job.model_copy(update={"state": "failed", "error": error.code.value})
+            if error.code == "submission_unknown" and not job.request.kind.endswith("_draft"):
+                job = job.model_copy(
+                    update={"state": "submitted", "image_id": job.id, "error": error.code.value}
+                )
+            else:
+                job = job.model_copy(update={"state": "failed", "error": error.code.value})
         except Exception:
             job = job.model_copy(update={"state": "failed", "error": "operation_failed"})
         self.store.save_job(job)
@@ -423,7 +428,9 @@ class LibraryService:
                     raise
             else:
                 if run.state == "saved" and run.images:
-                    job = job.model_copy(update={"state": "complete", "image_id": run.run_id})
+                    job = job.model_copy(
+                        update={"state": "complete", "image_id": run.run_id, "error": None}
+                    )
                     request = job.request
                     if (
                         request.kind in {"portrait", "banner"}
@@ -437,7 +444,13 @@ class LibraryService:
                 elif run.state in {"failed", "lost"}:
                     job = job.model_copy(update={"state": "failed", "error": "generation_failed"})
                 elif run.state != "prepared":
-                    job = job.model_copy(update={"state": "submitted", "image_id": run.run_id})
+                    job = job.model_copy(
+                        update={
+                            "state": "submitted",
+                            "image_id": run.run_id,
+                            "error": "submission_unknown" if run.state == "unknown" else None,
+                        }
+                    )
         if not alive and job.state in {"accepted", "running"}:
             job = job.model_copy(update={"state": "interrupted", "error": "submission_unknown"})
         return self.store.save_job(job) if job != observed else self.store.job(identity)[0]

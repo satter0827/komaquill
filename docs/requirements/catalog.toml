@@ -360,6 +360,6 @@ tests = ["tests/unit/test_model_interface.py", "tests/unit/test_remote_models.py
 [requirements.REQ-PLAY-EXPERIENCE]
 summary = "場面説明と会話を表示し、専用ボタンでその時点の人物の状態を描く"
 status = "implemented"
-acceptance = ["会話文と表示言語の場面説明を分けて保存・表示する", "会話送信では画像を生成せず、描画ボタンの明示操作で生成する", "描画受付時の服装・表情・動作・場所と人物設定を固定する", "人物情報を項目で渡し最新場面と初期設定を区別する", "実行前と一覧取得で操作・画像の識別子を照合し確定した英語入力を変更しない", "画像生成・回収・保存・再表示を同じ操作で追跡する", "送信ごとの技術的なチェックと通常画面のJSON編集を廃止する", "実4Bと実画像で本文・状態・英訳・画像の対応を確認する"]
+acceptance = ["会話文と表示言語の場面説明を分けて保存・表示する", "会話送信では画像を生成せず、描画ボタンの明示操作で生成する", "描画受付時の服装・表情・動作・場所と人物設定を固定する", "人物情報を項目で渡し最新場面と初期設定を区別する", "実行前と一覧取得で操作・画像の識別子を照合し確定した英語入力を変更しない", "画像生成・回収・保存・再表示を同じ操作で追跡する", "画像送信の結果が不明でも再起動後に同じ要求を回収し再送せず保存結果を反映する", "送信ごとの技術的なチェックと通常画面のJSON編集を廃止する", "実4Bと実画像で本文・状態・英訳・画像の対応を確認する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/context.py", "src/frontend/src/features/conversations.tsx"]
 tests = ["tests/unit/test_conversation_context.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_play_experience.py", "tests/e2e/web/workflow.spec.ts", "tests/live/play_acceptance.py"]

@@ -352,6 +352,62 @@ def test_failure_preserves_presets_and_does_not_retry(tmp_path, failure):
     assert library.accept(request)[1] is False
 
 
+@pytest.mark.parametrize("kind", ["portrait", "banner", "conversation_image"])
+@pytest.mark.parametrize("outcome", ["saved", "failed"])
+def test_unknown_image_submission_recovers_after_restart_without_resending(
+    project, client, session, stub, monkeypatch, kind, outcome
+):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def connected(_workspace):
+        yield client, session
+
+    monkeypatch.setattr("komaquill.api.images.connected", connected)
+    api = Client.initialize(project.root)
+    translations = []
+    api.library.creator = SimpleNamespace(
+        prepare_image=lambda *_a, **_kw: translations.append(True) or "A quiet bookshop."
+    )
+    if kind == "conversation_image":
+        target = api.library.start(selection())
+    else:
+        service = api.characters if kind == "portrait" else api.stories
+        model = CharacterInput if kind == "portrait" else StoryInput
+        target = service.create(model(name="Retained"))
+    request = CreationRequest(
+        operation_id=uuid4(),
+        kind=kind,
+        target_id=target.id,
+        expected_revision=0,
+    )
+    accepted, _ = api.library.accept(request)
+    stub.drop_response = True
+    submitted = api.library.execute(accepted.id)
+    assert submitted.state == "submitted" and submitted.image_id == accepted.id
+    assert submitted.error == "submission_unknown"
+    assert api.images.get(accepted.id).state == "unknown"
+    with api.library.store.database.engine.begin() as connection:
+        connection.execute(creation_jobs.update().values(owner_started="0"))
+    reopened = Client(project.root)
+    assert reopened.library.job(accepted.id) == submitted
+    assert reopened.library.accept(request) == (submitted, False)
+    if outcome == "failed":
+        next(iter(stub.history.values()))["status"] = {"status_str": "error", "completed": False}
+    reopened.images.collect(accepted.id)
+    final = reopened.library.job(accepted.id)
+    assert final.state == ("complete" if outcome == "saved" else "failed")
+    assert final.error == (None if outcome == "saved" else "generation_failed")
+    assert final.prompt_en == submitted.prompt_en and final.original == accepted.original
+    assert reopened.library.execute(accepted.id) == final
+    if kind == "conversation_image":
+        assert reopened.library.conversation_images(target.id) == [final]
+    else:
+        service = reopened.characters if kind == "portrait" else reopened.stories
+        assert service.get(target.id).image_id == (accepted.id if outcome == "saved" else None)
+    assert translations == [True] and stub.submissions == 1
+
+
 def test_invalid_media_and_corrupt_records_fail_safely(tmp_path):
     api = Client.initialize(tmp_path)
     library = api.library

@@ -12,6 +12,8 @@
 | `pnpm check:ci` | 基準版から影響を受けるプロジェクトの全テストとビルド |
 | `pnpm check:all` | 全プロジェクト、カバレッジ、配布物、隔離導入の検証 |
 | `pnpm build` | Reactをビルドし、画面を同梱するwheelとsdistを作成 |
+| `pnpm test:web` | 隔離した画面E2Eと操作ごとの証跡取得 |
+| `pnpm review:web` | 主観評価用の操作・証跡収集。評価の合格判定は行わない |
 
 `node scripts/python.mjs scripts/check.py --scope daily --plan`で対象プロジェクト、`node scripts/python.mjs scripts/affected.py --plan`でPythonの選択理由とテストを確認できます。比較基準の既定値はnx.jsonのdefaultBaseが正本です。`NX_BASE`を指定するとNxとPythonで同じ値を使用します。コミット済み・ステージ済み・作業中・新規・削除の変更を含めます。Reactの変更からPythonの全テストを呼び出す依存は設定しません。
 
@@ -19,7 +21,7 @@ lint、型検査、テスト、ビルドをNxの別タスクとして定義し�
 
 ## 結果を確認する
 
-検証全体の対象範囲、基準版、入力ハッシュ、時刻、終了結果、出力ログは`.artifacts/records/reports/checks/`、Pythonの選択とJUnitは`.artifacts/records/reports/affected/`へ保存します。Nxのタスクキャッシュは`.artifacts/cache/nx/`です。キャッシュは静的検査、画面、契約、ビルドとE2Eに使用します。Pythonの関連テストは実行範囲を毎回記録するためタスクキャッシュから復元しません。現在のGPU・プロバイダー観測にもキャッシュを使用しません。
+検証全体の対象範囲、基準版、入力ハッシュ、時刻、終了結果、出力ログは`.artifacts/records/reports/checks/`、Pythonの選択とJUnitは`.artifacts/records/reports/affected/`へ保存します。Nxのタスクキャッシュは`.artifacts/cache/nx/`です。キャッシュは静的検査、画面の単体テスト、契約、ビルドに使用します。画面E2Eとレビュー用収集は毎回新しい操作証跡を残し、Pythonの関連テストは実行範囲を毎回記録するためタスクキャッシュから復元しません。現在のGPU・プロバイダー観測にもキャッシュを使用しません。
 
 局所検証の成功を全体成功として扱いません。中断、不足環境、入力変更があった実行は成功として記録しません。実LLMとGPUの検査は日常の検証から分離します。
 

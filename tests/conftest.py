@@ -28,6 +28,8 @@ def offline_network(monkeypatch):
                 allowed = ipaddress.ip_address(address[0]).is_loopback
             except ValueError:
                 allowed = address[0] == "localhost"
+            if address[1] == 1234:
+                raise AssertionError("The live model endpoint is disabled in offline tests.")
             if not allowed:
                 raise AssertionError("External network access is disabled in offline tests.")
         return connect(connection, address)

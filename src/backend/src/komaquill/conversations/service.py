@@ -40,15 +40,10 @@ class Responder(Protocol):
     def profiles(self) -> list[ConnectionProfile]: ...
 
 
-class Images(Protocol):
-    def submit(self, prompt: str, *, run_id: UUID | None = None) -> object: ...
-
-
 class ConversationService:
-    def __init__(self, repository: Repository, responder: Responder, images: Images) -> None:
+    def __init__(self, repository: Repository, responder: Responder) -> None:
         self.repository = repository
         self.responder = responder
-        self.images = images
 
     def create(self, definition: ConversationInput) -> Conversation:
         if definition.llm_profile not in {profile.id for profile in self.profiles()}:
@@ -86,15 +81,7 @@ class ConversationService:
         except Exception:
             return self.repository.fail(identity, "operation_failed")
         self.repository.checkpoint(identity, reply)
-        operation = self.repository.commit(identity, reply)
-        if operation.image_state == "pending" and reply.scene:
-            try:
-                self.images.submit(reply.scene, run_id=identity)
-                self.repository.image(identity, identity)
-            except KomaquillError as error:
-                self.repository.image(identity, None, error.code.value)
-            except Exception:
-                self.repository.image(identity, None, "operation_failed")
+        self.repository.commit(identity, reply)
         return self.repository.operation(identity)
 
     def send(self, identity: UUID, request: SendInput) -> Operation:

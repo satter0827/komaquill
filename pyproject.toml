@@ -52,7 +52,7 @@ ancestors = ["komaquill", "komaquill.domain", "komaquill.application"]
 [[tool.importlinter.contracts]]
 name = "Application and domain do not import concrete adapters or presentation"
 type = "forbidden"
-source_modules = ["komaquill.application", "komaquill.domain", "komaquill.conversations", "komaquill.images", "komaquill.archive"]
+source_modules = ["komaquill.application", "komaquill.domain", "komaquill.conversations", "komaquill.images", "komaquill.archive", "komaquill.library"]
 forbidden_modules = ["komaquill.adapters", "komaquill.interfaces", "komaquill.worker", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli", "langchain_core", "langchain_openai", "langsmith"]
 
 [[tool.importlinter.contracts]]

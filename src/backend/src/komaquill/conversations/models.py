@@ -15,6 +15,13 @@ class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class PresetSnapshot(Record):
+    id: UUID
+    revision: int
+    name: str
+    image_id: UUID | None = None
+
+
 class ConversationInput(Record):
     title: str = Field(min_length=1, max_length=120)
     scenario: str = Field(default="", max_length=20000)
@@ -23,7 +30,11 @@ class ConversationInput(Record):
     instructions: str = Field(default="", max_length=20000)
     initial_state: dict[str, str] = Field(default_factory=dict)
     images: bool = False
-    llm_profile: str = "fake"
+    llm_profile: str = "lmstudio-4b"
+    locale: Literal["ja", "en"] = "ja"
+    response_length: Literal["short", "standard", "detailed"] = "standard"
+    presets: dict[str, PresetSnapshot] = Field(default_factory=dict)
+    sample: bool = False
 
 
 class ConnectionProfile(Record):
@@ -36,6 +47,7 @@ class Turn(Record):
     operation_id: UUID
     user: str
     assistant: str
+    narration: str = ""
     state: dict[str, str]
     image_id: UUID | None = None
     scene: str | None = None
@@ -55,12 +67,24 @@ class SendInput(Record):
     operation_id: UUID
     text: str = Field(min_length=1, max_length=20000)
     allow_real_llm: bool = False
+    locale: Literal["ja", "en"] | None = None
 
 
 class Reply(Record):
-    text: str = Field(min_length=1, max_length=20000)
+    narration: str = Field(
+        default="",
+        max_length=20000,
+        description="Visible scene, background and character actions in the requested language.",
+    )
+    text: str = Field(
+        min_length=1,
+        max_length=20000,
+        description="Visible dialogue in the explicitly requested response language.",
+    )
     state: dict[str, str]
-    scene: str | None
+    scene: str | None = Field(
+        description="English visual description including appearance and setting, or null."
+    )
 
 
 class Operation(Record):

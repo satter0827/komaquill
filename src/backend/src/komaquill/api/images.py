@@ -4,7 +4,10 @@ import secrets
 from contextlib import suppress
 from functools import cached_property
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from komaquill.adapters.image_text import ImageTextPreparation
 from uuid import UUID
 
 from komaquill.adapters.diagnostics import operation_scope
@@ -26,6 +29,12 @@ class ImageService:
         self._project = project
 
     @cached_property
+    def _text_preparation(self) -> "ImageTextPreparation":
+        from komaquill.adapters.image_text import ImageTextPreparation
+
+        return ImageTextPreparation(self._project.root)
+
+    @cached_property
     def _generation_workspace(self) -> RuntimeWorkspace:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
             return self._project.configured()
@@ -35,6 +44,7 @@ class ImageService:
             if settings is not None:
                 self.__dict__["_generation_workspace"] = self._project.configured(settings)
             self._project = self._generation_workspace
+            _ = self._text_preparation.responder.settings
 
     def list(self) -> list[Run]:
         with api_operation(OperationStage.STORAGE):
@@ -58,6 +68,8 @@ class ImageService:
         input_sources: tuple[PromptSource, ...] = (),
         inputs: dict[str, InputArtifact] | None = None,
         parameters: dict[str, bool | int | float | str] | None = None,
+        llm_profile: str = "fake",
+        allow_real_llm: bool = False,
     ) -> Run:
         from uuid import uuid4
 
@@ -82,6 +94,7 @@ class ImageService:
                     key: value.model_dump(mode="json") for key, value in (inputs or {}).items()
                 },
                 "parameters": parameters,
+                "llm_profile": llm_profile,
             }
         )
         with FileLock(str(self._generation_workspace.state / f".image-submit-{identity}.lock")):
@@ -95,6 +108,9 @@ class ImageService:
                         ) from None
                     raise
             try:
+                descriptions = self._text_preparation.prepare(
+                    identity, prompt, subjects, negative, llm_profile, allow_real_llm
+                )
                 with (
                     api_operation(OperationStage.GENERATION),
                     connected(self._generation_workspace) as (backend, session),
@@ -108,14 +124,14 @@ class ImageService:
                         self._generation_workspace,
                         backend,
                         session,
-                        prompt,
+                        descriptions.prompt,
                         seed if seed is not None else secrets.randbits(63),
                         profile,
                         run_id=identity,
-                        negative=negative,
-                        subjects=subjects,
+                        negative=descriptions.negative,
+                        subjects=descriptions.subjects,
                         candidates=candidates,
-                        input_sources=input_sources,
+                        input_sources=(*input_sources, *descriptions.sources),
                         inputs=inputs,
                         parameters=parameters,
                     )
@@ -139,6 +155,8 @@ class ImageService:
         input_sources: tuple[PromptSource, ...] = (),
         inputs: dict[str, InputArtifact] | None = None,
         parameters: dict[str, bool | int | float | str] | None = None,
+        llm_profile: str = "fake",
+        allow_real_llm: bool = False,
     ) -> Run:
         run = self.submit(
             prompt,
@@ -151,12 +169,17 @@ class ImageService:
             input_sources=input_sources,
             inputs=inputs,
             parameters=parameters,
+            llm_profile=llm_profile,
+            allow_real_llm=allow_real_llm,
         )
+        return self.wait(run.run_id)
+
+    def wait(self, run_id: UUID) -> Run:
         with (
             api_operation(OperationStage.GENERATION),
             connected(self._generation_workspace) as (backend, session),
         ):
-            return wait_generation(self._generation_workspace, backend, session, run.run_id)
+            return wait_generation(self._generation_workspace, backend, session, run_id)
 
     def collect(self, run_id: UUID | None = None) -> Collection:
         with operation_scope(), api_operation(OperationStage.COLLECTION):

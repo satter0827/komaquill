@@ -25,6 +25,7 @@ class ErrorCode(StrEnum):
     REAL_LLM_NOT_ALLOWED = "real_llm_not_allowed"
     LLM_DEPENDENCIES_MISSING = "llm_dependencies_missing"
     LLM_UNAVAILABLE = "llm_unavailable"
+    LLM_REQUEST_INVALID = "llm_request_invalid"
     CONTEXT_LIMIT_EXCEEDED = "context_limit_exceeded"
     STORY_PLAN_INVALID = "story_plan_invalid"
     STORY_REPLAN_REQUIRED = "story_replan_required"

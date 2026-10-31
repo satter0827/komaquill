@@ -1,6 +1,7 @@
 packages:
   - src/frontend
 storeDir: .artifacts/cache/pnpm
+virtualStoreDir: .artifacts/runtime/node/virtual-store
 verifyDepsBeforeRun: false
 allowBuilds:
   esbuild: true

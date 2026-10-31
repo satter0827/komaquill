@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "review_status": "not_reviewed",
+  "language": "ja",
+  "questions": [
+    {
+      "id": "journey",
+      "question": "初見で、作成・保存・選択・会話・再開の次の操作を理解できるか。"
+    },
+    {
+      "id": "copy",
+      "question": "通常のゲーム操作に不要な実装上の用語や内部データが出ていないか。"
+    },
+    {
+      "id": "feedback",
+      "question": "入力不可・送信不可・処理中・失敗の違いと、次にできる操作が伝わるか。"
+    },
+    {
+      "id": "images",
+      "question": "人物画像と場面画像の配置・切抜き・大きさが会話を妨げていないか。擬似画像から生成品質を評価しないこと。"
+    },
+    {
+      "id": "narrow",
+      "question": "狭い画面で本文・送信欄・補助情報を無理なく操作できるか。"
+    }
+  ],
+  "finding_fields": [
+    "question_id",
+    "step_id",
+    "artifact_path",
+    "observation",
+    "impact",
+    "proposal",
+    "confidence"
+  ],
+  "instructions": "実際の画像・画面構造・通信結果を対応付けて判断する。事実と推測を分け、未確認は未確認とする。実行成功を体験や文章・画質の合格に置き換えない。"
+}

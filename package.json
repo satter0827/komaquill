@@ -3,6 +3,8 @@
   "private": true,
   "packageManager": "pnpm@11.25.0",
   "scripts": {
+    "test:web": "node scripts/nx.mjs run e2e:test",
+    "review:web": "node scripts/nx.mjs run e2e:review",
     "dev": "node scripts/dev.mjs",
     "check": "node scripts/python.mjs scripts/check.py --scope daily",
     "check:ci": "node scripts/python.mjs scripts/check.py --scope ci",
@@ -11,10 +13,11 @@
     "contracts": "node scripts/nx.mjs run contracts:generate"
   },
   "devDependencies": {
-    "nx": "24.0.2",
-    "prettier": "^3.6.2",
     "@hey-api/openapi-ts": "^0.95.0",
-    "@playwright/test": "^1.56.0"
+    "@playwright/test": "^1.56.0",
+    "@types/node": "26.6.6",
+    "nx": "24.0.2",
+    "prettier": "^3.6.2"
   },
   "type": "module"
 }

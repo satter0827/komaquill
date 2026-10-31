@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 import psutil
@@ -41,6 +42,14 @@ from komaquill.conversations.models import (
 )
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Run
+
+
+class RecordedTurnRequest(SendInput):
+    """Validate retained request metadata independently of today's send contract."""
+
+    images: bool | None = None
+    response_length: Literal["short", "standard", "detailed"] | None = None
+
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10
 _MIGRATION_LOCK = threading.Lock()
@@ -100,7 +109,7 @@ def conflict() -> KomaquillError:
 
 
 class Database:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, migrate: bool = False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(
             URL.create("sqlite", database=str(path.resolve())),
@@ -108,6 +117,7 @@ class Database:
         )
         from alembic import command
         from alembic.config import Config
+        from alembic.script import ScriptDirectory
 
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).with_name("migrations")))
@@ -117,6 +127,20 @@ class Database:
             self.engine.begin() as connection,
         ):
             connection.exec_driver_sql("BEGIN IMMEDIATE")
+            if connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE name='alembic_version'"
+            ).first():
+                current = connection.exec_driver_sql(
+                    "SELECT version_num FROM alembic_version"
+                ).scalar()
+                if (
+                    current
+                    and current != ScriptDirectory.from_config(config).get_current_head()
+                    and not migrate
+                ):
+                    raise KomaquillError(
+                        code="migration_required", stage="storage", retryable=False
+                    )
             config.attributes["connection"] = connection
             command.upgrade(config, "head")
 
@@ -185,7 +209,13 @@ class ConversationRepository:
                 .one_or_none()
             )
             if previous is not None:
-                if previous["fingerprint"] != fingerprint:
+                if (
+                    previous["conversation_id"] != str(identity)
+                    or RecordedTurnRequest.model_validate_json(previous["request"]).model_dump(
+                        include=set(SendInput.model_fields)
+                    )
+                    != request.model_dump()
+                ):
                     raise conflict()
                 return self._operation(dict(previous)), False
             conversation = self._get(connection, identity)
@@ -224,9 +254,9 @@ class ConversationRepository:
 
     def _operation(self, row: dict[str, object]) -> Operation:
         value = Operation.model_validate_json(str(row["payload"]))
-        request = SendInput.model_validate_json(str(row["request"]))
+        request = RecordedTurnRequest.model_validate_json(str(row["request"]))
         fingerprint = hashlib.sha256(
-            (str(value.conversation_id) + request.model_dump_json()).encode()
+            (str(value.conversation_id) + str(row["request"])).encode()
         ).hexdigest()
         if type(row["owner_pid"]) is not int or int(str(row["owner_pid"])) <= 0:
             raise ValueError("Invalid operation owner.")
@@ -323,11 +353,12 @@ class ConversationRepository:
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
         request = SendInput.model_validate_json(str(row["request"]))
-        image = conversation.definition.images and bool(reply.scene)
+        image = False
         turn = Turn(
             operation_id=identity,
             user=request.text,
             assistant=reply.text,
+            narration=reply.narration,
             state=reply.state,
             scene=reply.scene,
             image_id=identity if image else None,

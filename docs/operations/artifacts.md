@@ -55,6 +55,12 @@ Windowsで長いパスによりworktreeの削除が一部失敗した場合は�
 
 新規の会話、操作、画像要求、評価はdata/komaquill.sqlite3へ保存します。画像、入力素材、実行グラフはdata配下のファイルとして保持します。DBの移行は同梱するAlembicで管理し、旧作品の原本を変換しません。
 
-data/storiesと旧ファイル形式の履歴は読み取り専用のarchiveで扱います。配置表、原文、計画、試行、画像、失敗記録を一式で保全します。配置表が欠けた場合は生成済み記録を未送信として扱わず、元のバックアップを確認します。旧migrateコマンドと配置表の自動再構築は提供しません。
+data/storiesと旧ファイル形式の履歴は読み取り専用のarchiveで扱います。配置表、原文、計画、試行、画像、失敗記録を一式で保全します。配置表が欠けた場合は生成済み記録を未送信として扱わず、元のバックアップを確認します。旧作品の配置表の移行・自動再構築は提供しません。`migrate` は新規記録用SQLiteのバックアップと版の更新だけを行います。
 
 新規画像の回収とGPU停止は旧作品の配置表へ依存しません。旧作品の破損を、新しい要求を再送する根拠にしません。[バックアップと復元](backup.md)と[archiveの操作](../guides/stories.md)を参照してください。
+
+## Node依存と開発生成物
+
+`node bootstrap/setup-node.mjs` はpnpm標準のvirtual storeを `.artifacts/runtime/node/virtual-store`、ダウンロードキャッシュを `.artifacts/cache/pnpm` に配置します。`node_modules` には標準の依存参照とpnpmの管理情報だけを残します。独自のモジュール解決は追加しません。
+
+Nx、Nodeのコンパイルキャッシュ、Playwrightのブラウザー、一時ファイルは `bootstrap/node-environment.mjs` で用途別の生成先を共有します。Viteとテスト結果の設定は各標準設定ファイルを正本とします。Reactの出力は `build/frontend`、wheelは `dist`、検証記録は `records/reports` に置きます。ソース管理するAPIクライアントとロックファイルは生成物の整理対象へ含めません。

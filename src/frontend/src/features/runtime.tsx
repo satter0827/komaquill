@@ -7,11 +7,13 @@ import {
   startRuntime,
   stopRuntime,
 } from '../api/generated/sdk.gen'
-import { failure } from '../api/client'
 import { Button } from '../components/ui/button'
-import messages from '../app/messages.json'
+import { useFailure, useMessages, usePreferences } from '../app/preferences'
 
 export function RuntimePage() {
+  const messages = useMessages()
+  const failure = useFailure()
+  const preferences = usePreferences()
   const cache = useQueryClient()
   const updated = async () => {
     await Promise.all([
@@ -49,9 +51,21 @@ export function RuntimePage() {
         <div className="section-label">{messages.currentObservation}</div>
         <dl>
           <dt>{messages.gpu}</dt>
-          <dd>{runtime.data?.gpu ?? messages.unknown}</dd>
+          <dd>
+            {runtime.data?.gpu === 'active'
+              ? messages.running
+              : runtime.data?.gpu === 'absent'
+                ? messages.stopped
+                : messages.unknown}
+          </dd>
           <dt>{messages.connection}</dt>
-          <dd>{runtime.data?.connection ?? messages.unknown}</dd>
+          <dd>
+            {runtime.data?.connection === 'connected'
+              ? messages.running
+              : runtime.data?.connection === 'disconnected'
+                ? messages.stopped
+                : messages.unknown}
+          </dd>
           <dt>{messages.collector}</dt>
           <dd>
             {runtime.data?.observed_at
@@ -63,7 +77,9 @@ export function RuntimePage() {
           <dt>{messages.observedAt}</dt>
           <dd>
             {runtime.data?.observed_at
-              ? new Date(runtime.data.observed_at).toLocaleString()
+              ? new Date(runtime.data.observed_at).toLocaleString(
+                  preferences.value.locale,
+                )
               : messages.notObserved}
           </dd>
         </dl>

@@ -380,5 +380,7 @@
   "chat.revision": "Current saved revision; stale updates are rejected.",
   "chat.state": "State values as a JSON object of strings.",
   "error.context_limit_exceeded": "The conversation context exceeds the input limit. Shorten the scenario, state, or message, or adjust the conversation input limit.",
-  "storage.migrated": "Database migration completed. Record: {path}"
+  "storage.migrated": "Database migration completed. Record: {path}",
+  "chat.draw": "Draw the character in the saved current scene and print image paths.",
+  "chat.locale": "Language for the conversation or next reply."
 }

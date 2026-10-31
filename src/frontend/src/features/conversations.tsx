@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, PanelRight, Sparkles } from 'lucide-react'
@@ -8,8 +8,13 @@ import {
   getConversationOperations,
   getOperation,
   sendTurn,
+  listConversationImages,
 } from '../api/generated/sdk.gen'
-import type { OperationView, SendInput } from '../api/generated/types.gen'
+import type {
+  CreationJob,
+  OperationView,
+  SendInput,
+} from '../api/generated/types.gen'
 import { POLL_INTERVAL_MS } from '../api/client'
 import { Button } from '../components/ui/button'
 import {
@@ -19,6 +24,27 @@ import {
   usePreferences,
 } from '../app/preferences'
 import { ImageResult } from './images'
+import { useCreation, CreationStatus } from './creation'
+
+const narrowQuery = '(max-width: 850px)'
+function subscribeViewport(listener: () => void) {
+  const media = window.matchMedia(narrowQuery)
+  media.addEventListener('change', listener)
+  return () => media.removeEventListener('change', listener)
+}
+const narrowViewport = () => window.matchMedia(narrowQuery).matches
+
+function Drawing({ job }: { job: CreationJob }) {
+  const messages = useMessages()
+  const failure = useFailure()
+  return job.image_id ? (
+    <ImageResult identity={job.image_id} />
+  ) : (
+    <p className="subtle">
+      {job.error ? failure({ code: job.error }) : messages.imagePreparing}
+    </p>
+  )
+}
 
 export function ConversationPage() {
   const { identity = '' } = useParams()
@@ -31,18 +57,22 @@ function ConversationView({ identity }: { identity: string }) {
   const failure = useFailure()
   const formatMessage = useFormatMessage()
   const preferences = usePreferences()
-  const [includeImage, setIncludeImage] = useState(false)
   const [text, setText] = useState('')
-  const [allowReal, setAllowReal] = useState(false)
   const [operationId, setOperationId] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const [stateDraft, setStateDraft] = useState<{
-    value: string
+    value: Record<string, string>
     revision: number
   } | null>(null)
-  const [showState, setShowState] = useState(
-    () => window.matchMedia?.('(min-width: 851px)').matches ?? true,
+  const narrow = useSyncExternalStore(
+    subscribeViewport,
+    narrowViewport,
+    () => false,
   )
+  const [wideOpen, setWideOpen] = useState(true)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const showState = narrow ? mobileOpen : wideOpen
+  const setShowState = narrow ? setMobileOpen : setWideOpen
   const detail = useQuery({
     queryKey: ['conversation', identity],
     queryFn: async () => (await getConversation({ path: { identity } })).data!,
@@ -78,7 +108,6 @@ function ConversationView({ identity }: { identity: string }) {
       )
       setOperationId(result.id)
       setText((current) => (current === submitted.text ? '' : current))
-      setAllowReal(false)
       setPrepared(null)
       void cache.invalidateQueries({ queryKey: ['conversation', identity] })
     },
@@ -99,20 +128,7 @@ function ConversationView({ identity }: { identity: string }) {
   })
   const updateState = useMutation({
     mutationFn: async () => {
-      let state: Record<string, string>
-      try {
-        const parsed: unknown = JSON.parse(stateDraft?.value ?? '{}')
-        if (
-          !parsed ||
-          typeof parsed !== 'object' ||
-          Array.isArray(parsed) ||
-          Object.values(parsed).some((value) => typeof value !== 'string')
-        )
-          throw new Error()
-        state = parsed as Record<string, string>
-      } catch {
-        throw new Error(messages.invalidState)
-      }
+      const state = stateDraft!.value
       return (
         await applyCommand({
           path: { identity },
@@ -129,6 +145,18 @@ function ConversationView({ identity }: { identity: string }) {
       await cache.invalidateQueries({ queryKey: ['conversation', identity] })
     },
   })
+  const drawing = useCreation()
+  const drawings = useQuery({
+    queryKey: ['conversation-images', identity],
+    queryFn: async () =>
+      (await listConversationImages({ path: { identity } })).data!,
+    refetchInterval: POLL_INTERVAL_MS,
+  })
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    if (narrow && showState) dialog.current?.showModal()
+    else dialog.current?.close()
+  }, [narrow, showState])
   if (detail.error)
     return (
       <p role="alert" className="error">
@@ -143,12 +171,7 @@ function ConversationView({ identity }: { identity: string }) {
     savedOperations.data?.some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
-  const fake = conversation.definition.llm_profile === 'fake'
-  const canSend =
-    !busy &&
-    !(send.isError && prepared !== null) &&
-    !!text.trim() &&
-    (fake || allowReal)
+  const canSend = !busy && !(send.isError && prepared !== null) && !!text.trim()
   const latestOperation = operation.data ?? savedOperations.data?.[0]
   const snapshots = conversation.definition.presets
   const stateLabels = {
@@ -157,8 +180,13 @@ function ConversationView({ identity }: { identity: string }) {
     goal: messages.goal,
     relationship: messages.relationship,
   }
-  const visibleState = Object.entries(conversation.state ?? {}).filter(
-    ([key]) => key in stateLabels,
+  const displayedState = {
+    ...conversation.state,
+    place:
+      conversation.state?.place || conversation.state?.character_location || '',
+  }
+  const visibleState = Object.entries(displayedState).filter(
+    ([key, value]) => key in stateLabels && value,
   )
   const content = (raw: string | undefined) => {
     try {
@@ -177,6 +205,118 @@ function ConversationView({ identity }: { identity: string }) {
       return raw ?? ''
     }
   }
+  const statePanel = (
+    <aside className="state-panel">
+      {narrow && (
+        <Button onClick={() => setShowState(false)}>
+          {messages.closeState}
+        </Button>
+      )}
+      {snapshots?.character?.image_id && (
+        <img
+          className="character-portrait"
+          src={`/api/v1/images/${snapshots.character.image_id}/files/0`}
+          alt={snapshots.character.name}
+        />
+      )}
+      <div className="eyebrow">{messages.context}</div>
+      <h2>{messages.currentState}</h2>
+      {conversation.turns?.at(-1)?.narration && (
+        <p className="state-description">
+          {conversation.turns.at(-1)!.narration}
+        </p>
+      )}
+      <h3>{messages.scenario}</h3>
+      <p className="state-description">
+        {content(conversation.definition.scenario) || messages.openConversation}
+      </p>
+      {conversation.definition.character && (
+        <>
+          <h3>{messages.character}</h3>
+          <p className="state-description">
+            {content(conversation.definition.character)}
+          </p>
+        </>
+      )}
+      <details className="story-details">
+        <summary>{messages.details}</summary>
+        <div className="state-items">
+          {visibleState.map(([key, value]) => (
+            <div key={key}>
+              <span>{stateLabels[key as keyof typeof stateLabels]}</span>
+              <p>{value}</p>
+            </div>
+          ))}
+          {!visibleState.length && !conversation.turns?.at(-1)?.narration && (
+            <p className="subtle">{messages.noState}</p>
+          )}
+        </div>
+
+        <span className="revision">
+          {formatMessage('revision', {
+            revision: conversation.revision ?? 0,
+          })}
+        </span>
+        {stateDraft === null ? (
+          <Button
+            disabled={busy}
+            onClick={() =>
+              setStateDraft({
+                value: { ...conversation.state },
+                revision: conversation.revision ?? 0,
+              })
+            }
+          >
+            {messages.editState}
+          </Button>
+        ) : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              updateState.mutate()
+            }}
+          >
+            {Object.entries(stateLabels).map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <input
+                  value={stateDraft.value[key] ?? ''}
+                  onChange={(event) =>
+                    setStateDraft({
+                      ...stateDraft,
+                      value: { ...stateDraft.value, [key]: event.target.value },
+                    })
+                  }
+                />
+              </label>
+            ))}
+            <Button type="submit" disabled={busy || updateState.isPending}>
+              {messages.saveState}
+            </Button>
+            <Button onClick={() => setStateDraft(null)}>
+              {messages.cancel}
+            </Button>
+          </form>
+        )}
+        {updateState.error && (
+          <p role="alert" className="error">
+            {failure(updateState.error)}
+          </p>
+        )}
+        <Button
+          onClick={() => reset.mutate()}
+          disabled={busy || reset.isPending}
+        >
+          {messages.resetState}
+        </Button>
+        {reset.error && (
+          <p role="alert" className="error">
+            {failure(reset.error)}
+          </p>
+        )}
+      </details>
+    </aside>
+  )
   return (
     <div className={`conversation-layout ${showState ? '' : 'state-hidden'}`}>
       <section className="conversation-main">
@@ -186,7 +326,7 @@ function ConversationView({ identity }: { identity: string }) {
             <h2>{conversation.definition.title}</h2>
           </div>
           <Button
-            aria-label={messages.showState}
+            aria-label={showState ? messages.closeState : messages.showState}
             onClick={() => setShowState(!showState)}
           >
             <PanelRight size={18} />
@@ -201,6 +341,13 @@ function ConversationView({ identity }: { identity: string }) {
           </div>
         )}
         <div className="turns" aria-live="polite">
+          {(drawings.data ?? [])
+            .filter((job) => !job.turn_id)
+            .map((job) => (
+              <div className="turn" key={job.id}>
+                <Drawing job={job} />
+              </div>
+            ))}
           {(conversation.turns ?? []).length === 0 && (
             <div className="conversation-empty">
               <Sparkles size={30} />
@@ -222,6 +369,7 @@ function ConversationView({ identity }: { identity: string }) {
                   <Sparkles size={14} />
                   {snapshots?.character?.name ?? messages.character}
                 </span>
+                <p className="scene-narration">{turn.narration}</p>
                 <p>{turn.assistant}</p>
                 {turn.image_id && (
                   <ImageResult
@@ -229,6 +377,11 @@ function ConversationView({ identity }: { identity: string }) {
                     operationId={turn.operation_id}
                   />
                 )}
+                {(drawings.data ?? [])
+                  .filter((job) => job.turn_id === turn.operation_id)
+                  .map((job) => (
+                    <Drawing key={job.id} job={job} />
+                  ))}
               </div>
             </article>
           ))}
@@ -239,24 +392,6 @@ function ConversationView({ identity }: { identity: string }) {
           )}
         </div>
         <div className="composer-area">
-          {fake ? (
-            <p className="sample-hint">
-              {messages.sampleNotice}{' '}
-              <Button onClick={() => setText(messages.sampleInput)}>
-                {messages.sampleAction}
-              </Button>
-            </p>
-          ) : (
-            <label className="checkbox permission">
-              <input
-                type="checkbox"
-                checked={allowReal}
-                disabled={!!busy}
-                onChange={(event) => setAllowReal(event.target.checked)}
-              />
-              {messages.allowReal}
-            </label>
-          )}
           {send.error && (
             <p role="alert" className="error">
               {failure(send.error)}
@@ -277,16 +412,24 @@ function ConversationView({ identity }: { identity: string }) {
               {failure({ code: latestOperation.error })}
             </p>
           )}
-          {preferences.value.image_frequency === 'manual' && !fake && (
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={includeImage}
-                onChange={(event) => setIncludeImage(event.target.checked)}
-              />
-              {messages.includeNextImage}
-            </label>
-          )}
+          <div className="scene-actions">
+            <Button
+              onClick={() =>
+                drawing.start({
+                  kind: 'conversation_image',
+                  target_id: identity,
+                  expected_revision: conversation.revision,
+                  locale: preferences.value.locale,
+                  llm_profile: conversation.definition.llm_profile,
+                  allow_real_llm: true,
+                })
+              }
+              disabled={!!busy || drawing.busy}
+            >
+              {messages.drawScene}
+            </Button>
+            <CreationStatus creation={drawing} />
+          </div>
           <form
             className="composer"
             onSubmit={(event) => {
@@ -295,17 +438,10 @@ function ConversationView({ identity }: { identity: string }) {
                 const body = {
                   operation_id: crypto.randomUUID(),
                   text,
-                  allow_real_llm: allowReal,
+                  allow_real_llm: true,
                   locale: preferences.value.locale,
-                  response_length: preferences.value.response_length,
-                  images:
-                    preferences.value.image_frequency === 'automatic' ||
-                    (preferences.value.image_frequency === 'manual' &&
-                      includeImage),
                 }
                 setPrepared(body)
-                setOperationId(body.operation_id)
-                setAllowReal(false)
                 send.mutate(body)
               }
             }}
@@ -326,103 +462,21 @@ function ConversationView({ identity }: { identity: string }) {
               <ArrowUp size={20} />
             </Button>
           </form>
-          <p className="composer-footer">{messages.local}</p>
         </div>
       </section>
-      <aside className="state-panel">
-        {snapshots?.character?.image_id && (
-          <img
-            className="character-portrait"
-            src={`/api/v1/images/${snapshots.character.image_id}/files/0`}
-            alt={snapshots.character.name}
-          />
-        )}
-        <div className="eyebrow">{messages.context}</div>
-        <h2>{messages.currentState}</h2>
-        <div className="state-items">
-          {visibleState.map(([key, value]) => (
-            <div key={key}>
-              <span>{stateLabels[key as keyof typeof stateLabels]}</span>
-              <p>{value}</p>
-            </div>
-          ))}
-          {!visibleState.length && <p className="subtle">{messages.noState}</p>}
-        </div>
-        <h3>{messages.scenario}</h3>
-        <p className="state-description">
-          {content(conversation.definition.scenario) ||
-            messages.openConversation}
-        </p>
-        {conversation.definition.character && (
-          <>
-            <h3>{messages.character}</h3>
-            <p className="state-description">
-              {content(conversation.definition.character)}
-            </p>
-          </>
-        )}
-        <details className="story-details">
-          <summary>{messages.details}</summary>
-          <span className="revision">
-            {formatMessage('revision', {
-              revision: conversation.revision ?? 0,
-            })}
-          </span>
-          {stateDraft === null ? (
-            <Button
-              disabled={busy}
-              onClick={() =>
-                setStateDraft({
-                  value: JSON.stringify(conversation.state, null, 2),
-                  revision: conversation.revision ?? 0,
-                })
-              }
-            >
-              {messages.editState}
-            </Button>
-          ) : (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault()
-                updateState.mutate()
-              }}
-            >
-              <label>
-                {messages.stateValues}
-                <textarea
-                  rows={6}
-                  value={stateDraft.value}
-                  onChange={(event) =>
-                    setStateDraft({ ...stateDraft, value: event.target.value })
-                  }
-                />
-              </label>
-              <Button type="submit" disabled={busy || updateState.isPending}>
-                {messages.saveState}
-              </Button>
-              <Button onClick={() => setStateDraft(null)}>
-                {messages.cancel}
-              </Button>
-            </form>
-          )}
-          {updateState.error && (
-            <p role="alert" className="error">
-              {failure(updateState.error)}
-            </p>
-          )}
-          <Button
-            onClick={() => reset.mutate()}
-            disabled={busy || reset.isPending}
-          >
-            {messages.resetState}
-          </Button>
-          {reset.error && (
-            <p role="alert" className="error">
-              {failure(reset.error)}
-            </p>
-          )}
-        </details>
-      </aside>
+      {narrow ? (
+        <dialog
+          className="state-dialog"
+          ref={dialog}
+          aria-label={messages.currentState}
+          onCancel={() => setMobileOpen(false)}
+          onClose={() => setMobileOpen(false)}
+        >
+          {statePanel}
+        </dialog>
+      ) : (
+        showState && statePanel
+      )}
     </div>
   )
 }

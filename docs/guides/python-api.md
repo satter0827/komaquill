@@ -4,8 +4,7 @@
 
 ```python
 from uuid import uuid4
-from komaquill.api import Client
-from komaquill.conversations.models import ConversationInput, SendInput
+from komaquill.api import Client, ConversationInput, SendInput
 
 client = Client.initialize("./my-work")
 conversation = client.conversations.create(ConversationInput(title="My conversation", llm_profile="fake"))
@@ -23,7 +22,7 @@ saved = client.conversations.get(conversation.id)
 
 ## プリセットと好み
 
-`Client.players`、`Client.characters`、`Client.stories` で一覧・作成・取得・版を指定した編集・複製・削除を行います。入力には公開型 `PlayerInput`、`CharacterInput`、`StoryInput` を使います。`Client.library.preferences()` と `save_preferences()` で表示・生成の好みを保存します。
+`Client.player.get/update`で1件の自分を取得・編集します。`Client.characters`と`Client.stories`で一覧・作成・取得・版を指定した編集・複製・削除を行います。入力には公開型 `PlayerInput`、`CharacterInput`、`StoryInput` を使います。`Client.library.preferences()` と `save_preferences()` で表示・生成の好みを保存します。
 
 会話開始は `Client.library.start(ConversationStart(...))` に3種類の `PresetRef(id=..., revision=...)` を渡します。`llm_profile` と `locale` は開始時に指定します。開始済みの会話には解決済みの内容が保持されます。
 

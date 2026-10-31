@@ -11,12 +11,10 @@ if TYPE_CHECKING:
     from komaquill.library.models import (
         CharacterInput,
         CharacterPreset,
-        PlayerInput,
-        PlayerPreset,
         StoryInput,
         StoryPreset,
     )
-    from komaquill.library.service import LibraryService, PresetService
+    from komaquill.library.service import LibraryService, PlayerService, PresetService
 
 from komaquill.adapters.workspace import find_project, initialize
 from komaquill.api._errors import api_operation
@@ -54,7 +52,7 @@ class Client:
     def conversations(self) -> "ConversationService":
         from komaquill.composition import conversations
 
-        return conversations(self.workspace, self.images)
+        return conversations(self.workspace)
 
     @cached_property
     def library(self) -> "LibraryService":
@@ -63,8 +61,8 @@ class Client:
         return library(self.workspace, self.conversations, self.images)
 
     @property
-    def players(self) -> "PresetService[PlayerInput, PlayerPreset]":
-        return self.library.players
+    def player(self) -> "PlayerService":
+        return self.library.player
 
     @property
     def characters(self) -> "PresetService[CharacterInput, CharacterPreset]":

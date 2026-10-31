@@ -54,3 +54,86 @@ it('shows a failed library load and recovers without losing saved stories', asyn
   ).toBeVisible()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
+
+it.each(['failed', 'unavailable'])(
+  'keeps a %s image separate from the story and links to recovery',
+  async (state) => {
+    server.use(
+      http.get(`${base}/api/v1/stories`, () =>
+        HttpResponse.json([
+          {
+            id: 'saved',
+            name: 'Saved story',
+            description: 'Retained setting',
+            revision: 0,
+            image_job_id: 'failed',
+          },
+        ]),
+      ),
+      http.get(`${base}/api/v1/creation-jobs/failed`, () =>
+        state === 'unavailable'
+          ? HttpResponse.json({ code: 'request_not_found' }, { status: 404 })
+          : HttpResponse.json({
+              id: 'failed',
+              state: 'failed',
+              error: 'fake_input_mismatch',
+            }),
+      ),
+    )
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: { queries: { retry: false } },
+          })
+        }
+      >
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText(m.imageUnavailable)).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: `${m.createImage} →` }),
+    ).toHaveAttribute('href', '/stories/saved')
+    expect(screen.getByText('Retained setting')).toBeVisible()
+    expect(
+      screen.queryByText(m.errors.fake_input_mismatch),
+    ).not.toBeInTheDocument()
+  },
+)
+
+it('offers creation when only samples for a different language remain', async () => {
+  server.use(
+    http.get(`${base}/api/v1/stories`, () =>
+      HttpResponse.json([
+        {
+          id: 'en-only',
+          name: 'English sample',
+          sample: true,
+          sample_locale: 'en',
+          revision: 0,
+        },
+      ]),
+    ),
+  )
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({
+          defaultOptions: { queries: { retry: false } },
+        })
+      }
+    >
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText(m.noPresets)).toBeVisible()
+  expect(screen.getByRole('link', { name: `${m.new} →` })).toHaveAttribute(
+    'href',
+    '/stories/new',
+  )
+})

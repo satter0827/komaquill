@@ -578,6 +578,29 @@ dd {
   margin-top: 28px;
   color: #9c5340;
 }
+.scene-narration {
+  color: var(--muted);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+.scene-actions {
+  padding: 8px 0;
+}
+.state-dialog {
+  border: 0;
+  padding: 0;
+  max-height: 90dvh;
+  max-width: 92vw;
+}
+.state-dialog::backdrop {
+  background: #14282066;
+}
+.state-dialog .state-panel {
+  display: block;
+  position: static;
+  overflow-y: auto;
+  max-height: 85dvh;
+}
 @media (max-width: 1100px) {
   .state-panel {
     width: 240px;

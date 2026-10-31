@@ -1,189 +1,249 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures'
+import { randomUUID } from 'node:crypto'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 
-test('selects saved settings, sends and restores a conversation', async ({
+test('saves the single player and personal attributes', async ({
   page,
+  evidence,
 }) => {
-  await page.goto('/new')
-  await expect(page.getByLabel(ja.chooseCharacter)).toContainText('栞')
-  await page.getByRole('button', { name: ja.create, exact: true }).click()
-  await expect(
-    page.getByRole('heading', { name: '雨の日の古書店', exact: true }),
-  ).toBeVisible()
-  await page.getByRole('button', { name: ja.sampleAction }).click()
-  await page.getByRole('button', { name: ja.send, exact: true }).click()
-  await expect(page.locator('.assistant-message p').first()).toContainText(
-    'つむぎ',
-  )
-  await page.reload()
-  await expect(page.locator('.assistant-message p').first()).toContainText(
-    'つむぎ',
-  )
-  await expect(page.locator('.state-panel')).not.toContainText('sample')
-})
-
-test('saves, duplicates and edits a character with an automatically generated image', async ({
-  page,
-}) => {
-  await page.goto('/characters/new')
-  await page.getByLabel(ja.name, { exact: true }).fill('Mira')
-  await page
-    .getByLabel(ja.appearance, { exact: true })
-    .fill('An adult woman with short red hair and a green coat')
+  await page.goto('/player')
+  await page.getByLabel(ja.age, { exact: true }).fill('28')
+  await page.getByLabel(ja.gender, { exact: true }).fill('女性')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
   await expect(page.getByRole('status').first()).toHaveText(ja.saved)
-  await page.getByRole('button', { name: ja.retryCollection }).click()
-  const portrait = page
-    .locator('.cover-preview')
-    .getByRole('img', { name: 'Mira', exact: true })
-  await expect(portrait).toBeVisible()
-  await expect(portrait).toHaveJSProperty('naturalWidth', 8)
   await page.reload()
-  await expect(portrait).toHaveJSProperty('naturalWidth', 8)
+  await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('28')
+  await expect(page.getByRole('button', { name: ja.duplicate })).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: ja.delete, exact: true }),
+  ).toHaveCount(0)
+  await evidence.capture('One saved player with age and gender')
+})
+
+test('automatically collects a portrait and preserves it after duplication', async ({
+  page,
+  evidence,
+}) => {
+  const name = 'Actor-' + randomUUID().slice(0, 8)
+  await page.goto('/characters/new')
+  await page.getByLabel(ja.name, { exact: true }).fill(name)
+  await page
+    .getByLabel(ja.appearance, { exact: true })
+    .fill('An adult with short red hair and a green coat.')
+  await page.getByRole('button', { name: ja.save, exact: true }).click()
+  await expect(page.locator('.cover-preview img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
+  await evidence.capture('Portrait collected without a manual action')
+  await page.reload()
+  await expect(page.locator('.cover-preview img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
+  await page.getByLabel(ja.name, { exact: true }).fill(name + ' edited')
+  await page.getByRole('button', { name: ja.save, exact: true }).click()
+  await expect(page.getByRole('status').first()).toHaveText(ja.saved)
   await page.getByRole('button', { name: ja.duplicate }).click()
   await expect(
-    page.locator('.preset-card h2').filter({ hasText: 'Mira' }),
+    page.locator('.preset-card h2').filter({ hasText: name }),
   ).toHaveCount(2)
-  await page.getByRole('link', { name: 'Mira', exact: true }).first().click()
-  await page.getByLabel(ja.name, { exact: true }).fill('Mira edited')
-  await page.getByLabel(ja.autoImage).uncheck()
-  await page.getByRole('button', { name: ja.save, exact: true }).click()
+})
+
+test('continues dialogue with narration and draws only on request', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  await page.goto('/new')
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(page).toHaveURL(/\/conversations\//)
+  const id = page.url().split('/').at(-1)!
+  const input = page.getByRole('textbox', { name: ja.messageLabel })
+  for (const [index, message] of [
+    'Hello from the browser fixture.',
+    'Tell me about this place.',
+    'Please continue.',
+  ].entries()) {
+    await input.fill(message)
+    await page.getByRole('button', { name: ja.send, exact: true }).click()
+    await expect(page.locator('.assistant-message')).toHaveCount(index + 1)
+  }
+  await expect(page.locator('.scene-narration').first()).toContainText('雨音')
+  expect(
+    await (await request.get(`/api/v1/conversations/${id}/images`)).json(),
+  ).toHaveLength(0)
+  await evidence.capture('Three replies and narration without automatic images')
+  await page.getByRole('button', { name: ja.drawScene, exact: true }).click()
+  await expect(
+    page.getByRole('img', { name: ja.imageAlt.replace('{index}', '1') }).last(),
+  ).toHaveJSProperty('naturalWidth', 8)
+  await input.fill('Continue after drawing this scene.')
+  await page.getByRole('button', { name: ja.send, exact: true }).click()
+  await expect(page.locator('.assistant-message')).toHaveCount(4)
+  await expect(
+    page.locator('article.turn').nth(2).locator('.image-result img'),
+  ).toHaveCount(1)
+  await expect(
+    page.locator('article.turn').nth(3).locator('.image-result img'),
+  ).toHaveCount(0)
+  await evidence.capture('The explicitly requested scene is displayed')
   await page.reload()
-  await expect(page.getByLabel(ja.name, { exact: true })).toHaveValue(
-    'Mira edited',
-  )
+  await expect(page.locator('.assistant-message')).toHaveCount(4)
+  await expect(page.locator('.scene-narration').first()).toContainText('雨音')
+  await expect(
+    page.getByRole('img', { name: ja.imageAlt.replace('{index}', '1') }).last(),
+  ).toHaveJSProperty('naturalWidth', 8)
 })
 
-test('generates and collects a standalone image', async ({ page }) => {
-  await page.goto('/images')
-  await page
-    .getByLabel(ja.imagePrompt, { exact: true })
-    .fill('a quiet green garden')
-  await page.getByRole('button', { name: ja.generate, exact: true }).click()
-  await page
-    .getByRole('button', { name: ja.retryCollection, exact: true })
-    .first()
-    .click()
-  const image = page
-    .getByRole('img', {
-      name: ja.imageAlt.replace('{index}', '1'),
-      exact: true,
-    })
-    .first()
-  await expect(image).toBeVisible()
-  await expect(image).toHaveJSProperty('naturalWidth', 8)
-})
-
-test('starts a saved story with its recommended counterpart after reopening', async ({
+test('saves a banner and starts with the recommended character', async ({
   page,
 }) => {
+  const name = 'Story-' + randomUUID().slice(0, 8)
   await page.goto('/stories/new')
-  await page.getByLabel(ja.name, { exact: true }).fill('Clocktower')
+  await page.getByLabel(ja.name, { exact: true }).fill(name)
   await page
     .getByLabel(ja.opening, { exact: true })
     .fill('A visitor waits at the clocktower.')
-  await expect(
-    page.getByRole('option', { name: 'Shiori', exact: true }),
-  ).toHaveCount(0)
-  await page
-    .getByLabel(ja.defaultCharacter)
-    .selectOption({ label: 'Mira edited' })
-  await page.getByLabel(ja.autoImage).uncheck()
+  await page.getByLabel(ja.defaultCharacter).selectOption({ label: '栞' })
   await page.getByRole('button', { name: ja.save, exact: true }).click()
-  await expect(page.getByRole('status').first()).toHaveText(ja.saved)
-  await page.getByRole('link', { name: ja.play, exact: true }).click()
-  await page
-    .locator('.preset-card')
-    .filter({
-      has: page.getByRole('heading', { name: 'Clocktower', exact: true }),
-    })
-    .getByRole('link', { name: ja.use + ' →', exact: true })
-    .click()
+  await expect(page.locator('.cover-preview.wide img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
+  const storyId = page.url().split('/').at(-1)
+  await page.goto('/new?story=' + storyId)
   await expect(
     page.getByLabel(ja.chooseCharacter).locator('option:checked'),
-  ).toHaveText('Mira edited')
+  ).toHaveText('栞')
+  await page.reload()
   await expect(
     page.getByText('A visitor waits at the clocktower.', { exact: true }),
   ).toBeVisible()
-  await page.reload()
-  await expect(
-    page.getByLabel(ja.chooseCharacter).locator('option:checked'),
-  ).toHaveText('Mira edited')
-  await page.getByLabel(ja.profile).selectOption({ label: ja.localModel })
   await page.getByRole('button', { name: ja.create, exact: true }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Clocktower', exact: true }),
-  ).toBeVisible()
-  await page.reload()
-  await expect(
-    page
-      .getByText('A visitor waits at the clocktower.', { exact: true })
-      .first(),
-  ).toBeVisible()
+  await expect(page.locator('.conversation-banner img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
 })
 
-test('persists language and selects the paired English sample', async ({
+test('uses English for dialogue and narration after changing language', async ({
   page,
+  evidence,
 }) => {
+  await page.goto('/new')
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(page).toHaveURL(/\/conversations\//)
+  const conversation = page.url()
   await page.goto('/settings')
   await page
     .getByRole('combobox', { name: ja.language, exact: true })
     .selectOption('en')
-  await expect(
-    page.getByRole('heading', { name: en.preferences, exact: true }),
-  ).toBeVisible()
-  await page.reload()
   await expect(page.locator('html')).toHaveAttribute('lang', 'en')
-  await page.goto('/new')
-  await expect(page.getByLabel(en.chooseStory)).toContainText(
-    'The Rainy Bookshop',
-  )
-  await page.getByRole('button', { name: en.create, exact: true }).click()
-  await page.getByRole('button', { name: en.sampleAction }).click()
+  await page.goto(conversation)
+  await page.getByRole('textbox', { name: en.messageLabel }).fill('こんにちは')
   await page.getByRole('button', { name: en.send, exact: true }).click()
-  await expect(page.locator('.assistant-message p').first()).toContainText(
-    'Hello',
-  )
-  await page.goto('/settings')
-  await page
-    .getByRole('combobox', { name: en.language, exact: true })
-    .selectOption('ja')
-  await expect(page.locator('html')).toHaveAttribute('lang', 'ja')
+  await expect(page.locator('.scene-narration').first()).toContainText('Rain')
+  await evidence.capture('English dialogue and narration')
 })
 
-test('keeps selection and keyboard navigation usable on a narrow screen', async ({
+test('closes narrow scene details with Escape and restores focus', async ({
   page,
 }) => {
+  await page.goto('/new')
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(page).toHaveURL(/\/conversations\//)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: ja.emptyTitle })).toBeVisible()
-  await page.getByRole('button', { name: ja.showNavigation }).click()
-  await page
-    .getByRole('link', { name: ja.newConversation, exact: true })
-    .first()
-    .click()
-  await expect(page.getByLabel(ja.choosePlayer)).toBeVisible()
-  await page.getByLabel(ja.choosePlayer).focus()
-  await page.keyboard.press('Tab')
-  await expect(page.locator(':focus')).toHaveClass(/text-button/)
+  const open = page.getByRole('button', { name: ja.showState, exact: true })
+  await open.click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).not.toBeVisible()
+  await expect(open).toBeFocused()
+  await expect(
+    page.getByRole('textbox', { name: ja.messageLabel }),
+  ).toBeInViewport()
   expect(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+      () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true)
-  await page.getByRole('button', { name: ja.create, exact: true }).click()
-  const composer = page.getByRole('textbox', {
-    name: ja.messageLabel,
-    exact: true,
-  })
-  await expect(composer).toBeInViewport()
-  await page.getByRole('button', { name: ja.sampleAction }).click()
-  await page.getByRole('button', { name: ja.send, exact: true }).click()
-  await expect(page.locator('.assistant-message p').first()).toContainText(
-    'つむぎ',
+})
+
+test('generates and automatically collects a standalone image', async ({
+  page,
+}) => {
+  await page.goto('/images')
+  await page
+    .getByLabel(ja.imagePrompt, { exact: true })
+    .fill('a quiet green garden')
+  const receipt = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/images' &&
+      response.request().method() === 'POST',
   )
-  await page.screenshot({
-    path: '.artifacts/records/reports/playwright/narrow.png',
-  })
+  await page.getByRole('button', { name: ja.generate, exact: true }).click()
+  const created = await (await receipt).json()
+  await expect(
+    page.locator(`img[src="/api/v1/images/${created.run_id}/files/0"]`),
+  ).toHaveJSProperty('naturalWidth', 8)
+})
+
+test('shows a library error and recovers saved content', async ({
+  page,
+  evidence,
+}) => {
+  await page.route('**/api/v1/stories', (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 'storage_failed' }),
+    }),
+  )
+  await page.goto('/')
+  await expect(page.getByRole('alert')).toContainText(ja.errors.storage_failed)
+  await evidence.capture('A failed load has an explicit recovery action')
+  await page.unroute('**/api/v1/stories')
+  await page.getByRole('button', { name: ja.refresh }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('retains one profile across start, edit, return and start navigation', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  const player = await (await request.get('/api/v1/player')).json()
+  const stories = await (await request.get('/api/v1/stories')).json()
+  const characters = await (await request.get('/api/v1/characters')).json()
+  const selection = `/new?story=${stories[0].id}&character=${characters[0].id}`
+  await page.goto(selection)
+  await page.getByRole('link', { name: ja.edit, exact: true }).click()
+  await expect(page.getByLabel(ja.name, { exact: true })).toHaveValue(
+    player.name,
+  )
+  await page.getByLabel(ja.age, { exact: true }).fill('37')
+  await page.getByRole('button', { name: ja.save, exact: true }).click()
+  await expect
+    .poll(() => new URL(page.url()).pathname + new URL(page.url()).search)
+    .toBe(selection)
+  await page.getByRole('link', { name: ja.players, exact: true }).click()
+  await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('37')
+  await page
+    .getByRole('link', { name: ja.newConversation, exact: true })
+    .click()
+  await expect(page.locator('.selection-card').first()).toContainText(
+    player.name,
+  )
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(page).toHaveURL(/\/conversations\//)
+  const identity = new URL(page.url()).pathname.split('/').at(-1)
+  const conversation = await (
+    await request.get(`/api/v1/conversations/${identity}`)
+  ).json()
+  expect(JSON.parse(conversation.definition.user).age).toBe('37')
+  await evidence.capture(
+    'One edited profile survives both directions of client navigation',
+  )
 })

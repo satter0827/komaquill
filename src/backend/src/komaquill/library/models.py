@@ -17,6 +17,16 @@ class PlayerInput(Record):
     appearance: str = Field(default="", max_length=3000)
     role: str = Field(default="", max_length=1000)
     address: str = Field(default="", max_length=120)
+    age: str = Field(
+        default="",
+        max_length=120,
+        description="Plain age text such as 32 or unknown, without template markers.",
+    )
+    gender: str = Field(
+        default="",
+        max_length=120,
+        description="Plain gender text, or empty when unspecified. No template markers.",
+    )
 
 
 class CharacterInput(PlayerInput):
@@ -48,7 +58,7 @@ class SavedPreset(Record):
     sample_locale: Locale | None = None
 
 
-class PlayerPreset(PlayerInput, SavedPreset):
+class PlayerProfile(PlayerInput, SavedPreset):
     pass
 
 
@@ -60,19 +70,17 @@ class StoryPreset(StoryInput, SavedPreset):
     pass
 
 
-Preset = PlayerPreset | CharacterPreset | StoryPreset
+Preset = PlayerProfile | CharacterPreset | StoryPreset
 PresetInput = PlayerInput | CharacterInput | StoryInput
 
 
 class Preferences(Record):
     revision: int = Field(default=0, ge=0)
     locale: Locale = "ja"
-    player_id: UUID | None = None
     font_size: Literal["normal", "large"] = "normal"
     density: Literal["comfortable", "compact"] = "comfortable"
     response_length: Literal["short", "standard", "detailed"] = "standard"
-    image_frequency: Literal["off", "manual", "automatic"] = "manual"
-    llm_profile: str = "fake"
+    llm_profile: str = "lmstudio-4b"
 
 
 class PresetRef(Record):
@@ -81,23 +89,22 @@ class PresetRef(Record):
 
 
 class ConversationStart(Record):
-    player: PresetRef
+    player_revision: int = Field(ge=0)
     character: PresetRef
     story: PresetRef
     title: str = Field(default="", max_length=120)
     locale: Locale = "ja"
-    llm_profile: str = "fake"
-    images: bool = False
+    llm_profile: str | None = None
 
 
 class CreationRequest(Record):
     operation_id: UUID
-    kind: Literal["character_draft", "story_draft", "portrait", "banner"]
+    kind: Literal["character_draft", "story_draft", "portrait", "banner", "conversation_image"]
     target_id: UUID | None = None
     expected_revision: int | None = Field(default=None, ge=0)
     prompt: str = Field(default="", max_length=12000)
     locale: Locale = "ja"
-    llm_profile: str = "fake"
+    llm_profile: str = "lmstudio-4b"
     allow_real_llm: bool = False
 
 
@@ -109,9 +116,16 @@ class CreationJob(Record):
     prompt_en: str | None = None
     result: CharacterInput | StoryInput | None = None
     image_id: UUID | None = None
+    turn_id: UUID | None = None
     error: str | None = None
     created_at: str = Field(default_factory=lambda: now().isoformat())
 
 
 class PreparedImage(Record):
     text: str = Field(min_length=1, max_length=20000)
+
+
+class ConversationImageRequest(Record):
+    operation_id: UUID
+    expected_revision: int = Field(ge=0)
+    locale: Locale = "ja"

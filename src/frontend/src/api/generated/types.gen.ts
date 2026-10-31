@@ -29,6 +29,18 @@ export type CharacterInput = {
      */
     address?: string;
     /**
+     * Age
+     *
+     * Plain age text such as 32 or unknown, without template markers.
+     */
+    age?: string;
+    /**
+     * Gender
+     *
+     * Plain gender text, or empty when unspecified. No template markers.
+     */
+    gender?: string;
+    /**
      * Personality
      */
     personality?: string;
@@ -94,6 +106,18 @@ export type CharacterPreset = {
      * Address
      */
     address: string;
+    /**
+     * Age
+     *
+     * Plain age text such as 32 or unknown, without template markers.
+     */
+    age: string;
+    /**
+     * Gender
+     *
+     * Plain gender text, or empty when unspecified. No template markers.
+     */
+    gender: string;
     /**
      * Personality
      */
@@ -204,6 +228,24 @@ export type Conversation = {
 };
 
 /**
+ * ConversationImageRequest
+ */
+export type ConversationImageRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+};
+
+/**
  * ConversationInput
  */
 export type ConversationInput = {
@@ -265,7 +307,10 @@ export type ConversationInput = {
  * ConversationStart
  */
 export type ConversationStart = {
-    player: PresetRef;
+    /**
+     * Player Revision
+     */
+    player_revision: number;
     character: PresetRef;
     story: PresetRef;
     /**
@@ -279,11 +324,7 @@ export type ConversationStart = {
     /**
      * Llm Profile
      */
-    llm_profile?: string;
-    /**
-     * Images
-     */
-    images?: boolean;
+    llm_profile?: string | null;
 };
 
 /**
@@ -316,6 +357,10 @@ export type CreationJob = {
      */
     image_id?: string | null;
     /**
+     * Turn Id
+     */
+    turn_id?: string | null;
+    /**
      * Error
      */
     error?: string | null;
@@ -336,7 +381,7 @@ export type CreationRequest = {
     /**
      * Kind
      */
-    kind: 'character_draft' | 'story_draft' | 'portrait' | 'banner';
+    kind: 'character_draft' | 'story_draft' | 'portrait' | 'banner' | 'conversation_image';
     /**
      * Target Id
      */
@@ -640,12 +685,24 @@ export type PlayerInput = {
      * Address
      */
     address?: string;
+    /**
+     * Age
+     *
+     * Plain age text such as 32 or unknown, without template markers.
+     */
+    age?: string;
+    /**
+     * Gender
+     *
+     * Plain gender text, or empty when unspecified. No template markers.
+     */
+    gender?: string;
 };
 
 /**
- * PlayerPreset
+ * PlayerProfile
  */
-export type PlayerPreset = {
+export type PlayerProfile = {
     /**
      * Id
      */
@@ -690,6 +747,18 @@ export type PlayerPreset = {
      * Address
      */
     address: string;
+    /**
+     * Age
+     *
+     * Plain age text such as 32 or unknown, without template markers.
+     */
+    age: string;
+    /**
+     * Gender
+     *
+     * Plain gender text, or empty when unspecified. No template markers.
+     */
+    gender: string;
 };
 
 /**
@@ -705,10 +774,6 @@ export type Preferences = {
      */
     locale?: 'ja' | 'en';
     /**
-     * Player Id
-     */
-    player_id?: string | null;
-    /**
      * Font Size
      */
     font_size?: 'normal' | 'large';
@@ -720,10 +785,6 @@ export type Preferences = {
      * Response Length
      */
     response_length?: 'short' | 'standard' | 'detailed';
-    /**
-     * Image Frequency
-     */
-    image_frequency?: 'off' | 'manual' | 'automatic';
     /**
      * Llm Profile
      */
@@ -1123,14 +1184,6 @@ export type SendInput = {
      * Locale
      */
     locale?: 'ja' | 'en' | null;
-    /**
-     * Images
-     */
-    images?: boolean | null;
-    /**
-     * Response Length
-     */
-    response_length?: 'short' | 'standard' | 'detailed' | null;
 };
 
 /**
@@ -1324,6 +1377,10 @@ export type Turn = {
      */
     assistant: string;
     /**
+     * Narration
+     */
+    narration?: string;
+    /**
      * State
      */
     state: {
@@ -1371,6 +1428,68 @@ export type ValidationError = {
     };
 };
 
+export type ListConversationImagesData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/images';
+};
+
+export type ListConversationImagesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ListConversationImagesError = ListConversationImagesErrors[keyof ListConversationImagesErrors];
+
+export type ListConversationImagesResponses = {
+    /**
+     * Response List Conversation Images
+     *
+     * Successful Response
+     */
+    200: Array<CreationJob>;
+};
+
+export type ListConversationImagesResponse = ListConversationImagesResponses[keyof ListConversationImagesResponses];
+
+export type DrawConversationData = {
+    body: ConversationImageRequest;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/image';
+};
+
+export type DrawConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DrawConversationError = DrawConversationErrors[keyof DrawConversationErrors];
+
+export type DrawConversationResponses = {
+    /**
+     * Successful Response
+     */
+    202: CreationJob;
+};
+
+export type DrawConversationResponse = DrawConversationResponses[keyof DrawConversationResponses];
+
 export type GetPreferencesData = {
     body?: never;
     path?: never;
@@ -1412,129 +1531,32 @@ export type SavePreferencesResponses = {
 
 export type SavePreferencesResponse = SavePreferencesResponses[keyof SavePreferencesResponses];
 
-export type ListPlayersData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/players';
-};
-
-export type ListPlayersResponses = {
-    /**
-     * Response List Players
-     *
-     * Successful Response
-     */
-    200: Array<PlayerPreset>;
-};
-
-export type ListPlayersResponse = ListPlayersResponses[keyof ListPlayersResponses];
-
-export type CreatePlayerData = {
-    body: PlayerInput;
-    path?: never;
-    query?: never;
-    url: '/api/v1/players';
-};
-
-export type CreatePlayerErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type CreatePlayerError = CreatePlayerErrors[keyof CreatePlayerErrors];
-
-export type CreatePlayerResponses = {
-    /**
-     * Successful Response
-     */
-    201: PlayerPreset;
-};
-
-export type CreatePlayerResponse = CreatePlayerResponses[keyof CreatePlayerResponses];
-
-export type DeletePlayerData = {
-    body?: never;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query: {
-        /**
-         * Expected Revision
-         */
-        expected_revision: number;
-    };
-    url: '/api/v1/players/{identity}';
-};
-
-export type DeletePlayerErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type DeletePlayerError = DeletePlayerErrors[keyof DeletePlayerErrors];
-
-export type DeletePlayerResponses = {
-    /**
-     * Successful Response
-     */
-    204: void;
-};
-
-export type DeletePlayerResponse = DeletePlayerResponses[keyof DeletePlayerResponses];
-
 export type GetPlayerData = {
     body?: never;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
+    path?: never;
     query?: never;
-    url: '/api/v1/players/{identity}';
+    url: '/api/v1/player';
 };
-
-export type GetPlayerErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type GetPlayerError = GetPlayerErrors[keyof GetPlayerErrors];
 
 export type GetPlayerResponses = {
     /**
      * Successful Response
      */
-    200: PlayerPreset;
+    200: PlayerProfile;
 };
 
 export type GetPlayerResponse = GetPlayerResponses[keyof GetPlayerResponses];
 
 export type UpdatePlayerData = {
     body: PlayerInput;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
+    path?: never;
     query: {
         /**
          * Expected Revision
          */
         expected_revision: number;
     };
-    url: '/api/v1/players/{identity}';
+    url: '/api/v1/player';
 };
 
 export type UpdatePlayerErrors = {
@@ -1550,40 +1572,10 @@ export type UpdatePlayerResponses = {
     /**
      * Successful Response
      */
-    200: PlayerPreset;
+    200: PlayerProfile;
 };
 
 export type UpdatePlayerResponse = UpdatePlayerResponses[keyof UpdatePlayerResponses];
-
-export type DuplicatePlayerData = {
-    body?: never;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query?: never;
-    url: '/api/v1/players/{identity}/duplicate';
-};
-
-export type DuplicatePlayerErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type DuplicatePlayerError = DuplicatePlayerErrors[keyof DuplicatePlayerErrors];
-
-export type DuplicatePlayerResponses = {
-    /**
-     * Successful Response
-     */
-    201: PlayerPreset;
-};
-
-export type DuplicatePlayerResponse = DuplicatePlayerResponses[keyof DuplicatePlayerResponses];
 
 export type ListCharactersData = {
     body?: never;

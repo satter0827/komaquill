@@ -1,5 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
-import { getSettings } from '../api/generated/sdk.gen'
 import type { Preferences } from '../api/generated/types.gen'
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import type { MessageKey } from '../app/messages'
@@ -9,25 +7,19 @@ export function PreferencesPage() {
   const m = useMessages()
   const preferences = usePreferences()
   const failure = useFailure()
-  const profiles = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await getSettings()).data!,
-  })
   const options = {
     font_size: ['normal', 'large'],
     density: ['comfortable', 'compact'],
     response_length: ['short', 'standard', 'detailed'],
-    image_frequency: ['off', 'manual', 'automatic'],
   } as const
   const labels = {
     font_size: m.fontSize,
     density: m.density,
     response_length: m.responseLength,
-    image_frequency: m.imageFrequency,
   }
   return (
     <section className="page preferences-page">
-      <div className="eyebrow">{m.playersEyebrow}</div>
+      <div className="eyebrow">{m.preferencesEyebrow}</div>
       <h1>{m.preferences}</h1>
       <p className="subtle">{m.settingsDescription}</p>
       <div className="settings-grid">
@@ -66,33 +58,10 @@ export function PreferencesPage() {
             </select>
           </label>
         ))}
-        <label>
-          {m.profile}
-          <select
-            value={preferences.value.llm_profile}
-            disabled={preferences.pending || !profiles.data}
-            onChange={(event) => {
-              void preferences
-                .update({ llm_profile: event.target.value })
-                .catch(() => {})
-            }}
-          >
-            {profiles.data?.profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.provider === 'fake' ? m.sampleMode : m.localModel}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
       {!!preferences.error && (
         <p className="error" role="alert">
           {failure(preferences.error)}
-        </p>
-      )}
-      {profiles.error && (
-        <p className="error" role="alert">
-          {failure(profiles.error)}
         </p>
       )}
       <details className="connection-details">

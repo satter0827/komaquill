@@ -25,6 +25,8 @@ def downgrade(api, revision="0004"):
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        connection.exec_driver_sql("DROP INDEX one_active_player")
+        command.stamp(config, "0005")
         command.downgrade(config, revision)
 
 
@@ -59,7 +61,9 @@ def test_migration_stop_check_distinguishes_database_use_from_editor_tools(
 
 def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(tmp_path):
     api = Client.initialize(tmp_path)
-    saved = api.conversations.create(ConversationInput(title="Before migration"))
+    saved = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Before migration")
+    )
     api.conversations.send(saved.id, SendInput(operation_id=uuid4(), text="Hello"))
     before = api.conversations.get(saved.id)
     downgrade(api)
@@ -86,7 +90,7 @@ def test_migration_failure_is_recorded_without_rewriting_existing_data(tmp_path,
     elif case == "missing":
         expected = "request_not_found"
     else:
-        api.conversations.create(ConversationInput(title="Kept"))
+        api.conversations.create(ConversationInput(locale="en", llm_profile="fake", title="Kept"))
         original = database_migration.inventory
         calls = []
 

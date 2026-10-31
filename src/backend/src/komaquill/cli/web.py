@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import typer
 
-from komaquill.api import Client, KomaquillError
+from komaquill.api import Client, CreationRequest, KomaquillError
 from komaquill.conversations.models import ConversationInput, SendInput, StateCommand
 from komaquill.messages import error_message, message
 
@@ -55,11 +55,12 @@ def bind(
     def create(
         ctx: typer.Context,
         title: Annotated[str, typer.Argument(help=message("chat.title"))],
-        profile: Annotated[str, typer.Option(help=message("chat.profile"))] = "fake",
+        profile: Annotated[str, typer.Option(help=message("chat.profile"))] = "lmstudio-4b",
         scenario: Annotated[str, typer.Option(help=message("chat.scenario"))] = "",
+        locale: Annotated[Literal["ja", "en"], typer.Option(help=message("chat.locale"))] = "ja",
     ) -> None:
         result = Client(ctx.obj or Path.cwd()).conversations.create(
-            ConversationInput(title=title, llm_profile=profile, scenario=scenario)
+            ConversationInput(title=title, llm_profile=profile, scenario=scenario, locale=locale)
         )
         typer.echo(result.model_dump_json())
 
@@ -68,6 +69,33 @@ def bind(
     def listing(ctx: typer.Context) -> None:
         for value in Client(ctx.obj or Path.cwd()).conversations.list():
             typer.echo(value.model_dump_json())
+
+    @chat.command("draw", help=message("chat.draw"))
+    @guarded
+    def draw(
+        ctx: typer.Context,
+        identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
+        allow_real_llm: Annotated[bool, typer.Option(help=message("chat.allow_real"))] = False,
+    ) -> None:
+        client = Client(ctx.obj or Path.cwd())
+        conversation = client.conversations.get(identity)
+        request = CreationRequest(
+            operation_id=uuid4(),
+            kind="conversation_image",
+            target_id=identity,
+            expected_revision=conversation.revision,
+            locale=conversation.definition.locale,
+            llm_profile=conversation.definition.llm_profile,
+            allow_real_llm=allow_real_llm,
+        )
+        client.library.accept(request)
+        job = client.library.execute(request.operation_id)
+        if job.image_id is None:
+            raise KomaquillError(code=job.error or "operation_failed")
+        run = client.images.wait(job.image_id)
+        client.library.job(job.id)
+        for image in run.images:
+            typer.echo(str(client.artifact_path(f"runs/{run.run_id}/{image}")))
 
     @chat.command("get", help=message("chat.get"))
     @guarded
@@ -86,12 +114,18 @@ def bind(
             UUID | None, typer.Option(help=message("chat.operation_id"))
         ] = None,
         allow_real_llm: Annotated[bool, typer.Option(help=message("chat.allow_real"))] = False,
+        locale: Annotated[
+            Literal["ja", "en"] | None, typer.Option(help=message("chat.locale"))
+        ] = None,
     ) -> None:
         client = Client(ctx.obj or Path.cwd())
         result = client.conversations.send(
             identity,
             SendInput(
-                operation_id=operation_id or uuid4(), text=text, allow_real_llm=allow_real_llm
+                operation_id=operation_id or uuid4(),
+                text=text,
+                allow_real_llm=allow_real_llm,
+                locale=locale,
             ),
         )
         typer.echo(result.model_dump_json())
@@ -101,7 +135,12 @@ def bind(
                 for turn in client.conversations.get(identity).turns
                 if turn.operation_id == result.id
             )
+            if turn.narration:
+                typer.echo(turn.narration)
             typer.echo(turn.assistant)
+            if result.image_id:
+                for image in client.images.get(result.image_id).images:
+                    typer.echo(str(client.artifact_path(f"runs/{result.image_id}/{image}")))
         else:
             typer.echo(
                 error_message(KomaquillError(code=result.error or "operation_failed")), err=True

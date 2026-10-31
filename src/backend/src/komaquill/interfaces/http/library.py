@@ -10,11 +10,12 @@ from komaquill.conversations.models import Conversation
 from komaquill.library.models import (
     CharacterInput,
     CharacterPreset,
+    ConversationImageRequest,
     ConversationStart,
     CreationJob,
     CreationRequest,
     PlayerInput,
-    PlayerPreset,
+    PlayerProfile,
     Preferences,
     StoryInput,
     StoryPreset,
@@ -22,6 +23,40 @@ from komaquill.library.models import (
 
 
 def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
+    @app.get(
+        "/api/v1/conversations/{identity}/images",
+        response_model=list[CreationJob],
+        operation_id="list_conversation_images",
+    )
+    def conversation_images(identity: UUID) -> list[CreationJob]:
+        return selected().library.conversation_images(identity)
+
+    @app.post(
+        "/api/v1/conversations/{identity}/image",
+        response_model=CreationJob,
+        status_code=202,
+        operation_id="draw_conversation",
+    )
+    def draw_conversation(
+        identity: UUID, body: ConversationImageRequest, tasks: BackgroundTasks
+    ) -> CreationJob:
+        client = selected()
+        conversation = client.conversations.get(identity)
+        job, created = client.library.accept(
+            CreationRequest(
+                operation_id=body.operation_id,
+                kind="conversation_image",
+                target_id=identity,
+                expected_revision=body.expected_revision,
+                locale=body.locale,
+                llm_profile=conversation.definition.llm_profile,
+                allow_real_llm=True,
+            )
+        )
+        if created:
+            tasks.add_task(client.library.execute, job.id)
+        return job
+
     @app.get("/api/v1/preferences", response_model=Preferences, operation_id="get_preferences")
     def preferences() -> Preferences:
         return selected().library.preferences()
@@ -30,42 +65,13 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
     def save_preferences(body: Preferences) -> Preferences:
         return selected().library.save_preferences(body)
 
-    @app.get("/api/v1/players", response_model=list[PlayerPreset], operation_id="list_players")
-    def players() -> list[PlayerPreset]:
-        return selected().players.list()
+    @app.get("/api/v1/player", response_model=PlayerProfile, operation_id="get_player")
+    def player() -> PlayerProfile:
+        return selected().player.get()
 
-    @app.post(
-        "/api/v1/players",
-        response_model=PlayerPreset,
-        status_code=201,
-        operation_id="create_player",
-    )
-    def create_player(body: PlayerInput) -> PlayerPreset:
-        return selected().players.create(body)
-
-    @app.get("/api/v1/players/{identity}", response_model=PlayerPreset, operation_id="get_player")
-    def player(identity: UUID) -> PlayerPreset:
-        return selected().players.get(identity)
-
-    @app.put(
-        "/api/v1/players/{identity}", response_model=PlayerPreset, operation_id="update_player"
-    )
-    def update_player(identity: UUID, expected_revision: int, body: PlayerInput) -> PlayerPreset:
-        return selected().players.update(identity, expected_revision, body)
-
-    @app.delete("/api/v1/players/{identity}", status_code=204, operation_id="delete_player")
-    def delete_player(identity: UUID, expected_revision: int) -> Response:
-        selected().players.delete(identity, expected_revision)
-        return Response(status_code=204)
-
-    @app.post(
-        "/api/v1/players/{identity}/duplicate",
-        response_model=PlayerPreset,
-        status_code=201,
-        operation_id="duplicate_player",
-    )
-    def duplicate_player(identity: UUID) -> PlayerPreset:
-        return selected().players.duplicate(identity)
+    @app.put("/api/v1/player", response_model=PlayerProfile, operation_id="update_player")
+    def update_player(expected_revision: int, body: PlayerInput) -> PlayerProfile:
+        return selected().player.update(expected_revision, body)
 
     @app.get(
         "/api/v1/characters", response_model=list[CharacterPreset], operation_id="list_characters"

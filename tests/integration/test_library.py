@@ -26,8 +26,9 @@ def selection(locale="ja", profile="fake"):
     return ConversationStart(
         **{
             kind: PresetRef(id=sample_id(locale, kind), revision=0)
-            for kind in ("player", "character", "story")
+            for kind in ("character", "story")
         },
+        player_revision=0,
         locale=locale,
         llm_profile=profile,
     )
@@ -41,7 +42,7 @@ def test_presets_require_a_visible_name(model):
 
 @pytest.mark.parametrize(
     "kind,model",
-    [("players", PlayerInput), ("characters", CharacterInput), ("stories", StoryInput)],
+    [("characters", CharacterInput), ("stories", StoryInput)],
 )
 def test_crud_is_typed_persistent_and_revision_checked(tmp_path, kind, model):
     api = Client.initialize(tmp_path)
@@ -114,20 +115,96 @@ def test_preferences_are_checked_and_frozen_in_new_play(tmp_path):
         api.library.save_preferences(initial)
     for changes, code in [
         ({"llm_profile": "missing"}, "invalid_configuration"),
-        ({"player_id": uuid4()}, "request_not_found"),
     ]:
         with pytest.raises(KomaquillError, match=code):
             api.library.save_preferences(saved.model_copy(update=changes))
 
 
-def test_deleting_default_selections_does_not_block_preferences_or_story_edits(tmp_path):
+def test_display_preferences_can_be_saved_when_generation_configuration_is_invalid(tmp_path):
     api = Client.initialize(tmp_path)
     library = api.library
-    preferences = library.preferences()
-    api.players.delete(preferences.player_id, 0)
-    cleared = library.preferences()
-    assert cleared.player_id is None and cleared.revision == preferences.revision + 1
-    assert library.save_preferences(cleared.model_copy(update={"locale": "en"})).locale == "en"
+    (tmp_path / "komaquill.toml").write_text(
+        '[conversation]\nrequest_timeout="invalid"\n', encoding="utf-8"
+    )
+    saved = library.save_preferences(
+        library.preferences().model_copy(update={"locale": "en", "font_size": "large"})
+    )
+    assert Client(tmp_path).library.preferences() == saved
+    with pytest.raises(KomaquillError, match="invalid_configuration"):
+        library.save_preferences(saved.model_copy(update={"llm_profile": "other"}))
+
+
+@pytest.mark.parametrize("field", ["id", "operation_id", "image_id"])
+def test_corrupt_creation_identity_stops_before_inference_and_listing(tmp_path, field):
+    import json
+
+    api = Client.initialize(tmp_path)
+    library = api.library
+    conversation = library.start(selection())
+    request = CreationRequest(
+        operation_id=uuid4(),
+        kind="conversation_image",
+        target_id=conversation.id,
+        expected_revision=0,
+    )
+    job, _ = library.accept(request)
+    value = job.model_dump(mode="json")
+    if field == "operation_id":
+        value["request"][field] = str(uuid4())
+    else:
+        value[field] = str(uuid4())
+    with library.store.database.engine.begin() as connection:
+        connection.execute(creation_jobs.update().values(payload=json.dumps(value)))
+    calls = []
+    library.creator = SimpleNamespace(prepare_image=lambda *_a, **_k: calls.append(True))
+    for action in (
+        lambda: library.execute(job.id),
+        lambda: library.store.job(job.id),
+        lambda: library.conversation_images(conversation.id),
+        lambda: library.store.accept(request, "changed"),
+    ):
+        with pytest.raises(KomaquillError, match="storage_failed"):
+            action()
+    assert calls == [] and api.images.list() == []
+
+
+@pytest.mark.parametrize("field", ["turn_id", "created_at", "prompt_en"])
+def test_creation_checkpoints_preserve_the_scene_and_applied_prompt(tmp_path, field):
+    library = Client.initialize(tmp_path).library
+    job, _ = library.accept(
+        CreationRequest(operation_id=uuid4(), kind="story_draft", prompt="Idea")
+    )
+    job = library.store.save_job(job.model_copy(update={"prompt_en": "Frozen English prompt"}))
+    change = uuid4() if field == "turn_id" else "Changed"
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        library.store.save_job(job.model_copy(update={field: change}))
+    assert library.store.job(job.id)[0] == job
+
+
+def test_image_execution_reuses_saved_english_without_retranslation(tmp_path):
+    library = Client.initialize(tmp_path).library
+    character = library.characters.create(CharacterInput(name="Portrait"))
+    job, _ = library.accept(
+        CreationRequest(
+            operation_id=uuid4(),
+            kind="portrait",
+            target_id=character.id,
+            expected_revision=0,
+        )
+    )
+    library.store.save_job(job.model_copy(update={"prompt_en": "Frozen English prompt"}))
+    translations, submissions = [], []
+    library.creator = SimpleNamespace(prepare_image=lambda *_a, **_k: translations.append(True))
+    library.images = SimpleNamespace(
+        submit=lambda prompt, **_k: submissions.append(prompt),
+        get=lambda identity: SimpleNamespace(state="queued", images=[], run_id=identity),
+    )
+    assert library.execute(job.id).state == "submitted"
+    assert translations == [] and submissions == ["Frozen English prompt"]
+
+
+def test_deleting_default_selections_does_not_block_preferences_or_story_edits(tmp_path):
+    api = Client.initialize(tmp_path)
     character = api.characters.create(CharacterInput(name="Default"))
     story = api.stories.create(StoryInput(name="Story", character_id=character.id))
     api.characters.delete(character.id, 0)
@@ -155,7 +232,9 @@ def test_fixed_samples_do_not_claim_to_understand_arbitrary_settings(tmp_path, c
         from komaquill.conversations.models import ConversationInput
 
         conversation = api.conversations.create(
-            ConversationInput(title="Custom", character="A pilot named Nova")
+            ConversationInput(
+                locale="en", llm_profile="fake", title="Custom", character="A pilot named Nova"
+            )
         )
     else:
         conversation = api.library.start(selection())
@@ -225,7 +304,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
 
     library.images = SimpleNamespace(submit=submit, get=get)
     library.creator = SimpleNamespace(
-        prepare_image=lambda *args: (
+        prepare_image=lambda *args, **kwargs: (
             "One person in a bookshop" if kind == "portrait" else "Wide view of a bookshop, no text"
         )
     )
@@ -267,7 +346,7 @@ def test_failure_preserves_presets_and_does_not_retry(tmp_path, failure):
         assert library.job(job.id).state == "failed"
     else:
         if failure == "unexpected":
-            library.creator = SimpleNamespace(prepare_image=lambda *_: 1 / 0)
+            library.creator = SimpleNamespace(prepare_image=lambda *_, **kwargs: 1 / 0)
         assert library.execute(job.id).state == "failed"
     assert api.characters.get(value.id).name == "Kept"
     assert library.accept(request)[1] is False
@@ -299,7 +378,7 @@ def test_invalid_media_and_corrupt_records_fail_safely(tmp_path):
         api.characters.get(value.id)
 
 
-@pytest.mark.parametrize("collection", ["players", "characters", "stories"])
+@pytest.mark.parametrize("collection", ["characters", "stories"])
 def test_http_crud_and_start_share_the_python_services(tmp_path, collection):
     api = Client.initialize(tmp_path)
     with TestClient(create_app(api)) as http:

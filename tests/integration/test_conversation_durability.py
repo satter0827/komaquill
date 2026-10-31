@@ -16,7 +16,9 @@ from sqlalchemy import select
 @pytest.mark.parametrize("images", [False, True])
 def test_validated_reply_survives_restart_without_another_model_call(tmp_path, monkeypatch, images):
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Recovery", images=images))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Recovery", images=images)
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
@@ -37,14 +39,16 @@ def test_validated_reply_survives_restart_without_another_model_call(tmp_path, m
     assert reopened.state == reply.state
     saved = api.operations.get(request.operation_id)
     assert saved.state == "complete"
-    assert saved.image_state == ("failed" if images else "disabled")
+    assert saved.image_state == "disabled"
     assert api.conversations.send(conversation.id, request) == saved
     assert len(api.conversations.resume(conversation.id).turns) == 1
 
 
 def test_commit_failure_retains_reply_checkpoint_for_recovery(tmp_path, monkeypatch):
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Storage failure"))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Storage failure")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     original = repository.commit
@@ -66,7 +70,9 @@ def test_commit_failure_retains_reply_checkpoint_for_recovery(tmp_path, monkeypa
 )
 def test_saved_identity_mismatch_is_not_used_or_repaired(tmp_path, record):
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Identity"))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Identity")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     api.conversations.accept(conversation.id, request)
     repository = api.conversations.repository
@@ -97,7 +103,9 @@ def test_saved_identity_mismatch_is_not_used_or_repaired(tmp_path, record):
 
 def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_path):
     original = Client.initialize(tmp_path / "source")
-    conversation = original.conversations.create(ConversationInput(title="Backup"))
+    conversation = original.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Backup")
+    )
     original.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
     restored = Client.initialize(tmp_path / "restored")
     source = original.workspace / ".artifacts/data/komaquill.sqlite3"
@@ -118,14 +126,16 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0005"
+                == "0006"
             )
         storage.engine.dispose()
 
 
 def test_state_command_reconciles_a_dead_owner_before_applying(tmp_path):
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Dead owner"))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Dead owner")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     api.conversations.accept(conversation.id, request)
     repository = api.conversations.repository
@@ -154,7 +164,9 @@ def test_unknown_process_ownership_does_not_release_the_slot(tmp_path, monkeypat
     from komaquill.adapters import database as storage
 
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Unknown owner"))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Unknown owner")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     api.conversations.accept(conversation.id, request)
     monkeypatch.setattr(
@@ -167,12 +179,16 @@ def test_unknown_process_ownership_does_not_release_the_slot(tmp_path, monkeypat
 
 def test_corrupt_inactive_operation_does_not_block_another_conversation(tmp_path):
     api = Client.initialize(tmp_path)
-    first = api.conversations.create(ConversationInput(title="Corrupt history"))
+    first = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Corrupt history")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     api.conversations.send(first.id, request)
     with api.conversations.repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(payload="invalid"))
-    second = api.conversations.create(ConversationInput(title="Healthy"))
+    second = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Healthy")
+    )
     assert (
         api.conversations.send(second.id, SendInput(operation_id=uuid4(), text="Hello")).state
         == "complete"
@@ -211,12 +227,25 @@ def test_pending_image_recovers_from_its_durable_receipt_while_owner_is_alive(
     from komaquill.images.generation import new_run
 
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Image receipt", images=True))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Image receipt", images=True)
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
     assert repository.running(request.operation_id)
     repository.commit(request.operation_id, Reply(text="Saved", state={}, scene="a room"))
+    from komaquill.adapters.database import operations
+
+    historical = repository.operation(request.operation_id).model_copy(
+        update={"image_state": "pending"}
+    )
+    with repository.database.engine.begin() as connection:
+        connection.execute(
+            operations.update()
+            .where(operations.c.id == str(request.operation_id))
+            .values(payload=historical.model_dump_json())
+        )
     project = find_project(tmp_path)
     run = new_run(project, session, request.operation_id, {})
     run.state = phase
@@ -234,7 +263,9 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     from komaquill.adapters import database as storage
 
     api = Client.initialize(tmp_path)
-    conversation = api.conversations.create(ConversationInput(title="Upgrade"))
+    conversation = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Upgrade")
+    )
     api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
     engine = api.conversations.repository.database.engine
     config = Config()
@@ -242,6 +273,8 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        connection.exec_driver_sql("DROP INDEX one_active_player")
+        command.stamp(config, "0005")
         command.downgrade(config, "0003")
     Database(tmp_path / ".artifacts/data/komaquill.sqlite3", migrate=True).engine.dispose()
     assert len(api.conversations.get(conversation.id).turns) == 1

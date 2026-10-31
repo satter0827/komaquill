@@ -13,6 +13,12 @@ import { client } from '../src/api/generated/client.gen'
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.get(`${base}/api/v1/player`, () =>
+    HttpResponse.json({ id: 'player', name: 'Player', revision: 0 }),
+  ),
+  http.get(`${base}/api/v1/conversations/:id/images`, () =>
+    HttpResponse.json([]),
+  ),
   ...(['players', 'characters', 'stories'] as const).map((collection) =>
     http.get(`${base}/api/v1/${collection}`, () =>
       HttpResponse.json([
@@ -328,11 +334,8 @@ describe('conversation workflow', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: m.editState }),
     )
-    await userEvent.clear(screen.getByLabelText(m.stateValues))
-    await userEvent.type(
-      screen.getByLabelText(m.stateValues),
-      '{{"place":"draft"}',
-    )
+    await userEvent.clear(screen.getByLabelText(m.currentPlace))
+    await userEvent.type(screen.getByLabelText(m.currentPlace), 'draft')
     act(() =>
       cache.setQueryData(['conversation', 'one'], {
         id: 'one',
@@ -374,4 +377,39 @@ describe('conversation workflow', () => {
     ).toBeVisible()
     expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
   })
+})
+
+it('shows the current character condition without internal state values', async () => {
+  server.use(
+    http.get(`${base}/api/v1/conversations/one`, () =>
+      HttpResponse.json({
+        id: 'one',
+        definition: { title: 'Garden', llm_profile: 'fake' },
+        turns: [
+          {
+            operation_id: 'latest',
+            user: 'Continue',
+            assistant: 'Hello',
+            narration: 'Wearing a blue shirt in the garden.',
+          },
+        ],
+        revision: 1,
+        state: {
+          character_location: 'Garden',
+          character_clothing: 'White shirt',
+          character_expression: 'Smiling',
+          player_age: '{"age":"28"}',
+        },
+      }),
+    ),
+  )
+  app('/conversations/one')
+  await waitFor(() =>
+    expect(
+      screen.getAllByText('Wearing a blue shirt in the garden.'),
+    ).toHaveLength(2),
+  )
+  expect(screen.queryByText('White shirt')).not.toBeInTheDocument()
+  expect(screen.getAllByText('Garden').length).toBeGreaterThan(1)
+  expect(screen.queryByText('{"age":"28"}')).not.toBeInTheDocument()
 })

@@ -56,7 +56,7 @@ export function useCreation() {
   })
   useEffect(() => {
     if (job.data?.state === 'complete')
-      for (const key of ['players', 'characters', 'stories'])
+      for (const key of ['characters', 'stories'])
         void cache.invalidateQueries({ queryKey: [key] })
   }, [job.data?.state, cache])
   const start = (request: Omit<CreationRequest, 'operation_id'>) => {

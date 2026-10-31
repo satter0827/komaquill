@@ -15,7 +15,9 @@ def chat(tmp_path):
 
 
 def test_turn_is_committed_once_and_reopened(chat):
-    conversation = chat.conversations.create(ConversationInput(title="日本語の会話"))
+    conversation = chat.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="日本語の会話")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     result = chat.conversations.send(conversation.id, request)
     assert result.state == "complete"
@@ -29,7 +31,9 @@ def test_turn_is_committed_once_and_reopened(chat):
 
 
 def test_busy_applies_across_clients_but_not_reads(chat):
-    conversation = chat.conversations.create(ConversationInput(title="First"))
+    conversation = chat.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="First")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     operation, created = chat.conversations.accept(conversation.id, request)
     assert created and operation.state == "accepted"
@@ -47,7 +51,9 @@ def test_busy_applies_across_clients_but_not_reads(chat):
 
 
 def test_fake_unknown_input_never_becomes_arbitrary_success(chat):
-    conversation = chat.conversations.create(ConversationInput(title="Fixture"))
+    conversation = chat.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Fixture")
+    )
     result = chat.conversations.send(
         conversation.id, SendInput(operation_id=uuid4(), text="Unknown")
     )
@@ -57,7 +63,7 @@ def test_fake_unknown_input_never_becomes_arbitrary_success(chat):
 
 def test_real_model_requires_per_operation_permission(chat):
     conversation = chat.conversations.create(
-        ConversationInput(title="Real", llm_profile="lmstudio-4b")
+        ConversationInput(locale="en", title="Real", llm_profile="lmstudio-4b")
     )
     result = chat.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
     assert result.error == "real_llm_not_allowed"
@@ -65,7 +71,9 @@ def test_real_model_requires_per_operation_permission(chat):
 
 def test_command_revision_and_reset(chat):
     conversation = chat.conversations.create(
-        ConversationInput(title="State", initial_state={"place": "home"})
+        ConversationInput(
+            locale="en", llm_profile="fake", title="State", initial_state={"place": "home"}
+        )
     )
     changed = chat.conversations.command(
         conversation.id,
@@ -85,7 +93,9 @@ def test_command_revision_and_reset(chat):
 def test_restart_marks_unknown_without_resending(chat):
     from komaquill.adapters.database import operations
 
-    conversation = chat.conversations.create(ConversationInput(title="Restart"))
+    conversation = chat.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Restart")
+    )
     request = SendInput(operation_id=uuid4(), text="Hello")
     chat.conversations.accept(conversation.id, request)
     repository = chat.conversations.repository
@@ -100,7 +110,9 @@ def test_restart_marks_unknown_without_resending(chat):
 
 def test_http_roundtrip_and_origin_validation(chat):
     with TestClient(create_app(chat)) as http:
-        created = http.post("/api/v1/conversations", json={"title": "HTTP"})
+        created = http.post(
+            "/api/v1/conversations", json={"title": "HTTP", "locale": "en", "llm_profile": "fake"}
+        )
         assert created.status_code == 201
         identity = created.json()["id"]
         request = {"operation_id": str(uuid4()), "text": "Hello"}
@@ -131,7 +143,10 @@ def test_contract_export_does_not_create_workspace(tmp_path, monkeypatch):
 
 def test_saved_failure_has_an_actionable_http_description(chat):
     with TestClient(create_app(chat)) as http:
-        identity = http.post("/api/v1/conversations", json={"title": "Failure"}).json()["id"]
+        identity = http.post(
+            "/api/v1/conversations",
+            json={"title": "Failure", "locale": "en", "llm_profile": "fake"},
+        ).json()["id"]
         operation_id = str(uuid4())
         http.post(
             f"/api/v1/conversations/{identity}/turns",

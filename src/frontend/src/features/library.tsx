@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { BookOpen, Plus, UserRound } from 'lucide-react'
 import * as api from '../api/generated/sdk.gen'
 import type {
   CharacterPreset,
   PlayerInput,
-  PlayerPreset,
+  PlayerProfile,
   StoryPreset,
 } from '../api/generated/types.gen'
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
@@ -17,9 +22,9 @@ import { ImageResult } from './images'
 import { POLL_INTERVAL_MS } from '../api/client'
 
 export type Kind = 'player' | 'character' | 'story'
-export type Preset = PlayerPreset | CharacterPreset | StoryPreset
+export type Preset = PlayerProfile | CharacterPreset | StoryPreset
 export const paths = {
-  player: '/players',
+  player: '/player',
   character: '/characters',
   story: '/stories',
 }
@@ -29,9 +34,19 @@ export const keys = {
   story: 'stories',
 } as const
 const fields = {
-  player: ['name', 'description', 'appearance', 'role', 'address'],
+  player: [
+    'name',
+    'age',
+    'gender',
+    'address',
+    'description',
+    'appearance',
+    'role',
+  ],
   character: [
     'name',
+    'age',
+    'gender',
     'description',
     'appearance',
     'role',
@@ -50,8 +65,14 @@ type ImageChoice = {
   allow_real_llm: boolean
 }
 
-export async function loadPresets(kind: Kind): Promise<Preset[]> {
-  if (kind === 'player') return (await api.listPlayers()).data!
+export const playerQuery = queryOptions({
+  queryKey: ['player'],
+  queryFn: async () => (await api.getPlayer()).data!,
+})
+
+export async function loadPresets(
+  kind: Exclude<Kind, 'player'>,
+): Promise<Preset[]> {
   if (kind === 'character') return (await api.listCharacters()).data!
   return (await api.listStories()).data!
 }
@@ -69,13 +90,11 @@ async function save(
     appearance: value.appearance ?? '',
     role: value.role ?? '',
     address: value.address ?? '',
+    age: value.age ?? '',
+    gender: value.gender ?? '',
   }
   if (kind === 'player')
-    return (
-      previous
-        ? await api.updatePlayer({ path, query, body: player })
-        : await api.createPlayer({ body: player })
-    ).data!
+    return (await api.updatePlayer({ query, body: player })).data!
   if (kind === 'character') {
     const body = {
       ...player,
@@ -108,7 +127,6 @@ async function save(
 
 async function duplicate(kind: Kind, identity: string) {
   const options = { path: { identity } }
-  if (kind === 'player') return api.duplicatePlayer(options)
   if (kind === 'character') return api.duplicateCharacter(options)
   return api.duplicateStory(options)
 }
@@ -118,7 +136,6 @@ async function remove(kind: Kind, preset: Preset) {
     path: { identity: preset.id },
     query: { expected_revision: preset.revision ?? 0 },
   }
-  if (kind === 'player') return api.deletePlayer(options)
   if (kind === 'character') return api.deleteCharacter(options)
   return api.deleteStory(options)
 }
@@ -126,9 +143,11 @@ async function remove(kind: Kind, preset: Preset) {
 function JobMonitor({
   identity,
   preview = false,
+  recoveryPath,
 }: {
   identity: string
   preview?: boolean
+  recoveryPath?: string
 }) {
   const cache = useQueryClient()
   const m = useMessages()
@@ -149,15 +168,23 @@ function JobMonitor({
         void cache.invalidateQueries({ queryKey: [key] })
     }
   }, [job.data?.state, cache])
+  const error = job.error ?? (job.data?.error ? { code: job.data.error } : null)
   return (
     <>
-      <span className={job.data?.error ? 'error' : 'subtle'}>
-        {job.data?.error
-          ? failure({ code: job.data.error })
+      <span className={error ? 'error' : 'subtle'}>
+        {error
+          ? recoveryPath
+            ? m.imageUnavailable
+            : failure(error)
           : job.data
             ? m[`job_${job.data.state}`]
             : m.imagePreparing}
       </span>
+      {error && recoveryPath && (
+        <Link className="text-button" to={recoveryPath}>
+          {m.createImage} →
+        </Link>
+      )}
       {preview && job.data?.image_id && job.data.state !== 'complete' && (
         <ImageResult identity={job.data.image_id} />
       )}
@@ -192,7 +219,10 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
         </h2>
         <p>{preset.description}</p>
         {preset.image_job_id && !preset.image_id && (
-          <JobMonitor identity={preset.image_job_id} />
+          <JobMonitor
+            identity={preset.image_job_id}
+            recoveryPath={`${paths[kind]}/${preset.id}`}
+          />
         )}
         <Link className="text-button" to={`/new?${kind}=${preset.id}`}>
           {m.use} →
@@ -202,7 +232,28 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
   )
 }
 
-export function LibraryPage({ kind }: { kind: Kind }) {
+export function PlayerPage() {
+  const m = useMessages()
+  const failure = useFailure()
+  const [search] = useSearchParams()
+  const query = useQuery(playerQuery)
+  if (query.error)
+    return (
+      <p className="error" role="alert">
+        {failure(query.error)}
+      </p>
+    )
+  if (!query.data) return <p className="page">{m.loading}</p>
+  return (
+    <PresetEditor
+      kind="player"
+      preset={query.data}
+      returnTo={search.get('returnTo')}
+    />
+  )
+}
+
+export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
   const { identity } = useParams()
   const m = useMessages()
   const preferences = usePreferences()
@@ -241,32 +292,28 @@ export function LibraryPage({ kind }: { kind: Kind }) {
       : kind === 'character'
         ? m.charactersEyebrow
         : m.playersEyebrow
+  const visible = query.data.filter(
+    (preset) =>
+      !preset.sample || preset.sample_locale === preferences.value.locale,
+  )
   return (
     <section className="page library-page">
       <div className="page-heading">
         <div>
           <div className="eyebrow">{eyebrow}</div>
           <h1>{m[keys[kind]]}</h1>
-          <p className="subtle">
-            {kind === 'player' ? m.yourProfile : m.libraryDescription}
-          </p>
+          <p className="subtle">{m.libraryDescription}</p>
         </div>
         <Link className="button primary" to={`${paths[kind]}/new`}>
           <Plus size={17} />
           {m.new}
         </Link>
       </div>
-      {!query.data.length && <p className="empty-card">{m.noPresets}</p>}
+      {!visible.length && <p className="empty-card">{m.noPresets}</p>}
       <div className="preset-grid">
-        {query.data
-          .filter(
-            (preset) =>
-              !preset.sample ||
-              preset.sample_locale === preferences.value.locale,
-          )
-          .map((preset) => (
-            <PresetCard key={preset.id} preset={preset} kind={kind} />
-          ))}
+        {visible.map((preset) => (
+          <PresetCard key={preset.id} preset={preset} kind={kind} />
+        ))}
       </div>
     </section>
   )
@@ -296,18 +343,11 @@ function PresetEditor({
         ) as Fields)
       : { name: '', description: '' },
   )
-  const [generationMode, setGenerationMode] = useState<string | null>(null)
-  const generationProfile = generationMode ?? preferences.value.llm_profile
-  const profiles = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await api.getSettings()).data!,
-  })
+  const generationProfile = preferences.value.llm_profile
   const imageRecord =
     preset && preset.id === current?.id && preset.revision === current.revision
       ? preset
       : current
-  const [allow, setAllow] = useState(false)
-  const [autoImage, setAutoImage] = useState(kind !== 'player')
   const [idea, setIdea] = useState('')
   const [notice, setNotice] = useState(preset ? m.saved : '')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -325,10 +365,10 @@ function PresetEditor({
   const runtime = useQuery({ ...connectionQuery, enabled: kind !== 'player' })
   const connected = !runtime.isError && runtime.data?.connection === 'connected'
   const imageChoice = (): ImageChoice => ({
-    automatic: autoImage,
+    automatic: true,
     locale: preferences.value.locale,
     llm_profile: generationProfile,
-    allow_real_llm: allow,
+    allow_real_llm: true,
   })
   const imageRequest = (record: Preset, choice: ImageChoice) => {
     media.start({
@@ -357,11 +397,13 @@ function PresetEditor({
           // Connection errors are shown with the image preview; the preset is saved.
         }
       }
-      await cache.invalidateQueries({ queryKey: [keys[kind]] })
+      await cache.invalidateQueries({
+        queryKey: kind === 'player' ? playerQuery.queryKey : [keys[kind]],
+      })
       if (returnTo?.startsWith('/new')) {
         const url = new URL(returnTo, 'http://localhost')
         if (url.pathname === '/new') {
-          url.searchParams.set(kind, record.id)
+          if (kind !== 'player') url.searchParams.set(kind, record.id)
           navigate(url.pathname + url.search)
           return
         }
@@ -409,16 +451,15 @@ function PresetEditor({
           onSubmit={(event) => {
             event.preventDefault()
             mutation.mutate(imageChoice())
-            setAllow(false)
           }}
         >
           <fieldset disabled={mutation.isPending}>
             {fields[kind].map((field, index) => (
               <label key={field}>
                 {m[field as MessageKey]}
-                {field === 'name' ? (
+                {['name', 'age', 'gender', 'address'].includes(field) ? (
                   <input
-                    required
+                    required={field === 'name'}
                     maxLength={120}
                     value={value[field] ?? ''}
                     onChange={(event) => update(field, event.target.value)}
@@ -456,43 +497,6 @@ function PresetEditor({
                 </select>
               </label>
             )}
-            {kind !== 'player' && (
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={autoImage}
-                  onChange={(event) => setAutoImage(event.target.checked)}
-                />
-                {m.autoImage}
-              </label>
-            )}
-            {kind !== 'player' && (
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={allow}
-                  onChange={(event) => setAllow(event.target.checked)}
-                />
-                {m.allowReal}
-              </label>
-            )}
-            {kind !== 'player' && (
-              <label>
-                {m.profile}
-                <select
-                  value={generationProfile}
-                  onChange={(event) => setGenerationMode(event.target.value)}
-                >
-                  {profiles.data?.profiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.provider === 'fake'
-                        ? m.sampleMode
-                        : m.localModel}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             <div className="actions">
               <Button
                 className="primary"
@@ -501,7 +505,7 @@ function PresetEditor({
               >
                 {mutation.isPending ? m.saving : m.save}
               </Button>
-              {current && (
+              {current && kind !== 'player' && (
                 <>
                   <Button
                     onClick={() => duplicateAction.mutate()}
@@ -534,20 +538,6 @@ function PresetEditor({
                 {failure(error)}
               </p>
             ))}
-          {kind === 'player' && current && (
-            <Button
-              onClick={() => {
-                void preferences
-                  .update({ player_id: current.id })
-                  .catch(() => {})
-              }}
-              disabled={preferences.pending}
-            >
-              {preferences.value.player_id === current.id
-                ? m.defaultProfile
-                : m.makeDefault}
-            </Button>
-          )}
           {confirmDelete && (
             <div className="confirmation" role="alert">
               <p>{m.removeNotice}</p>
@@ -589,7 +579,6 @@ function PresetEditor({
                 <Button
                   onClick={() => {
                     imageRequest(current, imageChoice())
-                    setAllow(false)
                   }}
                   disabled={media.busy}
                 >
@@ -619,7 +608,6 @@ function PresetEditor({
                     onChange={(event) => setIdea(event.target.value)}
                   />
                 </label>
-                <p className="subtle">{m.configureModel}</p>
                 <Button
                   onClick={() => {
                     draft.start({
@@ -630,16 +618,10 @@ function PresetEditor({
                       prompt: idea,
                       locale: preferences.value.locale,
                       llm_profile: generationProfile,
-                      allow_real_llm: allow,
+                      allow_real_llm: true,
                     })
-                    setAllow(false)
                   }}
-                  disabled={
-                    draft.busy ||
-                    !idea.trim() ||
-                    !allow ||
-                    generationProfile === 'fake'
-                  }
+                  disabled={draft.busy || !idea.trim()}
                 >
                   {m.createDraft}
                 </Button>

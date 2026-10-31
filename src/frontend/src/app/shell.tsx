@@ -16,7 +16,12 @@ import { listConversations } from '../api/generated/sdk.gen'
 import { Button } from '../components/ui/button'
 import { ConversationPage } from '../features/conversations'
 import { NewConversation } from '../features/start'
-import { LibraryPage, loadPresets, PresetCard } from '../features/library'
+import {
+  LibraryPage,
+  PlayerPage,
+  loadPresets,
+  PresetCard,
+} from '../features/library'
 import { ImagesPage } from '../features/images'
 import { PreferencesPage } from '../features/preferences'
 import { RuntimePage } from '../features/runtime'
@@ -60,7 +65,7 @@ export function App() {
             <BookOpen size={17} />
             {m.stories}
           </NavLink>
-          <NavLink to="/players">
+          <NavLink to="/player">
             <UserRound size={17} />
             {m.players}
           </NavLink>
@@ -114,10 +119,11 @@ export function App() {
             path="/conversations/:identity"
             element={<ConversationPage />}
           />
-          {(['player', 'character', 'story'] as const).map((kind) => (
+          <Route path="/player" element={<PlayerPage />} />
+          {(['character', 'story'] as const).map((kind) => (
             <Route
               key={kind}
-              path={`/${kind === 'story' ? 'stories' : kind + 's'}`}
+              path={`/${kind === 'story' ? 'stories' : 'characters'}`}
             >
               <Route index element={<LibraryPage kind={kind} />} />
               <Route path=":identity" element={<LibraryPage kind={kind} />} />
@@ -145,6 +151,9 @@ function Home() {
     queryKey: ['conversations'],
     queryFn: async () => (await listConversations()).data!,
   })
+  const visibleStories = stories.data?.filter(
+    (item) => !item.sample || item.sample_locale === value.locale,
+  )
   return (
     <section className="page home-page">
       <div className="home-intro">
@@ -192,14 +201,18 @@ function Home() {
       )}
       <div className="home-section">
         <div className="eyebrow">{m.yourStories}</div>
+        {visibleStories?.length === 0 && (
+          <div className="empty-card">
+            <p>{m.noPresets}</p>
+            <Link className="text-button" to="/stories/new">
+              {m.new} →
+            </Link>
+          </div>
+        )}
         <div className="preset-grid">
-          {stories.data
-            ?.filter(
-              (item) => !item.sample || item.sample_locale === value.locale,
-            )
-            .map((story) => (
-              <PresetCard key={story.id} preset={story} kind="story" />
-            ))}
+          {visibleStories?.map((story) => (
+            <PresetCard key={story.id} preset={story} kind="story" />
+          ))}
         </div>
       </div>
       <p className="welcome-footer">{m.welcomeFooter}</p>

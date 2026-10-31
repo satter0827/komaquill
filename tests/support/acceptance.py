@@ -315,7 +315,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 assert len(http.get('/api/v1/conversations').json()) == 1
                                 prefs = http.get('/api/v1/preferences').json()
                                 assert prefs['locale'] == 'ja'
-                                for collection in ('players', 'characters', 'stories'):
+                                for collection in ('characters', 'stories'):
                                     url = '/api/v1/' + collection
                                     saved = http.post(url, json={'name': 'Created'}).json()
                                     item = url + '/' + saved['id']
@@ -330,15 +330,21 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 changed = http.put('/api/v1/preferences', json=prefs)
                                 assert changed.status_code == 200
                                 assert http.get('/api/v1/preferences').json()['locale'] == 'en'
-                                selection = {}
-                                for kind, collection in [('player', 'players'),
-                                        ('character', 'characters'), ('story', 'stories')]:
+                                player = http.get('/api/v1/player').json()
+                                selection = {'player_revision': player['revision']}
+                                for kind, collection in [('character', 'characters'),
+                                        ('story', 'stories')]:
                                     values = http.get('/api/v1/' + collection).json()
                                     value = next(v for v in values if v['sample_locale'] == 'ja')
                                     selection[kind] = {'id': value['id'],
                                         'revision': value['revision']}
                                 result = http.post('/api/v1/conversations/from-presets',
                                     json={**selection, 'locale': 'ja'}).json()
+                                assert result['definition']['presets']['character']['id'] == (
+                                    selection['character']['id'])
+                                result = http.post('/api/v1/conversations',
+                                    json={'title':'Installed', 'locale':'en',
+                                        'llm_profile':'fake'}).json()
                                 identity = result['id']
                                 turn_url = '/api/v1/conversations/' + identity + '/turns'
                                 operation = http.post(turn_url,
@@ -347,8 +353,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 assert saved['state'] == 'complete'
                                 restored = http.get('/api/v1/conversations/' + identity).json()
                                 assert len(restored['turns']) == 1
-                                assert restored['definition']['presets']['character']['id'] == (
-                                    selection['character']['id'])
+
                         """),
                     ],
                     cwd=workspace,

@@ -40,7 +40,12 @@ export function ImageResult({
   const image = useQuery({
     enabled: !operationId || operation.data?.image_state === 'submitted',
     queryKey: ['image', identity],
-    queryFn: async () => (await getImage({ path: { identity } })).data!,
+    queryFn: async () => {
+      const current = (await getImage({ path: { identity } })).data!
+      if (!['saved', 'failed', 'lost'].includes(current.state ?? ''))
+        return (await collectImage({ path: { identity } })).data!
+      return current
+    },
     refetchInterval: (query) =>
       query.state.error ||
       ['saved', 'failed', 'lost'].includes(query.state.data?.state ?? '')
@@ -67,7 +72,7 @@ export function ImageResult({
             ? messages.imageReady
             : messages.imagePreparing}
       </p>
-      {image.data && image.data.state !== 'saved' && (
+      {(image.error || (image.data && image.data.state !== 'saved')) && (
         <Button onClick={() => collect.mutate()} disabled={collect.isPending}>
           {messages.retryCollection}
         </Button>
@@ -90,7 +95,6 @@ export function ImageResult({
 }
 
 export function ImagesPage() {
-  const [allowReal, setAllowReal] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [prepared, setPrepared] = useState<ImageInput | null>(null)
   const messages = useMessages()
@@ -130,10 +134,9 @@ export function ImagesPage() {
             request_id: crypto.randomUUID(),
             prompt,
             llm_profile: preferences.value.llm_profile,
-            allow_real_llm: allowReal,
+            allow_real_llm: true,
           }
           setPrepared(body)
-          setAllowReal(false)
           submit.mutate(body)
         }}
       >
@@ -147,15 +150,6 @@ export function ImagesPage() {
             onChange={(event) => setPrompt(event.target.value)}
           />
         </label>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={allowReal}
-            onChange={(event) => setAllowReal(event.target.checked)}
-          />
-          {messages.allowReal}
-        </label>
-        <p className="subtle">{messages.configureModel}</p>
         <Button
           className="primary"
           type="submit"

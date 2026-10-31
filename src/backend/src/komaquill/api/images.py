@@ -172,11 +172,14 @@ class ImageService:
             llm_profile=llm_profile,
             allow_real_llm=allow_real_llm,
         )
+        return self.wait(run.run_id)
+
+    def wait(self, run_id: UUID) -> Run:
         with (
             api_operation(OperationStage.GENERATION),
             connected(self._generation_workspace) as (backend, session),
         ):
-            return wait_generation(self._generation_workspace, backend, session, run.run_id)
+            return wait_generation(self._generation_workspace, backend, session, run_id)
 
     def collect(self, run_id: UUID | None = None) -> Collection:
         with operation_scope(), api_operation(OperationStage.COLLECTION):

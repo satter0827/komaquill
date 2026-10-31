@@ -18,5 +18,6 @@
   "search.exclude": {
     "**/.artifacts/**": true
   },
-  "flake8.enabled": false
+  "flake8.enabled": false,
+  "python.analysis.typeCheckingMode": "off"
 }

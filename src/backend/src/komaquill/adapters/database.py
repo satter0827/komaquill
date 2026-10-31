@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 import psutil
@@ -41,6 +42,14 @@ from komaquill.conversations.models import (
 )
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Run
+
+
+class RecordedTurnRequest(SendInput):
+    """Validate retained request metadata independently of today's send contract."""
+
+    images: bool | None = None
+    response_length: Literal["short", "standard", "detailed"] | None = None
+
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10
 _MIGRATION_LOCK = threading.Lock()
@@ -202,7 +211,10 @@ class ConversationRepository:
             if previous is not None:
                 if (
                     previous["conversation_id"] != str(identity)
-                    or SendInput.model_validate_json(previous["request"]) != request
+                    or RecordedTurnRequest.model_validate_json(previous["request"]).model_dump(
+                        include=set(SendInput.model_fields)
+                    )
+                    != request.model_dump()
                 ):
                     raise conflict()
                 return self._operation(dict(previous)), False
@@ -242,7 +254,7 @@ class ConversationRepository:
 
     def _operation(self, row: dict[str, object]) -> Operation:
         value = Operation.model_validate_json(str(row["payload"]))
-        request = SendInput.model_validate_json(str(row["request"]))
+        request = RecordedTurnRequest.model_validate_json(str(row["request"]))
         fingerprint = hashlib.sha256(
             (str(value.conversation_id) + str(row["request"])).encode()
         ).hexdigest()
@@ -341,13 +353,12 @@ class ConversationRepository:
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
         request = SendInput.model_validate_json(str(row["request"]))
-        image = (
-            conversation.definition.images if request.images is None else request.images
-        ) and bool(reply.scene)
+        image = False
         turn = Turn(
             operation_id=identity,
             user=request.text,
             assistant=reply.text,
+            narration=reply.narration,
             state=reply.state,
             scene=reply.scene,
             image_id=identity if image else None,

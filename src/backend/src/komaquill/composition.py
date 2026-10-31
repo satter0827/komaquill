@@ -12,14 +12,12 @@ if TYPE_CHECKING:
 
 from komaquill.adapters.conversation_llm import StructuredResponder
 from komaquill.adapters.database import ConversationRepository, database
-from komaquill.conversations.service import ConversationService, Images
+from komaquill.conversations.service import ConversationService
 
 
-def conversations(workspace: Path, images: Images) -> ConversationService:
+def conversations(workspace: Path) -> ConversationService:
     storage = database(workspace / ".artifacts/data/komaquill.sqlite3")
-    return ConversationService(
-        ConversationRepository(storage), StructuredResponder(workspace), images
-    )
+    return ConversationService(ConversationRepository(storage), StructuredResponder(workspace))
 
 
 def library(

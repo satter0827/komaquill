@@ -52,21 +52,20 @@ function images() {
   )
 }
 
-it('consumes permission for one image operation', async () => {
+it('authorizes each explicit image operation without a permission checkbox', async () => {
   images()
   const prompt = await screen.findByLabelText(m.imagePrompt)
   await userEvent.type(prompt, 'A rainy bookshop')
-  await userEvent.click(screen.getByLabelText(m.allowReal))
   await userEvent.click(screen.getByRole('button', { name: m.generate }))
   await waitFor(() => expect(requests).toHaveLength(1))
-  expect(screen.getByLabelText(m.allowReal)).not.toBeChecked()
+  expect(screen.queryByLabelText(m.allowReal)).not.toBeInTheDocument()
   await waitFor(() =>
     expect(screen.getByRole('button', { name: m.generate })).not.toBeDisabled(),
   )
   await userEvent.click(screen.getByRole('button', { name: m.generate }))
   await waitFor(() => expect(requests).toHaveLength(2))
   expect(requests[0].allow_real_llm).toBe(true)
-  expect(requests[1].allow_real_llm).toBe(false)
+  expect(requests[1].allow_real_llm).toBe(true)
 })
 
 it('allows a new authorized operation after a pre-submission rejection', async () => {
@@ -90,7 +89,6 @@ it('allows a new authorized operation after a pre-submission rejection', async (
     m.errors.real_llm_not_allowed,
   )
   expect(prompt).not.toBeDisabled()
-  await userEvent.click(screen.getByLabelText(m.allowReal))
   await userEvent.click(screen.getByRole('button', { name: m.generate }))
   await waitFor(() => expect(requests).toHaveLength(2))
   expect(requests[1].allow_real_llm).toBe(true)
@@ -119,4 +117,33 @@ it('waits for saved preferences before showing generation controls', async () =>
   await userEvent.click(screen.getByRole('button', { name: m.generate }))
   await waitFor(() => expect(requests).toHaveLength(1))
   expect(requests[0].llm_profile).toBe('local')
+})
+
+it('recovers an initial image lookup failure without submitting again', async () => {
+  let reads = 0
+  const saved = { run_id: 'kept', state: 'saved', images: ['scene.png'] }
+  server.use(
+    http.get(`${base}/api/v1/images`, () =>
+      HttpResponse.json([{ ...saved, state: 'queued', images: [] }]),
+    ),
+    http.get(`${base}/api/v1/images/kept`, () =>
+      ++reads === 1
+        ? HttpResponse.json({ code: 'storage_failed' }, { status: 500 })
+        : HttpResponse.json(saved),
+    ),
+    http.post(`${base}/api/v1/images/kept/collect`, () =>
+      HttpResponse.json(saved),
+    ),
+  )
+  images()
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    m.errors.storage_failed,
+  )
+  await userEvent.click(screen.getByRole('button', { name: m.retryCollection }))
+  expect(
+    await screen.findByRole('img', {
+      name: m.imageAlt.replace('{index}', '1'),
+    }),
+  ).toBeVisible()
+  expect(requests).toHaveLength(0)
 })

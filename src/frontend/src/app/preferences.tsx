@@ -12,12 +12,10 @@ export type EffectivePreferences = Required<Preferences>
 export const defaultPreferences: EffectivePreferences = {
   revision: 0,
   locale: 'ja',
-  player_id: null,
   font_size: 'normal',
   density: 'comfortable',
   response_length: 'standard',
-  image_frequency: 'manual',
-  llm_profile: 'fake',
+  llm_profile: 'lmstudio-4b',
 }
 
 type PreferenceContext = {

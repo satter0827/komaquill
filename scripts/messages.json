@@ -1,4 +1,7 @@
 {
+  "web.evidence_saved": "Browser evidence saved: {path}",
+  "web.invalid_evidence_path": "Evidence paths must remain inside the run directory.",
+  "web.use_runner": "Run browser verification through scripts/playwright.mjs.",
   "quality.statement": "Statement",
   "quality.branch": "Branch",
   "quality.coverage_source_inventory_does_not_match_src_and": "Coverage source inventory does not match src and scripts.",

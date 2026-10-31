@@ -5,6 +5,100 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/conversations/{identity}/images": {
+      "get": {
+        "summary": "Conversation Images",
+        "operationId": "list_conversation_images",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CreationJob"
+                  },
+                  "title": "Response List Conversation Images"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/image": {
+      "post": {
+        "summary": "Draw Conversation",
+        "operationId": "draw_conversation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreationJob"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/preferences": {
       "get": {
         "summary": "Preferences",
@@ -59,97 +153,17 @@
         }
       }
     },
-    "/api/v1/players": {
-      "get": {
-        "summary": "Players",
-        "operationId": "list_players",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/PlayerPreset"
-                  },
-                  "type": "array",
-                  "title": "Response List Players"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create Player",
-        "operationId": "create_player",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayerInput"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayerPreset"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/players/{identity}": {
+    "/api/v1/player": {
       "get": {
         "summary": "Player",
         "operationId": "get_player",
-        "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPreset"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/PlayerProfile"
                 }
               }
             }
@@ -160,16 +174,6 @@
         "summary": "Update Player",
         "operationId": "update_player",
         "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          },
           {
             "name": "expected_revision",
             "in": "query",
@@ -196,87 +200,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PlayerPreset"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "summary": "Delete Player",
-        "operationId": "delete_player",
-        "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Expected Revision"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/players/{identity}/duplicate": {
-      "post": {
-        "summary": "Duplicate Player",
-        "operationId": "duplicate_player",
-        "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayerPreset"
+                  "$ref": "#/components/schemas/PlayerProfile"
                 }
               }
             }
@@ -1674,6 +1598,20 @@
             "title": "Address",
             "default": ""
           },
+          "age": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Age",
+            "description": "Plain age text such as 32 or unknown, without template markers.",
+            "default": ""
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Gender",
+            "description": "Plain gender text, or empty when unspecified. No template markers.",
+            "default": ""
+          },
           "personality": {
             "type": "string",
             "maxLength": 3000,
@@ -1794,6 +1732,20 @@
             "title": "Address",
             "default": ""
           },
+          "age": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Age",
+            "description": "Plain age text such as 32 or unknown, without template markers.",
+            "default": ""
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Gender",
+            "description": "Plain gender text, or empty when unspecified. No template markers.",
+            "default": ""
+          },
           "personality": {
             "type": "string",
             "maxLength": 3000,
@@ -1833,6 +1785,8 @@
           "appearance",
           "role",
           "address",
+          "age",
+          "gender",
           "personality",
           "speech",
           "background",
@@ -1977,6 +1931,36 @@
         ],
         "title": "Conversation"
       },
+      "ConversationImageRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "ja",
+              "en"
+            ],
+            "title": "Locale",
+            "default": "ja"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision"
+        ],
+        "title": "ConversationImageRequest"
+      },
       "ConversationInput": {
         "properties": {
           "title": {
@@ -2024,7 +2008,7 @@
           "llm_profile": {
             "type": "string",
             "title": "Llm Profile",
-            "default": "fake"
+            "default": "lmstudio-4b"
           },
           "locale": {
             "type": "string",
@@ -2033,7 +2017,7 @@
               "en"
             ],
             "title": "Locale",
-            "default": "en"
+            "default": "ja"
           },
           "response_length": {
             "type": "string",
@@ -2067,8 +2051,10 @@
       },
       "ConversationStart": {
         "properties": {
-          "player": {
-            "$ref": "#/components/schemas/PresetRef"
+          "player_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Player Revision"
           },
           "character": {
             "$ref": "#/components/schemas/PresetRef"
@@ -2092,20 +2078,21 @@
             "default": "ja"
           },
           "llm_profile": {
-            "type": "string",
-            "title": "Llm Profile",
-            "default": "fake"
-          },
-          "images": {
-            "type": "boolean",
-            "title": "Images",
-            "default": false
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Profile"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "player",
+          "player_revision",
           "character",
           "story"
         ],
@@ -2175,6 +2162,18 @@
             ],
             "title": "Image Id"
           },
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          },
           "error": {
             "anyOf": [
               {
@@ -2213,7 +2212,8 @@
               "character_draft",
               "story_draft",
               "portrait",
-              "banner"
+              "banner",
+              "conversation_image"
             ],
             "title": "Kind"
           },
@@ -2259,7 +2259,7 @@
           "llm_profile": {
             "type": "string",
             "title": "Llm Profile",
-            "default": "fake"
+            "default": "lmstudio-4b"
           },
           "allow_real_llm": {
             "type": "boolean",
@@ -2832,6 +2832,20 @@
             "maxLength": 120,
             "title": "Address",
             "default": ""
+          },
+          "age": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Age",
+            "description": "Plain age text such as 32 or unknown, without template markers.",
+            "default": ""
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Gender",
+            "description": "Plain gender text, or empty when unspecified. No template markers.",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -2841,7 +2855,7 @@
         ],
         "title": "PlayerInput"
       },
-      "PlayerPreset": {
+      "PlayerProfile": {
         "properties": {
           "id": {
             "type": "string",
@@ -2928,6 +2942,20 @@
             "maxLength": 120,
             "title": "Address",
             "default": ""
+          },
+          "age": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Age",
+            "description": "Plain age text such as 32 or unknown, without template markers.",
+            "default": ""
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Gender",
+            "description": "Plain gender text, or empty when unspecified. No template markers.",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -2943,9 +2971,11 @@
           "description",
           "appearance",
           "role",
-          "address"
+          "address",
+          "age",
+          "gender"
         ],
-        "title": "PlayerPreset"
+        "title": "PlayerProfile"
       },
       "Preferences": {
         "properties": {
@@ -2963,18 +2993,6 @@
             ],
             "title": "Locale",
             "default": "ja"
-          },
-          "player_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Player Id"
           },
           "font_size": {
             "type": "string",
@@ -3004,20 +3022,10 @@
             "title": "Response Length",
             "default": "standard"
           },
-          "image_frequency": {
-            "type": "string",
-            "enum": [
-              "off",
-              "manual",
-              "automatic"
-            ],
-            "title": "Image Frequency",
-            "default": "manual"
-          },
           "llm_profile": {
             "type": "string",
             "title": "Llm Profile",
-            "default": "fake"
+            "default": "lmstudio-4b"
           }
         },
         "additionalProperties": false,
@@ -3750,33 +3758,6 @@
               }
             ],
             "title": "Locale"
-          },
-          "images": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Images"
-          },
-          "response_length": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "short",
-                  "standard",
-                  "detailed"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Response Length"
           }
         },
         "additionalProperties": false,
@@ -4132,6 +4113,11 @@
           "assistant": {
             "type": "string",
             "title": "Assistant"
+          },
+          "narration": {
+            "type": "string",
+            "title": "Narration",
+            "default": ""
           },
           "state": {
             "additionalProperties": {

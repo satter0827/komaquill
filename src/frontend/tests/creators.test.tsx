@@ -33,6 +33,40 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
 
+it('shows an empty library after filtering samples for another language', async () => {
+  server.use(
+    http.get(`${base}/api/v1/characters`, () =>
+      HttpResponse.json([
+        {
+          id: 'english',
+          name: 'English sample',
+          sample: true,
+          sample_locale: 'en',
+          revision: 0,
+        },
+      ]),
+    ),
+  )
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({
+          defaultOptions: { queries: { retry: false } },
+        })
+      }
+    >
+      <MemoryRouter>
+        <LibraryPage kind="character" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  expect(await screen.findByText(m.noPresets)).toBeVisible()
+  expect(screen.getByRole('link', { name: m.new })).toHaveAttribute(
+    'href',
+    '/characters/new',
+  )
+})
+
 async function draftEditor(
   path = '/characters/new',
   kind: 'character' | 'story' = 'character',
@@ -62,15 +96,10 @@ async function draftEditor(
       </MemoryRouter>
     </QueryClientProvider>,
   )
-  await userEvent.selectOptions(
-    await screen.findByRole('combobox', { name: m.profile }),
-    await screen.findByRole('option', { name: m.localModel }),
-  )
   await userEvent.click(
-    screen.getByText(m.createDraft, { selector: 'summary' }),
+    await screen.findByText(m.createDraft, { selector: 'summary' }),
   )
   await userEvent.type(screen.getByLabelText(m.draftPrompt), 'A watchmaker')
-  await userEvent.click(screen.getByLabelText(m.allowReal))
   return screen.getByText(m.createDraft, { selector: 'button' })
 }
 
@@ -140,7 +169,6 @@ it('resolves a lost creation response with the original ID and input', async () 
   const retry = await screen.findByRole('button', { name: m.retryRequest })
   await userEvent.clear(screen.getByLabelText(m.draftPrompt))
   await userEvent.type(screen.getByLabelText(m.draftPrompt), 'A different idea')
-  await userEvent.click(screen.getByLabelText(m.allowReal))
   expect(button).toBeDisabled()
   await userEvent.click(retry)
   expect(await screen.findByRole('button', { name: m.useDraft })).toBeVisible()
@@ -175,7 +203,6 @@ it('allows correcting a creation rejected before acceptance', async () => {
   expect(await screen.findByText(m.errors.invalid_request)).toBeVisible()
   await userEvent.clear(screen.getByLabelText(m.draftPrompt))
   await userEvent.type(screen.getByLabelText(m.draftPrompt), 'A corrected idea')
-  await userEvent.click(screen.getByLabelText(m.allowReal))
   expect(button).not.toBeDisabled()
   expect(
     screen.queryByRole('button', { name: m.retryRequest }),
@@ -213,7 +240,6 @@ it('keeps an accepted creation busy before the first status response', async () 
   await userEvent.click(button)
   await waitFor(() => expect(polling).toBe(true))
   try {
-    await userEvent.click(screen.getByLabelText(m.allowReal))
     expect(button).toBeDisabled()
   } finally {
     release()

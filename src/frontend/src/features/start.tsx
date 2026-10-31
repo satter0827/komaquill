@@ -1,11 +1,10 @@
-import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getSettings, startConversation } from '../api/generated/sdk.gen'
+import { startConversation } from '../api/generated/sdk.gen'
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { Button } from '../components/ui/button'
-import { keys, loadPresets, paths } from './library'
-import type { Kind, Preset } from './library'
+import { loadPresets, paths, playerQuery } from './library'
+import type { Preset } from './library'
 
 export function NewConversation() {
   const m = useMessages()
@@ -14,76 +13,44 @@ export function NewConversation() {
   const cache = useQueryClient()
   const navigate = useNavigate()
   const [search, setSearch] = useSearchParams()
-  const [mode, setMode] = useState<string | null>(null)
-  const playerQuery = useQuery({
-    queryKey: ['players'],
-    queryFn: () => loadPresets('player'),
-  })
-  const characterQuery = useQuery({
+  const player = useQuery(playerQuery)
+  const characters = useQuery({
     queryKey: ['characters'],
     queryFn: () => loadPresets('character'),
   })
-  const storyQuery = useQuery({
+  const stories = useQuery({
     queryKey: ['stories'],
     queryFn: () => loadPresets('story'),
   })
-  const profiles = useQuery({
-    queryKey: ['settings'],
-    queryFn: async () => (await getSettings()).data!,
-  })
-  const queries = {
-    player: playerQuery,
-    character: characterQuery,
-    story: storyQuery,
-  }
-  const choices = (kind: Kind) =>
-    (queries[kind].data ?? []).filter(
-      (preset) =>
-        !preset.sample || preset.sample_locale === preferences.value.locale,
+  const choices = (kind: 'character' | 'story') =>
+    ((kind === 'character' ? characters.data : stories.data) ?? []).filter(
+      (item) => !item.sample || item.sample_locale === preferences.value.locale,
     )
-  const selected = (kind: Kind): Preset | undefined => {
-    const list = choices(kind)
-    if (search.has(kind))
-      return list.find((preset) => preset.id === search.get(kind))
-    if (kind === 'character') {
-      const story = selected('story')
-      if (story && 'character_id' in story && story.character_id)
-        return list.find((preset) => preset.id === story.character_id)
-    }
-    return (
-      (kind === 'player'
-        ? list.find((preset) => preset.id === preferences.value.player_id)
-        : undefined) ?? list[0]
-    )
-  }
-  const player = selected('player'),
-    character = selected('character'),
-    story = selected('story')
-  const profile = mode ?? preferences.value.llm_profile
-  const sample = [player, character, story].every((value) => value?.sample)
-  const ready =
-    preferences.ready &&
-    player &&
-    character &&
-    story &&
-    profiles.data &&
-    (profile !== 'fake' || sample)
+  const story =
+    choices('story').find((item) => item.id === search.get('story')) ??
+    (search.has('story') ? undefined : choices('story')[0])
+  const recommended =
+    story && 'character_id' in story ? story.character_id : null
+  const character =
+    choices('character').find(
+      (item) => item.id === (search.get('character') ?? recommended),
+    ) ??
+    (search.has('character') || recommended
+      ? undefined
+      : choices('character')[0])
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!player || !character || !story) throw new Error()
-      const reference = (preset: Preset) => ({
-        id: preset.id,
-        revision: preset.revision ?? 0,
+      const ref = (value: Preset) => ({
+        id: value.id,
+        revision: value.revision,
       })
       return (
         await startConversation({
           body: {
-            player: reference(player),
-            character: reference(character),
-            story: reference(story),
+            player_revision: player.data!.revision,
+            character: ref(character!),
+            story: ref(story!),
             locale: preferences.value.locale,
-            llm_profile: profile,
-            images: preferences.value.image_frequency === 'automatic',
           },
         })
       ).data!
@@ -93,14 +60,10 @@ export function NewConversation() {
       navigate(`/conversations/${conversation.id}`)
     },
   })
-  const change = (kind: Kind, identity: string) => {
+  const change = (kind: 'character' | 'story', id: string) => {
     const next = new URLSearchParams(search)
-    next.set(kind, identity)
-    if (kind === 'story') {
-      const chosen = choices(kind).find((preset) => preset.id === identity)
-      if (chosen && 'character_id' in chosen && chosen.character_id)
-        next.set('character', chosen.character_id)
-    }
+    next.set(kind, id)
+    if (kind === 'story') next.delete('character')
     setSearch(next)
   }
   return (
@@ -111,18 +74,22 @@ export function NewConversation() {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          if (ready) mutation.mutate()
+          if (player.data && character && story) mutation.mutate()
         }}
       >
         <div className="selection-grid">
-          {(['story', 'character', 'player'] as const).map((kind) => {
-            const record = selected(kind)
-            const label =
-              kind === 'story'
-                ? m.chooseStory
-                : kind === 'character'
-                  ? m.chooseCharacter
-                  : m.choosePlayer
+          <section className="selection-card">
+            <h2>{m.choosePlayer}</h2>
+            <p>{player.data?.name}</p>
+            <p className="subtle">{player.data?.description}</p>
+            <Link
+              to={`/player?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
+            >
+              {m.edit}
+            </Link>
+          </section>
+          {(['story', 'character'] as const).map((kind) => {
+            const record = kind === 'story' ? story : character
             return (
               <section
                 className={`selection-card selection-${kind}`}
@@ -136,9 +103,8 @@ export function NewConversation() {
                   />
                 )}
                 <label>
-                  {label}
+                  {kind === 'story' ? m.chooseStory : m.chooseCharacter}
                   <select
-                    required
                     value={record?.id ?? ''}
                     disabled={mutation.isPending}
                     onChange={(event) => change(kind, event.target.value)}
@@ -147,7 +113,6 @@ export function NewConversation() {
                     {choices(kind).map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
-                        {item.sample ? ` · ${m.sample}` : ''}
                       </option>
                     ))}
                   </select>
@@ -155,12 +120,9 @@ export function NewConversation() {
                 <p className="subtle">
                   {record
                     ? record.description ||
-                      ('appearance' in record
-                        ? record.appearance || record.role
-                        : record.opening ||
-                          record.world ||
-                          record.place ||
-                          record.goal) ||
+                      ('opening' in record
+                        ? record.opening || record.world || record.goal
+                        : record.appearance || record.role) ||
                       record.name
                     : m.noPresets}
                 </p>
@@ -170,49 +132,27 @@ export function NewConversation() {
                 >
                   {m.new} →
                 </Link>
-                <Link className="text-button" to={paths[kind]}>
-                  {m[keys[kind]]} →
-                </Link>
               </section>
             )
           })}
         </div>
-        <label>
-          {m.profile}
-          <select
-            value={profile}
-            disabled={mutation.isPending}
-            onChange={(event) => setMode(event.target.value)}
-          >
-            {profiles.data?.profiles.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.provider === 'fake' ? m.sampleMode : m.localModel}
-              </option>
-            ))}
-          </select>
-        </label>
-        {profile === 'fake' && (
-          <p className="notice">
-            {sample ? m.sampleNotice : m.sampleRestriction}
-          </p>
-        )}
         <Button
           className="primary"
           type="submit"
-          disabled={!ready || mutation.isPending}
+          disabled={
+            !preferences.ready ||
+            !player.data ||
+            !character ||
+            !story ||
+            mutation.isPending
+          }
         >
           {m.create}
         </Button>
-        {[
-          mutation.error,
-          playerQuery.error,
-          characterQuery.error,
-          storyQuery.error,
-          profiles.error,
-        ]
+        {[mutation.error, player.error, characters.error, stories.error]
           .filter(Boolean)
           .map((error, index) => (
-            <p key={index} className="error" role="alert">
+            <p key={index} role="alert" className="error">
               {failure(error)}
             </p>
           ))}

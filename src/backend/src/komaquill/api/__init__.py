@@ -1,6 +1,9 @@
 """Use Komaquill from Python without importing CLI or optional model SDKs."""
 
 from komaquill.api.client import Client as Client
+from komaquill.conversations.models import ConversationInput as ConversationInput
+from komaquill.conversations.models import SendInput as SendInput
+from komaquill.conversations.models import StateCommand as StateCommand
 from komaquill.domain.errors import (
     ErrorCode as ErrorCode,
 )
@@ -24,6 +27,7 @@ from komaquill.library.models import CharacterInput as CharacterInput
 from komaquill.library.models import ConversationStart as ConversationStart
 from komaquill.library.models import CreationRequest as CreationRequest
 from komaquill.library.models import PlayerInput as PlayerInput
+from komaquill.library.models import PlayerProfile as PlayerProfile
 from komaquill.library.models import Preferences as Preferences
 from komaquill.library.models import PresetRef as PresetRef
 from komaquill.library.models import StoryInput as StoryInput
@@ -33,11 +37,15 @@ __all__ = [
     "ConversationStart",
     "CreationRequest",
     "PlayerInput",
+    "PlayerProfile",
     "Preferences",
     "PresetRef",
     "StoryInput",
     "AccountUsage",
     "Client",
+    "ConversationInput",
+    "SendInput",
+    "StateCommand",
     "CompiledImageInput",
     "ImageInput",
     "InputArtifact",

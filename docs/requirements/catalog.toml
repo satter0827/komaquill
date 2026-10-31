@@ -1,23 +1,30 @@
 format_version = 1
 
-[requirements.REQ-PLAYER-PROFILE]
-summary = "物語の中の自分を保存し会話ごとに選択する"
+[requirements.REQ-WEB-EVIDENCE]
+summary = "確定した期待結果の画面検査と主観レビューの証跡収集を分け、収集処理自体も検査する"
 status = "implemented"
-acceptance = ["名前・呼ばれ方・外見・立場・紹介を複数保存できる", "既定のプロフィールを選択できる", "会話開始時に選択内容と元のID・版を固定する", "プロフィールの編集や削除で開始済み会話を遡って変更しない", "アプリ設定と物語内の人物設定を分ける"]
+acceptance = ["基本操作を実ブラウザーで検査する", "確定した期待結果はtests、主観判断用の収集はscriptsへ置く", "操作順と画像・アクセシビリティ構造・画面要素・通信結果を関連付ける", "対象版と環境、入力ハッシュ、検査用の接続範囲を記録する", "欠落と改変、既知未達、未実行、収集完了を合格と混同しない", "scriptsの収集処理を単体テストと画面E2Eで検証する", "実行ごとの生成物を.artifactsへ保存する"]
+sources = ["scripts/playwright.mjs", "scripts/web/evidence.mjs", "scripts/web/reporter.mjs", "scripts/web/journey.mjs"]
+tests = ["tests/js/web-evidence.test.mjs", "tests/e2e/web/evidence.spec.ts", "tests/e2e/web/workflow.spec.ts", "tests/e2e/web/review-requirements.spec.ts", "tests/integration/test_web_fixture.py"]
+
+[requirements.REQ-PLAYER-PROFILE]
+summary = "物語の中の自分を1件保存して会話へ適用する"
+status = "implemented"
+acceptance = ["名前・呼ばれ方・年齢・性別・外見・立場・紹介を1件保存できる", "プロフィールを直接編集できる", "会話開始から編集しても保存内容と選択を保持する", "会話開始時に選択内容と元のID・版を固定する", "プロフィールの編集で開始済み会話を遡って変更しない", "アプリ設定と物語内の人物設定を分ける"]
 sources = ["src/backend/src/komaquill/library/models.py", "src/backend/src/komaquill/library/service.py", "src/frontend/src/features/library.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 
 [requirements.REQ-APP-PREFERENCES]
 summary = "表示と生成の好みを保存して明示した範囲へ適用する"
 status = "implemented"
-acceptance = ["言語・文字の大きさ・表示密度・描写量・画像頻度を保存できる", "表示設定は再起動後も維持する", "生成条件は要求の受付時に固定する", "固定サンプルを軸とし明示指定時だけローカル4Bを使う", "固定サンプルは対応入力だけを扱い実モデルへ自動切替しない", "接続先とモデルの識別を設定で扱い手元の4Bとの一致を検査する"]
-sources = ["src/backend/src/komaquill/library/models.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/features/preferences.tsx"]
+acceptance = ["言語・文字の大きさ・表示密度・描写量を保存できる", "表示設定は再起動後も維持する", "生成設定の不正で言語や文字サイズの保存を妨げない", "生成条件は要求の受付時に固定する", "通常の会話は設定済み4Bを使い、固定応答は検証で明示指定する", "固定サンプルは対応入力だけを扱い実モデルへ自動切替しない", "接続先とモデルの識別を設定で扱い手元の4Bとの一致を検査する"]
+sources = ["src/backend/src/komaquill/library/models.py", "src/backend/src/komaquill/library/service.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/features/preferences.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 
 [requirements.REQ-CHARACTER-PRESETS]
 summary = "キャラクターを作成・保存して代表画像とともに再利用する"
 status = "implemented"
-acceptance = ["名前・外見・性格・話し方・背景・関係を保存・一覧・編集・複製・削除できる", "保存済みキャラクターを会話で選択できる", "手動保存と明示した4Bによる下書き作成を区別する", "保存時に許可済みの接続先で代表画像を生成し画面に表示する", "画像の用途・生成操作・設定の版を関連付ける", "接続なしや画像失敗でも設定を保存し未生成と次の操作を示す", "再生成中に以前の画像を失わない", "代表画像の表示と別画像での人物同一性の確認を区別する"]
+acceptance = ["名前・年齢・性別・外見・性格・話し方・背景・関係を保存・一覧・編集・複製・削除できる", "保存済みキャラクターを会話で選択できる", "手動保存と明示した4Bによる下書き作成を区別する", "保存時に許可済みの接続先で代表画像を生成し画面に表示する", "画像の用途・生成操作・設定の版を関連付ける", "接続なしや画像失敗でも設定を保存し未生成と次の操作を示す", "再生成中に以前の画像を失わない", "代表画像の表示と別画像での人物同一性の確認を区別する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/komaquill/adapters/library_repository.py", "src/frontend/src/features/library.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 
@@ -26,13 +33,13 @@ summary = "会話で遊ぶストーリーの開始設定を作成・保存して
 status = "implemented"
 acceptance = ["題名・紹介・世界観・導入・最初の場面・当面の目的・登場人物を保存できる", "一覧・編集・複製・削除と会話開始時の選択ができる", "キャラクターと同じ保存・画像失敗の扱いを使う", "横長のバナーを生成し一覧と開始画面へ表示する", "題名は画像へ描き込まず表示言語に合わせて画面で配置する", "会話中はバナーを控えめにし本文を妨げない", "長編の全場面計画や自動完結を必須にしない"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/frontend/src/features/library.tsx"]
-tests = ["tests/integration/test_library.py", "tests/live/creators_acceptance.py"]
+tests = ["tests/integration/test_library.py", "tests/live/play_acceptance.py"]
 
 [requirements.REQ-PLAY-COMPOSITION]
 summary = "個人設定・キャラクター・ストーリーを会話へ反映し作成から再開までの体験を整える"
 status = "implemented"
 implementation_note = "ストーリーの既定の相手を初回と再読込でも解決し、受付済み要求・入力拒否・受付不明を区別する。ホームの読込失敗は一覧を再確認できる。"
-acceptance = ["会話作成は保存済みの自分・キャラクター・ストーリーのプリセットから選ぶ流れを基本にする", "名前・概要・代表画像やバナーを確認して選択できる", "会話作成画面は選択と開始内容の確認を中心とし設定本文を毎回入力させない", "未作成の場合は各管理画面へ案内し保存後に会話作成の選択へ戻れる", "選んだ自分・登場人物・舞台を会話開始時に固定する", "固定定義・現在状態・履歴を分ける", "プリセットの後の編集が既存会話を暗黙に変更しない", "作る・選ぶ・遊ぶ・続きを開く流れで画面を再構成する", "通常画面では初見者に分かる文言を使い技術的な詳細を必要時に開く", "人物画像・バナー・場面画像の用途を分け適切な位置に表示する", "画面表示をReact、保存・合成・版・操作・LLM・画像の管理をPythonへ置く", "キーボード操作・拡大・狭い画面・読み上げを検査する"]
+acceptance = ["会話作成は自分のプロフィールを確認し、保存済みキャラクターとストーリーを選ぶ", "名前・概要・代表画像やバナーを確認して選択できる", "会話作成画面は選択と開始内容の確認を中心とし設定本文を毎回入力させない", "未作成の場合は各管理画面へ案内し保存後に会話作成の選択へ戻れる", "選んだ自分・登場人物・舞台を会話開始時に固定する", "固定定義・現在状態・履歴を分ける", "プリセットの後の編集が既存会話を暗黙に変更しない", "作る・選ぶ・遊ぶ・続きを開く流れで画面を再構成する", "通常画面では初見者に分かる文言を使い技術的な詳細を必要時に開く", "人物画像・バナー・場面画像の用途を分け適切な位置に表示する", "画面表示をReact、保存・合成・版・操作・LLM・画像の管理をPythonへ置く", "キーボード操作・拡大・狭い画面・読み上げを検査する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/frontend/src/features/start.tsx", "src/frontend/src/features/conversations.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 
@@ -41,14 +48,14 @@ summary = "日本語を既定として英語表示へ切り替えLLMの生成言
 status = "implemented"
 acceptance = ["初回は日本語で表示し利用者の選択を再起動後も維持する", "日本語版は明確な日本語と控えめな英語見出しを組み合わせ英語版は英語で統一する", "操作・案内・失敗・進捗・空状態・アクセシビリティ文言を言語別カタログで扱う", "表示言語をLLMの会話と作成補助の文章の言語へ反映する", "保存済みの文章・固有名・利用者入力を切替だけで自動翻訳しない", "操作の受付時に言語を固定し実行中の切替や再確認で変えない", "入力言語と表示言語が異なる場合と会話途中の切替を実4Bで検証する", "固定サンプルは日本語・英語それぞれの入力と応答を対にする", "日時・数値の書式と日本語の改行・字体を確認しコードと開発ログは英語を維持する"]
 sources = ["src/backend/src/komaquill/adapters/conversation_llm.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/locales/ja.json", "src/frontend/src/app/locales/en.json"]
-tests = ["tests/js/node-environment.test.mjs", "tests/integration/test_creator_contracts.py", "tests/live/creators_acceptance.py"]
+tests = ["tests/js/node-environment.test.mjs", "tests/integration/test_creator_contracts.py", "tests/live/play_acceptance.py"]
 
 [requirements.REQ-IMAGE-TRANSLATION]
 summary = "日本語の画像説明を英語化し原文と実行条件を保持して生成へ渡す"
 status = "implemented"
-acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "会話の表示用本文と画像用英語を一回の構造化応答内で分けられる", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
+acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "表示用本文・場面説明と明示操作時の画像用英語を分ける", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
 sources = ["src/backend/src/komaquill/adapters/image_text.py", "src/backend/src/komaquill/adapters/conversation_llm.py", "src/backend/src/komaquill/library/service.py"]
-tests = ["tests/integration/test_creator_contracts.py", "tests/live/creator_images.py"]
+tests = ["tests/integration/test_creator_contracts.py", "tests/live/play_acceptance.py"]
 
 [requirements.REQ-ARTIFACT-LAYOUT]
 summary = "依存実体と生成物を用途別に.artifactsへ集約し通常操作でルートへ再出力しない"
@@ -63,7 +70,7 @@ status = "implemented"
 implementation_note = "作成と会話体験の計画に含む新規要件すべての達成を今回の完成目標とする。精度の追求より全機能が接続された完成を優先し、必須機能の未実装や基本動作の未達を品質上の改善へ先送りしない。"
 acceptance = ["日常ゲートの固定応答・擬似APIと明示したローカル4B・実画像の結果を分ける", "ローカル4Bの実際のモデル・設定・指示・入力・可視出力・使用量・時間を非公開の記録へ保存する", "設定の採用・人物と利用者の役割・現在状態・文体・根拠のない追加を実出力でレビューする", "スキーマ成功・保存成功・文章の自然さ・画像品質を別に判定する", "日本語と英語の表示・生成、会話途中の切替、画像用英語を確認する", "画像と設定の対応・切抜き・バナーの読める文字・再生成を画面で確認する", "失敗結果と元の生成物を保持し比較条件と訂正を追記する", "現行の複数systemメッセージ・モデルID・入力言語の指示競合を実接続で回帰確認する", "英訳・画像失敗・中断・再開・二重送信・並行編集と生成物の出力先を検査する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/frontend/src/features/library.tsx"]
-tests = ["tests/live/creators_acceptance.py", "tests/live/creator_images.py", "tests/e2e/web/workflow.spec.ts"]
+tests = ["tests/live/play_acceptance.py", "tests/e2e/web/workflow.spec.ts"]
 
 [requirements.REQ-CHAT-LIBRARY]
 summary = "wheelから導入する独立した汎用チャットBOTライブラリとしシナリオや人物を引数・設定で指定する"
@@ -349,3 +356,10 @@ status = "in_progress"
 acceptance = ["公開入力をmodelとoperation、起動入力をmodelsへ統一する", "KleinとWAIに対応する基本設定をApp Modeで調整する", "旧記録を読み取り専用で保持し、新規生成へ流用しない", "認証情報をSSH標準入力だけで渡し、PCとGPUへトークンファイルを作らない", "同じ計画・seedで両モデルを比較し、保存と画質を分ける", "停止確認と一覧・ハッシュ記録後に不要なモデルを削除する", "準備期限を要求作成時刻から固定しSSH引き渡し後も取得を制限する"]
 sources = ["src/backend/src/komaquill/domain/configuration.py", "src/backend/src/komaquill/adapters/model_auth.py", "src/backend/src/komaquill/worker/models.py", "src/backend/src/komaquill/adapters/asset_download.py", "src/backend/src/komaquill/resources/presets/wai-illustrious/preset.toml"]
 tests = ["tests/unit/test_model_interface.py", "tests/unit/test_remote_models.py", "tests/unit/test_downloads.py", "tests/integration/test_extension.py", "tests/integration/test_preparation_deadlines.py", "tests/unit/test_gpu_preparation.py", "tests/unit/test_preparation.py"]
+
+[requirements.REQ-PLAY-EXPERIENCE]
+summary = "場面説明と会話を表示し、専用ボタンでその時点の人物の状態を描く"
+status = "implemented"
+acceptance = ["会話文と表示言語の場面説明を分けて保存・表示する", "会話送信では画像を生成せず、描画ボタンの明示操作で生成する", "描画受付時の服装・表情・動作・場所と人物設定を固定する", "人物情報を項目で渡し最新場面と初期設定を区別する", "実行前と一覧取得で操作・画像の識別子を照合し確定した英語入力を変更しない", "画像生成・回収・保存・再表示を同じ操作で追跡する", "送信ごとの技術的なチェックと通常画面のJSON編集を廃止する", "実4Bと実画像で本文・状態・英訳・画像の対応を確認する"]
+sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/context.py", "src/frontend/src/features/conversations.tsx"]
+tests = ["tests/unit/test_conversation_context.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_play_experience.py", "tests/e2e/web/workflow.spec.ts", "tests/live/play_acceptance.py"]

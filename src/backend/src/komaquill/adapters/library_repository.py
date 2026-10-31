@@ -13,7 +13,7 @@ from komaquill.library.models import (
     CharacterPreset,
     CreationJob,
     CreationRequest,
-    PlayerPreset,
+    PlayerProfile,
     Preferences,
     Preset,
     PresetInput,
@@ -43,8 +43,8 @@ creation_jobs = Table(
     Column("owner_pid", Integer, nullable=False),
     Column("owner_started", String, nullable=False),
 )
-MODELS: dict[PresetKind, type[PlayerPreset] | type[CharacterPreset] | type[StoryPreset]] = {
-    "player": PlayerPreset,
+MODELS: dict[PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]] = {
+    "player": PlayerProfile,
     "character": CharacterPreset,
     "story": StoryPreset,
 }
@@ -55,7 +55,21 @@ class LibraryRepository:
         self.database = database
 
     @stored
-    def initialize(self, values: list[tuple[PresetKind, Preset]], player: UUID) -> None:
+    def conversation_images(self, identity: UUID) -> list[CreationJob]:
+        with self.database.engine.connect() as connection:
+            rows = connection.execute(
+                select(creation_jobs.c.id, creation_jobs.c.payload).where(
+                    creation_jobs.c.payload.op("->>")("$.request.kind") == "conversation_image",
+                    creation_jobs.c.payload.op("->>")("$.request.target_id") == str(identity),
+                )
+            )
+            return sorted(
+                (self._decode_job(row.id, row.payload) for row in rows),
+                key=lambda job: job.created_at,
+            )
+
+    @stored
+    def initialize(self, values: list[tuple[PresetKind, Preset]]) -> None:
         with self.database.transaction() as connection:
             if connection.execute(select(preferences.c.id)).first() is not None:
                 return
@@ -71,7 +85,7 @@ class LibraryRepository:
             connection.execute(
                 preferences.insert().values(
                     id=1,
-                    payload=Preferences(player_id=player).model_dump_json(),
+                    payload=Preferences().model_dump_json(),
                 )
             )
             connection.commit()
@@ -202,22 +216,7 @@ class LibraryRepository:
             connection.execute(
                 presets.update().where(presets.c.id == str(identity)).values(deleted=True)
             )
-            if kind == "player":
-                payload = connection.execute(
-                    select(preferences.c.payload).where(preferences.c.id == 1)
-                ).scalar_one_or_none()
-                if payload is not None:
-                    configured = Preferences.model_validate_json(payload)
-                    if configured.player_id == identity:
-                        updated = configured.model_copy(
-                            update={"player_id": None, "revision": configured.revision + 1}
-                        )
-                        connection.execute(
-                            preferences.update()
-                            .where(preferences.c.id == 1)
-                            .values(payload=updated.model_dump_json())
-                        )
-            elif kind == "character":
+            if kind == "character":
                 rows = (
                     connection.execute(
                         select(presets).where(
@@ -313,7 +312,9 @@ class LibraryRepository:
             return result
 
     @stored
-    def accept(self, request: CreationRequest, original: str) -> tuple[CreationJob, bool]:
+    def accept(
+        self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
+    ) -> tuple[CreationJob, bool]:
         with self.database.transaction() as connection:
             row = connection.execute(
                 select(creation_jobs.c.payload).where(
@@ -321,12 +322,16 @@ class LibraryRepository:
                 )
             ).scalar_one_or_none()
             if row is not None:
-                job = CreationJob.model_validate_json(row)
+                job = self._decode_job(str(request.operation_id), row)
                 if job.request != request:
                     raise conflict()
                 return job, False
             job = CreationJob(
-                id=request.operation_id, request=request, original=original, state="accepted"
+                id=request.operation_id,
+                request=request,
+                original=original,
+                state="accepted",
+                turn_id=turn_id,
             )
             connection.execute(
                 creation_jobs.insert().values(
@@ -349,9 +354,7 @@ class LibraryRepository:
             )
             if row is None:
                 raise missing()
-            value = CreationJob.model_validate_json(row["payload"])
-            if value.id != identity or value.request.operation_id != identity:
-                raise ValueError("Creation identity mismatch.")
+            value = self._decode_job(str(identity), row["payload"])
             try:
                 alive = str(psutil.Process(row["owner_pid"]).create_time()) == row["owner_started"]
             except psutil.NoSuchProcess:
@@ -372,7 +375,7 @@ class LibraryRepository:
             ).scalar_one_or_none()
             if payload is None:
                 return None
-            value = CreationJob.model_validate_json(payload)
+            value = self._decode_job(str(identity), payload)
             if value.state != "accepted":
                 return None
             value = value.model_copy(update={"state": "running"})
@@ -390,8 +393,16 @@ class LibraryRepository:
             payload: str = connection.execute(
                 select(creation_jobs.c.payload).where(creation_jobs.c.id == str(value.id))
             ).scalar_one()
-            previous = CreationJob.model_validate_json(payload)
-            if previous.request != value.request or previous.original != value.original:
+            previous = self._decode_job(str(value.id), payload)
+            self._decode_job(str(value.id), value.model_dump_json())
+            if any(
+                getattr(previous, key) != getattr(value, key)
+                for key in ("request", "original", "turn_id", "created_at")
+            ) or (
+                previous.prompt_en is not None
+                and value.prompt_en is not None
+                and previous.prompt_en != value.prompt_en
+            ):
                 raise conflict()
             ranks = {
                 "accepted": 0,
@@ -421,3 +432,13 @@ class LibraryRepository:
             )
             connection.commit()
             return value
+
+    def _decode_job(self, identity: str, payload: str) -> CreationJob:
+        value = CreationJob.model_validate_json(payload)
+        if (
+            str(value.id) != identity
+            or str(value.request.operation_id) != identity
+            or (value.image_id is not None and str(value.image_id) != identity)
+        ):
+            raise ValueError("Creation identity mismatch.")
+        return value

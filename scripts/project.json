@@ -10,15 +10,31 @@
         "{workspaceRoot}/docs/**/*",
         "{workspaceRoot}/AGENTS.md",
         "{workspaceRoot}/README.md",
-        "{workspaceRoot}/CONTRIBUTING.md"
+        "{workspaceRoot}/CONTRIBUTING.md",
+        "{workspaceRoot}/tests/js/web-evidence.test.mjs"
       ],
       "options": {
         "commands": [
           "node scripts/python.mjs -m ruff check scripts bootstrap",
           "node scripts/python.mjs -m ruff format --check scripts bootstrap",
-          "node scripts/python.mjs -m scripts.checks.documentation"
+          "node scripts/python.mjs -m scripts.checks.documentation",
+          "node node_modules/prettier/bin/prettier.cjs --check scripts/web scripts/playwright.mjs tests/js/web-evidence.test.mjs"
         ],
         "parallel": false
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/tests/js/**/*",
+        "{workspaceRoot}/src/frontend/src/app/locales/*.json",
+        "{workspaceRoot}/src/backend/src/komaquill/interfaces/comfyui/web/preparation.js",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "options": {
+        "command": "node --test tests/js/*.test.mjs"
       }
     },
     "typecheck": {

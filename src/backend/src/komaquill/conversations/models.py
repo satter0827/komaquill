@@ -30,8 +30,8 @@ class ConversationInput(Record):
     instructions: str = Field(default="", max_length=20000)
     initial_state: dict[str, str] = Field(default_factory=dict)
     images: bool = False
-    llm_profile: str = "fake"
-    locale: Literal["ja", "en"] = "en"
+    llm_profile: str = "lmstudio-4b"
+    locale: Literal["ja", "en"] = "ja"
     response_length: Literal["short", "standard", "detailed"] = "standard"
     presets: dict[str, PresetSnapshot] = Field(default_factory=dict)
     sample: bool = False
@@ -47,6 +47,7 @@ class Turn(Record):
     operation_id: UUID
     user: str
     assistant: str
+    narration: str = ""
     state: dict[str, str]
     image_id: UUID | None = None
     scene: str | None = None
@@ -67,11 +68,14 @@ class SendInput(Record):
     text: str = Field(min_length=1, max_length=20000)
     allow_real_llm: bool = False
     locale: Literal["ja", "en"] | None = None
-    images: bool | None = None
-    response_length: Literal["short", "standard", "detailed"] | None = None
 
 
 class Reply(Record):
+    narration: str = Field(
+        default="",
+        max_length=20000,
+        description="Visible scene, background and character actions in the requested language.",
+    )
     text: str = Field(
         min_length=1,
         max_length=20000,

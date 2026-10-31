@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApplyCommandData, ApplyCommandErrors, ApplyCommandResponses, CollectImageData, CollectImageErrors, CollectImageResponses, CreateCharacterData, CreateCharacterErrors, CreateCharacterResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateJobData, CreateJobErrors, CreateJobResponses, CreatePlayerData, CreatePlayerErrors, CreatePlayerResponses, CreateStoryData, CreateStoryErrors, CreateStoryResponses, DeleteCharacterData, DeleteCharacterErrors, DeleteCharacterResponses, DeletePlayerData, DeletePlayerErrors, DeletePlayerResponses, DeleteStoryData, DeleteStoryErrors, DeleteStoryResponses, DuplicateCharacterData, DuplicateCharacterErrors, DuplicateCharacterResponses, DuplicatePlayerData, DuplicatePlayerErrors, DuplicatePlayerResponses, DuplicateStoryData, DuplicateStoryErrors, DuplicateStoryResponses, GetCharacterData, GetCharacterErrors, GetCharacterResponses, GetConversationData, GetConversationErrors, GetConversationOperationsData, GetConversationOperationsErrors, GetConversationOperationsResponses, GetConversationResponses, GetImageData, GetImageErrors, GetImageFileData, GetImageFileErrors, GetImageFileResponses, GetImageResponses, GetJobData, GetJobErrors, GetJobResponses, GetOperationData, GetOperationErrors, GetOperationResponses, GetPlayerData, GetPlayerErrors, GetPlayerResponses, GetPreferencesData, GetPreferencesResponses, GetRuntimeData, GetRuntimeResponses, GetRuntimeViewsData, GetRuntimeViewsResponses, GetRuntimeWorkflowData, GetRuntimeWorkflowErrors, GetRuntimeWorkflowResponses, GetSettingsData, GetSettingsResponses, GetStoryData, GetStoryErrors, GetStoryResponses, ImportInputData, ImportInputErrors, ImportInputResponses, ListCharactersData, ListCharactersResponses, ListConversationsData, ListConversationsResponses, ListImagesData, ListImagesResponses, ListPlayersData, ListPlayersResponses, ListStoriesData, ListStoriesResponses, RefreshRuntimeData, RefreshRuntimeResponses, ResumeConversationData, ResumeConversationErrors, ResumeConversationResponses, SavePreferencesData, SavePreferencesErrors, SavePreferencesResponses, SendTurnData, SendTurnErrors, SendTurnResponses, StartConversationData, StartConversationErrors, StartConversationResponses, StartRuntimeData, StartRuntimeErrors, StartRuntimeResponses, StopRuntimeData, StopRuntimeResponses, SubmitImageData, SubmitImageErrors, SubmitImageResponses, UpdateCharacterData, UpdateCharacterErrors, UpdateCharacterResponses, UpdatePlayerData, UpdatePlayerErrors, UpdatePlayerResponses, UpdateStoryData, UpdateStoryErrors, UpdateStoryResponses } from './types.gen';
+import type { ApplyCommandData, ApplyCommandErrors, ApplyCommandResponses, CollectImageData, CollectImageErrors, CollectImageResponses, CreateCharacterData, CreateCharacterErrors, CreateCharacterResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateJobData, CreateJobErrors, CreateJobResponses, CreateStoryData, CreateStoryErrors, CreateStoryResponses, DeleteCharacterData, DeleteCharacterErrors, DeleteCharacterResponses, DeleteStoryData, DeleteStoryErrors, DeleteStoryResponses, DrawConversationData, DrawConversationErrors, DrawConversationResponses, DuplicateCharacterData, DuplicateCharacterErrors, DuplicateCharacterResponses, DuplicateStoryData, DuplicateStoryErrors, DuplicateStoryResponses, GetCharacterData, GetCharacterErrors, GetCharacterResponses, GetConversationData, GetConversationErrors, GetConversationOperationsData, GetConversationOperationsErrors, GetConversationOperationsResponses, GetConversationResponses, GetImageData, GetImageErrors, GetImageFileData, GetImageFileErrors, GetImageFileResponses, GetImageResponses, GetJobData, GetJobErrors, GetJobResponses, GetOperationData, GetOperationErrors, GetOperationResponses, GetPlayerData, GetPlayerResponses, GetPreferencesData, GetPreferencesResponses, GetRuntimeData, GetRuntimeResponses, GetRuntimeViewsData, GetRuntimeViewsResponses, GetRuntimeWorkflowData, GetRuntimeWorkflowErrors, GetRuntimeWorkflowResponses, GetSettingsData, GetSettingsResponses, GetStoryData, GetStoryErrors, GetStoryResponses, ImportInputData, ImportInputErrors, ImportInputResponses, ListCharactersData, ListCharactersResponses, ListConversationImagesData, ListConversationImagesErrors, ListConversationImagesResponses, ListConversationsData, ListConversationsResponses, ListImagesData, ListImagesResponses, ListStoriesData, ListStoriesResponses, RefreshRuntimeData, RefreshRuntimeResponses, ResumeConversationData, ResumeConversationErrors, ResumeConversationResponses, SavePreferencesData, SavePreferencesErrors, SavePreferencesResponses, SendTurnData, SendTurnErrors, SendTurnResponses, StartConversationData, StartConversationErrors, StartConversationResponses, StartRuntimeData, StartRuntimeErrors, StartRuntimeResponses, StopRuntimeData, StopRuntimeResponses, SubmitImageData, SubmitImageErrors, SubmitImageResponses, UpdateCharacterData, UpdateCharacterErrors, UpdateCharacterResponses, UpdatePlayerData, UpdatePlayerErrors, UpdatePlayerResponses, UpdateStoryData, UpdateStoryErrors, UpdateStoryResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,23 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: Record<string, unknown>;
 };
+
+/**
+ * Conversation Images
+ */
+export const listConversationImages = <ThrowOnError extends boolean = false>(options: Options<ListConversationImagesData, ThrowOnError>) => (options.client ?? client).get<ListConversationImagesResponses, ListConversationImagesErrors, ThrowOnError>({ url: '/api/v1/conversations/{identity}/images', ...options });
+
+/**
+ * Draw Conversation
+ */
+export const drawConversation = <ThrowOnError extends boolean = false>(options: Options<DrawConversationData, ThrowOnError>) => (options.client ?? client).post<DrawConversationResponses, DrawConversationErrors, ThrowOnError>({
+    url: '/api/v1/conversations/{identity}/image',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
 
 /**
  * Preferences
@@ -36,48 +53,21 @@ export const savePreferences = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * Players
- */
-export const listPlayers = <ThrowOnError extends boolean = false>(options?: Options<ListPlayersData, ThrowOnError>) => (options?.client ?? client).get<ListPlayersResponses, unknown, ThrowOnError>({ url: '/api/v1/players', ...options });
-
-/**
- * Create Player
- */
-export const createPlayer = <ThrowOnError extends boolean = false>(options: Options<CreatePlayerData, ThrowOnError>) => (options.client ?? client).post<CreatePlayerResponses, CreatePlayerErrors, ThrowOnError>({
-    url: '/api/v1/players',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-/**
- * Delete Player
- */
-export const deletePlayer = <ThrowOnError extends boolean = false>(options: Options<DeletePlayerData, ThrowOnError>) => (options.client ?? client).delete<DeletePlayerResponses, DeletePlayerErrors, ThrowOnError>({ url: '/api/v1/players/{identity}', ...options });
-
-/**
  * Player
  */
-export const getPlayer = <ThrowOnError extends boolean = false>(options: Options<GetPlayerData, ThrowOnError>) => (options.client ?? client).get<GetPlayerResponses, GetPlayerErrors, ThrowOnError>({ url: '/api/v1/players/{identity}', ...options });
+export const getPlayer = <ThrowOnError extends boolean = false>(options?: Options<GetPlayerData, ThrowOnError>) => (options?.client ?? client).get<GetPlayerResponses, unknown, ThrowOnError>({ url: '/api/v1/player', ...options });
 
 /**
  * Update Player
  */
 export const updatePlayer = <ThrowOnError extends boolean = false>(options: Options<UpdatePlayerData, ThrowOnError>) => (options.client ?? client).put<UpdatePlayerResponses, UpdatePlayerErrors, ThrowOnError>({
-    url: '/api/v1/players/{identity}',
+    url: '/api/v1/player',
     ...options,
     headers: {
         'Content-Type': 'application/json',
         ...options.headers
     }
 });
-
-/**
- * Duplicate Player
- */
-export const duplicatePlayer = <ThrowOnError extends boolean = false>(options: Options<DuplicatePlayerData, ThrowOnError>) => (options.client ?? client).post<DuplicatePlayerResponses, DuplicatePlayerErrors, ThrowOnError>({ url: '/api/v1/players/{identity}/duplicate', ...options });
 
 /**
  * Characters

@@ -9,7 +9,9 @@ from typer.testing import CliRunner
 def test_cli_chat_create_send_read_and_failure_are_safe(project):
     runner = CliRunner()
     prefix = ["--project", str(project.root), "chat"]
-    result = runner.invoke(app, [*prefix, "create", "CLI conversation"])
+    result = runner.invoke(
+        app, [*prefix, "create", "CLI conversation", "--profile", "fake", "--locale", "en"]
+    )
     assert result.exit_code == 0, result.output
     identity = json.loads(result.output)["id"]
     sent = runner.invoke(app, [*prefix, "send", identity, "Hello"])
@@ -54,3 +56,36 @@ def test_cli_storage_failure_records_type_without_exception_content(project, mon
     record = (project.logs / "cli.jsonl").read_text(encoding="utf-8")
     assert json.loads(record.splitlines()[-1])["failure"]["exception_type"] == "PermissionError"
     assert "private value" not in record
+
+
+def test_cli_draw_freezes_the_scene_and_waits_for_saved_files(project, monkeypatch):
+    from types import SimpleNamespace
+
+    from komaquill.api import Client
+    from komaquill.cli import web
+
+    runner = CliRunner()
+    prefix = ["--project", str(project.root), "chat"]
+    created = runner.invoke(app, [*prefix, "create", "Scene"])
+    conversation = json.loads(created.output)
+    assert conversation["definition"]["llm_profile"] == "lmstudio-4b"
+    assert conversation["definition"]["locale"] == "ja"
+    client = Client(project.root)
+    captured = []
+
+    def execute(identity):
+        captured.append(client.library.store.job(identity)[0])
+        return SimpleNamespace(id=identity, image_id=identity)
+
+    client.library.execute = execute
+    client.library.job = lambda identity: None
+    client.images.wait = lambda identity: SimpleNamespace(run_id=identity, images=["scene.png"])
+    monkeypatch.setattr(web, "Client", lambda _: client)
+    drawn = runner.invoke(app, [*prefix, "draw", conversation["id"], "--allow-real-llm"])
+    assert drawn.exit_code == 0, drawn.output
+    assert captured[0].request.expected_revision == 0
+    assert captured[0].request.allow_real_llm is True
+    assert "scene.png" in drawn.output
+    client.library.execute = lambda _: SimpleNamespace(image_id=None, error="generation_failed")
+    failed = runner.invoke(app, [*prefix, "draw", conversation["id"]])
+    assert failed.exit_code == 1 and "Traceback" not in failed.output

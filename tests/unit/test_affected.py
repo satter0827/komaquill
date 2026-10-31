@@ -7,8 +7,48 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts import affected
+from scripts import _support, affected
 from scripts.affected import changed, related
+
+
+@pytest.mark.parametrize("base", [None, "", "0" * 40, "0" * 64, "explicit-ref"])
+def test_comparison_base_replaces_only_absent_or_null_git_refs(tmp_path, monkeypatch, base):
+    (tmp_path / "nx.json").write_text(json.dumps({"defaultBase": "fixture-base"}))
+    monkeypatch.setattr(_support, "ROOT", tmp_path)
+    if base is None:
+        monkeypatch.delenv("NX_BASE", raising=False)
+    else:
+        monkeypatch.setenv("NX_BASE", base)
+    assert _support.comparison_base() == (
+        "explicit-ref" if base == "explicit-ref" else "fixture-base"
+    )
+
+
+@pytest.mark.parametrize("all_tests", [False, True])
+def test_initial_push_can_select_related_and_all_tests(tmp_path, monkeypatch, capsys, all_tests):
+    def git(*args):
+        subprocess.run(
+            ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    (tmp_path / "nx.json").write_text(json.dumps({"defaultBase": "fixture-base"}))
+    git("init", "--quiet")
+    git("add", "nx.json")
+    git("commit", "--quiet", "--no-gpg-sign", "-m", "Fixture")
+    git("branch", "fixture-base")
+    (tmp_path / "new.py").write_text("pass")
+    monkeypatch.setattr(_support, "ROOT", tmp_path)
+    monkeypatch.setattr(affected, "ROOT", tmp_path)
+    monkeypatch.setenv("NX_BASE", "0" * 40)
+    monkeypatch.setattr(sys, "argv", ["affected.py", "--plan", *(["--all"] if all_tests else [])])
+    affected.main()
+    record = json.loads(capsys.readouterr().out)
+    assert record["base"] == "fixture-base"
+    assert record["changes"] == ["new.py"]
+    assert record["selected"] == (list(affected.TEST_ROOTS) if all_tests else [])
 
 
 def test_changed_leaf_selects_only_dependent_tests(tmp_path):

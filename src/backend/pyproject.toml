@@ -20,7 +20,7 @@ komaquill = "komaquill.__main__:main"
 [project.optional-dependencies]
 colab-client = ["google-colab-cli==0.7.5"]
 web = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
-llm = ["langchain-core>=1,<2", "langchain-openai>=1,<2"]
+llm = ["langchain-core>=1,<2", "langchain-openai>=1,<2", "langgraph>=1,<2"]
 
 [project.urls]
 Repository = "https://github.com/satter0827/komaquill"

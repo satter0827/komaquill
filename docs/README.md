@@ -20,6 +20,7 @@
 | 画面を検査してAIへ証跡を渡す | [画面のE2Eとレビュー用証跡](verification/web-evidence.md) | [変更・検証](development/workflow.md) |
 | 今後の機能を検討する | [今後の候補](plans/future.md) | [保存の設計判断](decisions/0002-preservation-and-cleanup.md) |
 | 個人設定・プリセットを使う | [会話画面](guides/web.md) | [設定と作成の契約](current/creators.md)、[最新の再レビュー](verification/results/zero-base-play-review.md)、[品質改善候補](plans/creators-and-play.md) |
+| LLMの実行基盤と会話品質を改善する | [LangGraph移行と会話・画像の整合性](plans/langgraph-and-context.md) | [現在の設計](current/creators.md)、[変更・検証](development/workflow.md) |
 
 ## 文書の状態と正本
 

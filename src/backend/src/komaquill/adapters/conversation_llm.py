@@ -18,7 +18,7 @@ from uuid import UUID
 
 import keyring
 from filelock import FileLock, Timeout
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.configuration import merge_settings
@@ -194,6 +194,8 @@ class StructuredResponder:
         try:
             from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
             from langsmith import tracing_context
+
+            from komaquill.adapters.llm_graph import WORKFLOW_VERSION, run_request
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing") from None
         context: list[BaseMessage] = [SystemMessage(content=system)]
@@ -210,11 +212,6 @@ class StructuredResponder:
                     "Do not copy a different language from history."
                 )
         schema_chars = len(json.dumps(wire_schema, ensure_ascii=False))
-        while len(context) > 2 and (
-            sum(len(str(m.content)) for m in context) + schema_chars
-            > self.settings.max_input_characters
-        ):
-            del context[1:3]
         bound = self._model(profile).bind(
             response_format={
                 "type": "json_schema",
@@ -227,112 +224,106 @@ class StructuredResponder:
                 },
             }
         )
+
+        def send(context: list[BaseMessage], attempt: int) -> str:
+            record = {
+                "format_version": 1,
+                "status": "started",
+                "workflow": {"engine": "langgraph", "version": WORKFLOW_VERSION},
+                "model": profile.model,
+                "profile": profile_id,
+                "started_at": datetime.now(UTC).isoformat(),
+                "schema": wire_schema,
+                "instructions_sha256": hashlib.sha256(system.encode()).hexdigest(),
+                "messages": [{"role": m.type, "content": m.content} for m in context],
+                "max_output_tokens": self.settings.max_output_tokens,
+                "temperature": profile.temperature,
+                "reasoning_effort": profile.reasoning_effort,
+                "usage": None,
+            }
+            self.record(operation, attempt, record, purpose)
+            started = time.monotonic()
+            try:
+                with tracing_context(enabled=False):
+                    response = bound.invoke(context, config={"callbacks": []})
+            except Exception as error:
+                status = getattr(error, "status_code", None)
+                code = (
+                    "llm_request_invalid"
+                    if status in {400, 422}
+                    else ("authentication_failed" if status in {401, 403} else "llm_unavailable")
+                )
+                self.record(
+                    operation,
+                    attempt,
+                    {
+                        **record,
+                        "status": "failed",
+                        "error": code,
+                        "exception_type": type(error).__name__,
+                        "http_status": status if isinstance(status, int) else None,
+                        "elapsed_seconds": time.monotonic() - started,
+                    },
+                    purpose,
+                )
+                raise KomaquillError(code=code, retryable=False) from None
+            actual = response.response_metadata.get("model_name") or response.response_metadata.get(
+                "model"
+            )
+            self.record(
+                operation,
+                attempt,
+                {
+                    **record,
+                    "status": "response_received",
+                    "response_model": actual,
+                    "finish_reason": response.response_metadata.get("finish_reason"),
+                    "response": response.content,
+                    "usage": response.usage_metadata,
+                    "elapsed_seconds": time.monotonic() - started,
+                },
+                purpose,
+            )
+            if profile.require_model_match and actual != profile.model:
+                raise KomaquillError(code="identity_mismatch", retryable=False)
+            if response.additional_kwargs.get("refusal") or not isinstance(response.content, str):
+                raise KomaquillError(code="invalid_response", retryable=False)
+            return response.content
+
+        def parse(content: str) -> T:
+            value = schema.model_validate_json(content)
+            if validate:
+                validate(value)
+            return value
+
+        def repair_prompt(invalid: ValueError) -> str:
+            detail = (
+                f" The {invalid.field} field uses the wrong language. "
+                "Translate that entire field; "
+                "changing only the other field is insufficient."
+                if isinstance(invalid, ResponseLanguageError)
+                else ""
+            )
+            return (
+                "Correct the previous response. Return valid JSON matching "
+                "the supplied schema. Preserve the facts. " + correction + detail
+            )
+
         lock_path = self.workspace / ".artifacts/state/.llm.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with FileLock(str(lock_path), timeout=0):
-                for attempt in range(self.settings.repair_attempts + 1):
-                    if (
-                        sum(len(str(m.content)) for m in context) + schema_chars
-                        > self.settings.max_input_characters
-                    ):
-                        raise KomaquillError(code="context_limit_exceeded", retryable=False)
-                    record = {
-                        "format_version": 1,
-                        "status": "started",
-                        "model": profile.model,
-                        "profile": profile_id,
-                        "started_at": datetime.now(UTC).isoformat(),
-                        "schema": wire_schema,
-                        "instructions_sha256": hashlib.sha256(system.encode()).hexdigest(),
-                        "messages": [{"role": m.type, "content": m.content} for m in context],
-                        "max_output_tokens": self.settings.max_output_tokens,
-                        "temperature": profile.temperature,
-                        "reasoning_effort": profile.reasoning_effort,
-                        "usage": None,
-                    }
-                    self.record(operation, attempt, record, purpose)
-                    started = time.monotonic()
-                    try:
-                        with tracing_context(enabled=False):
-                            response = bound.invoke(context, config={"callbacks": []})
-                    except Exception as error:
-                        status = getattr(error, "status_code", None)
-                        code = (
-                            "llm_request_invalid"
-                            if status in {400, 422}
-                            else (
-                                "authentication_failed"
-                                if status in {401, 403}
-                                else "llm_unavailable"
-                            )
-                        )
-                        self.record(
-                            operation,
-                            attempt,
-                            {
-                                **record,
-                                "status": "failed",
-                                "error": code,
-                                "exception_type": type(error).__name__,
-                                "http_status": status if isinstance(status, int) else None,
-                                "elapsed_seconds": time.monotonic() - started,
-                            },
-                            purpose,
-                        )
-                        raise KomaquillError(code=code, retryable=False) from None
-                    actual = response.response_metadata.get(
-                        "model_name"
-                    ) or response.response_metadata.get("model")
-                    self.record(
-                        operation,
-                        attempt,
-                        {
-                            **record,
-                            "status": "response_received",
-                            "response_model": actual,
-                            "finish_reason": response.response_metadata.get("finish_reason"),
-                            "response": response.content,
-                            "usage": response.usage_metadata,
-                            "elapsed_seconds": time.monotonic() - started,
-                        },
-                        purpose,
-                    )
-                    if profile.require_model_match and actual != profile.model:
-                        raise KomaquillError(code="identity_mismatch", retryable=False)
-                    if response.additional_kwargs.get("refusal") or not isinstance(
-                        response.content, str
-                    ):
-                        raise KomaquillError(code="invalid_response", retryable=False)
-                    try:
-                        value = schema.model_validate_json(response.content)
-                        if validate:
-                            validate(value)
-                        return value
-                    except (ValidationError, ValueError) as invalid:
-                        detail = (
-                            f" The {invalid.field} field uses the wrong language. "
-                            "Translate that entire field; "
-                            "changing only the other field is insufficient."
-                            if isinstance(invalid, ResponseLanguageError)
-                            else ""
-                        )
-                        context.extend(
-                            [
-                                AIMessage(content=response.content),
-                                HumanMessage(
-                                    content=(
-                                        "Correct the previous response. Return valid JSON matching "
-                                        "the supplied schema. Preserve the facts. "
-                                        + correction
-                                        + detail
-                                    )
-                                ),
-                            ]
-                        )
+                return run_request(
+                    context,
+                    send,
+                    parse,
+                    repair_prompt,
+                    repair_attempts=self.settings.repair_attempts,
+                    max_input_characters=self.settings.max_input_characters,
+                    schema_characters=schema_chars,
+                )
         except Timeout:
             raise KomaquillError(code="operation_busy", retryable=True) from None
-        raise KomaquillError(code="invalid_response", retryable=False)
 
     def reply(self, conversation: Conversation, request: SendInput) -> Reply:
         profile = self.settings.llm_profiles.get(conversation.definition.llm_profile)

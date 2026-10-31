@@ -1,5 +1,13 @@
 format_version = 1
 
+[requirements.REQ-CHAT-WORKFLOW]
+summary = "LangGraphで構造化LLM要求と有限の修正を実行する"
+status = "implemented"
+implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。グラフ単体の永続再開、長期要約、会話の意味整合性と画質の改善は後続計画で扱う。"
+acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
+sources = ["src/backend/src/komaquill/adapters/llm_graph.py", "src/backend/src/komaquill/adapters/conversation_llm.py"]
+tests = ["tests/unit/test_llm_graph.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py"]
+
 [requirements.REQ-WEB-EVIDENCE]
 summary = "確定した期待結果の画面検査と主観レビューの証跡収集を分け、収集処理自体も検査する"
 status = "implemented"

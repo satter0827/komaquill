@@ -19,9 +19,11 @@ REPLACE_RETRY_SECONDS = 0.05
 
 def comparison_base() -> str:
     """Use the same explicit comparison base for Nx and Python selection."""
-    return os.environ.get("NX_BASE") or str(
-        json.loads((ROOT / "nx.json").read_bytes())["defaultBase"]
-    )
+    base = os.environ.get("NX_BASE")
+    # New Git refs have a null object ID rather than a comparison commit.
+    if base and base not in {"0" * 40, "0" * 64}:
+        return base
+    return str(json.loads((ROOT / "nx.json").read_bytes())["defaultBase"])
 
 
 def message(key: str, **values: object) -> str:

@@ -17,6 +17,8 @@
 
 `node scripts/python.mjs scripts/check.py --scope daily --plan`で対象プロジェクト、`node scripts/python.mjs scripts/affected.py --plan`でPythonの選択理由とテストを確認できます。比較基準の既定値はnx.jsonのdefaultBaseが正本です。`NX_BASE`を指定するとNxとPythonで同じ値を使用します。コミット済み・ステージ済み・作業中・新規・削除の変更を含めます。Reactの変更からPythonの全テストを呼び出す依存は設定しません。
 
+新規ブランチの初回pushでGitHubが返すゼロのコミットIDは比較基準にせず、設定済みのdefaultBaseを使います。初回pushの全体検査と通常の差分検査で同じ解決処理を共有し、それ以外の不正な参照は失敗として記録します。
+
 lint、型検査、テスト、ビルドをNxの別タスクとして定義します。入力と出力は各project.jsonを正本とします。API契約は`pnpm contracts`でOpenAPIとTypeScriptクライアントを生成します。
 
 ## 結果を確認する

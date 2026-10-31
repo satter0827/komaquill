@@ -53,13 +53,13 @@ ancestors = ["komaquill", "komaquill.domain", "komaquill.application"]
 name = "Application and domain do not import concrete adapters or presentation"
 type = "forbidden"
 source_modules = ["komaquill.application", "komaquill.domain", "komaquill.conversations", "komaquill.images", "komaquill.archive", "komaquill.library"]
-forbidden_modules = ["komaquill.adapters", "komaquill.interfaces", "komaquill.worker", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli", "langchain_core", "langchain_openai", "langsmith"]
+forbidden_modules = ["komaquill.adapters", "komaquill.interfaces", "komaquill.worker", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli", "langchain_core", "langchain_openai", "langgraph", "langsmith"]
 
 [[tool.importlinter.contracts]]
 name = "GPU code does not import local interfaces or control"
 type = "forbidden"
 source_modules = ["komaquill.worker"]
-forbidden_modules = ["komaquill.cli.main", "komaquill.runtime.worker", "komaquill.adapters.colab", "komaquill.runtime", "komaquill.adapters.colab_entry", "komaquill.conversations", "komaquill.archive", "komaquill.adapters.database", "sqlalchemy", "langchain_core", "langchain_openai", "langsmith"]
+forbidden_modules = ["komaquill.cli.main", "komaquill.runtime.worker", "komaquill.adapters.colab", "komaquill.runtime", "komaquill.adapters.colab_entry", "komaquill.conversations", "komaquill.archive", "komaquill.adapters.database", "sqlalchemy", "langchain_core", "langchain_openai", "langgraph", "langsmith"]
 
 [[tool.importlinter.contracts]]
 name = "Product code does not import development dependencies"

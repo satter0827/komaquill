@@ -127,11 +127,9 @@ def history_messages(
     except KomaquillError:
         needs_summary = True
     updated = None
-    if len(pairs) >= responder.settings.context_turns or needs_summary:
-        keep = max(1, responder.settings.context_turns // 2)
-        count = len(pairs) - min(keep, len(pairs))
-        if count < 1:
-            raise KomaquillError(code="context_limit_exceeded", retryable=False)
+    keep = max(1, responder.settings.context_turns // 2)
+    count = len(pairs) - min(keep, len(pairs))
+    if count > 0 and (len(pairs) >= responder.settings.context_turns or needs_summary):
         prefix: list[BaseMessage] = []
         for index, turn in enumerate(conversation.turns[: start + count]):
             user = turn.user

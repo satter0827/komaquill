@@ -11,11 +11,13 @@ from komaquill.domain.roleplay import ConversationMemory
 from langchain_core.messages import AIMessage
 
 
-def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4):
+def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, context_turns=4):
     import langchain_openai
 
     api = Client.initialize(tmp_path)
-    (tmp_path / "komaquill.toml").write_text("[conversation]\ncontext_turns=4\n", encoding="utf-8")
+    (tmp_path / "komaquill.toml").write_text(
+        f"[conversation]\ncontext_turns={context_turns}\n", encoding="utf-8"
+    )
     calls = []
 
     class Model:
@@ -244,3 +246,27 @@ def test_oversized_required_input_does_not_send_summary_or_dialogue(tmp_path, mo
     assert result.error == "context_limit_exceeded" and calls == []
     saved = api.conversations.get(original.id)
     assert saved.turns == original.turns and saved.memory is None
+
+
+@pytest.mark.parametrize("count", [0, 1])
+def test_single_history_slot_allows_continuation_until_a_summary_prefix_exists(
+    tmp_path, monkeypatch, count
+):
+    api, original, calls = prepare(tmp_path, monkeypatch, count=count, context_turns=1)
+    for index in range(2 - count):
+        operation = api.conversations.send(
+            original.id,
+            SendInput(operation_id=uuid4(), text=f"Continue {index}", allow_real_llm=True),
+        )
+        assert operation.state == "complete"
+    assert [summary for summary, _, _ in calls] == [False] * (2 - count)
+    saved = api.conversations.get(original.id)
+    assert len(saved.turns) == 2 and saved.memory is None
+    operation = api.conversations.send(
+        original.id, SendInput(operation_id=uuid4(), text="Continue again", allow_real_llm=True)
+    )
+    assert operation.state == "complete"
+    assert [summary for summary, _, _ in calls][-2:] == [True, False]
+    continued = api.conversations.get(original.id)
+    assert continued.turns[:2] == saved.turns
+    assert continued.memory.through_turn == 1

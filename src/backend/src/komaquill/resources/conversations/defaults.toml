@@ -4,6 +4,10 @@ max_output_tokens = 4096
 repair_attempts = 1
 context_turns = 12
 max_input_characters = 32768
+summary_max_output_tokens = 512
+summary_max_characters = 2048
+context_window_tokens = 32768
+repair_reserve_tokens = 1024
 
 [llm_profiles.fake]
 provider = "fake"

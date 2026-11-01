@@ -20,7 +20,12 @@ komaquill = "komaquill.__main__:main"
 [project.optional-dependencies]
 colab-client = ["google-colab-cli==0.7.5"]
 web = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
-llm = ["langchain-core>=1,<2", "langchain-openai>=1,<2", "langgraph>=1,<2"]
+llm = [
+    "langchain-core>=1,<2",
+    "langchain-openai>=1,<2",
+    "langgraph>=1,<2",
+    "langmem>=0.0.30,<0.1",
+]
 
 [project.urls]
 Repository = "https://github.com/satter0827/komaquill"
@@ -51,6 +56,7 @@ worker = [
 ]
 
 dev = [
+  "markdown-it-py>=4,<5",
   "ruff>=0.14,<1", "mypy>=1.18,<2", "pytest>=8.4,<10", "pytest-cov>=7,<8",
   "import-linter>=2.5,<3", "debugpy>=1.8,<2", "types-setuptools>=80",
   "websockets>=15,<17", "types-psutil>=7,<8",

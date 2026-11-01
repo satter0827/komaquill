@@ -1,14 +1,19 @@
 """Persist typed presets and short creation checkpoints in the shared database."""
 
+import builtins
+import hashlib
+import json
 import os
 from typing import cast
 from uuid import UUID
 
 import psutil
-from sqlalchemy import Boolean, Column, Integer, String, Table, Text, select
+from sqlalchemy import Boolean, Column, Integer, String, Table, Text, case, func, select
+from sqlalchemy.engine import Connection
 
 from komaquill.adapters.database import Database, conflict, metadata, missing
 from komaquill.adapters.storage_errors import stored
+from komaquill.domain.errors import KomaquillError
 from komaquill.library.models import (
     CharacterPreset,
     CreationJob,
@@ -18,8 +23,12 @@ from komaquill.library.models import (
     Preset,
     PresetInput,
     PresetKind,
+    PresetSaveOptions,
+    PresetSaveResult,
+    StoryInput,
     StoryPreset,
 )
+from komaquill.library.rendering import preset_changes, preset_image_input
 
 presets = Table(
     "presets",
@@ -43,6 +52,13 @@ creation_jobs = Table(
     Column("owner_pid", Integer, nullable=False),
     Column("owner_started", String, nullable=False),
 )
+preset_saves = Table(
+    "preset_saves",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("fingerprint", String, nullable=False),
+    Column("payload", Text, nullable=False),
+)
 MODELS: dict[PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]] = {
     "player": PlayerProfile,
     "character": CharacterPreset,
@@ -57,10 +73,14 @@ class LibraryRepository:
     @stored
     def conversation_images(self, identity: UUID) -> list[CreationJob]:
         with self.database.engine.connect() as connection:
+            payload = case(
+                (func.json_valid(creation_jobs.c.payload) == 1, creation_jobs.c.payload),
+                else_="{}",
+            )
             rows = connection.execute(
                 select(creation_jobs.c.id, creation_jobs.c.payload).where(
-                    creation_jobs.c.payload.op("->>")("$.request.kind") == "conversation_image",
-                    creation_jobs.c.payload.op("->>")("$.request.target_id") == str(identity),
+                    func.json_extract(payload, "$.request.kind") == "conversation_image",
+                    func.json_extract(payload, "$.request.target_id") == str(identity),
                 )
             )
             return sorted(
@@ -184,7 +204,9 @@ class LibraryRepository:
                     "revision": revision + 1,
                     "sample": False,
                     "sample_locale": None,
-                    "image_job_id": None,
+                    "image_job_id": None
+                    if preset_image_input(kind, previous) != preset_image_input(kind, value)
+                    else previous.image_job_id,
                 }
             )
             connection.execute(
@@ -233,7 +255,6 @@ class LibraryRepository:
                             update={
                                 "character_id": None,
                                 "revision": story.revision + 1,
-                                "image_job_id": None,
                             }
                         )
                         connection.execute(
@@ -311,38 +332,258 @@ class LibraryRepository:
             connection.commit()
             return result
 
+    def _accept(
+        self,
+        connection: Connection,
+        request: CreationRequest,
+        original: str,
+        turn_id: UUID | None = None,
+    ) -> tuple[CreationJob, bool]:
+        row = connection.execute(
+            select(creation_jobs.c.payload).where(creation_jobs.c.id == str(request.operation_id))
+        ).scalar_one_or_none()
+        if row is not None:
+            job = self._decode_job(str(request.operation_id), row)
+            if job.request != request:
+                raise conflict()
+            return job, False
+        active = case(
+            (
+                func.json_valid(creation_jobs.c.payload) == 1,
+                func.json_extract(creation_jobs.c.payload, "$.state"),
+            ),
+            else_=None,
+        )
+        target = case(
+            (
+                func.json_valid(creation_jobs.c.payload) == 1,
+                func.json_extract(creation_jobs.c.payload, "$.request.target_id"),
+            ),
+            else_=None,
+        )
+        purpose = case(
+            (
+                func.json_valid(creation_jobs.c.payload) == 1,
+                func.json_extract(creation_jobs.c.payload, "$.request.kind"),
+            ),
+            else_=None,
+        )
+        version = case(
+            (
+                func.json_valid(creation_jobs.c.payload) == 1,
+                func.json_extract(creation_jobs.c.payload, "$.request.expected_revision"),
+            ),
+            else_=None,
+        )
+        if (
+            request.target_id is not None
+            and connection.execute(
+                select(creation_jobs.c.id).where(
+                    target == str(request.target_id),
+                    purpose == request.kind,
+                    version == request.expected_revision,
+                    active.in_(["accepted", "running", "submitted"]),
+                )
+            ).first()
+            is not None
+        ):
+            raise KomaquillError(code="operation_busy", retryable=True)
+        value = None
+        if request.kind in {"portrait", "banner"}:
+            kind: PresetKind = "character" if request.kind == "portrait" else "story"
+            payload = connection.execute(
+                select(presets.c.payload).where(
+                    presets.c.id == str(request.target_id),
+                    presets.c.kind == kind,
+                    presets.c.deleted.is_(False),
+                )
+            ).scalar_one_or_none()
+            if payload is None:
+                raise missing()
+            value = self._decode(kind, str(request.target_id), payload)
+            if value.revision != request.expected_revision:
+                raise conflict()
+        job = CreationJob(
+            id=request.operation_id,
+            request=request,
+            original=original,
+            state="accepted",
+            turn_id=turn_id,
+        )
+        connection.execute(
+            creation_jobs.insert().values(
+                id=str(job.id),
+                payload=job.model_dump_json(),
+                owner_pid=os.getpid(),
+                owner_started=str(psutil.Process().create_time()),
+            )
+        )
+        if value is not None:
+            updated = value.model_copy(update={"image_job_id": job.id})
+            connection.execute(
+                presets.update()
+                .where(presets.c.id == str(value.id))
+                .values(payload=updated.model_dump_json())
+            )
+        return job, True
+
     @stored
     def accept(
         self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
     ) -> tuple[CreationJob, bool]:
         with self.database.transaction() as connection:
-            row = connection.execute(
-                select(creation_jobs.c.payload).where(
-                    creation_jobs.c.id == str(request.operation_id)
+            result = self._accept(connection, request, original, turn_id)
+            connection.commit()
+            return result
+
+    @stored
+    def save_preset(
+        self,
+        kind: PresetKind,
+        value: PresetInput,
+        options: PresetSaveOptions,
+        image_error: str | None,
+    ) -> PresetSaveResult:
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "kind": kind,
+                    "value": value.model_dump(mode="json"),
+                    "options": options.model_dump(mode="json"),
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        with self.database.transaction() as connection:
+            previous_receipt = (
+                connection.execute(
+                    select(preset_saves).where(preset_saves.c.id == str(options.operation_id))
                 )
-            ).scalar_one_or_none()
-            if row is not None:
-                job = self._decode_job(str(request.operation_id), row)
-                if job.request != request:
+                .mappings()
+                .one_or_none()
+            )
+            if previous_receipt is not None:
+                if previous_receipt["fingerprint"] != fingerprint:
                     raise conflict()
-                return job, False
-            job = CreationJob(
-                id=request.operation_id,
-                request=request,
-                original=original,
-                state="accepted",
-                turn_id=turn_id,
+                return PresetSaveResult.model_validate_json(previous_receipt["payload"])
+            previous = None
+            if options.target_id is not None:
+                payload = connection.execute(
+                    select(presets.c.payload).where(
+                        presets.c.id == str(options.target_id),
+                        presets.c.kind == kind,
+                        presets.c.deleted.is_(False),
+                    )
+                ).scalar_one_or_none()
+                if payload is None:
+                    raise missing()
+                previous = self._decode(kind, str(options.target_id), payload)
+                if previous.revision != options.expected_revision:
+                    raise conflict()
+            elif options.expected_revision is not None:
+                raise conflict()
+            if (
+                kind == "story"
+                and isinstance(value, StoryInput)
+                and value.character_id is not None
+                and connection.execute(
+                    select(presets.c.id).where(
+                        presets.c.id == str(value.character_id),
+                        presets.c.kind == "character",
+                        presets.c.deleted.is_(False),
+                    )
+                ).first()
+                is None
+            ):
+                raise missing()
+            changes = preset_changes(kind, value, previous, options)
+            record = MODELS[kind].model_validate(
+                {
+                    **(previous.model_dump() if previous else {}),
+                    **value.model_dump(),
+                    **(
+                        {
+                            "revision": previous.revision + 1,
+                            "sample": False,
+                            "sample_locale": None,
+                            "image_job_id": None
+                            if changes.image_changed
+                            else previous.image_job_id,
+                        }
+                        if previous and changes.content_changed
+                        else {}
+                    ),
+                }
+            )
+            if previous is None:
+                connection.execute(
+                    presets.insert().values(
+                        id=str(record.id),
+                        kind=kind,
+                        payload=record.model_dump_json(),
+                        deleted=False,
+                    )
+                )
+            elif changes.content_changed:
+                connection.execute(
+                    presets.update()
+                    .where(presets.c.id == str(record.id))
+                    .values(payload=record.model_dump_json())
+                )
+            job = None
+            if not changes.generate_image:
+                image_error = None
+            elif image_error is None:
+                request = CreationRequest(
+                    operation_id=options.operation_id,
+                    kind="portrait" if kind == "character" else "banner",
+                    target_id=record.id,
+                    expected_revision=record.revision,
+                    locale=options.locale,
+                    llm_profile=options.llm_profile,
+                    allow_real_llm=options.allow_real_llm,
+                )
+                try:
+                    job, _ = self._accept(
+                        connection,
+                        request,
+                        json.dumps(preset_image_input(kind, value), ensure_ascii=False),
+                    )
+                    record = record.model_copy(update={"image_job_id": job.id})
+                except KomaquillError as error:
+                    if error.code != "operation_busy":
+                        raise
+                    image_error = error.code.value
+            result = PresetSaveResult(
+                preset=cast(CharacterPreset | StoryPreset, record), job=job, image_error=image_error
             )
             connection.execute(
-                creation_jobs.insert().values(
-                    id=str(job.id),
-                    payload=job.model_dump_json(),
-                    owner_pid=os.getpid(),
-                    owner_started=str(psutil.Process().create_time()),
+                preset_saves.insert().values(
+                    id=str(options.operation_id),
+                    fingerprint=fingerprint,
+                    payload=result.model_dump_json(),
                 )
             )
             connection.commit()
-            return job, True
+            return result
+
+    @stored
+    def job_ids(self) -> builtins.list[UUID]:
+        with self.database.engine.connect() as connection:
+            return [
+                UUID(row.id)
+                for row in connection.execute(
+                    select(creation_jobs.c.id).where(
+                        case(
+                            (
+                                func.json_valid(creation_jobs.c.payload) == 1,
+                                func.json_extract(creation_jobs.c.payload, "$.state"),
+                            ),
+                            else_="invalid",
+                        ).in_(["accepted", "running", "submitted", "invalid"])
+                    )
+                )
+            ]
 
     @stored
     def job(self, identity: UUID) -> tuple[CreationJob, bool]:
@@ -425,6 +666,26 @@ class LibraryRepository:
                     if getattr(previous, key) is not None and getattr(value, key) is None
                 }
             )
+            request = value.request
+            if value.state == "complete" and request.kind in {"portrait", "banner"}:
+                target_payload = connection.execute(
+                    select(presets.c.payload).where(
+                        presets.c.id == str(request.target_id), presets.c.deleted.is_(False)
+                    )
+                ).scalar_one_or_none()
+                if target_payload is not None:
+                    kind: PresetKind = "character" if request.kind == "portrait" else "story"
+                    target = self._decode(kind, str(request.target_id), target_payload)
+                    if (
+                        target.revision == request.expected_revision
+                        or preset_image_input(kind, target) == json.loads(value.original)
+                    ) and target.image_job_id == value.id:
+                        target = target.model_copy(update={"image_id": value.image_id})
+                        connection.execute(
+                            presets.update()
+                            .where(presets.c.id == str(target.id))
+                            .values(payload=target.model_dump_json())
+                        )
             connection.execute(
                 creation_jobs.update()
                 .where(creation_jobs.c.id == str(value.id))

@@ -138,3 +138,9 @@ api_node = "92"
 api_input = "value"
 ui_node = 92
 ui_widget = 0
+
+[purpose_prefixes]
+banner = "scenery, no humans, environment only"
+
+[purpose_negatives]
+banner = "people, person, human, character, portrait"

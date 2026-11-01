@@ -75,7 +75,12 @@ test('continues dialogue with narration and draws only on request', async ({
     await (await request.get(`/api/v1/conversations/${id}/images`)).json(),
   ).toHaveLength(0)
   await evidence.capture('Three replies and narration without automatic images')
-  await page.getByRole('button', { name: ja.drawScene, exact: true }).click()
+  const draw = page.getByRole('button', { name: ja.drawScene, exact: true })
+  await expect(draw.locator('svg')).toHaveCount(1)
+  await expect(draw).toHaveText('')
+  await input.fill('Unsent text remains here')
+  await draw.click()
+  await expect(input).toHaveValue('Unsent text remains here')
   await expect(
     page.getByRole('img', { name: ja.imageAlt.replace('{index}', '1') }).last(),
   ).toHaveJSProperty('naturalWidth', 8)
@@ -242,8 +247,83 @@ test('retains one profile across start, edit, return and start navigation', asyn
   const conversation = await (
     await request.get(`/api/v1/conversations/${identity}`)
   ).json()
-  expect(JSON.parse(conversation.definition.user).age).toBe('37')
+  expect(conversation.definition.user.age).toBe('37')
   await evidence.capture(
     'One edited profile survives both directions of client navigation',
+  )
+})
+
+test('regenerates the current age and gender and displays one preview', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  const created = await (
+    await request.post('/api/v1/characters/save', {
+      data: {
+        operation_id: randomUUID(),
+        image_policy: 'none',
+        value: {
+          name: 'Older companion',
+          age: '32',
+          gender: 'woman',
+          appearance: 'Short silver hair and a black apron.',
+        },
+      },
+    })
+  ).json()
+  await page.goto(`/characters/${created.preset.id}`)
+  await page.getByLabel(ja.age, { exact: true }).fill('60')
+  await page.getByLabel(ja.gender, { exact: true }).fill('man')
+  const received = page.waitForRequest(
+    (req) =>
+      new URL(req.url()).pathname === '/api/v1/characters/save' &&
+      req.method() === 'POST',
+  )
+  await page.getByRole('button', { name: ja.createImage, exact: true }).click()
+  expect((await received).postDataJSON()).toMatchObject({
+    value: { age: '60', gender: 'man' },
+    image_policy: 'always',
+  })
+  await expect(page.locator('.cover-preview img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
+  await expect(page.locator('.editor-preview img')).toHaveCount(1)
+  await expect(
+    page.locator('.editor-preview').getByText(ja.imageReady, { exact: true }),
+  ).toHaveCount(1)
+  await expect(
+    page.locator('.editor-preview').getByText(ja.job_complete, { exact: true }),
+  ).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('60')
+  await expect(page.locator('.editor-preview img')).toHaveCount(1)
+  await expect(
+    page.locator('.editor-preview').getByText(ja.imageReady, { exact: true }),
+  ).toHaveCount(1)
+  await expect(
+    page.locator('.editor-preview').getByText(ja.job_complete, { exact: true }),
+  ).toHaveCount(0)
+  await evidence.capture(
+    'Saved edited attributes and a single completed preview',
+  )
+})
+
+test('offers a new conversation for a retained fixed sample instead of sending a drawing request', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  const saved = await (
+    await request.post('/api/v1/conversations', {
+      data: { title: 'Fixed sample', locale: 'ja', llm_profile: 'fake' },
+    })
+  ).json()
+  await page.goto(`/conversations/${saved.id}`)
+  await expect(page.getByRole('button', { name: ja.drawScene })).toBeDisabled()
+  await expect(page.getByText(ja.sampleDrawingUnavailable)).toBeVisible()
+  await evidence.capture(
+    'Fixed sample drawing is unavailable with a new conversation link',
   )
 })

@@ -247,60 +247,51 @@ it('keeps an accepted creation busy before the first status response', async () 
   expect(await screen.findByRole('button', { name: m.useDraft })).toBeVisible()
 })
 
-it('waits for image connection before scheduling an image after saving', async () => {
-  let release: () => void = () => {}
-  const pending = new Promise<void>((resolve) => {
-    release = resolve
-  })
+it('saves current input and image intent in one request without a second creation request', async () => {
   const identity = crypto.randomUUID()
   let saved: Record<string, unknown> | null = null
-  let job: CreationJob | null = null
-  const requests: CreationRequest[] = []
+  const requests: Record<string, unknown>[] = []
   server.use(
     http.get(`${base}/api/v1/characters`, () =>
       HttpResponse.json(saved ? [saved] : []),
     ),
-    http.post(`${base}/api/v1/characters`, async ({ request }) => {
+    http.post(`${base}/api/v1/characters/save`, async ({ request }) => {
+      const body = (await request.json()) as {
+        value: Record<string, unknown>
+        operation_id: string
+      }
+      requests.push(body)
       saved = {
-        ...((await request.json()) as Record<string, unknown>),
+        ...body.value,
         id: identity,
         revision: 0,
+        image_id: null,
+        image_job_id: null,
       }
-      return HttpResponse.json(saved, { status: 201 })
+      return HttpResponse.json({
+        preset: saved,
+        job: null,
+        image_error: 'image_backend_unavailable',
+      })
     }),
-    http.post(`${base}/api/v1/runtime/refresh`, async () => {
-      await pending
-      return HttpResponse.json({ gpu: 'active', connection: 'connected' })
-    }),
-    http.post(`${base}/api/v1/creation-jobs`, async ({ request }) => {
-      const body = (await request.json()) as CreationRequest
-      requests.push(body)
-      job = {
-        id: body.operation_id,
-        request: body,
-        state: 'failed',
-        error: 'operation_failed',
-      }
-      return HttpResponse.json(job, { status: 202 })
-    }),
-    http.get(`${base}/api/v1/creation-jobs/:identity`, () =>
-      HttpResponse.json(job),
-    ),
   )
   await draftEditor()
   await userEvent.type(screen.getByLabelText(m.name), 'Casey')
+  await userEvent.type(screen.getByLabelText(m.age), '60')
+  await userEvent.type(screen.getByLabelText(m.gender), 'man')
   await userEvent.click(screen.getByRole('button', { name: m.save }))
-  try {
-    await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(m.saved),
-    )
-    expect(requests).toHaveLength(0)
-  } finally {
-    release()
-  }
-  await waitFor(() => expect(requests).toHaveLength(1))
-  expect(requests[0].target_id).toBe(identity)
-  expect(requests[0].kind).toBe('portrait')
+  await waitFor(() =>
+    expect(screen.getByRole('status')).toHaveTextContent(m.saved),
+  )
+  expect(requests).toHaveLength(1)
+  expect(requests[0]).toMatchObject({
+    value: { name: 'Casey', age: '60', gender: 'man' },
+    image_policy: 'auto',
+    allow_real_llm: true,
+  })
+  expect(requests[0].operation_id).toBeTruthy()
   expect(screen.getByLabelText(m.name)).toHaveValue('Casey')
-  expect(screen.getByRole('status')).toHaveTextContent(m.saved)
+  await waitFor(() =>
+    expect(screen.getByText(m.imageNotConnected)).toBeVisible(),
+  )
 })

@@ -5,6 +5,96 @@ export type ClientOptions = {
 };
 
 /**
+ * ArchivedConversation
+ */
+export type ArchivedConversation = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Turns
+     */
+    turns: Array<ArchivedTurn>;
+    /**
+     * Readable
+     */
+    readable?: boolean;
+};
+
+/**
+ * ArchivedTurn
+ */
+export type ArchivedTurn = {
+    /**
+     * User
+     */
+    user: string;
+    /**
+     * Assistant
+     */
+    assistant: string;
+    /**
+     * Narration
+     */
+    narration?: string;
+};
+
+/**
+ * CharacterDefinition
+ */
+export type CharacterDefinition = {
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Appearance
+     */
+    appearance?: string;
+    /**
+     * Role
+     */
+    role?: string;
+    /**
+     * Address
+     */
+    address?: string;
+    /**
+     * Age
+     */
+    age?: string;
+    /**
+     * Gender
+     */
+    gender?: string;
+    /**
+     * Personality
+     */
+    personality?: string;
+    /**
+     * Speech
+     */
+    speech?: string;
+    /**
+     * Background
+     */
+    background?: string;
+    /**
+     * Relationship
+     */
+    relationship?: string;
+};
+
+/**
  * CharacterInput
  */
 export type CharacterInput = {
@@ -30,14 +120,10 @@ export type CharacterInput = {
     address?: string;
     /**
      * Age
-     *
-     * Plain age text such as 32 or unknown, without template markers.
      */
     age?: string;
     /**
      * Gender
-     *
-     * Plain gender text, or empty when unspecified. No template markers.
      */
     gender?: string;
     /**
@@ -108,14 +194,10 @@ export type CharacterPreset = {
     address: string;
     /**
      * Age
-     *
-     * Plain age text such as 32 or unknown, without template markers.
      */
     age: string;
     /**
      * Gender
-     *
-     * Plain gender text, or empty when unspecified. No template markers.
      */
     gender: string;
     /**
@@ -134,6 +216,41 @@ export type CharacterPreset = {
      * Relationship
      */
     relationship: string;
+};
+
+/**
+ * CharacterSaveRequest
+ */
+export type CharacterSaveRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Target Id
+     */
+    target_id?: string | null;
+    /**
+     * Expected Revision
+     */
+    expected_revision?: number | null;
+    /**
+     * Image Policy
+     */
+    image_policy?: 'auto' | 'always' | 'none';
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
+    value: CharacterInput;
 };
 
 /**
@@ -207,12 +324,8 @@ export type Conversation = {
      */
     id?: string;
     definition: ConversationInput;
-    /**
-     * State
-     */
-    state?: {
-        [key: string]: string;
-    };
+    state?: ConversationState;
+    memory?: ConversationMemory | null;
     /**
      * Turns
      */
@@ -253,32 +366,14 @@ export type ConversationInput = {
      * Title
      */
     title: string;
-    /**
-     * Scenario
-     */
-    scenario?: string;
-    /**
-     * Character
-     */
-    character?: string;
-    /**
-     * User
-     */
-    user?: string;
+    scenario?: StoryDefinition;
+    character?: CharacterDefinition;
+    user?: PersonDefinition;
     /**
      * Instructions
      */
     instructions?: string;
-    /**
-     * Initial State
-     */
-    initial_state?: {
-        [key: string]: string;
-    };
-    /**
-     * Images
-     */
-    images?: boolean;
+    initial_state?: ConversationState;
     /**
      * Llm Profile
      */
@@ -304,6 +399,40 @@ export type ConversationInput = {
 };
 
 /**
+ * ConversationMemory
+ */
+export type ConversationMemory = {
+    /**
+     * Source Version
+     */
+    source_version?: 1 | 2;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Through Turn
+     */
+    through_turn: number;
+    /**
+     * Source Sha256
+     */
+    source_sha256: string;
+    /**
+     * Locale
+     */
+    locale: string;
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Instructions Sha256
+     */
+    instructions_sha256: string;
+};
+
+/**
  * ConversationStart
  */
 export type ConversationStart = {
@@ -325,6 +454,30 @@ export type ConversationStart = {
      * Llm Profile
      */
     llm_profile?: string | null;
+};
+
+/**
+ * ConversationState
+ */
+export type ConversationState = {
+    /**
+     * Place
+     */
+    place?: string;
+    /**
+     * Time
+     */
+    time?: string;
+    /**
+     * Goal
+     */
+    goal?: string;
+    /**
+     * Relationship
+     */
+    relationship?: string;
+    player?: PersonState;
+    character?: PersonState;
 };
 
 /**
@@ -662,6 +815,68 @@ export type OutputSpec = {
 };
 
 /**
+ * PersonDefinition
+ */
+export type PersonDefinition = {
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * Appearance
+     */
+    appearance?: string;
+    /**
+     * Role
+     */
+    role?: string;
+    /**
+     * Address
+     */
+    address?: string;
+    /**
+     * Age
+     */
+    age?: string;
+    /**
+     * Gender
+     */
+    gender?: string;
+};
+
+/**
+ * PersonState
+ */
+export type PersonState = {
+    /**
+     * Appearance
+     */
+    appearance?: string | null;
+    /**
+     * Clothing
+     */
+    clothing?: string | null;
+    /**
+     * Expression
+     */
+    expression?: string | null;
+    /**
+     * Pose
+     */
+    pose?: string | null;
+    /**
+     * Held Objects
+     *
+     * Physical objects currently held in this person's hands. Promises, wishes and knowledge are not objects.
+     */
+    held_objects?: Array<string> | null;
+};
+
+/**
  * PlayerInput
  */
 export type PlayerInput = {
@@ -687,14 +902,10 @@ export type PlayerInput = {
     address?: string;
     /**
      * Age
-     *
-     * Plain age text such as 32 or unknown, without template markers.
      */
     age?: string;
     /**
      * Gender
-     *
-     * Plain gender text, or empty when unspecified. No template markers.
      */
     gender?: string;
 };
@@ -749,14 +960,10 @@ export type PlayerProfile = {
     address: string;
     /**
      * Age
-     *
-     * Plain age text such as 32 or unknown, without template markers.
      */
     age: string;
     /**
      * Gender
-     *
-     * Plain gender text, or empty when unspecified. No template markers.
      */
     gender: string;
 };
@@ -803,6 +1010,21 @@ export type PresetRef = {
      * Revision
      */
     revision: number;
+};
+
+/**
+ * PresetSaveResult
+ */
+export type PresetSaveResult = {
+    /**
+     * Preset
+     */
+    preset: CharacterPreset | StoryPreset;
+    job?: CreationJob | null;
+    /**
+     * Image Error
+     */
+    image_error?: string | null;
 };
 
 /**
@@ -1260,12 +1482,37 @@ export type StateCommand = {
      * Expected Revision
      */
     expected_revision: number;
+    state?: ConversationState;
+};
+
+/**
+ * StoryDefinition
+ */
+export type StoryDefinition = {
     /**
-     * State
+     * Name
      */
-    state?: {
-        [key: string]: string;
-    };
+    name?: string;
+    /**
+     * Description
+     */
+    description?: string;
+    /**
+     * World
+     */
+    world?: string;
+    /**
+     * Opening
+     */
+    opening?: string;
+    /**
+     * Place
+     */
+    place?: string;
+    /**
+     * Goal
+     */
+    goal?: string;
 };
 
 /**
@@ -1361,6 +1608,41 @@ export type StoryPreset = {
 };
 
 /**
+ * StorySaveRequest
+ */
+export type StorySaveRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Target Id
+     */
+    target_id?: string | null;
+    /**
+     * Expected Revision
+     */
+    expected_revision?: number | null;
+    /**
+     * Image Policy
+     */
+    image_policy?: 'auto' | 'always' | 'none';
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
+    value: StoryInput;
+};
+
+/**
  * Turn
  */
 export type Turn = {
@@ -1380,20 +1662,11 @@ export type Turn = {
      * Narration
      */
     narration?: string;
-    /**
-     * State
-     */
-    state: {
-        [key: string]: string;
-    };
+    state: ConversationState;
     /**
      * Image Id
      */
     image_id?: string | null;
-    /**
-     * Scene
-     */
-    scene?: string | null;
     /**
      * Created At
      */
@@ -1427,6 +1700,54 @@ export type ValidationError = {
         [key: string]: unknown;
     };
 };
+
+export type ListArchivedConversationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/archive/conversations';
+};
+
+export type ListArchivedConversationsResponses = {
+    /**
+     * Response List Archived Conversations
+     *
+     * Successful Response
+     */
+    200: Array<ArchivedConversation>;
+};
+
+export type ListArchivedConversationsResponse = ListArchivedConversationsResponses[keyof ListArchivedConversationsResponses];
+
+export type GetArchivedConversationData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/archive/conversations/{identity}';
+};
+
+export type GetArchivedConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetArchivedConversationError = GetArchivedConversationErrors[keyof GetArchivedConversationErrors];
+
+export type GetArchivedConversationResponses = {
+    /**
+     * Successful Response
+     */
+    200: ArchivedConversation;
+};
+
+export type GetArchivedConversationResponse = GetArchivedConversationResponses[keyof GetArchivedConversationResponses];
 
 export type ListConversationImagesData = {
     body?: never;
@@ -1595,30 +1916,30 @@ export type ListCharactersResponses = {
 
 export type ListCharactersResponse = ListCharactersResponses[keyof ListCharactersResponses];
 
-export type CreateCharacterData = {
-    body: CharacterInput;
+export type SaveCharacterData = {
+    body: CharacterSaveRequest;
     path?: never;
     query?: never;
-    url: '/api/v1/characters';
+    url: '/api/v1/characters/save';
 };
 
-export type CreateCharacterErrors = {
+export type SaveCharacterErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type CreateCharacterError = CreateCharacterErrors[keyof CreateCharacterErrors];
+export type SaveCharacterError = SaveCharacterErrors[keyof SaveCharacterErrors];
 
-export type CreateCharacterResponses = {
+export type SaveCharacterResponses = {
     /**
      * Successful Response
      */
-    201: CharacterPreset;
+    200: PresetSaveResult;
 };
 
-export type CreateCharacterResponse = CreateCharacterResponses[keyof CreateCharacterResponses];
+export type SaveCharacterResponse = SaveCharacterResponses[keyof SaveCharacterResponses];
 
 export type DeleteCharacterData = {
     body?: never;
@@ -1685,41 +2006,6 @@ export type GetCharacterResponses = {
 
 export type GetCharacterResponse = GetCharacterResponses[keyof GetCharacterResponses];
 
-export type UpdateCharacterData = {
-    body: CharacterInput;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query: {
-        /**
-         * Expected Revision
-         */
-        expected_revision: number;
-    };
-    url: '/api/v1/characters/{identity}';
-};
-
-export type UpdateCharacterErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UpdateCharacterError = UpdateCharacterErrors[keyof UpdateCharacterErrors];
-
-export type UpdateCharacterResponses = {
-    /**
-     * Successful Response
-     */
-    200: CharacterPreset;
-};
-
-export type UpdateCharacterResponse = UpdateCharacterResponses[keyof UpdateCharacterResponses];
-
 export type DuplicateCharacterData = {
     body?: never;
     path: {
@@ -1768,30 +2054,30 @@ export type ListStoriesResponses = {
 
 export type ListStoriesResponse = ListStoriesResponses[keyof ListStoriesResponses];
 
-export type CreateStoryData = {
-    body: StoryInput;
+export type SaveStoryData = {
+    body: StorySaveRequest;
     path?: never;
     query?: never;
-    url: '/api/v1/stories';
+    url: '/api/v1/stories/save';
 };
 
-export type CreateStoryErrors = {
+export type SaveStoryErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type CreateStoryError = CreateStoryErrors[keyof CreateStoryErrors];
+export type SaveStoryError = SaveStoryErrors[keyof SaveStoryErrors];
 
-export type CreateStoryResponses = {
+export type SaveStoryResponses = {
     /**
      * Successful Response
      */
-    201: StoryPreset;
+    200: PresetSaveResult;
 };
 
-export type CreateStoryResponse = CreateStoryResponses[keyof CreateStoryResponses];
+export type SaveStoryResponse = SaveStoryResponses[keyof SaveStoryResponses];
 
 export type DeleteStoryData = {
     body?: never;
@@ -1857,41 +2143,6 @@ export type GetStoryResponses = {
 };
 
 export type GetStoryResponse = GetStoryResponses[keyof GetStoryResponses];
-
-export type UpdateStoryData = {
-    body: StoryInput;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query: {
-        /**
-         * Expected Revision
-         */
-        expected_revision: number;
-    };
-    url: '/api/v1/stories/{identity}';
-};
-
-export type UpdateStoryErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type UpdateStoryError = UpdateStoryErrors[keyof UpdateStoryErrors];
-
-export type UpdateStoryResponses = {
-    /**
-     * Successful Response
-     */
-    200: StoryPreset;
-};
-
-export type UpdateStoryResponse = UpdateStoryResponses[keyof UpdateStoryResponses];
 
 export type DuplicateStoryData = {
     body?: never;

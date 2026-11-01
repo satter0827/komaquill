@@ -5,6 +5,68 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/archive/conversations": {
+      "get": {
+        "summary": "Archived Conversations",
+        "operationId": "list_archived_conversations",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ArchivedConversation"
+                  },
+                  "type": "array",
+                  "title": "Response List Archived Conversations"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/archive/conversations/{identity}": {
+      "get": {
+        "summary": "Archived Conversation",
+        "operationId": "get_archived_conversation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivedConversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/conversations/{identity}/images": {
       "get": {
         "summary": "Conversation Images",
@@ -238,27 +300,29 @@
             }
           }
         }
-      },
+      }
+    },
+    "/api/v1/characters/save": {
       "post": {
-        "summary": "Create Character",
-        "operationId": "create_character",
+        "summary": "Save Character",
+        "operationId": "save_character",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CharacterInput"
+                "$ref": "#/components/schemas/CharacterSaveRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CharacterPreset"
+                  "$ref": "#/components/schemas/PresetSaveResult"
                 }
               }
             }
@@ -292,63 +356,6 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CharacterPreset"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "summary": "Update Character",
-        "operationId": "update_character",
-        "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Expected Revision"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CharacterInput"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -473,27 +480,29 @@
             }
           }
         }
-      },
+      }
+    },
+    "/api/v1/stories/save": {
       "post": {
-        "summary": "Create Story",
-        "operationId": "create_story",
+        "summary": "Save Story",
+        "operationId": "save_story",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StoryInput"
+                "$ref": "#/components/schemas/StorySaveRequest"
               }
             }
           },
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoryPreset"
+                  "$ref": "#/components/schemas/PresetSaveResult"
                 }
               }
             }
@@ -527,63 +536,6 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StoryPreset"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "summary": "Update Story",
-        "operationId": "update_story",
-        "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          },
-          {
-            "name": "expected_revision",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Expected Revision"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StoryInput"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1565,6 +1517,136 @@
   },
   "components": {
     "schemas": {
+      "ArchivedConversation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedTurn"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "readable": {
+            "type": "boolean",
+            "title": "Readable",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "turns"
+        ],
+        "title": "ArchivedConversation"
+      },
+      "ArchivedTurn": {
+        "properties": {
+          "user": {
+            "type": "string",
+            "title": "User"
+          },
+          "assistant": {
+            "type": "string",
+            "title": "Assistant"
+          },
+          "narration": {
+            "type": "string",
+            "title": "Narration",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user",
+          "assistant"
+        ],
+        "title": "ArchivedTurn"
+      },
+      "CharacterDefinition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 6000,
+            "title": "Description",
+            "default": ""
+          },
+          "appearance": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Appearance",
+            "default": ""
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Role",
+            "default": ""
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Address",
+            "default": ""
+          },
+          "age": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Age",
+            "default": ""
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Gender",
+            "default": ""
+          },
+          "personality": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Personality",
+            "default": ""
+          },
+          "speech": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Speech",
+            "default": ""
+          },
+          "background": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Background",
+            "default": ""
+          },
+          "relationship": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Relationship",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CharacterDefinition"
+      },
       "CharacterInput": {
         "properties": {
           "name": {
@@ -1602,14 +1684,12 @@
             "type": "string",
             "maxLength": 120,
             "title": "Age",
-            "description": "Plain age text such as 32 or unknown, without template markers.",
             "default": ""
           },
           "gender": {
             "type": "string",
             "maxLength": 120,
             "title": "Gender",
-            "description": "Plain gender text, or empty when unspecified. No template markers.",
             "default": ""
           },
           "personality": {
@@ -1736,14 +1816,12 @@
             "type": "string",
             "maxLength": 120,
             "title": "Age",
-            "description": "Plain age text such as 32 or unknown, without template markers.",
             "default": ""
           },
           "gender": {
             "type": "string",
             "maxLength": 120,
             "title": "Gender",
-            "description": "Plain gender text, or empty when unspecified. No template markers.",
             "default": ""
           },
           "personality": {
@@ -1793,6 +1871,78 @@
           "relationship"
         ],
         "title": "CharacterPreset"
+      },
+      "CharacterSaveRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "image_policy": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "always",
+              "none"
+            ],
+            "title": "Image Policy",
+            "default": "auto"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "ja",
+              "en"
+            ],
+            "title": "Locale",
+            "default": "ja"
+          },
+          "llm_profile": {
+            "type": "string",
+            "title": "Llm Profile",
+            "default": "lmstudio-4b"
+          },
+          "allow_real_llm": {
+            "type": "boolean",
+            "title": "Allow Real Llm",
+            "default": false
+          },
+          "value": {
+            "$ref": "#/components/schemas/CharacterInput"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "value"
+        ],
+        "title": "CharacterSaveRequest"
       },
       "CompiledImageInput": {
         "properties": {
@@ -1900,11 +2050,17 @@
             "$ref": "#/components/schemas/ConversationInput"
           },
           "state": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "State"
+            "$ref": "#/components/schemas/ConversationState"
+          },
+          "memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationMemory"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "turns": {
             "items": {
@@ -1970,22 +2126,13 @@
             "title": "Title"
           },
           "scenario": {
-            "type": "string",
-            "maxLength": 20000,
-            "title": "Scenario",
-            "default": ""
+            "$ref": "#/components/schemas/StoryDefinition"
           },
           "character": {
-            "type": "string",
-            "maxLength": 20000,
-            "title": "Character",
-            "default": ""
+            "$ref": "#/components/schemas/CharacterDefinition"
           },
           "user": {
-            "type": "string",
-            "maxLength": 20000,
-            "title": "User",
-            "default": ""
+            "$ref": "#/components/schemas/PersonDefinition"
           },
           "instructions": {
             "type": "string",
@@ -1994,16 +2141,7 @@
             "default": ""
           },
           "initial_state": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Initial State"
-          },
-          "images": {
-            "type": "boolean",
-            "title": "Images",
-            "default": false
+            "$ref": "#/components/schemas/ConversationState"
           },
           "llm_profile": {
             "type": "string",
@@ -2048,6 +2186,56 @@
           "title"
         ],
         "title": "ConversationInput"
+      },
+      "ConversationMemory": {
+        "properties": {
+          "source_version": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Source Version",
+            "default": 1
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Text"
+          },
+          "through_turn": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Through Turn"
+          },
+          "source_sha256": {
+            "type": "string",
+            "title": "Source Sha256"
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "instructions_sha256": {
+            "type": "string",
+            "title": "Instructions Sha256"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "through_turn",
+          "source_sha256",
+          "locale",
+          "model",
+          "instructions_sha256"
+        ],
+        "title": "ConversationMemory"
       },
       "ConversationStart": {
         "properties": {
@@ -2097,6 +2285,43 @@
           "story"
         ],
         "title": "ConversationStart"
+      },
+      "ConversationState": {
+        "properties": {
+          "place": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Place",
+            "default": ""
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Time",
+            "default": ""
+          },
+          "goal": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Goal",
+            "default": ""
+          },
+          "relationship": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Relationship",
+            "default": ""
+          },
+          "player": {
+            "$ref": "#/components/schemas/PersonState"
+          },
+          "character": {
+            "$ref": "#/components/schemas/PersonState"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ConversationState"
       },
       "CreationJob": {
         "properties": {
@@ -2800,6 +3025,126 @@
         "title": "OutputSpec",
         "description": "Identify final candidates and their requested batch size."
       },
+      "PersonDefinition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 6000,
+            "title": "Description",
+            "default": ""
+          },
+          "appearance": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Appearance",
+            "default": ""
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Role",
+            "default": ""
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Address",
+            "default": ""
+          },
+          "age": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Age",
+            "default": ""
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Gender",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PersonDefinition"
+      },
+      "PersonState": {
+        "properties": {
+          "appearance": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appearance"
+          },
+          "clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clothing"
+          },
+          "expression": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expression"
+          },
+          "pose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose"
+          },
+          "held_objects": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Objects",
+            "description": "Physical objects currently held in this person's hands. Promises, wishes and knowledge are not objects."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PersonState"
+      },
       "PlayerInput": {
         "properties": {
           "name": {
@@ -2837,14 +3182,12 @@
             "type": "string",
             "maxLength": 120,
             "title": "Age",
-            "description": "Plain age text such as 32 or unknown, without template markers.",
             "default": ""
           },
           "gender": {
             "type": "string",
             "maxLength": 120,
             "title": "Gender",
-            "description": "Plain gender text, or empty when unspecified. No template markers.",
             "default": ""
           }
         },
@@ -2947,14 +3290,12 @@
             "type": "string",
             "maxLength": 120,
             "title": "Age",
-            "description": "Plain age text such as 32 or unknown, without template markers.",
             "default": ""
           },
           "gender": {
             "type": "string",
             "maxLength": 120,
             "title": "Gender",
-            "description": "Plain gender text, or empty when unspecified. No template markers.",
             "default": ""
           }
         },
@@ -3052,6 +3393,48 @@
           "revision"
         ],
         "title": "PresetRef"
+      },
+      "PresetSaveResult": {
+        "properties": {
+          "preset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CharacterPreset"
+              },
+              {
+                "$ref": "#/components/schemas/StoryPreset"
+              }
+            ],
+            "title": "Preset"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreationJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "image_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "preset"
+        ],
+        "title": "PresetSaveResult"
       },
       "PresetSnapshot": {
         "properties": {
@@ -3899,11 +4282,7 @@
             "title": "Expected Revision"
           },
           "state": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "State"
+            "$ref": "#/components/schemas/ConversationState"
           }
         },
         "additionalProperties": false,
@@ -3913,6 +4292,49 @@
           "expected_revision"
         ],
         "title": "StateCommand"
+      },
+      "StoryDefinition": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "world": {
+            "type": "string",
+            "maxLength": 6000,
+            "title": "World",
+            "default": ""
+          },
+          "opening": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Opening",
+            "default": ""
+          },
+          "place": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Place",
+            "default": ""
+          },
+          "goal": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Goal",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StoryDefinition"
       },
       "StoryInput": {
         "properties": {
@@ -4099,6 +4521,78 @@
         ],
         "title": "StoryPreset"
       },
+      "StorySaveRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "image_policy": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "always",
+              "none"
+            ],
+            "title": "Image Policy",
+            "default": "auto"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "ja",
+              "en"
+            ],
+            "title": "Locale",
+            "default": "ja"
+          },
+          "llm_profile": {
+            "type": "string",
+            "title": "Llm Profile",
+            "default": "lmstudio-4b"
+          },
+          "allow_real_llm": {
+            "type": "boolean",
+            "title": "Allow Real Llm",
+            "default": false
+          },
+          "value": {
+            "$ref": "#/components/schemas/StoryInput"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "value"
+        ],
+        "title": "StorySaveRequest"
+      },
       "Turn": {
         "properties": {
           "operation_id": {
@@ -4120,11 +4614,7 @@
             "default": ""
           },
           "state": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "State"
+            "$ref": "#/components/schemas/ConversationState"
           },
           "image_id": {
             "anyOf": [
@@ -4137,17 +4627,6 @@
               }
             ],
             "title": "Image Id"
-          },
-          "scene": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scene"
           },
           "created_at": {
             "type": "string",

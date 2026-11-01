@@ -14,6 +14,8 @@ from komaquill.domain.retained_images import (
 )
 from komaquill.domain.workflow import digest
 
+ImagePurpose = Literal["portrait", "banner", "conversation_image"]
+
 MAX_SEED = 2**64 - 1
 ImageSeed = Annotated[int, Field(strict=True, ge=0, le=MAX_SEED)]
 

@@ -5,44 +5,23 @@ from uuid import UUID, uuid4
 
 from pydantic import ConfigDict, Field
 
-from komaquill.conversations.models import Record, now
+from komaquill.conversations.models import now
+from komaquill.domain.roleplay import CharacterDefinition, PersonDefinition, Record, StoryDefinition
 
 Locale = Literal["ja", "en"]
 PresetKind = Literal["player", "character", "story"]
 
 
-class PlayerInput(Record):
+class PlayerInput(PersonDefinition):
     name: str = Field(min_length=1, max_length=120, pattern=r"\S")
-    description: str = Field(default="", max_length=6000)
-    appearance: str = Field(default="", max_length=3000)
-    role: str = Field(default="", max_length=1000)
-    address: str = Field(default="", max_length=120)
-    age: str = Field(
-        default="",
-        max_length=120,
-        description="Plain age text such as 32 or unknown, without template markers.",
-    )
-    gender: str = Field(
-        default="",
-        max_length=120,
-        description="Plain gender text, or empty when unspecified. No template markers.",
-    )
 
 
-class CharacterInput(PlayerInput):
-    personality: str = Field(default="", max_length=3000)
-    speech: str = Field(default="", max_length=2000)
-    background: str = Field(default="", max_length=4000)
-    relationship: str = Field(default="", max_length=2000)
-
-
-class StoryInput(Record):
+class CharacterInput(CharacterDefinition):
     name: str = Field(min_length=1, max_length=120, pattern=r"\S")
-    description: str = Field(default="", max_length=2000)
-    world: str = Field(default="", max_length=6000)
-    opening: str = Field(default="", max_length=4000)
-    place: str = Field(default="", max_length=1000)
-    goal: str = Field(default="", max_length=2000)
+
+
+class StoryInput(StoryDefinition):
+    name: str = Field(min_length=1, max_length=120, pattern=r"\S")
     character_id: UUID | None = None
 
 
@@ -129,3 +108,27 @@ class ConversationImageRequest(Record):
     operation_id: UUID
     expected_revision: int = Field(ge=0)
     locale: Locale = "ja"
+
+
+class PresetSaveOptions(Record):
+    operation_id: UUID
+    target_id: UUID | None = None
+    expected_revision: int | None = Field(default=None, ge=0)
+    image_policy: Literal["auto", "always", "none"] = "auto"
+    locale: Locale = "ja"
+    llm_profile: str = "lmstudio-4b"
+    allow_real_llm: bool = False
+
+
+class CharacterSaveRequest(PresetSaveOptions):
+    value: CharacterInput
+
+
+class StorySaveRequest(PresetSaveOptions):
+    value: StoryInput
+
+
+class PresetSaveResult(Record):
+    preset: CharacterPreset | StoryPreset
+    job: CreationJob | None = None
+    image_error: str | None = None

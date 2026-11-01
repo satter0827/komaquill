@@ -49,6 +49,7 @@
   "fixedSample": "サンプル",
   "loading": "読み込んでいます…",
   "conversationLabel": "STORY",
+  "conversationHistory": "会話の履歴",
   "newChapter": "ここから、あなたの物語",
   "beginMessage": "最初のひと言を届けてみましょう。",
   "you": "あなた",
@@ -211,7 +212,7 @@
     "extension_unavailable": "操作を完了できませんでした。接続を確認して、もう一度お試しください。",
     "invalid_evaluation": "操作を完了できませんでした。接続を確認して、もう一度お試しください。",
     "real_llm_not_allowed": "生成の準備ができていません。設定を確認して、もう一度お試しください。",
-    "llm_dependencies_missing": "ローカルモデルを使う準備ができていません。導入手順を確認してください。",
+    "llm_dependencies_missing": "返事を作る準備ができていません。導入手順を確認してください。",
     "llm_unavailable": "モデルの返事を受け取れませんでした。モデルの起動と接続を確認してください。",
     "llm_request_invalid": "モデルが入力形式を受け付けませんでした。選択したモデルと接続設定を確認してください。",
     "story_plan_invalid": "操作を完了できませんでした。接続を確認して、もう一度お試しください。",
@@ -222,7 +223,7 @@
     "story_replan_required": "操作を完了できませんでした。接続を確認して、もう一度お試しください。",
     "unsupported_batch": "操作を完了できませんでした。接続を確認して、もう一度お試しください。",
     "preparation_timeout": "操作を完了できませんでした。接続を確認して、もう一度お試しください。",
-    "operation_busy": "別の返事を作成中です。完了してからお試しください。",
+    "operation_busy": "別の操作が進行中です。完了してからお試しください。",
     "operation_conflict": "保存済みの内容が更新されています。最新の内容を確認してください。",
     "fake_input_mismatch": "この内容を生成できません。設定で接続先を確認してください。",
     "context_limit_exceeded": "設定や会話が長すぎます。設定を短くするか、新しい会話を始めてください。"
@@ -233,5 +234,11 @@
   "gender": "性別",
   "closeState": "状況を閉じる",
   "narrationLabel": "場面の様子",
-  "drawScene": "今の場面を描く"
+  "drawScene": "今の場面を描く",
+  "sampleDrawingUnavailable": "この会話では画像を作れません。新しい会話で場面を描けます。",
+  "archivedTitle": "以前の会話",
+  "archivedNotice": "この会話は読むことができます。続きを遊ぶには、保存した人物とストーリーで新しい会話を始めてください。",
+  "unreadableConversation": "この会話の本文を読み取れませんでした。記録は保持されています。",
+  "editPresetLabel": "{name}を編集する",
+  "editSamplePresetLabel": "サンプル「{name}」を編集する"
 }

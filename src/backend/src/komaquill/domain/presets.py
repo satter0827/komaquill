@@ -180,6 +180,12 @@ class GenerationPreset(PresetSnapshot):
     operation: Literal["generate", "edit"]
     model_family: Literal["klein-4b", "klein-9b", "illustrious"]
     negative_default: str | None = None
+    purpose_prefixes: dict[Literal["portrait", "banner", "conversation_image"], str] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+    purpose_negatives: dict[Literal["portrait", "banner", "conversation_image"], str] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
     adjustable: tuple[str, ...] = ("width", "height")
 
     @model_validator(mode="after")

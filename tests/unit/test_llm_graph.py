@@ -1,7 +1,8 @@
 """Verify bounded graph routing without network requests or persistent graph state."""
 
 import pytest
-from komaquill.adapters.llm_graph import run_request
+from komaquill.adapters.llm.context import ContextBudget
+from komaquill.adapters.llm.graph import run_request
 from komaquill.domain.errors import KomaquillError
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langsmith.run_helpers import get_tracing_context, tracing_context
@@ -27,8 +28,7 @@ def test_graph_bounds_calls_and_preserves_the_rejected_response(repairs, valid_a
             Result.model_validate_json,
             lambda _: "Correct the response.",
             repair_attempts=repairs,
-            max_input_characters=1000,
-            schema_characters=100,
+            budget=ContextBudget(1000, 10000, 100, 0, "x" * 100),
         )
 
     if valid_after <= repairs:
@@ -67,8 +67,7 @@ def test_graph_retains_fixed_input_and_complete_recent_pairs_within_budget(overs
             Result.model_validate_json,
             lambda _: "c" * 200,
             repair_attempts=1,
-            max_input_characters=200,
-            schema_characters=50,
+            budget=ContextBudget(200, 10000, 100, 0, "x" * 50),
         )
 
     if oversized:
@@ -100,7 +99,20 @@ def test_graph_does_not_retry_transport_failures_or_trace_under_an_enabled_paren
             Result.model_validate_json,
             lambda _: "Correct the response.",
             repair_attempts=1,
-            max_input_characters=1000,
-            schema_characters=100,
+            budget=ContextBudget(1000, 10000, 100, 0, "x" * 100),
         )
     assert calls == [False]
+
+
+def test_token_and_output_reservations_apply_before_sending_short_character_input():
+    calls = []
+    with pytest.raises(KomaquillError, match="context_limit_exceeded"):
+        run_request(
+            [SystemMessage(content="Policy"), HumanMessage(content="Current request")],
+            lambda *args: calls.append(args) or '{"text":"Done"}',
+            Result.model_validate_json,
+            lambda _: "Correct the response.",
+            repair_attempts=1,
+            budget=ContextBudget(10000, 50, 35, 10, "schema"),
+        )
+    assert calls == []

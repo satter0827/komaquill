@@ -11,6 +11,7 @@ import typer
 
 from komaquill.api import Client, CreationRequest, KomaquillError
 from komaquill.conversations.models import ConversationInput, SendInput, StateCommand
+from komaquill.domain.roleplay import StoryDefinition
 from komaquill.messages import error_message, message
 
 
@@ -60,7 +61,12 @@ def bind(
         locale: Annotated[Literal["ja", "en"], typer.Option(help=message("chat.locale"))] = "ja",
     ) -> None:
         result = Client(ctx.obj or Path.cwd()).conversations.create(
-            ConversationInput(title=title, llm_profile=profile, scenario=scenario, locale=locale)
+            ConversationInput(
+                title=title,
+                llm_profile=profile,
+                scenario=StoryDefinition(description=scenario),
+                locale=locale,
+            )
         )
         typer.echo(result.model_dump_json())
 

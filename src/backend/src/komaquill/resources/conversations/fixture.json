@@ -5,18 +5,13 @@
     ],
     "response": {
       "text": "Hello, Tsumugi. Come in out of the rain. Is there a book you are looking for?",
-      "state": {
-        "sample": "greeted",
+      "state_patch": {
         "place": "Inside the bookshop"
-      },
-      "scene": null
+      }
     },
     "unbound_response": {
       "text": "Hello. Where would you like our story to begin?",
-      "state": {
-        "sample": "greeted"
-      },
-      "scene": null
+      "state_patch": {}
     }
   },
   "ja": {
@@ -26,18 +21,13 @@
     ],
     "response": {
       "text": "「こんにちは、つむぎさん。雨が落ち着くまで、どうぞごゆっくり」\n栞はカウンターの向こうで微笑んだ。",
-      "state": {
-        "sample": "greeted",
+      "state_patch": {
         "place": "古書店の店内"
-      },
-      "scene": null
+      }
     },
     "unbound_response": {
       "text": "こんにちは。どんな物語を始めましょうか。",
-      "state": {
-        "sample": "greeted"
-      },
-      "scene": null
+      "state_patch": {}
     }
   }
 }

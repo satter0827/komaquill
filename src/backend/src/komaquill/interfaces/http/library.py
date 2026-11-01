@@ -5,11 +5,12 @@ from uuid import UUID
 
 from fastapi import BackgroundTasks, FastAPI, Response
 
+from komaquill.adapters.conversation_archive import ArchivedConversation
 from komaquill.api import Client
 from komaquill.conversations.models import Conversation
 from komaquill.library.models import (
-    CharacterInput,
     CharacterPreset,
+    CharacterSaveRequest,
     ConversationImageRequest,
     ConversationStart,
     CreationJob,
@@ -17,12 +18,30 @@ from komaquill.library.models import (
     PlayerInput,
     PlayerProfile,
     Preferences,
-    StoryInput,
+    PresetSaveOptions,
+    PresetSaveResult,
     StoryPreset,
+    StorySaveRequest,
 )
 
 
 def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
+    @app.get(
+        "/api/v1/archive/conversations",
+        response_model=list[ArchivedConversation],
+        operation_id="list_archived_conversations",
+    )
+    def archived_conversations() -> list[ArchivedConversation]:
+        return selected().archive.conversations()
+
+    @app.get(
+        "/api/v1/archive/conversations/{identity}",
+        response_model=ArchivedConversation,
+        operation_id="get_archived_conversation",
+    )
+    def archived_conversation(identity: UUID) -> ArchivedConversation:
+        return selected().archive.conversation(identity)
+
     @app.get(
         "/api/v1/conversations/{identity}/images",
         response_model=list[CreationJob],
@@ -80,13 +99,18 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
         return selected().characters.list()
 
     @app.post(
-        "/api/v1/characters",
-        response_model=CharacterPreset,
-        status_code=201,
-        operation_id="create_character",
+        "/api/v1/characters/save", response_model=PresetSaveResult, operation_id="save_character"
     )
-    def create_character(body: CharacterInput) -> CharacterPreset:
-        return selected().characters.create(body)
+    def save_character(body: CharacterSaveRequest, tasks: BackgroundTasks) -> PresetSaveResult:
+        result = selected().library.save_preset(
+            "character",
+            body.value,
+            PresetSaveOptions.model_validate(body.model_dump(exclude={"value"})),
+            execute=False,
+        )
+        if result.job is not None:
+            tasks.add_task(selected().library.execute, result.job.id)
+        return result
 
     @app.get(
         "/api/v1/characters/{identity}",
@@ -95,16 +119,6 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
     )
     def character(identity: UUID) -> CharacterPreset:
         return selected().characters.get(identity)
-
-    @app.put(
-        "/api/v1/characters/{identity}",
-        response_model=CharacterPreset,
-        operation_id="update_character",
-    )
-    def update_character(
-        identity: UUID, expected_revision: int, body: CharacterInput
-    ) -> CharacterPreset:
-        return selected().characters.update(identity, expected_revision, body)
 
     @app.delete("/api/v1/characters/{identity}", status_code=204, operation_id="delete_character")
     def delete_character(identity: UUID, expected_revision: int) -> Response:
@@ -124,19 +138,21 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
     def stories() -> list[StoryPreset]:
         return selected().stories.list()
 
-    @app.post(
-        "/api/v1/stories", response_model=StoryPreset, status_code=201, operation_id="create_story"
-    )
-    def create_story(body: StoryInput) -> StoryPreset:
-        return selected().stories.create(body)
+    @app.post("/api/v1/stories/save", response_model=PresetSaveResult, operation_id="save_story")
+    def save_story(body: StorySaveRequest, tasks: BackgroundTasks) -> PresetSaveResult:
+        result = selected().library.save_preset(
+            "story",
+            body.value,
+            PresetSaveOptions.model_validate(body.model_dump(exclude={"value"})),
+            execute=False,
+        )
+        if result.job is not None:
+            tasks.add_task(selected().library.execute, result.job.id)
+        return result
 
     @app.get("/api/v1/stories/{identity}", response_model=StoryPreset, operation_id="get_story")
     def story(identity: UUID) -> StoryPreset:
         return selected().stories.get(identity)
-
-    @app.put("/api/v1/stories/{identity}", response_model=StoryPreset, operation_id="update_story")
-    def update_story(identity: UUID, expected_revision: int, body: StoryInput) -> StoryPreset:
-        return selected().stories.update(identity, expected_revision, body)
 
     @app.delete("/api/v1/stories/{identity}", status_code=204, operation_id="delete_story")
     def delete_story(identity: UUID, expected_revision: int) -> Response:

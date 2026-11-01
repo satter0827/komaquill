@@ -4,6 +4,7 @@ from typing import Literal, Self
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LLMProfile(BaseModel):
@@ -38,3 +39,31 @@ class LLMProfile(BaseModel):
         ):
             raise ValueError("Use HTTPS or a loopback URL without credentials, query or fragment.")
         return self
+
+
+class ConversationSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
+    request_timeout: float = Field(gt=0)
+    max_output_tokens: int = Field(gt=0)
+    repair_attempts: int = Field(ge=0, le=1)
+    context_turns: int = Field(ge=1)
+    max_input_characters: int = Field(gt=0)
+    summary_max_output_tokens: int = Field(gt=0)
+    summary_max_characters: int = Field(gt=0, le=2048)
+    context_window_tokens: int = Field(gt=0)
+    repair_reserve_tokens: int = Field(ge=0)
+    llm_profiles: dict[str, LLMProfile]
+
+
+class ConversationOptions(ConversationSettings, BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="KOMAQUILL_CONVERSATION__",
+        env_nested_delimiter="__",
+        extra="forbid",
+        frozen=True,
+    )
+
+
+class ProfileOptions(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="KOMAQUILL_", env_nested_delimiter="__")
+    llm_profiles: dict[str, LLMProfile] = {}

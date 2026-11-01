@@ -42,6 +42,7 @@ from komaquill.conversations.models import (
 )
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Run
+from komaquill.domain.roleplay import ConversationMemory
 
 
 class RecordedTurnRequest(SendInput):
@@ -353,19 +354,17 @@ class ConversationRepository:
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
         request = SendInput.model_validate_json(str(row["request"]))
-        image = False
+        state = reply.state_patch.apply(conversation.state)
         turn = Turn(
             operation_id=identity,
             user=request.text,
             assistant=reply.text,
             narration=reply.narration,
-            state=reply.state,
-            scene=reply.scene,
-            image_id=identity if image else None,
+            state=state,
         )
         updated = conversation.model_copy(
             update={
-                "state": reply.state,
+                "state": state,
                 "turns": [*conversation.turns, turn],
                 "revision": conversation.revision + 1,
             }
@@ -375,9 +374,7 @@ class ConversationRepository:
             .where(conversations.c.id == str(conversation.id))
             .values(payload=updated.model_dump_json())
         )
-        result = operation.model_copy(
-            update={"state": "complete", "image_state": "pending" if image else "disabled"}
-        )
+        result = operation.model_copy(update={"state": "complete", "image_state": "disabled"})
         self._save(connection, result)
         return result
 
@@ -390,6 +387,22 @@ class ConversationRepository:
                 self._save(connection, result)
             connection.commit()
             return result
+
+    @stored
+    def save_memory(self, identity: UUID, memory: ConversationMemory) -> None:
+        with self.database.transaction() as connection:
+            conversation = self._get(connection, identity)
+            if memory.through_turn > len(conversation.turns):
+                raise conflict()
+            if conversation.memory and conversation.memory.through_turn >= memory.through_turn:
+                return
+            value = conversation.model_copy(update={"memory": memory})
+            connection.execute(
+                conversations.update()
+                .where(conversations.c.id == str(identity))
+                .values(payload=value.model_dump_json())
+            )
+            connection.commit()
 
     @stored
     def image(self, identity: UUID, image_id: UUID | None, error: str | None = None) -> None:

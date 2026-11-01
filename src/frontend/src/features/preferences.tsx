@@ -1,6 +1,6 @@
 import type { Preferences } from '../api/generated/types.gen'
-import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import type { MessageKey } from '../app/messages'
+import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { RuntimePage } from './runtime'
 
 export function PreferencesPage() {
@@ -66,7 +66,7 @@ export function PreferencesPage() {
       )}
       <details className="connection-details">
         <summary>{m.connectionSettings}</summary>
-        <RuntimePage />
+        <RuntimePage embedded />
       </details>
     </section>
   )

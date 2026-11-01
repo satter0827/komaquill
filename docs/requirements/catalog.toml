@@ -3,9 +3,9 @@ format_version = 1
 [requirements.REQ-CHAT-WORKFLOW]
 summary = "LangGraphで構造化LLM要求と有限の修正を実行する"
 status = "implemented"
-implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。グラフ単体の永続再開、長期要約、会話の意味整合性と画質の改善は後続計画で扱う。"
+implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期要約はREQ-CHAT-MEMORYで扱う。グラフ単体の永続再開は対象外とし、会話の意味整合性と画質の未達は実出力の受入で管理する。"
 acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
-sources = ["src/backend/src/komaquill/adapters/llm_graph.py", "src/backend/src/komaquill/adapters/conversation_llm.py"]
+sources = ["src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
 tests = ["tests/unit/test_llm_graph.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py"]
 
 [requirements.REQ-WEB-EVIDENCE]
@@ -55,14 +55,14 @@ tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 summary = "日本語を既定として英語表示へ切り替えLLMの生成言語も連動させる"
 status = "implemented"
 acceptance = ["初回は日本語で表示し利用者の選択を再起動後も維持する", "日本語版は明確な日本語と控えめな英語見出しを組み合わせ英語版は英語で統一する", "操作・案内・失敗・進捗・空状態・アクセシビリティ文言を言語別カタログで扱う", "表示言語をLLMの会話と作成補助の文章の言語へ反映する", "保存済みの文章・固有名・利用者入力を切替だけで自動翻訳しない", "操作の受付時に言語を固定し実行中の切替や再確認で変えない", "入力言語と表示言語が異なる場合と会話途中の切替を実4Bで検証する", "固定サンプルは日本語・英語それぞれの入力と応答を対にする", "日時・数値の書式と日本語の改行・字体を確認しコードと開発ログは英語を維持する"]
-sources = ["src/backend/src/komaquill/adapters/conversation_llm.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/locales/ja.json", "src/frontend/src/app/locales/en.json"]
+sources = ["src/backend/src/komaquill/adapters/llm/execution.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/locales/ja.json", "src/frontend/src/app/locales/en.json"]
 tests = ["tests/js/node-environment.test.mjs", "tests/integration/test_creator_contracts.py", "tests/live/play_acceptance.py"]
 
 [requirements.REQ-IMAGE-TRANSLATION]
 summary = "日本語の画像説明を英語化し原文と実行条件を保持して生成へ渡す"
 status = "implemented"
 acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "表示用本文・場面説明と明示操作時の画像用英語を分ける", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
-sources = ["src/backend/src/komaquill/adapters/image_text.py", "src/backend/src/komaquill/adapters/conversation_llm.py", "src/backend/src/komaquill/library/service.py"]
+sources = ["src/backend/src/komaquill/adapters/image_text.py", "src/backend/src/komaquill/adapters/llm/execution.py", "src/backend/src/komaquill/library/service.py"]
 tests = ["tests/integration/test_creator_contracts.py", "tests/live/play_acceptance.py"]
 
 [requirements.REQ-ARTIFACT-LAYOUT]
@@ -74,8 +74,8 @@ tests = ["tests/js/node-environment.test.mjs", "tests/integration/test_distribut
 
 [requirements.REQ-CREATOR-ACCEPTANCE]
 summary = "作成・保存・設定反映・言語・英訳・画像を実際の出力から確認する"
-status = "implemented"
-implementation_note = "作成と会話体験の計画に含む新規要件すべての達成を今回の完成目標とする。精度の追求より全機能が接続された完成を優先し、必須機能の未実装や基本動作の未達を品質上の改善へ先送りしない。"
+status = "in_progress"
+implementation_note = "保存と画像受付、競合と完了照合、人物別状態、要約、日英の画面と実機を検証した。実4Bには行動主体・所有関係・移動の反映漏れ、WAIには年齢・人物数・同一性の未達が残る。既存バナーの操作参照の不整合はREQ-CREATION-RECOVERYで修復した。保存成功と生成品質を分け、全要件の実出力の受入は未完了とする。対象版と残存課題は会話状態・保存受付・WAI画像の検証で管理する。"
 acceptance = ["日常ゲートの固定応答・擬似APIと明示したローカル4B・実画像の結果を分ける", "ローカル4Bの実際のモデル・設定・指示・入力・可視出力・使用量・時間を非公開の記録へ保存する", "設定の採用・人物と利用者の役割・現在状態・文体・根拠のない追加を実出力でレビューする", "スキーマ成功・保存成功・文章の自然さ・画像品質を別に判定する", "日本語と英語の表示・生成、会話途中の切替、画像用英語を確認する", "画像と設定の対応・切抜き・バナーの読める文字・再生成を画面で確認する", "失敗結果と元の生成物を保持し比較条件と訂正を追記する", "現行の複数systemメッセージ・モデルID・入力言語の指示競合を実接続で回帰確認する", "英訳・画像失敗・中断・再開・二重送信・並行編集と生成物の出力先を検査する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/frontend/src/features/library.tsx"]
 tests = ["tests/live/play_acceptance.py", "tests/e2e/web/workflow.spec.ts"]
@@ -104,7 +104,7 @@ tests = ["tests/integration/test_conversations.py", "tests/integration/test_conv
 [requirements.REQ-CHAT-STATE]
 summary = "定義・現在状態・履歴を分けLLMなしで今の状況を確認する"
 status = "in_progress"
-implementation_note = "状態は文字列の辞書を扱う。シナリオごとの項目宣言、更新権限、公開範囲の制約は未実装。"
+implementation_note = "固定人物定義と人物別の現在状態・変更差分を分離し、省略・解除・一覧の置換を検証する。任意のシナリオ固有パラメータ、更新権限、公開範囲の宣言は対象外。"
 acceptance = ["固定設定・現在状態・有効な方針・状態の版を区別する", "場所・時間・登場対象・衣装・所持品・進行中の出来事を取得できる", "シナリオ固有のパラメータを宣言した型と更新権限で検証する", "statusでLLM・GPU・画像生成を起動しない", "非公開情報・未確定・破損を扱い空の状態と推測しない", "文脈の予算を超えても確定設定と現在状態を保持する"]
 sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
 tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
@@ -266,7 +266,7 @@ summary = "wheelを導入したPythonからCLIと同じ処理を利用する"
 status = "implemented"
 acceptance = ["明示した作業場所で計画・生成・取得・再開を行う", "importで通信やファイル作成を行わない", "公開型と追加依存の境界を検証する"]
 sources = ["src/backend/src/komaquill/api/client.py", "src/backend/src/komaquill/api/images.py"]
-tests = ["tests/integration/test_public_api.py"]
+tests = ["tests/integration/test_public_api.py", "tests/integration/test_image_purpose.py"]
 
 [requirements.REQ-STORY-STORAGE]
 summary = "作品内で本文と画像を順番に閲覧し既存データを保全して移行する"
@@ -371,3 +371,125 @@ status = "implemented"
 acceptance = ["会話文と表示言語の場面説明を分けて保存・表示する", "会話送信では画像を生成せず、描画ボタンの明示操作で生成する", "描画受付時の服装・表情・動作・場所と人物設定を固定する", "人物情報を項目で渡し最新場面と初期設定を区別する", "実行前と一覧取得で操作・画像の識別子を照合し確定した英語入力を変更しない", "画像生成・回収・保存・再表示を同じ操作で追跡する", "画像送信の結果が不明でも再起動後に同じ要求を回収し再送せず保存結果を反映する", "送信ごとの技術的なチェックと通常画面のJSON編集を廃止する", "実4Bと実画像で本文・状態・英訳・画像の対応を確認する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/context.py", "src/frontend/src/features/conversations.tsx"]
 tests = ["tests/unit/test_conversation_context.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_play_experience.py", "tests/e2e/web/workflow.spec.ts", "tests/live/play_acceptance.py"]
+
+[requirements.REQ-CHAT-MEMORY]
+summary = "古い確定履歴を要約して保存し、元の本文と現在状態を保持して再開する"
+status = "implemented"
+acceptance = ["短い会話を要約せず履歴枠と入力上限で古い部分を対象にする", "一回の送信で追加する要約は最大一回とする", "要約範囲・内容ハッシュ・モデル・指示・言語を保存して再利用する", "人物定義と現在状態を要約で上書きしない", "失敗や中断で元の履歴を失わず追加送信を止める", "日本語と英語で実LLMの記憶と役割を確認する"]
+sources = ["src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/domain/roleplay.py", "src/backend/src/komaquill/adapters/database.py", "scripts/review_roleplay.py"]
+tests = ["tests/integration/test_conversation_memory.py", "tests/unit/test_roleplay_review.py"]
+implementation_note = "要約へ対象ターンの確定状態と人物の役割を渡し、本文と状態を版付きハッシュで検証する。要約の忠実さは実出力の受入で別に確認する。"
+
+[requirements.REQ-LLM-EFFICIENCY]
+summary = "会話の精度と自然さを維持しながらLLMのトークン量と不要な呼び出しを減らす"
+status = "in_progress"
+implementation_note = "共通予算・LangMem・使用量集計と、Fakeで検査する実4Bの限定比較処理を実装した。入力JSON圧縮は総量が減った例でも品質維持を確認できず採用しない。要約の言語指定と失敗分類を修正した。品質維持と総量削減の受入は未完了とする。"
+acceptance = [
+    "人物の役割・現在状態・所有関係・生成言語・重要事項の参照と文章の自然さを削減前後で確認する",
+    "指示・状態・履歴・スキーマの不要な重複を減らし、必要情報の削除や不自然な短文化を強制しない",
+    "保存済みの原文と履歴を保持し、LLMへ渡す内容だけを最適化する",
+    "文脈予算を一か所で管理し、必須情報・完全な直近履歴・スキーマ・出力・修正の余裕を含め、概算・実測・不明値を区別する",
+    "履歴選択と要約で同じトークン概算を使い、文字数の安全上限とは分け、修正時の前応答を含めて送信直前に予算を再計算する",
+    "要約・修正・下書き・画像用英訳も含む入力と出力の総トークン量・呼び出し回数・待ち時間を同じ条件で比較する",
+    "呼び出し別の使用量を正本とし、標準の使用量集計で既知分を合算しても、不明な呼び出しをゼロや完全な総量として扱わない",
+    "短い会話へ不要な要約を追加せず、保存済みの要約と英訳を再利用する",
+    "固定入力と対にしたFake応答・擬似API・保存済み記録を検証の基本とし、実モデルの理解力の証拠とは扱わない",
+    "実LLMはFakeで判断できない互換性と品質の代表例へ限定し、操作ごとの明示許可と事前に定めた検証上限を守る",
+    "日英の短い会話・要約を要する会話・訂正・再開を比較し、一律の削減率を課さず品質の後退と総量の削減を別に判定する",
+    "要約の記憶比較では目的欄や現在状態に答えが重複しない入力を使い、追加費用を回収できた範囲と未確認の範囲を示す",
+    "比較証跡は版・操作・用途・呼び出し順・モデル・指示・出力参照・使用量・評価者を関連付け、元の生成物と評価を変更しない",
+]
+sources = ["src/backend/src/komaquill/adapters/llm/context.py", "src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
+tests = ["tests/unit/test_llm_graph.py", "tests/unit/test_llm_execution.py", "tests/integration/test_conversation_memory.py", "tests/unit/test_llm_comparison.py"]
+
+[requirements.REQ-LLM-BOUNDARIES]
+summary = "共通のLLM実行と会話・下書き・英訳・要約の責務を分け、標準機能へ委譲する"
+status = "implemented"
+implementation_note = "共通実行、会話、下書き、英訳、要約をadapters/llmへ分離し、同じ設定と実行を役割ごとに注入する。公開bindと厳密検証で原応答と失敗分類を保持する。LangGraphの有限実行、実LLM許可、回収と終了の独立を維持する。"
+acceptance = [
+    "検証済み設定・接続・モデル照合・呼び出し記録を共通実行で扱い、機能間の具象型castと独立した設定再読込を除く",
+    "会話・下書き・画像用英訳・要約を機能別に分け、業務層へSDK型・資格情報・具体的な保存処理を持ち込まない",
+    "標準の構造化出力APIは原文保存・厳密検証・失敗分類を満たす場合だけ採用し、不正応答や出力打ち切りも擬似通信で検査する",
+    "メタデータ付き固定応答には標準のFakeチャットモデルを使い、入力と応答を対にし、SDKの通信形式と例外は擬似HTTPで別に検査する",
+    "有限の修正、受付不明の自動再送禁止、外部トレース無効、操作ごとの実LLM許可、画像回収とGPU停止の独立を維持する",
+    "画像変更・生成方針の業務判断を保存アダプターから分けても、保存・受付・関連付けの原子性を維持する",
+    "不要になった旧処理・設定・別名を削除し、公開API・HTTP・CLI・生成契約・関連テスト・設計資料を同じ変更で更新する",
+]
+sources = ["src/backend/src/komaquill/adapters/llm/execution.py", "src/backend/src/komaquill/composition.py", "src/backend/src/komaquill/library/rendering.py"]
+tests = ["tests/unit/test_llm_execution.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_creator_contracts.py", "tests/unit/test_configuration_sources.py"]
+
+[requirements.REQ-CREATION-RECOVERY]
+summary = "競合した旧操作による画像参照の不整合を、保存済み生成物を保全して明示的に修復する"
+status = "implemented"
+implementation_note = "明示的な候補確認と停止・バックアップ後の修復を公開APIとCLIへ実装した。旧形式の全文入力も型を検証して照合する。結果記録だけの失敗と再実行を検査し、実DBの1件を復旧した。対象外の行と画像を保全した。"
+acceptance = [
+    "停止確認と整合したバックアップ、対象一覧とSHA256を伴う明示操作とし、読み取り専用の候補確認を先に行う",
+    "同じ対象・版・用途・描画入力、保存済みRun、対応する正常画像、一意の候補を確認し、競合で失敗した操作への参照だけを修復する",
+    "操作完了と対象の画像・操作参照を同じ短いトランザクションで確定し、確認後の更新競合では適用しない",
+    "複数候補・入力不一致・編集削除・画像欠落破損は理由付きで保留し、通常の古い結果を適用しない条件を緩めない",
+    "元の画像・Run・要求・評価と対象外の記録を保持し、修復前後と根拠を別に記録する",
+    "再実行や再起動で追加送信と状態後退を起こさず、隔離DBで正常系・競合・破損・曖昧な候補・再実行を検査する",
+]
+sources = ["src/backend/src/komaquill/library/recovery.py", "src/backend/src/komaquill/adapters/image_link_repair.py", "src/backend/src/komaquill/api/client.py", "src/backend/src/komaquill/cli/main.py"]
+tests = ["tests/integration/test_image_link_repair.py"]
+
+[requirements.REQ-API-QUERY-GENERATION]
+summary = "API契約から画面の取得・更新処理を生成し、操作の追跡と結果の反映を共有する"
+status = "implemented"
+implementation_note = "Hey APIで取得・更新・query keyを生成する。操作の監視と終端の保持を共有し、入力・保存版・受付済み操作・画像進捗を分離する。複数APIを組み合わせる処理だけを機能側へ残す。"
+acceptance = [
+    "OpenAPIからqueryOptions・mutationOptions・query keyを生成し、生成物を手書きで編集しない",
+    "同じAPIと引数の取得・更新・キャッシュ無効化に同じ生成keyを使い、対応する手書きラッパーと旧keyを削除する",
+    "操作取得・終端判定・ポーリング終了・関連キャッシュの更新を共有し、画面からの取得とは独立したPythonの保存確定を維持する",
+    "受付不明では同じ操作IDと入力を保持して結果を確認し、更新要求の自動再送や再マウントによる新規生成を行わない",
+    "編集中の入力・保存済みの版・画像の進捗を分け、再取得で入力を失わず、古い応答で終端状態や画像参照を後退させない",
+    "契約生成の再現性と型を検査し、会話・下書き・プリセット・画像・設定・実行環境の関連経路を同じ規則で確認する",
+]
+sources = ["scripts/contracts.mjs", "src/frontend/src/features/operations.ts", "src/frontend/src/api/generated/@tanstack/react-query.gen.ts"]
+tests = ["src/frontend/tests/operations.test.ts", "src/frontend/tests/conversations.test.tsx", "src/frontend/tests/creators.test.tsx", "tests/e2e/web/workflow.spec.ts"]
+
+[requirements.REQ-DOCUMENTATION-PARSING]
+summary = "Markdownの構文に沿って文書のリンクと見出しを検査する"
+status = "implemented"
+implementation_note = "markdown-it-pyの構文トークンからリンク・画像・見出しを抽出する。パス、GitHub形式アンカー、要件の参照検査は品質ゲートに残し、構文抽出用の正規表現とコード除去を削除した。開発用の直接依存に限定する。"
+acceptance = [
+    "リンク・画像・見出しを構文トークンから抽出し、対応する正規表現による抽出とコードブロック除去を削除する",
+    "参照形式・エスケープ・括弧を含むリンクと、装飾付き・Setext形式・重複する見出しを検査する",
+    "フェンス・インデント・インラインのコードをリンクや見出しと誤認しない",
+    "GitHub形式のアンカーを小さな処理で照合し、日本語・装飾・重複見出しの対応を検査する",
+    "URLの分類・パスの復号・作業領域内の存在・要件と実装とテストの参照検査を維持し、ネットワークへ接続しない",
+    "既存文書の妥当な参照を維持し、架空の文書による正常系と欠落・不正な参照の検査を行う",
+]
+sources = ["scripts/checks/documentation.py"]
+tests = ["tests/unit/test_docs.py"]
+
+[requirements.REQ-SETTINGS-SOURCES]
+summary = "設定の優先順位と部分更新を統一し、確定した設定を機能間で共有する"
+status = "implemented"
+implementation_note = "Pydantic Settingsの公開sourceで優先順位と部分更新を解決する。Client内で設定が最初に必要となった時点の読込結果を共有する。configureで起動時に固定でき、新しいClientでは再解決する。保存済みセッションの回収と終了は元の設定を使う。"
+acceptance = [
+    "対応するCLI引数・明示入力、環境変数、作業設定、同梱既定値の順に解決し、未指定と明示した空・偽・ゼロを区別する",
+    "入れ子のプロファイルを項目単位で更新し、指定のないモデル設定や生成条件を消去しない",
+    "アプリケーションの組み立て時に設定を読み取り検証して固定し、接続・会話・下書き・要約・英訳・回収・終了で必要な型へ分けて共有する",
+    "作業フォルダーごとの設定を分離し、処理途中のファイル変更で既存操作の条件を変えない",
+    "手動の再帰マージ・独立した再読込・不要な別名を削除し、厳密な環境変数変換とTOMLの対象節選択に必要な小さなアダプターだけを残す",
+    "不明な設定・不正な型・範囲外を安全に拒否し、dotenvや秘密ファイルの暗黙読込、import時のファイル読込・認証を追加しない",
+    "CLIと公開APIとHTTPの優先順位、プロファイルの部分更新、設定変更後の再開、GPU転送する検証済み条件を回帰検査する",
+]
+sources = ["src/backend/src/komaquill/adapters/configuration.py", "src/backend/src/komaquill/adapters/llm_configuration.py", "src/backend/src/komaquill/api/client.py"]
+tests = ["tests/unit/test_configuration_sources.py", "tests/integration/test_distribution.py", "tests/integration/test_diagnostics.py"]
+
+[requirements.REQ-WEB-ACCESSIBILITY]
+summary = "画面の機械判定できるアクセシビリティ問題を検出し、操作による確認と併用する"
+status = "implemented"
+implementation_note = "Playwrightのaxe共通fixtureでWCAG 2.1 A・AAの適用可能な違反を検出し、判定不能を別に保存する。日英の主要画面、入力・通信エラー、確認、キーボードとフォーカス、拡大・狭い画面を検査する。共通の文字色、操作名、見出し階層を修正した。全面的なアクセシビリティ適合の保証とは扱わない。"
+acceptance = [
+    "作成・一覧・選択・会話・描画・再開と、入力エラー・通信失敗・確認表示を日英で検査する",
+    "WCAG 2.1のA・AAを対象にaxeの適用可能なルール違反を解消し、検査範囲とルール・対象版を記録する",
+    "判定不能や未実行を合格と扱わず、画面全体や問題のあるルールを一括除外して成功にしない",
+    "キーボード操作・フォーカス移動と復帰・拡大・狭い画面・読み上げ名を既存の操作検査と合わせて確認する",
+    "判定はtestsへ置き、レビュー用収集はscriptsへ置いて同じ対象と証跡へ関連付ける",
+    "検査は隔離環境と擬似APIで行い、実LLMとGPUを呼ばず、開発依存を製品やGPUへ追加しない",
+]
+sources = ["src/frontend/src/app/styles.css", "src/frontend/src/features/library.tsx", "src/frontend/src/features/runtime.tsx"]
+tests = ["tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/fixtures.ts"]

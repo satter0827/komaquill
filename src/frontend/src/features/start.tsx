@@ -1,10 +1,9 @@
-import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { startConversation } from '../api/generated/sdk.gen'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import * as q from '../api/generated/@tanstack/react-query.gen'
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { Button } from '../components/ui/button'
-import { loadPresets, paths, playerQuery } from './library'
-import type { Preset } from './library'
+import { paths } from './library'
 
 export function NewConversation() {
   const m = useMessages()
@@ -13,14 +12,12 @@ export function NewConversation() {
   const cache = useQueryClient()
   const navigate = useNavigate()
   const [search, setSearch] = useSearchParams()
-  const player = useQuery(playerQuery)
+  const player = useQuery(q.getPlayerOptions())
   const characters = useQuery({
-    queryKey: ['characters'],
-    queryFn: () => loadPresets('character'),
+    ...q.listCharactersOptions(),
   })
   const stories = useQuery({
-    queryKey: ['stories'],
-    queryFn: () => loadPresets('story'),
+    ...q.listStoriesOptions(),
   })
   const choices = (kind: 'character' | 'story') =>
     ((kind === 'character' ? characters.data : stories.data) ?? []).filter(
@@ -39,24 +36,9 @@ export function NewConversation() {
       ? undefined
       : choices('character')[0])
   const mutation = useMutation({
-    mutationFn: async () => {
-      const ref = (value: Preset) => ({
-        id: value.id,
-        revision: value.revision,
-      })
-      return (
-        await startConversation({
-          body: {
-            player_revision: player.data!.revision,
-            character: ref(character!),
-            story: ref(story!),
-            locale: preferences.value.locale,
-          },
-        })
-      ).data!
-    },
+    ...q.startConversationMutation(),
     onSuccess: async (conversation) => {
-      await cache.invalidateQueries({ queryKey: ['conversations'] })
+      await cache.invalidateQueries({ queryKey: q.listConversationsQueryKey() })
       navigate(`/conversations/${conversation.id}`)
     },
   })
@@ -74,7 +56,15 @@ export function NewConversation() {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          if (player.data && character && story) mutation.mutate()
+          if (player.data && character && story)
+            mutation.mutate({
+              body: {
+                player_revision: player.data!.revision,
+                character: { id: character!.id, revision: character!.revision },
+                story: { id: story!.id, revision: story!.revision },
+                locale: preferences.value.locale,
+              },
+            })
         }}
       >
         <div className="selection-grid">

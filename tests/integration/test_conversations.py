@@ -25,7 +25,7 @@ def test_turn_is_committed_once_and_reopened(chat):
     reopened = Client(chat.workspace).conversations.get(conversation.id)
     assert len(reopened.turns) == 1 and reopened.revision == 1
     assert reopened.definition.title == "日本語の会話"
-    assert reopened.state == {"sample": "greeted"}
+    assert reopened.state.model_dump(exclude_defaults=True) == {}
     with pytest.raises(KomaquillError, match="operation_conflict"):
         chat.conversations.send(conversation.id, request.model_copy(update={"text": "different"}))
 
@@ -79,7 +79,7 @@ def test_command_revision_and_reset(chat):
         conversation.id,
         StateCommand(command="set_state", expected_revision=0, state={"place": "garden"}),
     )
-    assert changed.state == {"place": "garden"}
+    assert changed.state.place == "garden"
     with pytest.raises(KomaquillError):
         chat.conversations.command(
             conversation.id, StateCommand(command="reset_state", expected_revision=0)
@@ -87,7 +87,7 @@ def test_command_revision_and_reset(chat):
     reset = chat.conversations.command(
         conversation.id, StateCommand(command="reset_state", expected_revision=1)
     )
-    assert reset.state == {"place": "home"}
+    assert reset.state.place == "home"
 
 
 def test_restart_marks_unknown_without_resending(chat):

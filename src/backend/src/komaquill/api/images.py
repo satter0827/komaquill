@@ -4,7 +4,7 @@ import secrets
 from contextlib import suppress
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from komaquill.adapters.image_text import ImageTextPreparation
@@ -17,22 +17,24 @@ from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
 from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
-from komaquill.domain.images import PromptSource
+from komaquill.domain.images import ImagePurpose, PromptSource
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import Run
 from komaquill.images.generation import Collection, collect, submit_generation, wait_generation
+from komaquill.library.service import ImageDescriber
 from komaquill.runtime.connection import connected
 
 
 class ImageService:
-    def __init__(self, project: RuntimeWorkspace) -> None:
+    def __init__(self, project: RuntimeWorkspace, describer: ImageDescriber) -> None:
         self._project = project
+        self._describer = describer
 
     @cached_property
     def _text_preparation(self) -> "ImageTextPreparation":
         from komaquill.adapters.image_text import ImageTextPreparation
 
-        return ImageTextPreparation(self._project.root)
+        return ImageTextPreparation(self._project.root, self._describer)
 
     @cached_property
     def _generation_workspace(self) -> RuntimeWorkspace:
@@ -44,7 +46,11 @@ class ImageService:
             if settings is not None:
                 self.__dict__["_generation_workspace"] = self._project.configured(settings)
             self._project = self._generation_workspace
-            _ = self._text_preparation.responder.settings
+
+    def available(self) -> bool:
+        from komaquill.api.runtime import RuntimeService
+
+        return RuntimeService(self._project).status().connection == "connected"
 
     def list(self) -> list[Run]:
         with api_operation(OperationStage.STORAGE):
@@ -70,6 +76,7 @@ class ImageService:
         parameters: dict[str, bool | int | float | str] | None = None,
         llm_profile: str = "fake",
         allow_real_llm: bool = False,
+        purpose: ImagePurpose | None = None,
     ) -> Run:
         from uuid import uuid4
 
@@ -95,6 +102,7 @@ class ImageService:
                 },
                 "parameters": parameters,
                 "llm_profile": llm_profile,
+                **({"purpose": purpose} if purpose else {}),
             }
         )
         with FileLock(str(self._generation_workspace.state / f".image-submit-{identity}.lock")):
@@ -119,19 +127,55 @@ class ImageService:
                     if not isinstance(settings, RuntimeSettings):
                         raise KomaquillError(code="invalid_configuration", stage="generation")
                     profile = settings.profile_for(model, operation)
+                    from komaquill.domain.prompts import joined
+
+                    selected = settings.presets[profile]
+                    prepared_prompt = descriptions.prompt
+                    prepared_negative = descriptions.negative
+                    purpose_sources = []
+                    if purpose:
+                        import hashlib
+
+                        positive = selected.purpose_prefixes.get(purpose, "")
+                        negative_constraint = (
+                            selected.purpose_negatives.get(purpose, "")
+                            if selected.negative_default is not None
+                            else ""
+                        )
+                        prepared_prompt = joined(positive, prepared_prompt)
+                        if negative_constraint and selected.negative_default is not None:
+                            prepared_negative = joined(
+                                prepared_negative
+                                if prepared_negative is not None
+                                else selected.negative_default,
+                                negative_constraint,
+                            )
+                        for role, content in (
+                            ("positive", positive),
+                            ("negative", negative_constraint),
+                        ):
+                            if content:
+                                purpose_sources.append(
+                                    PromptSource(
+                                        name=f"purpose-{purpose}-{role}.txt",
+                                        content=content,
+                                        role=cast(Literal["positive", "negative"], role),
+                                        sha256=hashlib.sha256(content.encode()).hexdigest(),
+                                    )
+                                )
                     # Persist the deduplication key before any external submission.
                     return submit_generation(
                         self._generation_workspace,
                         backend,
                         session,
-                        descriptions.prompt,
+                        prepared_prompt,
                         seed if seed is not None else secrets.randbits(63),
                         profile,
                         run_id=identity,
-                        negative=descriptions.negative,
+                        negative=prepared_negative,
                         subjects=descriptions.subjects,
                         candidates=candidates,
-                        input_sources=(*input_sources, *descriptions.sources),
+                        input_sources=(*input_sources, *descriptions.sources, *purpose_sources),
                         inputs=inputs,
                         parameters=parameters,
                     )
@@ -157,6 +201,7 @@ class ImageService:
         parameters: dict[str, bool | int | float | str] | None = None,
         llm_profile: str = "fake",
         allow_real_llm: bool = False,
+        purpose: ImagePurpose | None = None,
     ) -> Run:
         run = self.submit(
             prompt,
@@ -171,6 +216,7 @@ class ImageService:
             parameters=parameters,
             llm_profile=llm_profile,
             allow_real_llm=allow_real_llm,
+            purpose=purpose,
         )
         return self.wait(run.run_id)
 
@@ -179,7 +225,11 @@ class ImageService:
             api_operation(OperationStage.GENERATION),
             connected(self._generation_workspace) as (backend, session),
         ):
-            return wait_generation(self._generation_workspace, backend, session, run_id)
+            result = wait_generation(self._generation_workspace, backend, session, run_id)
+        from komaquill.adapters.creation_reconciliation import reconcile_creations
+
+        reconcile_creations(self._project.root)
+        return result
 
     def collect(self, run_id: UUID | None = None) -> Collection:
         with operation_scope(), api_operation(OperationStage.COLLECTION):
@@ -195,6 +245,9 @@ class ImageService:
                         result.pending_ids,
                         observed_versions=result.observed_versions,
                     )
+            from komaquill.adapters.creation_reconciliation import reconcile_creations
+
+            reconcile_creations(self._project.root)
             return result
 
 

@@ -1,5 +1,7 @@
 # Python API
 
+長時間動くアプリケーションではClient.configure()で設定を固定します。LLMは同じClient内の会話・下書き・要約・英訳で設定を共有し、初回利用後の設定ファイル変更は次のClientから反映されます。保存済み作品の閲覧、画像の回収、GPU終了はLLM設定を必要としません。[設定の有効期間](../current/library-delegation.md#設定の解決と有効期間)を参照してください。
+
 公開入口は`komaquill.api`です。CLIとHTTPも同じClientを使用します。importで通信、認証、作業ファイルの作成、プロセス起動、表示を行いません。
 
 ```python
@@ -27,3 +29,34 @@ saved = client.conversations.get(conversation.id)
 会話開始は `Client.library.start(ConversationStart(...))` に3種類の `PresetRef(id=..., revision=...)` を渡します。`llm_profile` と `locale` は開始時に指定します。開始済みの会話には解決済みの内容が保持されます。
 
 下書き・代表画像・バナーは `CreationRequest` を `Client.library.accept()` へ渡し、新規受付の場合だけ `execute()` します。`job()` は保存済みの進捗を取得し、同じIDの再確認で生成を送り直しません。単発画像の日本語入力には `llm_profile` と `allow_real_llm=True` を指定します。既存DBを更新する場合は停止後に `Client.migrate()` を明示実行し、返された検証記録を確認します。
+
+## 保存と画像を一緒に受け付ける
+
+画像も作る場合はlibrary.save_presetを使う。画像生成先の起動・接続は別に行う。
+
+```python
+from komaquill.api import CharacterInput, PresetSaveOptions
+
+result = client.library.save_preset(
+    "character",
+    CharacterInput(name="Mira", age="60", gender="man", appearance="Short silver hair, black apron"),
+    PresetSaveOptions(operation_id=uuid4(), allow_real_llm=True),
+)
+```
+
+result.presetは保存済み本文、result.jobは画像の操作、result.image_errorは画像受付の失敗を表す。更新ではtarget_idとexpected_revisionを渡す。再確認は同じ操作IDと同じ入力を使い、明示的な再生成はimage_policyのalwaysを指定する。本文だけを保存するときはnoneを使う。HTTPはcharacters/saveとstories/saveで同じ処理を呼ぶ。
+
+ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateと状態編集はConversationStateを使い、自分と相手の服装・持ち物を別に保持する。長い会話の要約は自動保存され、元の本文と現在状態は維持される。
+
+旧状態を安全に変換できない会話はarchive.conversationsとarchive.conversationで読む。元の記録を新しい会話として推測変換しない。
+
+画像の用途を直接指定する場合は `client.images.submit(..., purpose="banner")` または `generate()` を使います。用途の型は公開APIの `ImagePurpose` です。用途別の生成条件は生成セットで管理し、未指定の単発画像には追加しません。再開は保存済みのRunを回収し、条件を再適用しません。
+
+## 保存済み画像の参照を復旧する
+
+アプリを閉じた状態で候補を確認し、確認IDを指定して適用します。候補確認はDBを変更しません。条件、保留理由、バックアップと再実行は[画像参照の復旧](../current/image-recovery.md)を参照してください。
+
+```python
+inspection = client.inspect_image_links()
+result = client.repair_image_links(inspection.id)
+```

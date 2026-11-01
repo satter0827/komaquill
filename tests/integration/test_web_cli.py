@@ -35,7 +35,7 @@ def test_cli_chat_create_send_read_and_failure_are_safe(project):
         ],
     )
     assert changed.exit_code == 0, changed.output
-    assert json.loads(changed.output)["state"] == {"place": "garden"}
+    assert json.loads(changed.output)["state"]["place"] == "garden"
     assert runner.invoke(app, [*prefix, "resume", identity]).exit_code == 0
     failed = runner.invoke(app, [*prefix, "send", identity, "Unknown"])
     assert failed.exit_code == 1 and "Traceback" not in failed.output

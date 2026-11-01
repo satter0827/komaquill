@@ -1,52 +1,20 @@
-"""Project saved definitions and scene memory into explicit generation context."""
-
-import json
+"""Project canonical state without deriving facts from generated prose."""
 
 from komaquill.conversations.models import Conversation
 
-VISUAL_MEMORY_KEYS = frozenset(
-    {
-        "character_clothing",
-        "character_expression",
-        "character_pose",
-        "character_held_objects",
-        "character_location",
-        "character_appearance",
-        "player_name",
-        "player_age",
-        "player_gender",
-        "player_role",
-        "player_appearance",
-        "scene",
-    }
-)
-
-
-def definition_value(text: str) -> str | dict[str, object]:
-    try:
-        value = json.loads(text)
-    except ValueError:
-        return text
-    return value if isinstance(value, dict) else text
-
 
 def scene_context(conversation: Conversation) -> dict[str, object]:
-    latest = conversation.turns[-1] if conversation.turns else None
-    changes = (
-        {
-            key: conversation.state.get(key, "")
-            for key in conversation.state.keys() | latest.state.keys()
-            if conversation.state.get(key) != latest.state.get(key)
-        }
-        if latest
-        else {}
-    )
+    return {"current_state": conversation.state.model_dump(mode="json")}
+
+
+def drawing_context(conversation: Conversation) -> dict[str, object]:
+    """Resolve the visible partner while keeping the player out of the image."""
     return {
-        "latest_scene": latest.narration if latest else "",
-        "state": {
-            key: value
-            for key, value in conversation.state.items()
-            if not (latest and latest.narration and key in VISUAL_MEMORY_KEYS)
+        "character": conversation.definition.character.model_dump(mode="json"),
+        "current_character": conversation.state.character.model_dump(mode="json"),
+        "setting": {
+            "world": conversation.definition.scenario.world,
+            "place": conversation.state.place,
+            "time": conversation.state.time,
         },
-        "scene_settings": changes,
     }

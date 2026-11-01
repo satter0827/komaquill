@@ -9,10 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-import psutil
-
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.database import Database, database
+from komaquill.adapters.file_users import file_users
 from komaquill.adapters.monitor_state import alive, read_monitor
 from komaquill.adapters.storage_errors import stored
 from komaquill.adapters.workspace import RuntimeWorkspace
@@ -34,10 +33,12 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
     tables = {row[0] for row in before.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "preferences" not in tables:
         return True
-    if (
-        before.execute("SELECT version_num FROM alembic_version").fetchall()
-        == after.execute("SELECT version_num FROM alembic_version").fetchall()
-    ):
+    if before.execute("SELECT version_num FROM alembic_version").fetchall() == after.execute(
+        "SELECT version_num FROM alembic_version"
+    ).fetchall() or before.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {
+        "0006",
+        "0007",
+    }:
         return all(
             before.execute(f"SELECT * FROM {name} ORDER BY id").fetchall()
             == after.execute(f"SELECT * FROM {name} ORDER BY id").fetchall()
@@ -73,27 +74,32 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
 def database_in_use(project: RuntimeWorkspace) -> bool:
     if alive(read_monitor(project)):
         return True
-    source = (project.data / "komaquill.sqlite3").resolve()
-    for process in psutil.process_iter(["pid", "name"]):
-        if process.pid == os.getpid() or not (process.info.get("name") or "").lower().startswith(
-            ("python", "pypy")
-        ):
-            continue
-        try:
-            if any(Path(item.path).resolve() == source for item in process.open_files()):
-                return True
-        except psutil.NoSuchProcess:
-            continue
-        except psutil.Error:
-            return True
-    return False
+    users = file_users([project.data / "komaquill.sqlite3"])
+    return users is None or bool(users - {os.getpid()})
+
+
+def conversations_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    tables = {row[0] for row in before.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "conversations" not in tables:
+        return True
+    current = dict(after.execute("SELECT id,payload FROM conversations"))
+    archive = dict(after.execute("SELECT id,payload FROM archived_conversations"))
+    return all(
+        current.get(identity) == payload or archive.get(identity) == payload
+        for identity, payload in before.execute("SELECT id,payload FROM conversations")
+    )
 
 
 @stored
 def migrate(workspace: Path) -> Path:
     project = RuntimeWorkspace(workspace)
     if database_in_use(project):
-        raise KomaquillError(code="operation_busy", stage="storage", retryable=False)
+        raise KomaquillError(
+            code="operation_busy",
+            stage="storage",
+            retryable=False,
+            display_key="migration.stop_required",
+        )
     source = project.data / "komaquill.sqlite3"
     if not source.is_file():
         raise KomaquillError(code="request_not_found", stage="storage", retryable=False)
@@ -126,12 +132,14 @@ def migrate(workspace: Path) -> Path:
     with closing(sqlite3.connect(source)) as connection:
         after = inventory(connection)
         with closing(sqlite3.connect(backup)) as copied:
-            if not library_preserved(copied, connection):
+            if not library_preserved(copied, connection) or not conversations_preserved(
+                copied, connection
+            ):
                 raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     if any(
         after.get(key) != value
         for key, value in before.items()
-        if key not in {"presets", "preferences"}
+        if key not in {"presets", "preferences", "conversations"}
     ):
         raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     atomic_json(report, {**record, "after": after, "state": "complete"})

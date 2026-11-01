@@ -1,9 +1,46 @@
 import { test as base, expect } from '@playwright/test'
 import path from 'node:path'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { Evidence, hash } from '../../../scripts/web/evidence.mjs'
+import AxeBuilder from '@axe-core/playwright'
 
-export const test = base.extend<{ evidence: Evidence }>({
+export const test = base.extend<{
+  evidence: Evidence
+  auditAccessibility: () => Promise<void>
+}>({
+  auditAccessibility: async ({ page }, use, info) => {
+    let audit = 0
+    await use(async () => {
+      const result = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze()
+      const resultPath = info.outputPath(`accessibility-${audit++}.json`)
+      await writeFile(
+        resultPath,
+        JSON.stringify(
+          {
+            url: page.url(),
+            engine: result.testEngine,
+            timestamp: result.timestamp,
+            violations: result.violations,
+            incomplete: result.incomplete,
+            status: result.violations.length
+              ? 'failed'
+              : result.incomplete.length
+                ? 'manual_review_required'
+                : 'passed',
+          },
+          null,
+          2,
+        ),
+      )
+      await info.attach('Accessibility results', {
+        path: resultPath,
+        contentType: 'application/json',
+      })
+      expect(result.violations).toEqual([])
+    })
+  },
   evidence: [
     async ({ page, request }, use, info) => {
       const directory = path.join(

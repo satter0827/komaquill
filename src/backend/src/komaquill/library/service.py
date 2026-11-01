@@ -9,11 +9,18 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel
 
-from komaquill.conversations.context import definition_value
+from komaquill.conversations.context import drawing_context
 from komaquill.conversations.models import Conversation, ConversationInput, PresetSnapshot
 from komaquill.conversations.service import ConversationService
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.images import ImagePurpose
 from komaquill.domain.models import Run
+from komaquill.domain.roleplay import (
+    CharacterDefinition,
+    ConversationState,
+    PersonDefinition,
+    StoryDefinition,
+)
 from komaquill.library.models import (
     CharacterInput,
     CharacterPreset,
@@ -26,11 +33,14 @@ from komaquill.library.models import (
     Preset,
     PresetInput,
     PresetKind,
+    PresetSaveOptions,
+    PresetSaveResult,
     StoryInput,
     StoryPreset,
 )
+from komaquill.library.operations import CreationStore, reconcile_job, reconcile_jobs
+from komaquill.library.rendering import preset_image_input
 
-DRAWING_CONTEXT_TURNS = 3
 IMAGE_COMPOSITION = {
     "portrait": "Solo character portrait, single figure, simple background. ",
     "conversation_image": "Solo character, single figure, first-person viewpoint. ",
@@ -38,7 +48,7 @@ IMAGE_COMPOSITION = {
 }
 
 
-class Store(Protocol):
+class Store(CreationStore, Protocol):
     def initialize(self, values: list[tuple[PresetKind, Preset]]) -> None: ...
     def list(self, kind: PresetKind) -> list[Preset]: ...
     def get(self, kind: PresetKind, identity: UUID) -> Preset: ...
@@ -60,14 +70,22 @@ class Store(Protocol):
     def accept(
         self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
     ) -> tuple[CreationJob, bool]: ...
-    def job(self, identity: UUID) -> tuple[CreationJob, bool]: ...
+    def save_preset(
+        self,
+        kind: PresetKind,
+        value: PresetInput,
+        options: PresetSaveOptions,
+        image_error: str | None,
+    ) -> PresetSaveResult: ...
     def claim(self, identity: UUID) -> CreationJob | None: ...
-    def save_job(self, value: CreationJob) -> CreationJob: ...
     def conversation_images(self, identity: UUID) -> builtins.list[CreationJob]: ...
 
 
 class Creator(Protocol):
     def draft(self, request: CreationRequest) -> CharacterInput | StoryInput: ...
+
+
+class ImageDescriber(Protocol):
     def prepare_image(
         self,
         text: str,
@@ -81,12 +99,14 @@ class Creator(Protocol):
 
 
 class Images(Protocol):
+    def available(self) -> bool: ...
     def submit(
         self,
         prompt: str,
         *,
         run_id: UUID | None = None,
         parameters: dict[str, bool | int | float | str] | None = None,
+        purpose: ImagePurpose | None = None,
     ) -> Run: ...
     def get(self, run_id: UUID) -> Run: ...
 
@@ -161,6 +181,7 @@ class LibraryService:
         store: Store,
         conversations: ConversationService,
         creator: Creator,
+        image_describer: ImageDescriber,
         images: Images,
         samples: dict[str, dict[str, dict[str, object]]],
         image_parameters: dict[str, dict[str, bool | int | float | str]],
@@ -172,6 +193,7 @@ class LibraryService:
             images,
         )
         self.image_parameters = image_parameters
+        self.image_describer = image_describer
         self.player = PlayerService(store)
         self.characters = PresetService(store, "character", CharacterInput, CharacterPreset)
         self.stories = PresetService(store, "story", StoryInput, StoryPreset)
@@ -233,32 +255,20 @@ class LibraryService:
             raise KomaquillError(code="fake_input_mismatch", retryable=False)
         story = cast(StoryPreset, values["story"])
 
-        def content(value: Preset) -> str:
-            return json.dumps(
-                value.model_dump(
-                    mode="json",
-                    exclude={
-                        "id",
-                        "revision",
-                        "image_id",
-                        "image_job_id",
-                        "sample",
-                        "sample_locale",
-                        "character_id",
-                    },
-                ),
-                ensure_ascii=False,
-            )
-
         return self.conversations.create(
             ConversationInput(
                 title=request.title.strip() or story.name,
-                scenario=content(story),
-                character=content(values["character"]),
-                user=content(values["player"]),
-                initial_state={"place": story.place} if story.place else {},
+                scenario=StoryDefinition.model_validate(
+                    story.model_dump(include=set(StoryDefinition.model_fields))
+                ),
+                character=CharacterDefinition.model_validate(
+                    values["character"].model_dump(include=set(CharacterDefinition.model_fields))
+                ),
+                user=PersonDefinition.model_validate(
+                    values["player"].model_dump(include=set(PersonDefinition.model_fields))
+                ),
+                initial_state=ConversationState(place=story.place, goal=story.goal),
                 locale=request.locale,
-                images=False,
                 llm_profile=profile,
                 response_length=preferences.response_length,
                 sample=sample,
@@ -270,6 +280,36 @@ class LibraryService:
                 },
             )
         )
+
+    def save_preset(
+        self,
+        kind: PresetKind,
+        value: PresetInput,
+        options: PresetSaveOptions,
+        *,
+        execute: bool = True,
+    ) -> PresetSaveResult:
+        if kind not in {"character", "story"} or not isinstance(
+            value, CharacterInput if kind == "character" else StoryInput
+        ):
+            raise KomaquillError(code="invalid_request", retryable=False)
+        image_error = None
+        if options.image_policy != "none":
+            if not options.allow_real_llm:
+                image_error = "real_llm_not_allowed"
+            else:
+                try:
+                    if not self.images.available():
+                        image_error = "image_backend_unavailable"
+                except KomaquillError as error:
+                    image_error = error.code.value
+        result = self.store.save_preset(kind, value, options, image_error)
+        if execute and result.job is not None:
+            result = result.model_copy(update={"job": self.execute(result.job.id)})
+        return result
+
+    def reconcile(self) -> list[UUID]:
+        return reconcile_jobs(self.store, self.images.get)
 
     def accept(self, request: CreationRequest) -> tuple[CreationJob, bool]:
         try:
@@ -290,20 +330,7 @@ class LibraryService:
             if conversation.revision != request.expected_revision:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             turn_id = conversation.turns[-1].operation_id if conversation.turns else None
-            original = json.dumps(
-                {
-                    "character": conversation.definition.character,
-                    "player": conversation.definition.user,
-                    "setting": conversation.definition.scenario,
-                    "current_state": conversation.state,
-                    "latest_scene": conversation.turns[-1].narration if conversation.turns else "",
-                    "recent_events": [
-                        {"narration": t.narration, "dialogue": t.assistant, "user": t.user}
-                        for t in conversation.turns[-DRAWING_CONTEXT_TURNS:]
-                    ],
-                },
-                ensure_ascii=False,
-            )
+            original = json.dumps(drawing_context(conversation), ensure_ascii=False)
         elif request.kind in {"portrait", "banner"}:
             try:
                 self.images.get(request.operation_id)
@@ -318,21 +345,7 @@ class LibraryService:
             value = self.store.get(kind, request.target_id)
             if value.revision != request.expected_revision:
                 raise KomaquillError(code="operation_conflict", retryable=False)
-            original = json.dumps(
-                value.model_dump(
-                    mode="json",
-                    exclude={
-                        "id",
-                        "revision",
-                        "image_id",
-                        "image_job_id",
-                        "sample",
-                        "sample_locale",
-                        "character_id",
-                    },
-                ),
-                ensure_ascii=False,
-            )
+            original = json.dumps(preset_image_input(kind, value), ensure_ascii=False)
         elif (
             not original.strip()
             or request.target_id is not None
@@ -340,14 +353,6 @@ class LibraryService:
         ):
             raise KomaquillError(code="invalid_request", retryable=False)
         job, created = self.store.accept(request, original, turn_id=turn_id)
-        if (
-            created
-            and request.kind in {"portrait", "banner"}
-            and request.target_id is not None
-            and request.expected_revision is not None
-        ):
-            kind = "character" if request.kind == "portrait" else "story"
-            self.store.attach(kind, request.target_id, request.expected_revision, job.id)
         return job, created
 
     def execute(self, identity: UUID) -> CreationJob:
@@ -360,24 +365,7 @@ class LibraryService:
                 job = job.model_copy(update={"state": "complete", "result": result})
             else:
                 source = job.original
-                if job.request.kind == "conversation_image":
-                    captured = json.loads(source)
-                    viewer = definition_value(captured.pop("player", ""))
-                    if isinstance(viewer, dict):
-                        captured["offscreen_viewer"] = {
-                            key: viewer[key] for key in ("name", "address") if viewer.get(key)
-                        }
-                    for key in ("character", "setting"):
-                        captured[key] = definition_value(captured[key])
-                    captured.pop("recent_events", None)
-                    if captured.get("latest_scene"):
-                        captured["current_state"] = {
-                            key: value
-                            for key, value in captured["current_state"].items()
-                            if key in {"place", "time", "goal", "relationship"}
-                        }
-                    source = json.dumps(captured, ensure_ascii=False)
-                elif job.request.kind == "banner":
+                if job.request.kind == "banner":
                     captured = json.loads(source)
                     scenery = {
                         key: captured[key]
@@ -389,18 +377,23 @@ class LibraryService:
                     source = json.dumps(scenery, ensure_ascii=False)
                 prompt = job.prompt_en
                 if prompt is None:
-                    prompt = IMAGE_COMPOSITION[job.request.kind] + self.creator.prepare_image(
+                    prompt = IMAGE_COMPOSITION[
+                        job.request.kind
+                    ] + self.image_describer.prepare_image(
                         source,
                         job.id,
                         job.request.llm_profile,
                         job.request.allow_real_llm,
                         compose=True,
-                        purpose=job.request.kind,
+                        purpose=cast(ImagePurpose, job.request.kind),
                     )
                 job = job.model_copy(update={"prompt_en": prompt})
                 self.store.save_job(job)
                 self.images.submit(
-                    prompt, run_id=job.id, parameters=self.image_parameters.get(job.request.kind)
+                    prompt,
+                    run_id=job.id,
+                    parameters=self.image_parameters.get(job.request.kind),
+                    purpose=cast(ImagePurpose, job.request.kind),
                 )
                 job = job.model_copy(update={"state": "submitted", "image_id": job.id})
         except KomaquillError as error:
@@ -416,41 +409,4 @@ class LibraryService:
         return self.job(identity)
 
     def job(self, identity: UUID) -> CreationJob:
-        job, alive = self.store.job(identity)
-        observed = job
-        if job.state in {"accepted", "running", "submitted"} and not job.request.kind.endswith(
-            "_draft"
-        ):
-            try:
-                run = self.images.get(job.id)
-            except KomaquillError as error:
-                if error.code != "request_not_found":
-                    raise
-            else:
-                if run.state == "saved" and run.images:
-                    job = job.model_copy(
-                        update={"state": "complete", "image_id": run.run_id, "error": None}
-                    )
-                    request = job.request
-                    if (
-                        request.kind in {"portrait", "banner"}
-                        and request.target_id is not None
-                        and request.expected_revision is not None
-                    ):
-                        kind: PresetKind = "character" if request.kind == "portrait" else "story"
-                        self.store.attach(
-                            kind, request.target_id, request.expected_revision, job.id, run.run_id
-                        )
-                elif run.state in {"failed", "lost"}:
-                    job = job.model_copy(update={"state": "failed", "error": "generation_failed"})
-                elif run.state != "prepared":
-                    job = job.model_copy(
-                        update={
-                            "state": "submitted",
-                            "image_id": run.run_id,
-                            "error": "submission_unknown" if run.state == "unknown" else None,
-                        }
-                    )
-        if not alive and job.state in {"accepted", "running"}:
-            job = job.model_copy(update={"state": "interrupted", "error": "submission_unknown"})
-        return self.store.save_job(job) if job != observed else self.store.job(identity)[0]
+        return reconcile_job(self.store, self.images.get, identity)

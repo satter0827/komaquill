@@ -78,7 +78,7 @@ def test_play_uses_locale_samples_and_keeps_deleted_settings(tmp_path, locale, g
     request = SendInput(operation_id=uuid4(), text=greeting)
     assert api.conversations.send(conversation.id, request).state == "complete"
     reopened = Client(tmp_path).conversations.get(conversation.id)
-    assert character.name in reopened.definition.character and reopened.definition.sample
+    assert character.name == reopened.definition.character.name and reopened.definition.sample
     assert reopened.definition.presets["character"].name == character.name
     assert len(reopened.turns) == 1
     with pytest.raises(KomaquillError, match="request_not_found"):
@@ -94,7 +94,7 @@ def test_custom_settings_cannot_impersonate_sample_and_references_are_checked(tm
         library.start(request)
     request = request.model_copy(update={"llm_profile": "lmstudio-4b"})
     saved = library.start(request)
-    assert not saved.definition.sample and "Custom" in saved.definition.character
+    assert not saved.definition.sample and saved.definition.character.name == "Custom"
     api.characters.update(character.id, 0, CharacterInput(name="New"))
     with pytest.raises(KomaquillError, match="operation_conflict"):
         library.start(request)
@@ -156,7 +156,7 @@ def test_corrupt_creation_identity_stops_before_inference_and_listing(tmp_path, 
     with library.store.database.engine.begin() as connection:
         connection.execute(creation_jobs.update().values(payload=json.dumps(value)))
     calls = []
-    library.creator = SimpleNamespace(prepare_image=lambda *_a, **_k: calls.append(True))
+    library.image_describer = SimpleNamespace(prepare_image=lambda *_a, **_k: calls.append(True))
     for action in (
         lambda: library.execute(job.id),
         lambda: library.store.job(job.id),
@@ -194,7 +194,9 @@ def test_image_execution_reuses_saved_english_without_retranslation(tmp_path):
     )
     library.store.save_job(job.model_copy(update={"prompt_en": "Frozen English prompt"}))
     translations, submissions = [], []
-    library.creator = SimpleNamespace(prepare_image=lambda *_a, **_k: translations.append(True))
+    library.image_describer = SimpleNamespace(
+        prepare_image=lambda *_a, **_k: translations.append(True)
+    )
     library.images = SimpleNamespace(
         submit=lambda prompt, **_k: submissions.append(prompt),
         get=lambda identity: SimpleNamespace(state="queued", images=[], run_id=identity),
@@ -233,14 +235,19 @@ def test_fixed_samples_do_not_claim_to_understand_arbitrary_settings(tmp_path, c
 
         conversation = api.conversations.create(
             ConversationInput(
-                locale="en", llm_profile="fake", title="Custom", character="A pilot named Nova"
+                locale="en",
+                llm_profile="fake",
+                title="Custom",
+                character={"description": "A pilot named Nova"},
             )
         )
     else:
         conversation = api.library.start(selection())
     if case == "forged_sample":
         conversation = api.conversations.create(
-            conversation.definition.model_copy(update={"character": "Arbitrary settings"})
+            conversation.definition.model_copy(
+                update={"character": CharacterInput(name="Arbitrary settings")}
+            )
         )
     elif case == "changed_state":
         from komaquill.conversations.models import StateCommand
@@ -292,7 +299,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     calls = []
     runs = {}
 
-    def submit(prompt, *, run_id, parameters):
+    def submit(prompt, *, run_id, parameters, purpose=None):
         calls.append((prompt, parameters))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]
@@ -303,7 +310,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
         return runs[identity]
 
     library.images = SimpleNamespace(submit=submit, get=get)
-    library.creator = SimpleNamespace(
+    library.image_describer = SimpleNamespace(
         prepare_image=lambda *args, **kwargs: (
             "One person in a bookshop" if kind == "portrait" else "Wide view of a bookshop, no text"
         )
@@ -320,12 +327,15 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     elif change == "delete":
         service.delete(value.id, 0)
     elif change == "newer_job":
-        library.accept(request.model_copy(update={"operation_id": uuid4()}))
+        with pytest.raises(KomaquillError, match="operation_busy"):
+            library.accept(request.model_copy(update={"operation_id": uuid4()}))
     runs[job.id].state = "saved"
     runs[job.id].images = ["image.png"]
     assert library.job(job.id).state == "complete"
     if change != "delete":
-        assert service.get(value.id).image_id == (job.id if change == "none" else None)
+        assert service.get(value.id).image_id == (
+            job.id if change in {"none", "newer_job"} else None
+        )
 
 
 @pytest.mark.parametrize("failure", ["not_allowed", "unexpected", "dead", "image_failed"])
@@ -346,7 +356,7 @@ def test_failure_preserves_presets_and_does_not_retry(tmp_path, failure):
         assert library.job(job.id).state == "failed"
     else:
         if failure == "unexpected":
-            library.creator = SimpleNamespace(prepare_image=lambda *_, **kwargs: 1 / 0)
+            library.image_describer = SimpleNamespace(prepare_image=lambda *_, **kwargs: 1 / 0)
         assert library.execute(job.id).state == "failed"
     assert api.characters.get(value.id).name == "Kept"
     assert library.accept(request)[1] is False
@@ -366,7 +376,7 @@ def test_unknown_image_submission_recovers_after_restart_without_resending(
     monkeypatch.setattr("komaquill.api.images.connected", connected)
     api = Client.initialize(project.root)
     translations = []
-    api.library.creator = SimpleNamespace(
+    api.library.image_describer = SimpleNamespace(
         prepare_image=lambda *_a, **_kw: translations.append(True) or "A quiet bookshop."
     )
     if kind == "conversation_image":
@@ -443,10 +453,29 @@ def test_http_crud_and_start_share_the_python_services(tmp_path, collection):
         assert http.put("/api/v1/preferences", json={**prefs, "locale": "en"}).status_code == 200
         base = f"/api/v1/{collection}"
         assert len(http.get(base).json()) == 2
-        value = http.post(base, json={"name": "Created"}).json()
+        value = http.post(
+            base + "/save",
+            json={
+                "operation_id": str(uuid4()),
+                "image_policy": "none",
+                "value": {"name": "Created"},
+            },
+        ).json()["preset"]
         url = base + "/" + value["id"]
         assert http.get(url).json()["name"] == "Created"
-        assert http.put(url + "?expected_revision=0", json={"name": "Updated"}).status_code == 200
+        assert (
+            http.post(
+                base + "/save",
+                json={
+                    "operation_id": str(uuid4()),
+                    "target_id": value["id"],
+                    "expected_revision": 0,
+                    "image_policy": "none",
+                    "value": {"name": "Updated"},
+                },
+            ).status_code
+            == 200
+        )
         assert http.post(url + "/duplicate").status_code == 201
         assert http.delete(url + "?expected_revision=1").status_code == 204
         assert http.get(url).status_code == 404

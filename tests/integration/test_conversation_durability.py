@@ -13,19 +13,16 @@ from komaquill.conversations.models import ConversationInput, Reply, SendInput, 
 from sqlalchemy import select
 
 
-@pytest.mark.parametrize("images", [False, True])
-def test_validated_reply_survives_restart_without_another_model_call(tmp_path, monkeypatch, images):
+def test_validated_reply_survives_restart_without_another_model_call(tmp_path, monkeypatch):
     api = Client.initialize(tmp_path)
     conversation = api.conversations.create(
-        ConversationInput(locale="en", llm_profile="fake", title="Recovery", images=images)
+        ConversationInput(locale="en", llm_profile="fake", title="Recovery")
     )
     request = SendInput(operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
     assert repository.running(request.operation_id)
-    reply = Reply(
-        text="Retained response", state={"place": "home"}, scene="a quiet room" if images else None
-    )
+    reply = Reply(text="Retained response", state_patch={"place": "home"})
     repository.checkpoint(request.operation_id, reply)
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))
@@ -36,7 +33,7 @@ def test_validated_reply_survives_restart_without_another_model_call(tmp_path, m
     )
     reopened = api.conversations.resume(conversation.id)
     assert reopened.revision == 1 and reopened.turns[0].assistant == reply.text
-    assert reopened.state == reply.state
+    assert reopened.state == reply.state_patch.apply(conversation.state)
     saved = api.operations.get(request.operation_id)
     assert saved.state == "complete"
     assert saved.image_state == "disabled"
@@ -126,7 +123,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0006"
+                == "0007"
             )
         storage.engine.dispose()
 
@@ -228,13 +225,13 @@ def test_pending_image_recovers_from_its_durable_receipt_while_owner_is_alive(
 
     api = Client.initialize(tmp_path)
     conversation = api.conversations.create(
-        ConversationInput(locale="en", llm_profile="fake", title="Image receipt", images=True)
+        ConversationInput(locale="en", llm_profile="fake", title="Image receipt")
     )
     request = SendInput(operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
     assert repository.running(request.operation_id)
-    repository.commit(request.operation_id, Reply(text="Saved", state={}, scene="a room"))
+    repository.commit(request.operation_id, Reply(text="Saved", state_patch={}))
     from komaquill.adapters.database import operations
 
     historical = repository.operation(request.operation_id).model_copy(
@@ -273,6 +270,8 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        connection.exec_driver_sql("DROP TABLE preset_saves")
+        connection.exec_driver_sql("DROP TABLE archived_conversations")
         connection.exec_driver_sql("DROP INDEX one_active_player")
         command.stamp(config, "0005")
         command.downgrade(config, "0003")

@@ -3,7 +3,6 @@
 import hashlib
 import json
 from pathlib import Path
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -11,8 +10,8 @@ from alembic import command
 from alembic.config import Config
 from komaquill.adapters import database as storage
 from komaquill.adapters import database_migration
-from komaquill.adapters.conversation_llm import check_language
 from komaquill.adapters.image_text import ImageTextPreparation
+from komaquill.adapters.llm.language import check_language
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api import Client, KomaquillError
 from komaquill.conversations.models import ConversationInput, SendInput
@@ -25,6 +24,8 @@ def downgrade(api, revision="0004"):
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        connection.exec_driver_sql("DROP TABLE preset_saves")
+        connection.exec_driver_sql("DROP TABLE archived_conversations")
         connection.exec_driver_sql("DROP INDEX one_active_player")
         command.stamp(config, "0005")
         command.downgrade(config, revision)
@@ -34,26 +35,12 @@ def downgrade(api, revision="0004"):
 def test_migration_stop_check_distinguishes_database_use_from_editor_tools(
     tmp_path, monkeypatch, case
 ):
-    import psutil
+    import os
 
     project = RuntimeWorkspace(tmp_path)
     monkeypatch.setattr(database_migration, "alive", lambda _: case == "monitor")
-
-    def files():
-        if case == "gone":
-            raise psutil.NoSuchProcess(99999)
-        if case == "unknown":
-            raise psutil.AccessDenied(99999)
-        return [
-            SimpleNamespace(
-                path=str(
-                    project.data / ("komaquill.sqlite3" if case == "database" else "editor.log")
-                )
-            )
-        ]
-
-    process = SimpleNamespace(pid=99999, info={"name": "python.exe"}, open_files=files)
-    monkeypatch.setattr(psutil, "process_iter", lambda _: [process])
+    users = None if case == "unknown" else ({os.getpid() + 1} if case == "database" else set())
+    monkeypatch.setattr(database_migration, "file_users", lambda _: users)
     assert database_migration.database_in_use(project) == (
         case in {"database", "unknown", "monitor"}
     )
@@ -103,15 +90,18 @@ def test_migration_failure_is_recorded_without_rewriting_existing_data(tmp_path,
 
         monkeypatch.setattr(database_migration, "inventory", inventory)
         expected = "storage_failed"
-    with pytest.raises(KomaquillError, match=expected):
+    with pytest.raises(KomaquillError) as failure:
         api.migrate()
+    assert failure.value.code == expected
+    if case == "busy":
+        assert failure.value.display_key == "migration.stop_required"
 
 
 def test_image_translation_is_frozen_and_includes_original_sources(tmp_path, monkeypatch):
-    prepare = ImageTextPreparation(tmp_path)
+    prepare = ImageTextPreparation(tmp_path, Client.initialize(tmp_path).library.image_describer)
     calls = []
     monkeypatch.setattr(
-        prepare.responder,
+        prepare.describer,
         "prepare_image",
         lambda text, *args: calls.append(text) or ("English scene" if text else ""),
     )
@@ -139,7 +129,7 @@ def test_corrupt_translation_and_unapproved_inference_stop_before_images(tmp_pat
     with pytest.raises(KomaquillError, match="real_llm_not_allowed"):
         api.images.submit("雨の本屋", llm_profile="lmstudio-4b")
     assert api.images.list() == []
-    prepare = ImageTextPreparation(tmp_path)
+    prepare = ImageTextPreparation(tmp_path, Client.initialize(tmp_path).library.image_describer)
     identity = uuid4()
     path = tmp_path / ".artifacts/data/image-preparations" / f"{identity}.json"
     path.parent.mkdir(parents=True, exist_ok=True)

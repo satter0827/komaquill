@@ -30,7 +30,7 @@ def test_one_player_roundtrips_attributes_and_freezes_them_in_play(tmp_path):
         player.revision, PlayerInput(name="Visitor", age="28", gender="woman")
     )
     conversation = start(api)
-    assert json.loads(conversation.definition.user)["age"] == "28"
+    assert conversation.definition.user.age == "28"
     api.player.update(saved.revision, PlayerInput(name="Changed", age="40"))
     assert api.conversations.get(conversation.id).definition == conversation.definition
     assert Client(tmp_path).player.get().name == "Changed"
@@ -48,8 +48,7 @@ def test_dialogue_persists_narration_without_submitting_an_image(tmp_path):
         reply=lambda *_: Reply(
             text="Shall we visit the garden?",
             narration="The shopkeeper puts on a blue coat.",
-            state={"place": "garden", "character_clothing": "blue coat"},
-            scene=None,
+            state_patch={"place": "garden", "character": {"clothing": "blue coat"}},
         )
     )
     request = SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
@@ -78,7 +77,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         StateCommand(
             command="set_state",
             expected_revision=0,
-            state={"place": "garden", "character_clothing": "blue coat"},
+            state={"place": "garden", "character": {"clothing": "blue coat"}},
         ),
     )
     request = CreationRequest(
@@ -89,10 +88,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         allow_real_llm=True,
     )
     accepted, created = api.library.accept(request)
-    assert (
-        created
-        and json.loads(accepted.original)["current_state"]["character_clothing"] == "blue coat"
-    )
+    assert created and json.loads(accepted.original)["current_character"]["clothing"] == "blue coat"
     api.conversations.command(
         conversation.id,
         StateCommand(
@@ -105,7 +101,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         calls.append(text)
         return "An adult shopkeeper in a blue coat stands in a garden."
 
-    api.library.creator = SimpleNamespace(prepare_image=prepare)
+    api.library.image_describer = SimpleNamespace(prepare_image=prepare)
     runs = {}
 
     def get(identity):
@@ -113,7 +109,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    def submit(prompt, *, run_id, parameters):
+    def submit(prompt, *, run_id, parameters, purpose=None):
         runs[run_id] = SimpleNamespace(state="queued", images=[], run_id=run_id)
 
     api.library.images = SimpleNamespace(submit=submit, get=get)
@@ -142,6 +138,8 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
         api.conversations.accept(conversation.id, SendInput(operation_id=uuid4(), text="Pending"))
     source = tmp_path / ".artifacts/data/komaquill.sqlite3"
     with sqlite3.connect(source) as db:
+        db.execute("DROP TABLE preset_saves")
+        db.execute("DROP TABLE archived_conversations")
         db.execute("DROP INDEX one_active_player")
         db.execute("UPDATE alembic_version SET version_num='0005'")
         preferences = json.loads(db.execute("SELECT payload FROM preferences").fetchone()[0])
@@ -232,15 +230,17 @@ def test_retained_turn_requests_are_read_without_rewriting_original_metadata(tmp
         assert db.execute("SELECT request FROM operations").fetchone()[0] == raw
 
 
-def test_drawing_uses_the_visible_latest_scene_instead_of_stale_visual_memory(tmp_path):
+def test_drawing_uses_canonical_state_instead_of_conflicting_narration(tmp_path):
     api = Client.initialize(tmp_path)
     conversation = start(api)
     api.conversations.responder = SimpleNamespace(
         reply=lambda *_: Reply(
             text="Hello",
-            narration="The woman sits in the garden wearing a blue shirt.",
-            state={"character_clothing": "white shirt", "character_location": "garden"},
-            scene=None,
+            narration="The woman wears a white shirt in a shop.",
+            state_patch={
+                "character": {"clothing": "blue shirt", "pose": "sitting"},
+                "place": "garden",
+            },
         )
     )
     api.conversations.send(
@@ -261,7 +261,7 @@ def test_drawing_uses_the_visible_latest_scene_instead_of_stale_visual_memory(tm
         calls.append((text, kwargs))
         return "A woman in a blue shirt sits in the garden."
 
-    api.library.creator = SimpleNamespace(prepare_image=prepare)
+    api.library.image_describer = SimpleNamespace(prepare_image=prepare)
     api.library.images = SimpleNamespace(
         submit=lambda *_a, **_kw: None,
         get=lambda identity: SimpleNamespace(state="queued", images=[], run_id=identity),
@@ -270,4 +270,4 @@ def test_drawing_uses_the_visible_latest_scene_instead_of_stale_visual_memory(tm
     assert "blue shirt" in calls[0][0] and "white shirt" not in calls[0][0]
     assert '"player"' not in calls[0][0]
     assert calls[0][1]["purpose"] == "conversation_image"
-    assert json.loads(captured.original)["current_state"]["character_clothing"] == "white shirt"
+    assert json.loads(captured.original)["current_character"]["clothing"] == "blue shirt"

@@ -71,3 +71,19 @@ AIは最初に`run.json`で対象版・実接続の有無・入力変更の有�
 `node scripts/python.mjs -m tests.live.play_acceptance --allow-real-llm`は実4Bの下書き確認、`--start-t4`を加えると隔離した画面で実画像まで確認する。実モデルとGPUを明示起動し、今回所有した資源を終了時に解放する。既存の利用者の作品や起動済み画面は使わない。
 
 会話画像は自動生成せず、「今の場面を描く」で受付時の現在状態を描く。キャラクターとストーリーの保存後は代表画像とバナーを作成する。
+
+## 実4BとWAIの確認
+
+日常のテストと実機の収集を分ける。次の操作は実4Bを使い、日本語と英語それぞれで履歴枠を超える会話を保存する。
+
+```powershell
+node scripts/python.mjs -m scripts.review_roleplay --allow-real-llm --phase conversations
+```
+
+画像の確認は、上記で出力されたworkspaceを明示指定する。T4を起動し、WAIで代表画像・バナー・会話画像・単発画像を生成して終了する。上限は[実機確認の設定](../../scripts/roleplay-review.toml)を使う。
+
+```powershell
+node scripts/python.mjs -m scripts.review_roleplay --allow-real-llm --phase images --workspace <workspace>
+```
+
+収集結果のfunctional_statusは保存・処理の成否であり、review_statusは別に扱う。台詞、場面説明、状態、要約、英訳、PNGを実際に照合し、評価は元のevidence.jsonを変更せず別の記録へ保存する。使用モデル・対象版・入力ハッシュ・使用量・時間・GPU終了確認と、期待との差を残す。

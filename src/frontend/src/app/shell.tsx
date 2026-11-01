@@ -1,5 +1,3 @@
-import { useState } from 'react'
-import { Link, NavLink, Route, Routes } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
   BookOpen,
@@ -12,27 +10,27 @@ import {
   UserRound,
   Users,
 } from 'lucide-react'
-import { listConversations } from '../api/generated/sdk.gen'
+import { useState } from 'react'
+import { Link, NavLink, Route, Routes } from 'react-router'
+import * as q from '../api/generated/@tanstack/react-query.gen'
 import { Button } from '../components/ui/button'
-import { ConversationPage } from '../features/conversations'
-import { NewConversation } from '../features/start'
 import {
-  LibraryPage,
-  PlayerPage,
-  loadPresets,
-  PresetCard,
-} from '../features/library'
+  ArchivedConversationPage,
+  ArchivedConversations,
+} from '../features/archive'
+import { ConversationPage } from '../features/conversations'
 import { ImagesPage } from '../features/images'
+import { LibraryPage, PlayerPage, PresetCard } from '../features/library'
 import { PreferencesPage } from '../features/preferences'
 import { RuntimePage } from '../features/runtime'
+import { NewConversation } from '../features/start'
 import { useFailure, useMessages, usePreferences } from './preferences'
 
 export function App() {
   const m = useMessages()
   const [navigation, setNavigation] = useState(false)
   const conversations = useQuery({
-    queryKey: ['conversations'],
-    queryFn: async () => (await listConversations()).data!,
+    ...q.listConversationsOptions(),
   })
   return (
     <div className="workspace">
@@ -96,11 +94,6 @@ export function App() {
             {m.preferences}
           </NavLink>
         </nav>
-        <div className="local-indicator">
-          <span />
-          {m.local}
-          <small>{m.onComputer}</small>
-        </div>
       </aside>
       <main className="main-area">
         <header className="mobile-header">
@@ -118,6 +111,10 @@ export function App() {
           <Route
             path="/conversations/:identity"
             element={<ConversationPage />}
+          />
+          <Route
+            path="/archive/conversations/:identity"
+            element={<ArchivedConversationPage />}
           />
           <Route path="/player" element={<PlayerPage />} />
           {(['character', 'story'] as const).map((kind) => (
@@ -144,12 +141,10 @@ function Home() {
   const failure = useFailure()
   const { value } = usePreferences()
   const stories = useQuery({
-    queryKey: ['stories'],
-    queryFn: () => loadPresets('story'),
+    ...q.listStoriesOptions(),
   })
   const conversations = useQuery({
-    queryKey: ['conversations'],
-    queryFn: async () => (await listConversations()).data!,
+    ...q.listConversationsOptions(),
   })
   const visibleStories = stories.data?.filter(
     (item) => !item.sample || item.sample_locale === value.locale,
@@ -216,6 +211,7 @@ function Home() {
         </div>
       </div>
       <p className="welcome-footer">{m.welcomeFooter}</p>
+      <ArchivedConversations />
     </section>
   )
 }

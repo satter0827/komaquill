@@ -1,12 +1,13 @@
-import { createContext, useContext, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getPreferences, savePreferences } from '../api/generated/sdk.gen'
+import type { ReactNode } from 'react'
+import { createContext, useContext, useEffect } from 'react'
+import { failure } from '../api/client'
+import * as q from '../api/generated/@tanstack/react-query.gen'
+import { savePreferences } from '../api/generated/sdk.gen'
 import type { Preferences } from '../api/generated/types.gen'
 import { Button } from '../components/ui/button'
-import { failure } from '../api/client'
-import { formatMessage, messageCatalog } from './messages'
 import type { MessageKey } from './messages'
+import { formatMessage, messageCatalog } from './messages'
 
 export type EffectivePreferences = Required<Preferences>
 export const defaultPreferences: EffectivePreferences = {
@@ -36,18 +37,18 @@ const Context = createContext<PreferenceContext>({
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const cache = useQueryClient()
   const query = useQuery({
-    queryKey: ['preferences'],
-    queryFn: async () => (await getPreferences()).data!,
+    ...q.getPreferencesOptions(),
   })
   const value = { ...defaultPreferences, ...query.data }
   const save = useMutation({
     mutationFn: async (changes: Partial<Preferences>) => {
-      const current = cache.getQueryData<Preferences>(['preferences']) ?? value
+      const current =
+        cache.getQueryData<Preferences>(q.getPreferencesQueryKey()) ?? value
       return (await savePreferences({ body: { ...current, ...changes } })).data!
     },
-    onSuccess: (data) => cache.setQueryData(['preferences'], data),
+    onSuccess: (data) => cache.setQueryData(q.getPreferencesQueryKey(), data),
     onError: () => {
-      void cache.invalidateQueries({ queryKey: ['preferences'] })
+      void cache.invalidateQueries({ queryKey: q.getPreferencesQueryKey() })
     },
   })
   useEffect(() => {

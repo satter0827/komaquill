@@ -1,30 +1,32 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUp, PanelRight, Sparkles } from 'lucide-react'
-import {
-  applyCommand,
-  getConversation,
-  getConversationOperations,
-  getOperation,
-  sendTurn,
-  listConversationImages,
-} from '../api/generated/sdk.gen'
+import { ArrowUp, ImagePlus, PanelRight, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { Link, useParams } from 'react-router'
+import { POLL_INTERVAL_MS } from '../api/client'
+import * as q from '../api/generated/@tanstack/react-query.gen'
 import type {
+  ConversationState,
   CreationJob,
   OperationView,
+  PersonDefinition,
   SendInput,
+  StoryDefinition,
 } from '../api/generated/types.gen'
-import { POLL_INTERVAL_MS } from '../api/client'
-import { Button } from '../components/ui/button'
 import {
   useFailure,
   useFormatMessage,
   useMessages,
   usePreferences,
 } from '../app/preferences'
+import { Button } from '../components/ui/button'
+import { CreationStatus, useCreation } from './creation'
 import { ImageResult } from './images'
-import { useCreation, CreationStatus } from './creation'
+import {
+  isTerminal,
+  keepTerminal,
+  operationOptions,
+  operationPending,
+} from './operations'
 
 const narrowQuery = '(max-width: 850px)'
 function subscribeViewport(listener: () => void) {
@@ -61,7 +63,7 @@ function ConversationView({ identity }: { identity: string }) {
   const [operationId, setOperationId] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const [stateDraft, setStateDraft] = useState<{
-    value: Record<string, string>
+    value: ConversationState
     revision: number
   } | null>(null)
   const narrow = useSyncExternalStore(
@@ -74,84 +76,93 @@ function ConversationView({ identity }: { identity: string }) {
   const showState = narrow ? mobileOpen : wideOpen
   const setShowState = narrow ? setMobileOpen : setWideOpen
   const detail = useQuery({
-    queryKey: ['conversation', identity],
-    queryFn: async () => (await getConversation({ path: { identity } })).data!,
-    refetchInterval: POLL_INTERVAL_MS,
+    ...q.getConversationOptions({ path: { identity } }),
   })
   const savedOperations = useQuery({
-    queryKey: ['conversation-operations', identity],
-    queryFn: async () =>
-      (await getConversationOperations({ path: { identity } })).data!,
-    refetchInterval: POLL_INTERVAL_MS,
+    ...q.getConversationOperationsOptions({ path: { identity } }),
+    refetchInterval: (query) =>
+      query.state.data?.some(operationPending) ? POLL_INTERVAL_MS : false,
   })
   const operation = useQuery({
-    queryKey: ['operation', operationId],
+    ...operationOptions(operationId ?? ''),
     enabled: !!operationId,
-    queryFn: async () =>
-      (await getOperation({ path: { identity: operationId! } })).data!,
-    refetchInterval: (query) =>
-      ['complete', 'failed', 'interrupted'].includes(
-        query.state.data?.state ?? '',
-      )
-        ? false
-        : POLL_INTERVAL_MS,
   })
+  useEffect(() => {
+    if (operation.data || savedOperations.data)
+      void cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({ path: { identity } }),
+      })
+  }, [cache, identity, operation.data, savedOperations.data])
+
   const send = useMutation({
-    mutationFn: async (body: SendInput) =>
-      (await sendTurn({ path: { identity }, body })).data!,
+    ...q.sendTurnMutation(),
+    onError: (error) => {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? error.code
+          : null
+      if (
+        [
+          'invalid_request',
+          'request_not_found',
+          'operation_conflict',
+          'operation_busy',
+        ].includes(String(code))
+      )
+        setPrepared(null)
+    },
     onSuccess: (result, submitted) => {
-      cache.setQueryData<OperationView>(['operation', result.id], (previous) =>
-        previous &&
-        ['complete', 'failed', 'interrupted'].includes(previous.state)
-          ? previous
-          : result,
+      cache.setQueryData<OperationView>(
+        q.getOperationQueryKey({ path: { identity: result.id ?? '' } }),
+        (previous) => keepTerminal(previous, result),
       )
       setOperationId(result.id)
-      setText((current) => (current === submitted.text ? '' : current))
+      setText((current) => (current === submitted.body.text ? '' : current))
       setPrepared(null)
-      void cache.invalidateQueries({ queryKey: ['conversation', identity] })
+      void cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({
+          path: { identity: identity ?? '' },
+        }),
+      })
+      void cache.invalidateQueries({
+        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
+      })
     },
   })
   const reset = useMutation({
-    mutationFn: async () =>
-      (
-        await applyCommand({
-          path: { identity },
-          body: {
-            command: 'reset_state',
-            expected_revision: detail.data!.revision ?? 0,
-          },
-        })
-      ).data!,
+    ...q.applyCommandMutation(),
     onSuccess: () =>
-      cache.invalidateQueries({ queryKey: ['conversation', identity] }),
+      cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({
+          path: { identity: identity ?? '' },
+        }),
+      }),
   })
   const updateState = useMutation({
-    mutationFn: async () => {
-      const state = stateDraft!.value
-      return (
-        await applyCommand({
-          path: { identity },
-          body: {
-            command: 'set_state',
-            expected_revision: stateDraft!.revision,
-            state,
-          },
-        })
-      ).data!
-    },
+    ...q.applyCommandMutation(),
     onSuccess: async () => {
       setStateDraft(null)
-      await cache.invalidateQueries({ queryKey: ['conversation', identity] })
+      await cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({
+          path: { identity: identity ?? '' },
+        }),
+      })
     },
   })
   const drawing = useCreation()
   const drawings = useQuery({
-    queryKey: ['conversation-images', identity],
-    queryFn: async () =>
-      (await listConversationImages({ path: { identity } })).data!,
-    refetchInterval: POLL_INTERVAL_MS,
+    ...q.listConversationImagesOptions({ path: { identity } }),
+    refetchInterval: (query) =>
+      query.state.data?.some((job) => !isTerminal(job.state))
+        ? POLL_INTERVAL_MS
+        : false,
   })
+  useEffect(() => {
+    if (drawing.mutation.data || drawing.job.data)
+      void cache.invalidateQueries({
+        queryKey: q.listConversationImagesQueryKey({ path: { identity } }),
+      })
+  }, [cache, identity, drawing.mutation.data, drawing.job.data])
   const dialog = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     if (narrow && showState) dialog.current?.showModal()
@@ -180,31 +191,27 @@ function ConversationView({ identity }: { identity: string }) {
     goal: messages.goal,
     relationship: messages.relationship,
   }
-  const displayedState = {
-    ...conversation.state,
-    place:
-      conversation.state?.place || conversation.state?.character_location || '',
-  }
-  const visibleState = Object.entries(displayedState).filter(
-    ([key, value]) => key in stateLabels && value,
-  )
-  const content = (raw: string | undefined) => {
-    try {
-      const value = JSON.parse(raw ?? '{}') as Record<string, string>
-      return (
-        value.opening ||
+  const visibleState = Object.entries(stateLabels)
+    .map(
+      ([key, label]) =>
+        [
+          key,
+          label,
+          conversation.state?.[key as keyof typeof stateLabels],
+        ] as const,
+    )
+    .filter(([, value]) => !!value)
+  const content = (value: PersonDefinition | StoryDefinition | undefined) =>
+    value
+      ? ('opening' in value && value.opening) ||
         value.description ||
-        value.world ||
-        value.appearance ||
-        value.role ||
+        ('world' in value && value.world) ||
+        ('appearance' in value && value.appearance) ||
+        ('role' in value && value.role) ||
         value.name ||
-        raw ||
         ''
-      )
-    } catch {
-      return raw ?? ''
-    }
-  }
+      : ''
+  const sampleDrawing = conversation.definition.llm_profile === 'fake'
   const statePanel = (
     <aside className="state-panel">
       {narrow && (
@@ -230,7 +237,7 @@ function ConversationView({ identity }: { identity: string }) {
       <p className="state-description">
         {content(conversation.definition.scenario) || messages.openConversation}
       </p>
-      {conversation.definition.character && (
+      {content(conversation.definition.character) && (
         <>
           <h3>{messages.character}</h3>
           <p className="state-description">
@@ -241,9 +248,9 @@ function ConversationView({ identity }: { identity: string }) {
       <details className="story-details">
         <summary>{messages.details}</summary>
         <div className="state-items">
-          {visibleState.map(([key, value]) => (
+          {visibleState.map(([key, label, value]) => (
             <div key={key}>
-              <span>{stateLabels[key as keyof typeof stateLabels]}</span>
+              <span>{label}</span>
               <p>{value}</p>
             </div>
           ))}
@@ -273,14 +280,23 @@ function ConversationView({ identity }: { identity: string }) {
           <form
             onSubmit={(event) => {
               event.preventDefault()
-              updateState.mutate()
+              updateState.mutate({
+                path: { identity },
+                body: {
+                  command: 'set_state',
+                  expected_revision: stateDraft!.revision,
+                  state: stateDraft!.value,
+                },
+              })
             }}
           >
             {Object.entries(stateLabels).map(([key, label]) => (
               <label key={key}>
                 {label}
                 <input
-                  value={stateDraft.value[key] ?? ''}
+                  value={
+                    stateDraft.value[key as keyof typeof stateLabels] ?? ''
+                  }
                   onChange={(event) =>
                     setStateDraft({
                       ...stateDraft,
@@ -304,7 +320,15 @@ function ConversationView({ identity }: { identity: string }) {
           </p>
         )}
         <Button
-          onClick={() => reset.mutate()}
+          onClick={() =>
+            reset.mutate({
+              path: { identity },
+              body: {
+                command: 'reset_state',
+                expected_revision: conversation.revision ?? 0,
+              },
+            })
+          }
           disabled={busy || reset.isPending}
         >
           {messages.resetState}
@@ -340,7 +364,12 @@ function ConversationView({ identity }: { identity: string }) {
             />
           </div>
         )}
-        <div className="turns" aria-live="polite">
+        <div
+          className="turns"
+          role="log"
+          aria-label={messages.conversationHistory}
+          tabIndex={0}
+        >
           {(drawings.data ?? [])
             .filter((job) => !job.turn_id)
             .map((job) => (
@@ -398,7 +427,8 @@ function ConversationView({ identity }: { identity: string }) {
               {prepared && (
                 <Button
                   onClick={() => {
-                    if (prepared) send.mutate(prepared)
+                    if (prepared)
+                      send.mutate({ path: { identity }, body: prepared })
                   }}
                   disabled={send.isPending}
                 >
@@ -412,24 +442,13 @@ function ConversationView({ identity }: { identity: string }) {
               {failure({ code: latestOperation.error })}
             </p>
           )}
-          <div className="scene-actions">
-            <Button
-              onClick={() =>
-                drawing.start({
-                  kind: 'conversation_image',
-                  target_id: identity,
-                  expected_revision: conversation.revision,
-                  locale: preferences.value.locale,
-                  llm_profile: conversation.definition.llm_profile,
-                  allow_real_llm: true,
-                })
-              }
-              disabled={!!busy || drawing.busy}
-            >
-              {messages.drawScene}
-            </Button>
-            <CreationStatus creation={drawing} />
-          </div>
+          {sampleDrawing && (
+            <p className="subtle">
+              {messages.sampleDrawingUnavailable}{' '}
+              <Link to="/new">{messages.newConversation}</Link>
+            </p>
+          )}
+          <CreationStatus creation={drawing} />
           <form
             className="composer"
             onSubmit={(event) => {
@@ -442,7 +461,7 @@ function ConversationView({ identity }: { identity: string }) {
                   locale: preferences.value.locale,
                 }
                 setPrepared(body)
-                send.mutate(body)
+                send.mutate({ path: { identity }, body })
               }
             }}
           >
@@ -453,6 +472,24 @@ function ConversationView({ identity }: { identity: string }) {
               value={text}
               onChange={(event) => setText(event.target.value)}
             />
+            <Button
+              className="draw-button"
+              aria-label={messages.drawScene}
+              title={messages.drawScene}
+              disabled={!!busy || drawing.busy || sampleDrawing}
+              onClick={() =>
+                drawing.start({
+                  kind: 'conversation_image',
+                  target_id: identity,
+                  expected_revision: conversation.revision,
+                  locale: preferences.value.locale,
+                  llm_profile: conversation.definition.llm_profile,
+                  allow_real_llm: true,
+                })
+              }
+            >
+              <ImagePlus size={20} aria-hidden="true" />
+            </Button>
             <Button
               type="submit"
               className="send-button"

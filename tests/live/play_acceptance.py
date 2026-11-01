@@ -119,7 +119,7 @@ def main():
     root = Path(__file__).resolve().parents[2]
     directory = root / ".artifacts/records/reports" / ("play-live-" + uuid4().hex)
     api = Client.initialize(directory / "workspace")
-    model = api.conversations.responder.settings.llm_profiles["lmstudio-4b"].model
+    model = api.conversations.responder.execution.settings.llm_profiles["lmstudio-4b"].model
     report = {
         "started_at": datetime.now(UTC).isoformat(),
         "source_revision": source_revision(root),
@@ -277,7 +277,7 @@ def main():
                     "\n\nWrite the image description in English only."
                 )
                 identity = uuid4()
-                prompt = api.library.creator.prepare_image(
+                prompt = api.library.image_describer.prepare_image(
                     text, identity, "lmstudio-4b", True, compose=True, purpose="conversation_image"
                 )
                 observed = json.loads(

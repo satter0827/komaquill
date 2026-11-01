@@ -82,6 +82,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         if client is not None:
             client.configure()
             client.operations.reconcile()
+            client.library.reconcile()
         yield
 
     app = FastAPI(title="Komaquill API", version="1.0.0", lifespan=lifespan)

@@ -61,6 +61,14 @@ data/storiesと旧ファイル形式の履歴は読み取り専用のarchiveで�
 
 ## Node依存と開発生成物
 
+LLMの呼び出し別記録はdata/conversation-calls、操作別の使用量集計はdata/conversation-usageへ保存します。前者を正本とし、集計は既知分と不明件数を分けます。原文と応答を含む作品データのため公開しません。axeの違反・判定不能は画面検査のrecords/reports/web配下へ保存し、未判定を合格へ変更しません。
+
 `node bootstrap/setup-node.mjs` はpnpm標準のvirtual storeを `.artifacts/runtime/node/virtual-store`、ダウンロードキャッシュを `.artifacts/cache/pnpm` に配置します。`node_modules` には標準の依存参照とpnpmの管理情報だけを残します。独自のモジュール解決は追加しません。
 
 Nx、Nodeのコンパイルキャッシュ、Playwrightのブラウザー、一時ファイルは `bootstrap/node-environment.mjs` で用途別の生成先を共有します。Viteとテスト結果の設定は各標準設定ファイルを正本とします。Reactの出力は `build/frontend`、wheelは `dist`、検証記録は `records/reports` に置きます。ソース管理するAPIクライアントとロックファイルは生成物の整理対象へ含めません。
+
+## Windowsでの利用確認
+
+DB移行とキャッシュ整理のファイル利用確認は、Windows標準のRestart Managerへ対象ファイルをまとめて問い合わせます。DBでは自分以外の利用者がいる場合、整理では環境・作業場所の利用またはキャッシュ・一時ファイルの利用がある場合に停止します。照会の失敗を「未使用」とは扱いません。利用確認だけでアプリやサービスを停止・再起動しません。
+
+照会の実装は[ファイル利用者](../../src/backend/src/komaquill/adapters/file_users.py)、保存と照合は[DB移行](../../src/backend/src/komaquill/adapters/database_migration.py)、整理は[対象の選別](../../src/backend/src/komaquill/adapters/cleanup.py)を参照してください。

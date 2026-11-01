@@ -46,6 +46,7 @@ export function route(url) {
       'files',
       'collect',
       'creation-jobs',
+      'archive',
       'duplicate',
       'start',
       'stop',

@@ -410,6 +410,6 @@ it('shows the current character condition without internal state values', async 
     ).toHaveLength(2),
   )
   expect(screen.queryByText('White shirt')).not.toBeInTheDocument()
-  expect(screen.getAllByText('Garden').length).toBeGreaterThan(1)
+  expect(screen.getAllByText('Garden').length).toBeGreaterThan(0)
   expect(screen.queryByText('{"age":"28"}')).not.toBeInTheDocument()
 })

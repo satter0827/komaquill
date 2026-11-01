@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from komaquill.adapters.comfyui import ComfyClient
+from komaquill.adapters.creation_reconciliation import reconcile_creations
 from komaquill.adapters.diagnostics import record_event
 from komaquill.adapters.materials import MaterialCollector
 from komaquill.adapters.monitor_state import (
@@ -50,6 +51,7 @@ def drain(
                 request_stop(project, session, True)
             try:
                 result = collect(project, client, session)
+                reconcile_creations(project.root)
                 material_errors = preserve(project, client) or ()
                 if material_errors:
                     result = Collection(
@@ -164,6 +166,7 @@ def watch(
                             )
                             sidecar_failures["preparation"] = failure
                 result = collect(project, client, session)
+                reconcile_creations(project.root)
                 if coordinator is not None:
                     try:
                         coordinator.materials.collect()

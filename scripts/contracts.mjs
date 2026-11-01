@@ -18,7 +18,12 @@ await createClient({
   configFile: false,
   input: './src/contracts/openapi.json',
   output,
-  plugins: ['@hey-api/typescript', '@hey-api/sdk', '@hey-api/client-fetch'],
+  plugins: [
+    '@hey-api/typescript',
+    '@hey-api/sdk',
+    '@hey-api/client-fetch',
+    '@tanstack/react-query',
+  ],
 })
 if (!write) {
   const files = await readdir(output, { recursive: true, withFileTypes: true })

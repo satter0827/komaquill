@@ -12,6 +12,7 @@ import m from '../src/app/locales/ja.json'
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.get(`${base}/api/v1/archive/conversations`, () => HttpResponse.json([])),
   http.get(`${base}/api/v1/conversations`, () => HttpResponse.json([])),
   http.get(`${base}/api/v1/stories`, () =>
     HttpResponse.json({ code: 'storage_failed' }, { status: 500 }),

@@ -1,22 +1,16 @@
-import { useState } from 'react'
-import type { ImageInput } from '../api/generated/types.gen'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Image } from 'lucide-react'
-import {
-  collectImage,
-  getImage,
-  getOperation,
-  listImages,
-  submitImage,
-} from '../api/generated/sdk.gen'
-import { POLL_INTERVAL_MS } from '../api/client'
-import { Button } from '../components/ui/button'
+import { useState } from 'react'
+import * as q from '../api/generated/@tanstack/react-query.gen'
+import type { ImageInput } from '../api/generated/types.gen'
 import {
   useFailure,
-  useMessages,
   useFormatMessage,
+  useMessages,
   usePreferences,
 } from '../app/preferences'
+import { Button } from '../components/ui/button'
+import { imageOptions, operationOptions } from './operations'
 
 export function ImageResult({
   identity,
@@ -30,31 +24,20 @@ export function ImageResult({
   const formatMessage = useFormatMessage()
   const cache = useQueryClient()
   const operation = useQuery({
-    queryKey: ['operation', operationId],
+    ...operationOptions(operationId ?? ''),
     enabled: !!operationId,
-    queryFn: async () =>
-      (await getOperation({ path: { identity: operationId! } })).data!,
-    refetchInterval: (query) =>
-      query.state.data?.image_state === 'pending' ? POLL_INTERVAL_MS : false,
   })
+
   const image = useQuery({
     enabled: !operationId || operation.data?.image_state === 'submitted',
-    queryKey: ['image', identity],
-    queryFn: async () => {
-      const current = (await getImage({ path: { identity } })).data!
-      if (!['saved', 'failed', 'lost'].includes(current.state ?? ''))
-        return (await collectImage({ path: { identity } })).data!
-      return current
-    },
-    refetchInterval: (query) =>
-      query.state.error ||
-      ['saved', 'failed', 'lost'].includes(query.state.data?.state ?? '')
-        ? false
-        : POLL_INTERVAL_MS,
+    ...imageOptions(identity),
   })
   const collect = useMutation({
-    mutationFn: () => collectImage({ path: { identity } }),
-    onSuccess: () => cache.invalidateQueries({ queryKey: ['image', identity] }),
+    ...q.collectImageMutation(),
+    onSuccess: () =>
+      cache.invalidateQueries({
+        queryKey: q.getImageQueryKey({ path: { identity: identity ?? '' } }),
+      }),
   })
   return (
     <div className="image-result">
@@ -73,7 +56,10 @@ export function ImageResult({
             : messages.imagePreparing}
       </p>
       {(image.error || (image.data && image.data.state !== 'saved')) && (
-        <Button onClick={() => collect.mutate()} disabled={collect.isPending}>
+        <Button
+          onClick={() => collect.mutate({ path: { identity } })}
+          disabled={collect.isPending}
+        >
           {messages.retryCollection}
         </Button>
       )}
@@ -102,11 +88,10 @@ export function ImagesPage() {
   const preferences = usePreferences()
   const cache = useQueryClient()
   const images = useQuery({
-    queryKey: ['images'],
-    queryFn: async () => (await listImages()).data!,
+    ...q.listImagesOptions(),
   })
   const submit = useMutation({
-    mutationFn: (body: ImageInput) => submitImage({ body }),
+    ...q.submitImageMutation(),
     onError: (error) => {
       const code =
         error && typeof error === 'object' && 'code' in error
@@ -118,7 +103,7 @@ export function ImagesPage() {
     },
     onSuccess: () => {
       setPrepared(null)
-      return cache.invalidateQueries({ queryKey: ['images'] })
+      return cache.invalidateQueries({ queryKey: q.listImagesQueryKey() })
     },
   })
   return (
@@ -137,7 +122,7 @@ export function ImagesPage() {
             allow_real_llm: true,
           }
           setPrepared(body)
-          submit.mutate(body)
+          submit.mutate({ body })
         }}
       >
         <label>

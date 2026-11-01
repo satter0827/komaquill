@@ -32,6 +32,28 @@ def test_local_links_fragments_and_fenced_examples(tmp_path):
     check_docs.main(tmp_path)
 
 
+def test_markdown_syntax_references_images_and_code_are_distinguished(tmp_path):
+    tree(tmp_path)
+    (tmp_path / "a(b).md").write_text("Heading *with* `code`\n========================\n")
+    (tmp_path / "image.svg").write_text("<svg/>")
+    (tmp_path / "README.md").write_text(
+        "[reference][target]\n![alt](image.svg)\n"
+        "[target]: <a(b).md#heading-with-code>\n\n"
+        "`[inline](missing.md)`\n\n"
+        "    [indented](missing.md)\n\n"
+        "~~~md\n[example](missing.md)\n~~~\n"
+    )
+    assert check_docs.validate(tmp_path) == []
+    (tmp_path / "image.svg").unlink()
+    assert check_docs.validate(tmp_path) == ["README.md:link"]
+
+
+def test_visible_headings_keep_japanese_and_duplicate_anchor_order():
+    assert check_docs.anchors(
+        "## *日本語* `見出し`\n## 日本語 見出し\n\nOther title\n---\n```\n# Hidden\n```\n"
+    ) == {"日本語-見出し", "日本語-見出し-1", "other-title"}
+
+
 @pytest.mark.parametrize("target", ["missing.md", "../outside.md", "CONTRIBUTING.md#missing"])
 def test_invalid_links_are_rejected(tmp_path, target):
     tree(tmp_path)

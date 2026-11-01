@@ -1,10 +1,10 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router'
-import { App } from './shell'
-import { PreferencesProvider } from './preferences'
 import '../api/client'
+import { PreferencesProvider } from './preferences'
+import { App } from './shell'
 import './styles.css'
 
 const queryClient = new QueryClient({

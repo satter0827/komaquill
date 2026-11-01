@@ -351,6 +351,7 @@
   "workflow.change_strength": "Image change strength",
   "error.preparation_timeout": "Model preparation reached its deadline. Check preparation status and stop the owned runtime before trying again.",
   "workflow.edit_instructions": "Edit instructions",
+  "migration.stop_required": "Close applications using this workspace before migrating the database. Migration is blocked until file usage can be verified.",
   "error.operation_busy": "Another conversation request is running. Wait for its result before sending a new message.",
   "error.operation_conflict": "This operation ID or revision conflicts with a saved request. Refresh the saved result before continuing.",
   "error.fake_input_mismatch": "The sample profile accepts only its paired settings and messages. Select the matching sample or explicitly choose a real model.",
@@ -382,5 +383,10 @@
   "error.context_limit_exceeded": "The conversation context exceeds the input limit. Shorten the scenario, state, or message, or adjust the conversation input limit.",
   "storage.migrated": "Database migration completed. Record: {path}",
   "chat.draw": "Draw the character in the saved current scene and print image paths.",
-  "chat.locale": "Language for the conversation or next reply."
+  "chat.locale": "Language for the conversation or next reply.",
+  "storage.repair_images_help": "Inspect retained image links; apply a saved inspection explicitly.",
+  "storage.repair_apply_help": "Apply this inspection ID after stopping the application.",
+  "storage.repair_inspected": "Inspection {identity}: {ready} repairable, {skipped} skipped. Apply with repair-images --apply {identity}.",
+  "storage.repair_applied": "Repair {identity}: {repaired} repaired, {already} already applied, {skipped} skipped.",
+  "storage.repair_stop_required": "Close applications using this workspace before repairing image links. Repair is blocked until file usage can be verified."
 }

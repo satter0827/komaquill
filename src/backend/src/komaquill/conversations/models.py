@@ -4,15 +4,21 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
+
+from komaquill.domain.roleplay import (
+    CharacterDefinition,
+    ConversationMemory,
+    ConversationState,
+    PersonDefinition,
+    Record,
+    StatePatch,
+    StoryDefinition,
+)
 
 
 def now() -> datetime:
     return datetime.now(UTC)
-
-
-class Record(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class PresetSnapshot(Record):
@@ -24,12 +30,11 @@ class PresetSnapshot(Record):
 
 class ConversationInput(Record):
     title: str = Field(min_length=1, max_length=120)
-    scenario: str = Field(default="", max_length=20000)
-    character: str = Field(default="", max_length=20000)
-    user: str = Field(default="", max_length=20000)
+    scenario: StoryDefinition = Field(default_factory=StoryDefinition)
+    character: CharacterDefinition = Field(default_factory=CharacterDefinition)
+    user: PersonDefinition = Field(default_factory=PersonDefinition)
     instructions: str = Field(default="", max_length=20000)
-    initial_state: dict[str, str] = Field(default_factory=dict)
-    images: bool = False
+    initial_state: ConversationState = Field(default_factory=ConversationState)
     llm_profile: str = "lmstudio-4b"
     locale: Literal["ja", "en"] = "ja"
     response_length: Literal["short", "standard", "detailed"] = "standard"
@@ -48,16 +53,16 @@ class Turn(Record):
     user: str
     assistant: str
     narration: str = ""
-    state: dict[str, str]
+    state: ConversationState
     image_id: UUID | None = None
-    scene: str | None = None
     created_at: datetime = Field(default_factory=now)
 
 
 class Conversation(Record):
     id: UUID = Field(default_factory=uuid4)
     definition: ConversationInput
-    state: dict[str, str] = Field(default_factory=dict)
+    state: ConversationState = Field(default_factory=ConversationState)
+    memory: ConversationMemory | None = None
     turns: list[Turn] = Field(default_factory=list)
     revision: int = 0
     created_at: datetime = Field(default_factory=now)
@@ -79,12 +84,12 @@ class Reply(Record):
     text: str = Field(
         min_length=1,
         max_length=20000,
-        description="Visible dialogue in the explicitly requested response language.",
+        description=(
+            "Spoken words by assistant_character addressed to human_player. "
+            "Never repeat the player input or speak as the player."
+        ),
     )
-    state: dict[str, str]
-    scene: str | None = Field(
-        description="English visual description including appearance and setting, or null."
-    )
+    state_patch: StatePatch
 
 
 class Operation(Record):
@@ -101,4 +106,4 @@ class Operation(Record):
 class StateCommand(Record):
     command: Literal["reset_state", "set_state"]
     expected_revision: int = Field(ge=0)
-    state: dict[str, str] = Field(default_factory=dict)
+    state: ConversationState = Field(default_factory=ConversationState)

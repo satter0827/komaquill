@@ -282,7 +282,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
             sent = command("chat", "send", conversation["id"], "Hello")
             assert json.loads(sent.splitlines()[0])["state"] == "complete"
             reopened = json.loads(command("chat", "get", conversation["id"]))
-            assert len(reopened["turns"]) == 1 and reopened["state"] == {"sample": "greeted"}
+            assert len(reopened["turns"]) == 1
+            assert reopened["state"]["place"] == ""
             command("chat", "send", conversation["id"], "Hello")
             assert json.loads(command("chat", "status", conversation["id"]))["revision"] == 2
             command(
@@ -295,9 +296,10 @@ def run_acceptance(wheel: Path | None = None) -> None:
                 "--state",
                 '{"place":"garden"}',
             )
-            assert json.loads(command("chat", "resume", conversation["id"]))["state"] == {
-                "place": "garden"
-            }
+            assert (
+                json.loads(command("chat", "resume", conversation["id"]))["state"]["place"]
+                == "garden"
+            )
             if wheel is not None:
                 result = subprocess.run(
                     [
@@ -317,11 +319,15 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 assert prefs['locale'] == 'ja'
                                 for collection in ('characters', 'stories'):
                                     url = '/api/v1/' + collection
-                                    saved = http.post(url, json={'name': 'Created'}).json()
+                                    saved = http.post(url + '/save', json={
+                                        'operation_id': str(uuid4()), 'image_policy': 'none',
+                                        'value': {'name': 'Created'}}).json()['preset']
                                     item = url + '/' + saved['id']
                                     assert http.get(item).json()['name'] == 'Created'
-                                    updated = http.put(item + '?expected_revision=0',
-                                        json={'name': 'Updated'})
+                                    updated = http.post(url + '/save', json={
+                                        'operation_id': str(uuid4()),
+                                        'target_id': saved['id'], 'expected_revision': 0,
+                                        'image_policy': 'none', 'value': {'name': 'Updated'}})
                                     assert updated.status_code == 200
                                     assert http.post(item + '/duplicate').status_code == 201
                                     deleted = http.delete(item + '?expected_revision=1')

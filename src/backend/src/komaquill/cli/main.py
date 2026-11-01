@@ -125,6 +125,40 @@ def migrate_command(ctx: typer.Context) -> None:
         typer.echo(message("storage.migrated", path=report))
 
 
+@app.command("repair-images", help=message("storage.repair_images_help"))
+def repair_images_command(
+    ctx: typer.Context,
+    apply: Annotated[
+        UUID | None, typer.Option("--apply", help=message("storage.repair_apply_help"))
+    ] = None,
+) -> None:
+    with operation(ctx) as project:
+        api = Client(project.root)
+        if apply is None:
+            result = api.inspect_image_links()
+            typer.echo(
+                message(
+                    "storage.repair_inspected",
+                    identity=result.id,
+                    ready=sum(item.reason == "ready" for item in result.findings),
+                    skipped=sum(item.reason != "ready" for item in result.findings),
+                )
+            )
+        else:
+            repaired = api.repair_image_links(apply)
+            typer.echo(
+                message(
+                    "storage.repair_applied",
+                    identity=repaired.id,
+                    repaired=len(repaired.repaired),
+                    already=len(repaired.already_applied),
+                    skipped=len(repaired.skipped),
+                )
+            )
+            if repaired.skipped:
+                raise typer.Exit(1)
+
+
 def _record_failure(ctx: typer.Context, error: BaseException) -> None:
     from komaquill.adapters.diagnostics import record_event
     from komaquill.domain.errors import failure_info

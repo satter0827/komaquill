@@ -1,25 +1,29 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BookOpen, Plus, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
-import {
-  queryOptions,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query'
-import { BookOpen, Plus, UserRound } from 'lucide-react'
+import * as q from '../api/generated/@tanstack/react-query.gen'
 import * as api from '../api/generated/sdk.gen'
 import type {
   CharacterPreset,
+  CharacterInput,
+  StoryInput,
+  CharacterSaveRequest,
   PlayerInput,
   PlayerProfile,
+  PresetSaveResult,
   StoryPreset,
 } from '../api/generated/types.gen'
-import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import type { MessageKey } from '../app/messages'
+import {
+  useFailure,
+  useMessages,
+  usePreferences,
+  useFormatMessage,
+} from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { CreationStatus, useCreation } from './creation'
-import { ImageResult } from './images'
-import { POLL_INTERVAL_MS } from '../api/client'
+import { creationOptions, presetKey, refreshPresets } from './operations'
 
 export type Kind = 'player' | 'character' | 'story'
 export type Preset = PlayerProfile | CharacterPreset | StoryPreset
@@ -28,7 +32,7 @@ export const paths = {
   character: '/characters',
   story: '/stories',
 }
-export const keys = {
+const presetLabels = {
   player: 'players',
   character: 'characters',
   story: 'stories',
@@ -57,32 +61,22 @@ const fields = {
   ],
   story: ['name', 'description', 'world', 'opening', 'place', 'goal'],
 } as const
-type Fields = Record<string, string>
-type ImageChoice = {
-  automatic: boolean
-  locale: 'ja' | 'en'
-  llm_profile: string
-  allow_real_llm: boolean
-}
-
-export const playerQuery = queryOptions({
-  queryKey: ['player'],
-  queryFn: async () => (await api.getPlayer()).data!,
-})
-
-export async function loadPresets(
-  kind: Exclude<Kind, 'player'>,
-): Promise<Preset[]> {
-  if (kind === 'character') return (await api.listCharacters()).data!
-  return (await api.listStories()).data!
+type Fields = PlayerInput & Partial<CharacterInput & StoryInput>
+type PresetSaveOptions = Omit<CharacterSaveRequest, 'value'>
+type SaveSubmission = {
+  value: Fields
+  previous?: Preset
+  options: PresetSaveOptions
 }
 
 async function save(
   kind: Kind,
   value: Fields,
-  previous?: Preset,
-): Promise<Preset> {
-  const path = { identity: previous?.id ?? '' }
+  previous: Preset | undefined,
+  options: PresetSaveOptions,
+): Promise<
+  PresetSaveResult | { preset: PlayerProfile; job: null; image_error: null }
+> {
   const query = { expected_revision: previous?.revision ?? 0 }
   const player: PlayerInput = {
     name: value.name,
@@ -94,7 +88,11 @@ async function save(
     gender: value.gender ?? '',
   }
   if (kind === 'player')
-    return (await api.updatePlayer({ query, body: player })).data!
+    return {
+      preset: (await api.updatePlayer({ query, body: player })).data!,
+      job: null,
+      image_error: null,
+    }
   if (kind === 'character') {
     const body = {
       ...player,
@@ -103,11 +101,8 @@ async function save(
       background: value.background ?? '',
       relationship: value.relationship ?? '',
     }
-    return (
-      previous
-        ? await api.updateCharacter({ path, query, body })
-        : await api.createCharacter({ body })
-    ).data!
+    return (await api.saveCharacter({ body: { ...options, value: body } }))
+      .data!
   }
   const body = {
     name: value.name,
@@ -118,11 +113,7 @@ async function save(
     goal: value.goal ?? '',
     character_id: value.character_id || null,
   }
-  return (
-    previous
-      ? await api.updateStory({ path, query, body })
-      : await api.createStory({ body })
-  ).data!
+  return (await api.saveStory({ body: { ...options, value: body } })).data!
 }
 
 async function duplicate(kind: Kind, identity: string) {
@@ -142,30 +133,21 @@ async function remove(kind: Kind, preset: Preset) {
 
 function JobMonitor({
   identity,
-  preview = false,
   recoveryPath,
+  displayComplete = false,
 }: {
   identity: string
-  preview?: boolean
   recoveryPath?: string
+  displayComplete?: boolean
 }) {
   const cache = useQueryClient()
   const m = useMessages()
   const failure = useFailure()
-  const job = useQuery({
-    queryKey: ['creation', identity],
-    queryFn: async () => (await api.getJob({ path: { identity } })).data!,
-    refetchInterval: (query) =>
-      ['complete', 'failed', 'interrupted'].includes(
-        query.state.data?.state ?? '',
-      )
-        ? false
-        : POLL_INTERVAL_MS,
-  })
+  const job = useQuery(creationOptions(identity))
+
   useEffect(() => {
     if (job.data?.state === 'complete') {
-      for (const key of ['characters', 'stories'])
-        void cache.invalidateQueries({ queryKey: [key] })
+      void refreshPresets(cache)
     }
   }, [job.data?.state, cache])
   const error = job.error ?? (job.data?.error ? { code: job.data.error } : null)
@@ -177,7 +159,11 @@ function JobMonitor({
             ? m.imageUnavailable
             : failure(error)
           : job.data
-            ? m[`job_${job.data.state}`]
+            ? job.data.state === 'complete'
+              ? displayComplete
+                ? m.imageReady
+                : null
+              : m[`job_${job.data.state}`]
             : m.imagePreparing}
       </span>
       {error && recoveryPath && (
@@ -185,21 +171,22 @@ function JobMonitor({
           {m.createImage} →
         </Link>
       )}
-      {preview && job.data?.image_id && job.data.state !== 'complete' && (
-        <ImageResult identity={job.data.image_id} />
-      )}
     </>
   )
 }
 
 export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
   const m = useMessages()
+  const formatMessage = useFormatMessage()
   return (
     <article className={`preset-card preset-${kind}`}>
       <Link
         to={`${paths[kind]}/${preset.id}`}
         className="preset-cover"
-        aria-label={`${m.edit} ${preset.name}`}
+        aria-label={formatMessage(
+          preset.sample ? 'editSamplePresetLabel' : 'editPresetLabel',
+          { name: preset.name },
+        )}
       >
         {preset.image_id ? (
           <img
@@ -217,7 +204,29 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
         <h2>
           <Link to={`${paths[kind]}/${preset.id}`}>{preset.name}</Link>
         </h2>
-        <p>{preset.description}</p>
+        {'role' in preset && preset.role && (
+          <p className="preset-role">{preset.role}</p>
+        )}
+        <p>
+          {preset.description ||
+            ('personality' in preset ? preset.personality : '')}
+        </p>
+        {'age' in preset && (preset.age || preset.gender) && (
+          <dl className="preset-facts">
+            {preset.age && (
+              <div>
+                <dt>{m.age}</dt>
+                <dd>{preset.age}</dd>
+              </div>
+            )}
+            {preset.gender && (
+              <div>
+                <dt>{m.gender}</dt>
+                <dd>{preset.gender}</dd>
+              </div>
+            )}
+          </dl>
+        )}
         {preset.image_job_id && !preset.image_id && (
           <JobMonitor
             identity={preset.image_job_id}
@@ -236,7 +245,7 @@ export function PlayerPage() {
   const m = useMessages()
   const failure = useFailure()
   const [search] = useSearchParams()
-  const query = useQuery(playerQuery)
+  const query = useQuery(q.getPlayerOptions())
   if (query.error)
     return (
       <p className="error" role="alert">
@@ -258,10 +267,15 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
   const m = useMessages()
   const preferences = usePreferences()
   const failure = useFailure()
-  const query = useQuery({
-    queryKey: [keys[kind]],
-    queryFn: () => loadPresets(kind),
+  const characters = useQuery({
+    ...q.listCharactersOptions(),
+    enabled: kind === 'character',
   })
+  const stories = useQuery({
+    ...q.listStoriesOptions(),
+    enabled: kind === 'story',
+  })
+  const query = kind === 'character' ? characters : stories
   const [search] = useSearchParams()
   if (query.error)
     return (
@@ -301,7 +315,7 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
       <div className="page-heading">
         <div>
           <div className="eyebrow">{eyebrow}</div>
-          <h1>{m[keys[kind]]}</h1>
+          <h1>{m[presetLabels[kind]]}</h1>
           <p className="subtle">{m.libraryDescription}</p>
         </div>
         <Link className="button primary" to={`${paths[kind]}/new`}>
@@ -345,60 +359,56 @@ function PresetEditor({
   )
   const generationProfile = preferences.value.llm_profile
   const imageRecord =
-    preset && preset.id === current?.id && preset.revision === current.revision
+    preset && preset.id === current?.id && preset.revision >= current.revision
       ? preset
       : current
   const [idea, setIdea] = useState('')
   const [notice, setNotice] = useState(preset ? m.saved : '')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const draft = useCreation()
-  const media = useCreation()
+  const [pendingSave, setPendingSave] = useState<SaveSubmission | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
   const characters = useQuery({
-    queryKey: ['characters'],
-    queryFn: () => loadPresets('character'),
+    ...q.listCharactersOptions(),
     enabled: kind === 'story',
   })
   const connectionQuery = {
-    queryKey: ['image-connection'],
+    queryKey: q.getRuntimeQueryKey(),
     queryFn: async () => (await api.refreshRuntime()).data!,
   }
   const runtime = useQuery({ ...connectionQuery, enabled: kind !== 'player' })
   const connected = !runtime.isError && runtime.data?.connection === 'connected'
-  const imageChoice = (): ImageChoice => ({
-    automatic: true,
-    locale: preferences.value.locale,
-    llm_profile: generationProfile,
-    allow_real_llm: true,
-  })
-  const imageRequest = (record: Preset, choice: ImageChoice) => {
-    media.start({
-      kind: kind === 'character' ? 'portrait' : 'banner',
-      target_id: record.id,
-      expected_revision: record.revision ?? 0,
-      locale: choice.locale,
-      llm_profile: choice.llm_profile,
-      allow_real_llm: choice.allow_real_llm,
-    })
-  }
   const mutation = useMutation({
-    mutationFn: async (choice: ImageChoice) => ({
-      record: await save(kind, value, current),
-      choice,
-    }),
-    onSuccess: async ({ record, choice }) => {
+    mutationFn: (submission: SaveSubmission) =>
+      save(kind, submission.value, submission.previous, submission.options),
+    onError: (error) => {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? error.code
+          : null
+      if (
+        [
+          'invalid_request',
+          'request_not_found',
+          'operation_conflict',
+          'operation_busy',
+        ].includes(String(code))
+      )
+        setPendingSave(null)
+    },
+    onSuccess: async (result) => {
+      const record = result.preset
       setCurrent(record)
+      setPendingSave(null)
+      setImageError(result.image_error ?? null)
       setNotice(m.saved)
-      if (kind !== 'player' && choice.automatic) {
-        try {
-          const observation = await cache.fetchQuery(connectionQuery)
-          if (observation.connection === 'connected')
-            imageRequest(record, choice)
-        } catch {
-          // Connection errors are shown with the image preview; the preset is saved.
-        }
-      }
+      if (result.job)
+        cache.setQueryData(
+          q.getJobQueryKey({ path: { identity: result.job.id ?? '' } }),
+          result.job,
+        )
       await cache.invalidateQueries({
-        queryKey: kind === 'player' ? playerQuery.queryKey : [keys[kind]],
+        queryKey: presetKey(kind),
       })
       if (returnTo?.startsWith('/new')) {
         const url = new URL(returnTo, 'http://localhost')
@@ -408,13 +418,31 @@ function PresetEditor({
           return
         }
       }
-      if (!preset) navigate(`${paths[kind]}/${record.id}`, { replace: true })
+      if (!preset && kind !== 'player')
+        navigate(`${paths[kind]}/${record.id}`, { replace: true })
     },
   })
+  const saveCurrent = (policy: 'auto' | 'always') => {
+    const submission = pendingSave ?? {
+      value: { ...value },
+      previous: current,
+      options: {
+        operation_id: crypto.randomUUID(),
+        target_id: current?.id ?? null,
+        expected_revision: current?.revision ?? null,
+        image_policy: policy,
+        locale: preferences.value.locale,
+        llm_profile: generationProfile,
+        allow_real_llm: true,
+      },
+    }
+    setPendingSave(submission)
+    mutation.mutate(submission)
+  }
   const duplicateAction = useMutation({
     mutationFn: () => duplicate(kind, current!.id),
     onSuccess: async () => {
-      await cache.invalidateQueries({ queryKey: [keys[kind]] })
+      await cache.invalidateQueries({ queryKey: presetKey(kind) })
       navigate(paths[kind])
     },
   })
@@ -422,21 +450,23 @@ function PresetEditor({
     mutationFn: () => remove(kind, current!),
     onSuccess: async () => {
       await Promise.all(
-        [keys[kind], 'preferences', 'stories'].map((key) =>
-          cache.invalidateQueries({ queryKey: [key] }),
-        ),
+        [
+          presetKey(kind),
+          q.getPreferencesQueryKey(),
+          q.listStoriesQueryKey(),
+        ].map((queryKey) => cache.invalidateQueries({ queryKey })),
       )
       navigate(paths[kind])
     },
   })
-  const update = (key: string, text: string) => {
+  const update = (key: keyof Fields, text: string) => {
     setValue((old) => ({ ...old, [key]: text }))
     setNotice('')
   }
   return (
     <section className="page editor-page">
       <Link className="text-button" to={paths[kind]}>
-        ← {m[keys[kind]]}
+        ← {m[presetLabels[kind]]}
       </Link>
       <div className="eyebrow">
         {kind === 'story'
@@ -450,10 +480,12 @@ function PresetEditor({
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            mutation.mutate(imageChoice())
+            saveCurrent('auto')
           }}
         >
-          <fieldset disabled={mutation.isPending}>
+          <fieldset
+            disabled={mutation.isPending || (!!pendingSave && mutation.isError)}
+          >
             {fields[kind].map((field, index) => (
               <label key={field}>
                 {m[field as MessageKey]}
@@ -526,6 +558,14 @@ function PresetEditor({
           <p role="status" className="success">
             {notice}
           </p>
+          {mutation.isError && pendingSave && (
+            <Button
+              onClick={() => mutation.mutate(pendingSave)}
+              disabled={mutation.isPending}
+            >
+              {m.retryRequest}
+            </Button>
+          )}
           {[
             mutation.error,
             duplicateAction.error,
@@ -568,19 +608,23 @@ function PresetEditor({
                   <UserRound size={52} strokeWidth={1} />
                 )}
               </div>
-              <p className="subtle">
-                {imageRecord?.image_id
-                  ? m.imageReady
-                  : connected
-                    ? m.noImage
-                    : m.imageNotConnected}
-              </p>
+              {!imageRecord?.image_job_id && (
+                <p className="subtle">
+                  {imageRecord?.image_id
+                    ? m.imageReady
+                    : connected
+                      ? m.noImage
+                      : m.imageNotConnected}
+                </p>
+              )}
               {current && (
                 <Button
                   onClick={() => {
-                    imageRequest(current, imageChoice())
+                    saveCurrent('always')
                   }}
-                  disabled={media.busy}
+                  disabled={
+                    mutation.isPending || !!pendingSave || !value.name?.trim()
+                  }
                 >
                   {m.createImage}
                 </Button>
@@ -590,12 +634,16 @@ function PresetEditor({
                   {failure(runtime.error)}
                 </p>
               )}
-              <CreationStatus creation={media} />
               {imageRecord?.image_job_id && (
-                <JobMonitor identity={imageRecord.image_job_id} preview />
+                <JobMonitor
+                  identity={imageRecord.image_job_id}
+                  displayComplete
+                />
               )}
-              {media.job.data?.image_id && (
-                <ImageResult identity={media.job.data.image_id} />
+              {imageError && (
+                <p role="alert" className="error">
+                  {failure({ code: imageError })}
+                </p>
               )}
               <details className="draft-panel">
                 <summary>{m.createDraft}</summary>

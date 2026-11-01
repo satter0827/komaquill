@@ -4,6 +4,12 @@ from pathlib import Path
 from uuid import UUID
 
 from komaquill.adapters.archive import ArchiveRepository, load_archived_runs
+from komaquill.adapters.conversation_archive import (
+    ArchivedConversation,
+    get_conversation,
+    list_conversations,
+)
+from komaquill.adapters.database import database
 from komaquill.adapters.locations import Locations
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
@@ -15,6 +21,12 @@ class ArchiveService:
     def __init__(self, project: RuntimeWorkspace) -> None:
         self.project = project
         self.repository = ArchiveRepository(project)
+
+    def conversations(self) -> list[ArchivedConversation]:
+        return list_conversations(database(self.project.data / "komaquill.sqlite3"))
+
+    def conversation(self, identity: UUID) -> ArchivedConversation:
+        return get_conversation(database(self.project.data / "komaquill.sqlite3"), identity)
 
     def list(self) -> JsonObject:
         with api_operation(OperationStage.STORAGE):

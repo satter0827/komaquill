@@ -1,51 +1,44 @@
-import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  getRuntime,
-  getRuntimeViews,
-  refreshRuntime,
-  startRuntime,
-  stopRuntime,
-} from '../api/generated/sdk.gen'
-import { Button } from '../components/ui/button'
-import { useFailure, useMessages, usePreferences } from '../app/preferences'
+import { useState } from 'react'
+import * as q from '../api/generated/@tanstack/react-query.gen'
 
-export function RuntimePage() {
+import { useFailure, useMessages, usePreferences } from '../app/preferences'
+import { Button } from '../components/ui/button'
+
+export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
   const messages = useMessages()
   const failure = useFailure()
   const preferences = usePreferences()
   const cache = useQueryClient()
   const updated = async () => {
     await Promise.all([
-      cache.invalidateQueries({ queryKey: ['runtime'] }),
-      cache.invalidateQueries({ queryKey: ['runtime-views'] }),
+      cache.invalidateQueries({ queryKey: q.getRuntimeQueryKey() }),
+      cache.invalidateQueries({ queryKey: q.getRuntimeViewsQueryKey() }),
     ])
   }
   const [endpoint, setEndpoint] = useState('http://127.0.0.1:8188')
   const runtime = useQuery({
-    queryKey: ['runtime'],
-    queryFn: async () => (await getRuntime()).data!,
+    ...q.getRuntimeOptions(),
   })
   const views = useQuery({
-    queryKey: ['runtime-views'],
-    queryFn: async () => (await getRuntimeViews()).data!,
+    ...q.getRuntimeViewsOptions(),
   })
   const refresh = useMutation({
-    mutationFn: () => refreshRuntime(),
+    ...q.refreshRuntimeMutation(),
     onSuccess: updated,
   })
   const start = useMutation({
-    mutationFn: () => startRuntime({ body: { backend: 'external', endpoint } }),
+    ...q.startRuntimeMutation(),
     onSuccess: updated,
   })
   const stop = useMutation({
-    mutationFn: () => stopRuntime(),
+    ...q.stopRuntimeMutation(),
     onSuccess: updated,
   })
   return (
     <section className="page runtime-page">
       <div className="eyebrow">{messages.runtimeEyebrow}</div>
-      <h1>{messages.runtime}</h1>
+      {embedded ? <h2>{messages.runtime}</h2> : <h1>{messages.runtime}</h1>}
       <p className="subtle">{messages.runtimeDescription}</p>
       <div className="runtime-card">
         <div className="section-label">{messages.currentObservation}</div>
@@ -83,7 +76,7 @@ export function RuntimePage() {
               : messages.notObserved}
           </dd>
         </dl>
-        <Button onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+        <Button onClick={() => refresh.mutate({})} disabled={refresh.isPending}>
           {messages.refresh}
         </Button>
       </div>
@@ -108,7 +101,7 @@ export function RuntimePage() {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          start.mutate()
+          start.mutate({ body: { backend: 'external', endpoint } })
         }}
       >
         <label>
@@ -126,7 +119,7 @@ export function RuntimePage() {
       </form>
       <Button
         className="danger"
-        onClick={() => stop.mutate()}
+        onClick={() => stop.mutate({})}
         disabled={stop.isPending}
       >
         {messages.stop}

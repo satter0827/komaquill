@@ -49,6 +49,7 @@
   "fixedSample": "Fixed sample",
   "loading": "Loading…",
   "conversationLabel": "CONVERSATION",
+  "conversationHistory": "Conversation history",
   "newChapter": "Your story starts here",
   "beginMessage": "A word from you begins the story.",
   "you": "YOU",
@@ -211,7 +212,7 @@
     "extension_unavailable": "Workflow preparation requires the Komaquill extension on the connected ComfyUI server. Standard generation and collection remain available.",
     "invalid_evaluation": "Invalid evaluation. Check the referenced runs, evaluation mode and reviewer provenance.",
     "real_llm_not_allowed": "Generation is not ready. Check Settings and try again.",
-    "llm_dependencies_missing": "Story model dependencies are unavailable. Install komaquill[llm] or run bootstrap/setup.ps1.",
+    "llm_dependencies_missing": "Conversation setup is incomplete. Check the setup instructions.",
     "llm_unavailable": "The language model request failed. Check the selected model, endpoint, timeout and API compatibility. No fallback model was used.",
     "llm_request_invalid": "The selected language model rejected the request format. Check the model profile and API compatibility before trying again.",
     "story_plan_invalid": "The model did not return a valid complete story plan. Inspect the saved planning attempts and revise the input or model settings.",
@@ -222,7 +223,7 @@
     "story_replan_required": "This plan has no frozen structured image inputs. Plan its saved source.txt again before rendering; existing images and history are retained.",
     "unsupported_batch": "This preset has no declared candidate output and batch binding. Add them or omit --candidates.",
     "preparation_timeout": "Model preparation reached its deadline. Check preparation status and stop the owned runtime before trying again.",
-    "operation_busy": "Another reply or draft is being created. Wait for it to finish.",
+    "operation_busy": "Another operation is in progress. Wait for it to finish and try again.",
     "operation_conflict": "This item has changed. Reload its saved version before continuing.",
     "fake_input_mismatch": "This content could not be generated. Check the connection in Settings.",
     "context_limit_exceeded": "The conversation context exceeds the input limit. Shorten the scenario, state, or message, or adjust the conversation input limit."
@@ -233,5 +234,11 @@
   "gender": "Gender",
   "closeState": "Close scene details",
   "narrationLabel": "The scene",
-  "drawScene": "Draw this scene"
+  "drawScene": "Draw this scene",
+  "sampleDrawingUnavailable": "Drawing is unavailable in this sample conversation. Start a new conversation to draw a scene.",
+  "archivedTitle": "Earlier conversations",
+  "archivedNotice": "You can read this conversation. To keep playing, start a new conversation with your saved character and story.",
+  "unreadableConversation": "The text could not be read. The original record is preserved.",
+  "editPresetLabel": "Edit {name}",
+  "editSamplePresetLabel": "Edit the sample {name}"
 }

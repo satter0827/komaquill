@@ -48,5 +48,18 @@
   "quality.invalid_level": "Choose a check level from 1 to 3.",
   "quality.unknown_check": "Choose a known check ID from --plan --json.",
   "quality.evidence_status": "Check evidence: {data}",
-  "quality.selection_failed": "Cannot select checks. Verify the comparison revision and repository."
+  "quality.selection_failed": "Cannot select checks. Verify the comparison revision and repository.",
+  "review.roleplay_description": "Collect bounded local-model and WAI evidence for human review.",
+  "review.allow_llm": "Allow the configured real local model for this invocation.",
+  "review.phase": "Collect conversation or image evidence.",
+  "review.workspace": "Reuse an isolated workspace from a previous review.",
+  "review.workspace_required": "Image review requires an existing isolated review workspace.",
+  "review.evidence_saved": "Review evidence saved: {path}",
+  "review.turn_saved": "Conversation evidence saved: {locale}, turn {count}",
+  "efficiency.description": "Collect one bounded before/after comparison using the configured local model.",
+  "efficiency.baseline": "Verified baseline Python source directory.",
+  "efficiency.output": "New private output directory beneath .artifacts.",
+  "efficiency.budget_exhausted": "The comparison budget is exhausted.",
+  "efficiency.source_mismatch": "The loaded package does not match the selected source.",
+  "efficiency.progress": "{variant} {locale}, history={history}, turn={turn}: {state}"
 }

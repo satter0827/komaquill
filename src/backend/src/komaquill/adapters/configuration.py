@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import tomllib
+from functools import cached_property
 from importlib.resources import as_file, files
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from komaquill.adapters.llm_configuration import ConversationSettings
 
 from pydantic import Strict, TypeAdapter
 from pydantic.fields import FieldInfo
@@ -20,19 +24,6 @@ from pydantic_settings import (
 
 from komaquill.adapters.preset_catalog import catalog
 from komaquill.domain.configuration import RuntimeSettings
-
-
-def merge_settings(base: dict[str, object], changes: dict[str, object]) -> dict[str, object]:
-    """Apply leaf overrides without discarding unspecified profile values."""
-    result = dict(base)
-    for key, value in changes.items():
-        prior = result.get(key)
-        result[key] = (
-            merge_settings(prior, value)
-            if isinstance(prior, dict) and isinstance(value, dict)
-            else value
-        )
-    return result
 
 
 class TypedEnvSettingsSource(EnvSettingsSource):
@@ -82,12 +73,83 @@ class Settings(RuntimeSettings, BaseSettings):
         )
 
 
-def load_runtime_settings(root: Path) -> RuntimeSettings:
-    with (root / "komaquill.toml").open("rb") as handle:
-        defaults = tomllib.load(handle)
-    defaults.pop("story", None)
-    defaults.pop("llm_profiles", None)
-    defaults.pop("conversation", None)
-    combined = merge_settings(catalog(root), defaults)
-    combined = merge_settings(combined, TypedEnvSettingsSource(Settings)())
-    return RuntimeSettings.model_validate(Settings.model_validate(combined).model_dump())
+class WorkspaceConfiguration:
+    """Capture file and environment sources once, validating each feature independently."""
+
+    def __init__(self, root: Path) -> None:
+        from komaquill.adapters.llm_configuration import ConversationOptions, ProfileOptions
+
+        self.root = root
+        with (root / "komaquill.toml").open("rb") as handle:
+            self._configured = tomllib.load(handle)
+        self._runtime_env = TypedEnvSettingsSource(Settings)
+        self._conversation_env = EnvSettingsSource(ConversationOptions)
+        self._profiles_env = EnvSettingsSource(ProfileOptions)
+        self._runtime_defaults = tomllib.loads(
+            files("komaquill").joinpath("resources/settings/defaults.toml").read_text("utf-8")
+        )
+        self._conversation_defaults = tomllib.loads(
+            files("komaquill").joinpath("resources/conversations/defaults.toml").read_text("utf-8")
+        )
+        self._definitions = catalog(root)
+
+    @cached_property
+    def runtime(self) -> RuntimeSettings:
+        snapshot = self
+
+        class ResolvedRuntime(Settings):
+            @classmethod
+            def settings_customise_sources(
+                cls,
+                settings_cls: type[BaseSettings],
+                init_settings: PydanticBaseSettingsSource,
+                env_settings: PydanticBaseSettingsSource,
+                dotenv_settings: PydanticBaseSettingsSource,
+                file_secret_settings: PydanticBaseSettingsSource,
+            ) -> tuple[PydanticBaseSettingsSource, ...]:
+                values = {
+                    key: value
+                    for key, value in snapshot._configured.items()
+                    if key not in {"story", "conversation", "llm_profiles"}
+                }
+                return (
+                    init_settings,
+                    snapshot._runtime_env,
+                    InitSettingsSource(settings_cls, init_kwargs=values),
+                    InitSettingsSource(settings_cls, init_kwargs=snapshot._runtime_defaults),
+                    InitSettingsSource(settings_cls, init_kwargs=snapshot._definitions),
+                )
+
+        values: dict[str, Any] = {}
+        return RuntimeSettings.model_validate(ResolvedRuntime(**values).model_dump())
+
+    @cached_property
+    def conversation(self) -> ConversationSettings:
+        from komaquill.adapters.llm_configuration import ConversationOptions, ConversationSettings
+
+        snapshot = self
+
+        class ResolvedConversation(ConversationOptions):
+            @classmethod
+            def settings_customise_sources(
+                cls,
+                settings_cls: type[BaseSettings],
+                init_settings: PydanticBaseSettingsSource,
+                env_settings: PydanticBaseSettingsSource,
+                dotenv_settings: PydanticBaseSettingsSource,
+                file_secret_settings: PydanticBaseSettingsSource,
+            ) -> tuple[PydanticBaseSettingsSource, ...]:
+                profiles = snapshot._configured.get("llm_profiles", {})
+                return (
+                    init_settings,
+                    snapshot._profiles_env,
+                    snapshot._conversation_env,
+                    InitSettingsSource(settings_cls, init_kwargs={"llm_profiles": profiles}),
+                    InitSettingsSource(
+                        settings_cls, init_kwargs=snapshot._configured.get("conversation", {})
+                    ),
+                    InitSettingsSource(settings_cls, init_kwargs=snapshot._conversation_defaults),
+                )
+
+        values: dict[str, Any] = {}
+        return ConversationSettings.model_validate(ResolvedConversation(**values).model_dump())

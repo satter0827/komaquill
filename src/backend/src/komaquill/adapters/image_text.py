@@ -8,11 +8,12 @@ from uuid import UUID, uuid5
 from pydantic import BaseModel, ConfigDict
 
 from komaquill.adapters.atomic import atomic_json
-from komaquill.adapters.conversation_llm import JAPANESE_TEXT, StructuredResponder
+from komaquill.adapters.llm.language import JAPANESE_TEXT
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import PromptSource
 from komaquill.domain.workflow import digest
+from komaquill.library.service import ImageDescriber
 
 
 class PreparedDescriptions(BaseModel):
@@ -25,9 +26,9 @@ class PreparedDescriptions(BaseModel):
 
 
 class ImageTextPreparation:
-    def __init__(self, workspace: Path) -> None:
+    def __init__(self, workspace: Path, describer: ImageDescriber) -> None:
         self.workspace = workspace
-        self.responder = StructuredResponder(workspace)
+        self.describer = describer
 
     @stored
     def prepare(
@@ -61,7 +62,7 @@ class ImageTextPreparation:
         translated: list[str] = []
         for index, original in enumerate(values):
             operation = uuid5(identity, f"description:{index}")
-            english = self.responder.prepare_image(original, operation, profile, permitted)
+            english = self.describer.prepare_image(original, operation, profile, permitted)
             translated.append(english)
             if english != original:
                 role: Literal["negative", "positive"] = (

@@ -5,14 +5,33 @@ import tomllib
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
+
 from scripts._support import message
+
+
+def inline_text(tokens: list[Token]) -> str:
+    """Read visible heading text without Markdown delimiters or HTML tags."""
+    return "".join(
+        token.content
+        if token.type in {"text", "code_inline", "image"}
+        else " "
+        if token.type in {"softbreak", "hardbreak"}
+        else ""
+        for token in tokens
+    )
 
 
 def anchors(text: str) -> set[str]:
     """Recognize Markdown heading fragments used by repository documents."""
     result = set()
     seen: dict[str, int] = {}
-    for heading in re.findall(r"^#{1,6} (.+)$", text, re.MULTILINE):
+    tokens = MarkdownIt("commonmark").parse(text)
+    for index, token in enumerate(tokens):
+        if token.type != "heading_open":
+            continue
+        heading = inline_text(tokens[index + 1].children or [])
         value = re.sub(r"[^\w\s-]", "", heading.lower()).replace(" ", "-")
         count = seen.get(value, 0)
         seen[value] = count + 1
@@ -32,8 +51,20 @@ def validate(root: Path) -> list[str]:
             errors.append(relative)
             continue
         text = path.read_text(encoding="utf-8")
-        text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-        for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+        targets = [
+            target
+            for token in MarkdownIt("commonmark").parse(text)
+            for child in token.children or []
+            if (
+                target := child.attrGet("href")
+                if child.type == "link_open"
+                else child.attrGet("src")
+                if child.type == "image"
+                else None
+            )
+            and isinstance(target, str)
+        ]
+        for target in targets:
             link = urlsplit(target.strip("<>"))
             if link.scheme or link.netloc:
                 continue

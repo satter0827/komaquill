@@ -236,4 +236,24 @@ def test_cleanup_detects_workspace_use_beyond_resolved_executable(
         else:
             process.exe = inaccessible
     monkeypatch.setattr(cleanup.psutil, "process_iter", lambda _: iter([process]))
+    monkeypatch.setattr(cleanup, "file_users", lambda _: {process.pid} if files else set())
     assert cleanup.cache_in_use(project) is expected
+
+
+@pytest.mark.parametrize("unknown", [True, False])
+def test_cleanup_queries_only_cache_and_temporary_files(project, monkeypatch, unknown):
+    from komaquill.adapters import cleanup
+
+    for folder in (project.cache, project.temporary, project.data):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "retained.bin").touch()
+    calls = []
+    monkeypatch.setattr(cleanup.psutil, "process_iter", lambda _: [])
+
+    def users(paths):
+        calls.append(set(paths))
+        return None if unknown else set()
+
+    monkeypatch.setattr(cleanup, "file_users", users)
+    assert cleanup.cache_in_use(project) is unknown
+    assert calls == [{project.cache / "retained.bin", project.temporary / "retained.bin"}]

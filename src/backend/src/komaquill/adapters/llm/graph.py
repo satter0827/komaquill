@@ -3,11 +3,12 @@
 from collections.abc import Callable
 from typing import Literal, TypedDict, cast
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, trim_messages
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langsmith import tracing_context
 from pydantic import BaseModel
 
+from komaquill.adapters.llm.context import ContextBudget
 from komaquill.domain.errors import KomaquillError
 
 WORKFLOW_VERSION = 1
@@ -28,30 +29,14 @@ def run_request[T: BaseModel](
     correction: Callable[[ValueError], str],
     *,
     repair_attempts: int,
-    max_input_characters: int,
-    schema_characters: int,
+    budget: ContextBudget,
+    trim: bool = True,
 ) -> T:
     """Keep transport errors terminal and retain complete messages when trimming."""
-    budget = max_input_characters - schema_characters
-
-    def characters(items: list[BaseMessage]) -> int:
-        return sum(len(str(item.content)) for item in items)
-
-    if characters([messages[0], messages[-1]]) > budget:
-        raise KomaquillError(code="context_limit_exceeded", retryable=False)
-    context = trim_messages(
-        messages,
-        max_tokens=budget,
-        token_counter=characters,
-        strategy="last",
-        start_on="human",
-        include_system=True,
-        allow_partial=False,
-    )
+    context = budget.select(messages, trim=trim)
 
     def request(state: RequestState) -> dict[str, object]:
-        if characters(state["messages"]) > budget:
-            raise KomaquillError(code="context_limit_exceeded", retryable=False)
+        budget.check(state["messages"])
         return {"response": send(state["messages"], state["attempt"])}
 
     def validate(state: RequestState) -> dict[str, object]:

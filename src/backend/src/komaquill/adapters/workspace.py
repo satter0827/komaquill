@@ -1,6 +1,7 @@
 """Bind image and runtime ports to a workspace and an immutable settings snapshot."""
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -12,6 +13,7 @@ from komaquill.domain.errors import KomaquillError
 
 if TYPE_CHECKING:
     from komaquill.adapters.artifacts import LocalArtifactStore
+    from komaquill.adapters.configuration import WorkspaceConfiguration
     from komaquill.adapters.storage import ImageRepository
     from komaquill.domain.images import CompiledImageInput
     from komaquill.domain.models import Session
@@ -23,18 +25,31 @@ class RuntimeWorkspace(WorkspacePaths):
     """Keep all application files in one workspace."""
 
     effective_settings: RecordedSettings | None = None
+    configuration_source: "Callable[[], WorkspaceConfiguration] | None" = None
+
+    @property
+    def configuration(self) -> "WorkspaceConfiguration":
+        from komaquill.adapters.configuration import WorkspaceConfiguration
+
+        return (
+            self.configuration_source()
+            if self.configuration_source
+            else WorkspaceConfiguration(self.root)
+        )
 
     def configured(self, settings: RecordedSettings | None = None) -> "RuntimeWorkspace":
         """Bind a validated snapshot without changing the source configuration."""
-        return type(self)(self.root, settings or self.settings())
+        effective = settings or self.effective_settings
+        if effective is not None:
+            return type(self)(self.root, effective, self.configuration_source)
+        snapshot = self.configuration
+        return type(self)(self.root, snapshot.runtime, lambda: snapshot)
 
     def settings(self) -> RecordedSettings:
         """Read workspace overrides and environment variables."""
         if self.effective_settings is not None:
             return self.effective_settings
-        from komaquill.adapters.configuration import load_runtime_settings
-
-        return load_runtime_settings(self.root)
+        return self.configuration.runtime
 
     @property
     def repository(self) -> "ImageRepository":

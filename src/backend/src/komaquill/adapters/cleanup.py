@@ -16,6 +16,7 @@ import psutil
 from filelock import FileLock, Timeout
 
 from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.file_users import file_users
 from komaquill.adapters.monitor_state import alive, read_monitor
 from komaquill.adapters.provenance import code_sha256, source_revision
 from komaquill.adapters.workspace import RuntimeWorkspace
@@ -86,18 +87,28 @@ def cache_in_use(project: RuntimeWorkspace) -> bool:
                 within(hint, project.root) for hint in workspace_hints
             ):
                 return True
-            if any(
-                within(file.path, folder)
-                for file in process.open_files()
-                for folder in (project.cache, project.temporary)
-            ):
-                return True
         except psutil.NoSuchProcess:
             continue
         except psutil.AccessDenied:
             if python:
                 return True
-    return False
+    files: list[Path] = []
+    for root in (project.cache, project.temporary):
+        for directory, children, names in os.walk(root, followlinks=False):
+            children[:] = [
+                name
+                for name in children
+                if not (
+                    (Path(directory) / name).is_symlink() or (Path(directory) / name).is_junction()
+                )
+            ]
+            files.extend(
+                Path(directory) / name
+                for name in names
+                if not (Path(directory) / name).is_symlink()
+            )
+    users = file_users(files)
+    return users is None or bool(users - {os.getpid()})
 
 
 def assert_stopped(project: RuntimeWorkspace) -> None:

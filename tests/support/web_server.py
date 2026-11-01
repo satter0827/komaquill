@@ -13,6 +13,7 @@ from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.workspace import find_project
 from komaquill.api import Client
 from komaquill.domain.models import Session
+from komaquill.domain.roleplay import ConversationState
 from komaquill.interfaces.http.app import create_app
 
 from tests.support.comfy import ComfyStub
@@ -23,17 +24,24 @@ ROOT = Path(__file__).resolve().parents[2]
 def scripted_completion(body: dict) -> dict:
     """Return declared fixture values, without claiming to understand arbitrary input."""
     schema = body["response_format"]["json_schema"]["schema"]["properties"]
-    if "scene" in schema:
-        english = '"response_language": "English"' in body["messages"][0]["content"]
+    english = False
+    for line in body["messages"][0]["content"].splitlines():
+        try:
+            context = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(context, dict) and "response_language" in context:
+            english = context["response_language"] == "English"
+            break
+    if "current_state" in schema:
         value = {
-            "text": "A scripted reply for the browser fixture."
+            "current_state": ConversationState(place="古書店の店内").model_dump(mode="json"),
+            "text": "A scripted reply for browser verification."
             if english
             else "画面検証用の決まった返答です。",
-            "state": {"place": "Fixture bookshop"},
             "narration": "Rain taps against the bookshop window."
             if english
             else "雨音が古書店の窓をたたく。店主が本を取り出した。",
-            "scene": None,
         }
     elif "personality" in schema:
         value = {

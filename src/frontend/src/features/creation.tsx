@@ -1,18 +1,17 @@
-import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createJob, getJob } from '../api/generated/sdk.gen'
+import { useEffect, useState } from 'react'
+import * as q from '../api/generated/@tanstack/react-query.gen'
 import type { CreationJob, CreationRequest } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
-import { POLL_INTERVAL_MS } from '../api/client'
 import { Button } from '../components/ui/button'
+import { creationOptions, keepTerminal, refreshPresets } from './operations'
 
 export function useCreation() {
   const cache = useQueryClient()
   const [prepared, setPrepared] = useState<CreationRequest | null>(null)
   const [identity, setIdentity] = useState<string | null>(null)
   const mutation = useMutation({
-    mutationFn: async (request: CreationRequest) =>
-      (await createJob({ body: request })).data!,
+    ...q.createJobMutation(),
     onError: (error) => {
       const code =
         error && typeof error === 'object' && 'code' in error
@@ -21,49 +20,35 @@ export function useCreation() {
       if (
         code === 'invalid_request' ||
         code === 'request_not_found' ||
-        code === 'operation_conflict'
+        code === 'operation_conflict' ||
+        code === 'operation_busy'
       ) {
         setPrepared(null)
       }
     },
     onSuccess: (data) => {
-      cache.setQueryData<CreationJob>(['creation', data.id], (current) =>
-        current && ['complete', 'failed', 'interrupted'].includes(current.state)
-          ? current
-          : data,
+      cache.setQueryData<CreationJob>(
+        q.getJobQueryKey({ path: { identity: data.id ?? '' } }),
+        (current) => keepTerminal(current, data),
       )
       setIdentity(data.id)
       setPrepared(null)
-      for (const key of ['characters', 'stories'])
-        void cache.invalidateQueries({ queryKey: [key] })
+      void refreshPresets(cache)
     },
   })
   const job = useQuery({
-    queryKey: ['creation', identity ?? prepared?.operation_id],
+    ...creationOptions(identity ?? prepared?.operation_id ?? ''),
     enabled: !!identity || (!!prepared && mutation.isError),
-    queryFn: async () => {
-      const result = (
-        await getJob({ path: { identity: identity ?? prepared!.operation_id } })
-      ).data!
-      return result
-    },
-    refetchInterval: (query) =>
-      ['complete', 'failed', 'interrupted'].includes(
-        query.state.data?.state ?? '',
-      )
-        ? false
-        : POLL_INTERVAL_MS,
   })
+
   useEffect(() => {
-    if (job.data?.state === 'complete')
-      for (const key of ['characters', 'stories'])
-        void cache.invalidateQueries({ queryKey: [key] })
+    if (job.data?.state === 'complete') void refreshPresets(cache)
   }, [job.data?.state, cache])
   const start = (request: Omit<CreationRequest, 'operation_id'>) => {
     const body = prepared ?? { ...request, operation_id: crypto.randomUUID() }
     setPrepared(body)
     setIdentity(null)
-    mutation.mutate(body)
+    mutation.mutate({ body })
   }
   return {
     start,
@@ -86,6 +71,13 @@ export function CreationStatus({
   const m = useMessages()
   const failure = useFailure()
   const data = creation.job.data
+  if (
+    data?.state === 'complete' &&
+    data.image_id &&
+    !creation.mutation.error &&
+    !creation.job.error
+  )
+    return null
   return (
     <div aria-live="polite">
       {data && (

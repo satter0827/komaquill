@@ -4,8 +4,11 @@ from functools import cached_property
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 if TYPE_CHECKING:
+    from komaquill.adapters.configuration import WorkspaceConfiguration
+    from komaquill.adapters.llm.execution import StructuredExecution
     from komaquill.api.archive import ArchiveService
     from komaquill.conversations.service import ConversationService
     from komaquill.library.models import (
@@ -14,9 +17,10 @@ if TYPE_CHECKING:
         StoryInput,
         StoryPreset,
     )
+    from komaquill.library.recovery import ImageLinkInspection, ImageLinkRepairResult
     from komaquill.library.service import LibraryService, PlayerService, PresetService
 
-from komaquill.adapters.workspace import find_project, initialize
+from komaquill.adapters.workspace import RuntimeWorkspace, find_project, initialize
 from komaquill.api._errors import api_operation
 from komaquill.api.evaluations import EvaluationService
 from komaquill.api.images import ImageService, InputService
@@ -30,7 +34,10 @@ class Client:
 
     def __init__(self, workspace: str | Path) -> None:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
-            self._project = find_project(Path(workspace))
+            project = find_project(Path(workspace))
+            self._project = RuntimeWorkspace(
+                project.root, configuration_source=lambda: self._configuration
+            )
 
     @classmethod
     def initialize(cls, workspace: str | Path) -> "Client":
@@ -48,17 +55,42 @@ class Client:
 
         return migrate(self.workspace)
 
+    def inspect_image_links(self) -> "ImageLinkInspection":
+        """Record candidates without modifying the existing database."""
+        from komaquill.adapters.image_link_repair import inspect
+
+        return inspect(self.workspace)
+
+    def repair_image_links(self, inspection_id: "UUID") -> "ImageLinkRepairResult":
+        """Apply a retained inspection after verifying stopped storage and a backup."""
+        from komaquill.adapters.image_link_repair import repair
+
+        return repair(self.workspace, inspection_id)
+
+    @cached_property
+    def _configuration(self) -> "WorkspaceConfiguration":
+        from komaquill.adapters.configuration import WorkspaceConfiguration
+
+        return WorkspaceConfiguration(self.workspace)
+
+    @cached_property
+    def _execution(self) -> "StructuredExecution":
+        from komaquill.adapters.llm.execution import StructuredExecution
+
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            return StructuredExecution(self.workspace, lambda: self._configuration)
+
     @cached_property
     def conversations(self) -> "ConversationService":
         from komaquill.composition import conversations
 
-        return conversations(self.workspace)
+        return conversations(self.workspace, self._execution)
 
     @cached_property
     def library(self) -> "LibraryService":
         from komaquill.composition import library
 
-        return library(self.workspace, self.conversations, self.images)
+        return library(self.workspace, self.conversations, self.images, self._execution)
 
     @property
     def player(self) -> "PlayerService":
@@ -88,11 +120,12 @@ class Client:
 
     @cached_property
     def images(self) -> ImageService:
-        return ImageService(self._project)
+        from komaquill.adapters.llm.images import ImageDescriber
+
+        return ImageService(self._project, ImageDescriber(self._execution))
 
     def configure(self) -> "Client":
         """Freeze model and image settings for a long-lived local application."""
-        self.conversations.profiles()
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
             self._project = self._project.configured()
         settings = self._project.settings()

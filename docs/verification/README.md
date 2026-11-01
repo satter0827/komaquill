@@ -1,38 +1,44 @@
 # 検証記録を読む
 
+[LLM処理の統合と画像参照復旧](results/finish-library-and-llm.md)は、指定チャットの統合、実DBの復旧、上限付きの実4B比較、不採用の削減と残る品質を扱います。
+
+[設定・LLM実行・標準機能への委譲](results/library-delegation.md)は、共通実行、設定共有、Query生成、文書解析、画面検査の確認範囲と未確認事項を扱います。
+
 画面操作の自動検査と、AIが判断する証跡の作り方は[画面のE2Eとレビュー用証跡](web-evidence.md)を参照してください。
 
 [検証戦略](strategy.md)は手順と期待結果、results配下は特定の版で実施した結果です。結果には日時、コードのコミットと内容ハッシュ、環境、検査名、期待結果との差、未確認事項を記載します。実行時のファイルや個人情報は.artifacts/recordsへ保存します。
 
-| 記録 | 対象 |
-|---|---|
-| [個人設定・会話・描画の再レビュー](results/zero-base-play-review.md) | プロフィールの編集往復、生成文脈、画像ジョブの整合性、実4BとT4、風景用バナーの再検証 |
-| [会話・場面説明・描画の再検証](results/play-experience-review.md) | 単一プロフィール、年齢・性別、専用描画、実4Bの言語切替、T4の5画像、履歴保持と品質上の課題 |
-| [個人設定とプリセットの再レビュー](results/creators-review.md) | 初期選択、受付状態、訂正と再確認、言語契約、ホームの復旧、再検証 |
-| [個人設定・プリセット・二言語対応](results/creators-and-play.md) | 新規9要件、実4B、実画像、DB移行、Node生成物、配布版 |
-| [ReactとAPIの再レビュー](results/react-review.md) | 保存復旧、DB移行、画面競合、関連検証、Windowsの停止処理と残る要件 |
-| [ReactとAPIの基本操作](results/react-chat.md) | モノレポ、会話保存、画面、画像境界、配布、関連検証の選択 |
-| [モデル共通化の再レビュー](results/model-interface-review.md) | 準備期限、評価範囲、訂正根拠の修正と生成物の再確認 |
-| [モデル共通化と直接取得](results/model-interface.md) | AniEdit・WAIの共通入力、GPU直接取得、Klein四題材、原因修正、モデル削除と未実施 |
-| [複数題材による計画とKlein](results/multi-story-validation.md) | 8題材の構造、4Bの拒否を含む計画実測、共通原因の修正と未達 |
-| [通常環境のKlein確認と容量整理](results/klein-readiness.md) | 通常の起動経路、生成物の見直し、標準画面、LoRA比較、個別データの削除 |
-| [Kleinによる短編漫画](results/klein-completion.md) | 指定モデル、4場面の生成、評価と組版、期限による回収と終了 |
-| [4場面の保存完了と改善比較](results/story-completion.md) | 基本8枚・改善4枚、仮選択と採否、残る品質、専用T4の終了 |
-| [4場面の完走手順](story-completion.md) | 保存済み計画、仮選択と採否、出力・時間上限、限定的な改善 |
-| [前景合成の素材確認](results/foreground-composition.md) | 素材12枚の不採用、共通条件・評価・保存時刻の契約、比較と受入の未実施範囲 |
-| [段階生成・素材入力](results/staged-workflows.md) | 3系統の実験用ワークフロー、素材・マスク、失敗出力、T4比較と受入の制約 |
-| [複数候補・正負入力・場面実行](results/batch-candidates.md) | 標準バッチ、正負のファイル入力、最大2要求の送信、T4の25画像、速度と選択の制約 |
-| [4B・9Bの切替と用途別比較](results/llm-comparison.md) | CPU動作・計画12条件・既存8画像・時間切れとメモリ・元の設定への復元 |
-| [場面入力・再開・LLM修正の再検証](results/story-image-review.md) | 再開ハッシュと入力検証、修正会話、T4の4場面・両画面・通常終了、品質の未達 |
-| [場面入力・品質プロンプト・領域指定](results/story-image-inputs.md) | 新しい場面契約、固定入力、4Bの拒否を含む比較、T4の12枚と追加2枚、既定を維持する判断 |
-| [保存・回収・分析の再レビュー](results/story-evidence-review.md) | 原本消失・配置喪失・部分的な分析と閲覧用更新、実データ保全とT4再検証 |
-| [ストーリーの状態・保存更新・分析](results/story-evidence.md) | 終端判定、破損隔離、差分更新、要約と詳細、4B・T4、既存データ保全 |
-| [物語計画・作品保存・公開API](results/story-workflow.md) | 自動枚数、比較の成否、作品移行、Python API、T4の接続・生成・終了 |
-| [ストーリー生成](results/story-generation.md) | Fake・4B・T4による計画と順次保存、残る品質・起動の課題 |
-| [品質ゲート・保存・評価](results/quality-storage-evaluations.md) | 累積検査、保存競合、AI向け評価記録とT4の生成・終了 |
-| [準備・保存機能](results/seamless-baseline.md) | 保存構成の再編前の実機結果 |
-| [統合時の保存保護](results/merge-integration.md) | 使用中の仮想環境・キャッシュ・一時ファイルの保護 |
-| [保存・セット・操作の再編](results/repository-rebuild.md) | 今回の変更の検証範囲と環境上の制約 |
+| 記録                                                                    | 対象                                                                                      |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [会話・画像・停止確認の再レビュー](results/zero-base-state-review.md)   | 4Bと9B、要約の根拠、WAIの用途別条件、Windowsの停止確認、残る品質                          |
+| [会話状態・保存受付・WAI画像](results/conversation-state-and-images.md) | 型付き状態、保存受付、長期要約、実4B、WAIの6画像、残る意味・画像精度の課題                |
+| [個人設定・会話・描画の再レビュー](results/zero-base-play-review.md)    | プロフィールの編集往復、生成文脈、画像ジョブの整合性、実4BとT4、風景用バナーの再検証      |
+| [会話・場面説明・描画の再検証](results/play-experience-review.md)       | 単一プロフィール、年齢・性別、専用描画、実4Bの言語切替、T4の5画像、履歴保持と品質上の課題 |
+| [個人設定とプリセットの再レビュー](results/creators-review.md)          | 初期選択、受付状態、訂正と再確認、言語契約、ホームの復旧、再検証                          |
+| [個人設定・プリセット・二言語対応](results/creators-and-play.md)        | 新規9要件、実4B、実画像、DB移行、Node生成物、配布版                                       |
+| [ReactとAPIの再レビュー](results/react-review.md)                       | 保存復旧、DB移行、画面競合、関連検証、Windowsの停止処理と残る要件                         |
+| [ReactとAPIの基本操作](results/react-chat.md)                           | モノレポ、会話保存、画面、画像境界、配布、関連検証の選択                                  |
+| [モデル共通化の再レビュー](results/model-interface-review.md)           | 準備期限、評価範囲、訂正根拠の修正と生成物の再確認                                        |
+| [モデル共通化と直接取得](results/model-interface.md)                    | AniEdit・WAIの共通入力、GPU直接取得、Klein四題材、原因修正、モデル削除と未実施            |
+| [複数題材による計画とKlein](results/multi-story-validation.md)          | 8題材の構造、4Bの拒否を含む計画実測、共通原因の修正と未達                                 |
+| [通常環境のKlein確認と容量整理](results/klein-readiness.md)             | 通常の起動経路、生成物の見直し、標準画面、LoRA比較、個別データの削除                      |
+| [Kleinによる短編漫画](results/klein-completion.md)                      | 指定モデル、4場面の生成、評価と組版、期限による回収と終了                                 |
+| [4場面の保存完了と改善比較](results/story-completion.md)                | 基本8枚・改善4枚、仮選択と採否、残る品質、専用T4の終了                                    |
+| [4場面の完走手順](story-completion.md)                                  | 保存済み計画、仮選択と採否、出力・時間上限、限定的な改善                                  |
+| [前景合成の素材確認](results/foreground-composition.md)                 | 素材12枚の不採用、共通条件・評価・保存時刻の契約、比較と受入の未実施範囲                  |
+| [段階生成・素材入力](results/staged-workflows.md)                       | 3系統の実験用ワークフロー、素材・マスク、失敗出力、T4比較と受入の制約                     |
+| [複数候補・正負入力・場面実行](results/batch-candidates.md)             | 標準バッチ、正負のファイル入力、最大2要求の送信、T4の25画像、速度と選択の制約             |
+| [4B・9Bの切替と用途別比較](results/llm-comparison.md)                   | CPU動作・計画12条件・既存8画像・時間切れとメモリ・元の設定への復元                        |
+| [場面入力・再開・LLM修正の再検証](results/story-image-review.md)        | 再開ハッシュと入力検証、修正会話、T4の4場面・両画面・通常終了、品質の未達                 |
+| [場面入力・品質プロンプト・領域指定](results/story-image-inputs.md)     | 新しい場面契約、固定入力、4Bの拒否を含む比較、T4の12枚と追加2枚、既定を維持する判断       |
+| [保存・回収・分析の再レビュー](results/story-evidence-review.md)        | 原本消失・配置喪失・部分的な分析と閲覧用更新、実データ保全とT4再検証                      |
+| [ストーリーの状態・保存更新・分析](results/story-evidence.md)           | 終端判定、破損隔離、差分更新、要約と詳細、4B・T4、既存データ保全                          |
+| [物語計画・作品保存・公開API](results/story-workflow.md)                | 自動枚数、比較の成否、作品移行、Python API、T4の接続・生成・終了                          |
+| [ストーリー生成](results/story-generation.md)                           | Fake・4B・T4による計画と順次保存、残る品質・起動の課題                                    |
+| [品質ゲート・保存・評価](results/quality-storage-evaluations.md)        | 累積検査、保存競合、AI向け評価記録とT4の生成・終了                                        |
+| [準備・保存機能](results/seamless-baseline.md)                          | 保存構成の再編前の実機結果                                                                |
+| [統合時の保存保護](results/merge-integration.md)                        | 使用中の仮想環境・キャッシュ・一時ファイルの保護                                          |
+| [保存・セット・操作の再編](results/repository-rebuild.md)               | 今回の変更の検証範囲と環境上の制約                                                        |
 
 最新成功ポインターは全工程の成功後だけ更新します。全体が失敗した実行の部分成功は、成功ポインターへ昇格させません。CIとローカルの結果は、同じコミット・コードハッシュであることを確認して参照します。
 

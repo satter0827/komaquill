@@ -1,4 +1,8 @@
-import { queryOptions, type QueryClient } from '@tanstack/react-query'
+import {
+  queryOptions,
+  type QueryClient,
+  type QueryKey,
+} from '@tanstack/react-query'
 import { POLL_INTERVAL_MS } from '../api/client'
 import type {
   CreationJob,
@@ -25,6 +29,28 @@ export function keepTerminal<T extends { state?: string }>(
   return current && isTerminal(current.state) && !isTerminal(next.state)
     ? current
     : next
+}
+
+export function watchReceipt<T extends { id: string }>(
+  cache: QueryClient,
+  queryKey: QueryKey,
+  identity: string,
+  confirm: (value: T) => void,
+) {
+  const queries = cache.getQueryCache()
+  const unsubscribe = queries.subscribe((event) => {
+    if (
+      event.type !== 'updated' ||
+      event.action.type !== 'success' ||
+      event.query !== queries.find({ queryKey, exact: true })
+    )
+      return
+    const value = event.query.state.data as T | undefined
+    if (value?.id !== identity) return
+    unsubscribe()
+    confirm(value)
+  })
+  return unsubscribe
 }
 
 export async function observeImage(identity: string) {

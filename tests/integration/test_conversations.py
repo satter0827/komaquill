@@ -1,6 +1,6 @@
 """Verify durable turns, cross-client exclusion and safe HTTP contracts offline."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -88,6 +88,39 @@ def test_command_revision_and_reset(chat):
         conversation.id, StateCommand(command="reset_state", expected_revision=1)
     )
     assert reset.state.place == "home"
+
+
+@pytest.mark.parametrize("via_http", [False, True])
+@pytest.mark.parametrize("initial", [None, {"time": "night"}, {"place": "", "goal": ""}])
+def test_direct_definitions_resolve_story_defaults_and_preserve_explicit_state(
+    chat, initial, via_http
+):
+    body = {
+        "title": "Story defaults",
+        "scenario": {"place": "Lighthouse", "goal": "Find the missing letter"},
+    }
+    if initial is not None:
+        body["initial_state"] = initial
+    if via_http:
+        with TestClient(create_app(chat)) as http:
+            response = http.post("/api/v1/conversations", json=body)
+            assert response.status_code == 201
+            saved = chat.conversations.get(UUID(response.json()["id"]))
+    else:
+        saved = chat.conversations.create(ConversationInput.model_validate(body))
+    supplied = initial or {}
+    assert saved.state.place == supplied.get("place", "Lighthouse")
+    assert saved.state.goal == supplied.get("goal", "Find the missing letter")
+    assert saved.state.time == supplied.get("time", "")
+    assert saved.definition.initial_state == saved.state
+    chat.conversations.command(
+        saved.id, StateCommand(command="set_state", expected_revision=0, state={"place": "Pier"})
+    )
+    reset = Client(chat.workspace).conversations.command(
+        saved.id, StateCommand(command="reset_state", expected_revision=1)
+    )
+    assert reset.state == saved.state
+    assert reset.definition.scenario == saved.definition.scenario
 
 
 def test_restart_marks_unknown_without_resending(chat):

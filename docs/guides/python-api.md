@@ -48,6 +48,8 @@ result.presetは保存済み本文、result.jobは画像の操作、result.image
 
 ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateと状態編集はConversationStateを使い、自分と相手の服装・持ち物を別に保持する。長い会話の要約は自動保存され、元の本文と現在状態は維持される。
 
+開始時のplace・goalをinitial_stateへ指定しなければ、scenarioの同じ項目を使う。initial_stateへ明示した値は空文字列も含めて優先する。解決した初期状態は会話に保存され、reset_stateで戻る先になる。プリセット経由とHTTPも同じ処理を使う。
+
 旧状態を安全に変換できない会話はarchive.conversationsとarchive.conversationで読む。元の記録を新しい会話として推測変換しない。
 
 画像の用途を直接指定する場合は `client.images.submit(..., purpose="banner")` または `generate()` を使います。用途の型は公開APIの `ImagePurpose` です。用途別の生成条件は生成セットで管理し、未指定の単発画像には追加しません。再開は保存済みのRunを回収し、条件を再適用しません。

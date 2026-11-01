@@ -17,7 +17,6 @@ from komaquill.domain.images import ImagePurpose
 from komaquill.domain.models import Run
 from komaquill.domain.roleplay import (
     CharacterDefinition,
-    ConversationState,
     PersonDefinition,
     StoryDefinition,
 )
@@ -267,7 +266,6 @@ class LibraryService:
                 user=PersonDefinition.model_validate(
                     values["player"].model_dump(include=set(PersonDefinition.model_fields))
                 ),
-                initial_state=ConversationState(place=story.place, goal=story.goal),
                 locale=request.locale,
                 llm_profile=profile,
                 response_length=preferences.response_length,

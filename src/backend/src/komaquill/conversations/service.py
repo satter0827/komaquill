@@ -48,7 +48,15 @@ class ConversationService:
     def create(self, definition: ConversationInput) -> Conversation:
         if definition.llm_profile not in {profile.id for profile in self.profiles()}:
             raise KomaquillError(code="invalid_configuration", retryable=False)
-        return self.repository.create(definition)
+        initial = definition.initial_state
+        resolved = initial.model_copy(
+            update={
+                field: getattr(definition.scenario, field)
+                for field in ("place", "goal")
+                if field not in initial.model_fields_set
+            }
+        )
+        return self.repository.create(definition.model_copy(update={"initial_state": resolved}))
 
     def profiles(self) -> list[ConnectionProfile]:
         return self.responder.profiles()

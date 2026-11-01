@@ -9,6 +9,7 @@ import { ConversationPage } from '../src/features/conversations'
 import { NewConversation } from '../src/features/start'
 import m from '../src/app/locales/ja.json'
 import { client } from '../src/api/generated/client.gen'
+import { getConversationQueryKey } from '../src/api/generated/@tanstack/react-query.gen'
 
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
@@ -221,39 +222,42 @@ describe('conversation workflow', () => {
       release()
     }
   })
-  it('preserves a new draft when an earlier submission is accepted', async () => {
-    const cache = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    })
-    let release: (() => void) | undefined
-    const pending = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    server.use(
-      http.post(`${base}/api/v1/conversations/one/turns`, async () => {
-        await pending
-        return HttpResponse.json(
-          { id: 'op', conversation_id: 'one', state: 'accepted' },
-          { status: 202 },
-        )
-      }),
-      http.get(`${base}/api/v1/operations/:identity`, () =>
-        HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
-      ),
-    )
-    app('/conversations/one', cache)
-    const input = await screen.findByRole('textbox', { name: m.messageLabel })
-    await userEvent.type(input, 'Hello')
-    await userEvent.click(screen.getByRole('button', { name: m.send }))
-    await userEvent.clear(input)
-    await userEvent.type(input, 'Next draft')
-    release!()
-    await waitFor(() => expect(cache.isMutating()).toBe(0))
-    expect(input).toHaveValue('Next draft')
-  })
+  it.each(['Next draft', 'Hello'])(
+    'preserves a new draft when an earlier submission is accepted (%s)',
+    async (nextDraft) => {
+      const cache = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      })
+      let release: (() => void) | undefined
+      const pending = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      server.use(
+        http.post(`${base}/api/v1/conversations/one/turns`, async () => {
+          await pending
+          return HttpResponse.json(
+            { id: 'op', conversation_id: 'one', state: 'accepted' },
+            { status: 202 },
+          )
+        }),
+        http.get(`${base}/api/v1/operations/:identity`, () =>
+          HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
+        ),
+      )
+      app('/conversations/one', cache)
+      const input = await screen.findByRole('textbox', { name: m.messageLabel })
+      await userEvent.type(input, 'Hello')
+      await userEvent.click(screen.getByRole('button', { name: m.send }))
+      await userEvent.clear(input)
+      await userEvent.type(input, nextDraft)
+      release!()
+      await waitFor(() => expect(cache.isMutating()).toBe(0))
+      expect(input).toHaveValue(nextDraft)
+    },
+  )
   it('creates a conversation and opens the saved result', async () => {
     app('/new')
     await waitFor(() =>
@@ -337,13 +341,16 @@ describe('conversation workflow', () => {
     await userEvent.clear(screen.getByLabelText(m.currentPlace))
     await userEvent.type(screen.getByLabelText(m.currentPlace), 'draft')
     act(() =>
-      cache.setQueryData(['conversation', 'one'], {
-        id: 'one',
-        definition: { title: 'A new scene', llm_profile: 'fake' },
-        turns: [],
-        state: { place: 'remote' },
-        revision: 1,
-      }),
+      cache.setQueryData(
+        getConversationQueryKey({ path: { identity: 'one' } }),
+        {
+          id: 'one',
+          definition: { title: 'A new scene', llm_profile: 'fake' },
+          turns: [],
+          state: { place: 'remote' },
+          revision: 1,
+        },
+      ),
     )
     await userEvent.click(screen.getByRole('button', { name: m.saveState }))
     expect(commands).toEqual([
@@ -353,30 +360,54 @@ describe('conversation workflow', () => {
       m.errors.operation_conflict,
     )
   })
-  it('requires resolving a lost response even when its operation is known', async () => {
-    server.use(
-      http.post(`${base}/api/v1/conversations/one/turns`, () =>
-        HttpResponse.error(),
-      ),
-      http.get(`${base}/api/v1/operations/:identity`, ({ params }) =>
-        HttpResponse.json({
-          id: params.identity,
-          conversation_id: 'one',
-          state: 'complete',
+  it.each([true, false])(
+    'only recovers a lost response automatically if its receipt is known (%s)',
+    async (known) => {
+      let submissions = 0
+      server.use(
+        http.post(`${base}/api/v1/conversations/one/turns`, () => {
+          submissions += 1
+          return HttpResponse.error()
         }),
-      ),
-    )
-    app('/conversations/one')
-    await userEvent.type(
-      await screen.findByRole('textbox', { name: m.messageLabel }),
-      'Hello',
-    )
-    await userEvent.click(screen.getByRole('button', { name: m.send }))
-    expect(
-      await screen.findByRole('button', { name: m.retryRequest }),
-    ).toBeVisible()
-    expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
-  })
+        http.get(`${base}/api/v1/operations/:identity`, ({ params }) =>
+          known
+            ? HttpResponse.json({
+                id: params.identity,
+                conversation_id: 'one',
+                state: 'complete',
+              })
+            : HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
+        ),
+      )
+      app('/conversations/one')
+      await userEvent.type(
+        await screen.findByRole('textbox', { name: m.messageLabel }),
+        'Hello',
+      )
+      await userEvent.click(screen.getByRole('button', { name: m.send }))
+      if (known) {
+        await waitFor(() =>
+          expect(
+            screen.getByRole('textbox', { name: m.messageLabel }),
+          ).toHaveValue(''),
+        )
+        expect(
+          screen.queryByRole('button', { name: m.retryRequest }),
+        ).not.toBeInTheDocument()
+        await userEvent.type(
+          screen.getByRole('textbox', { name: m.messageLabel }),
+          'Next',
+        )
+        expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
+      } else {
+        expect(
+          await screen.findByRole('button', { name: m.retryRequest }),
+        ).toBeVisible()
+        expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
+      }
+      expect(submissions).toBe(1)
+    },
+  )
 })
 
 it('shows the current character condition without internal state values', async () => {

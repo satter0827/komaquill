@@ -1,9 +1,43 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import type { CreationJob, OperationView } from '../src/api/generated/types.gen'
-import { creationOptions, operationOptions } from '../src/features/operations'
+import {
+  creationOptions,
+  operationOptions,
+  watchReceipt,
+} from '../src/features/operations'
 
 describe('late operation observations', () => {
+  it('confirms only the matching receipt once, including when confirmation updates the cache', () => {
+    const cache = new QueryClient()
+    const key = operationOptions('turn').queryKey
+    const confirm = vi.fn((value: OperationView) =>
+      cache.setQueryData(key, value),
+    )
+    const unsubscribe = watchReceipt(cache, key, 'turn', confirm)
+    const saved: OperationView = {
+      id: 'turn',
+      conversation_id: 'conversation',
+      state: 'complete',
+    }
+    try {
+      cache.setQueryData(creationOptions('turn').queryKey, {
+        id: 'turn',
+        state: 'complete',
+        request: { operation_id: 'turn', kind: 'portrait' },
+      })
+      cache.setQueryData(key, { ...saved, id: 'different' })
+      expect(confirm).not.toHaveBeenCalled()
+      cache.setQueryData(key, saved)
+      expect(confirm).toHaveBeenCalledExactlyOnceWith(saved)
+      cache.setQueryData(key, { ...saved, state: 'accepted' })
+      expect(confirm).toHaveBeenCalledTimes(1)
+    } finally {
+      unsubscribe()
+      cache.clear()
+    }
+  })
+
   it('keeps polling a pending image and stops after its terminal observation', async () => {
     const cache = new QueryClient({
       defaultOptions: { queries: { retry: false } },

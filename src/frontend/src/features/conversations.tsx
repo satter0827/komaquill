@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, PanelRight, Sparkles } from 'lucide-react'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { Link, useParams } from 'react-router'
 import { POLL_INTERVAL_MS } from '../api/client'
 import * as q from '../api/generated/@tanstack/react-query.gen'
@@ -26,6 +32,7 @@ import {
   keepTerminal,
   operationOptions,
   operationPending,
+  watchReceipt,
 } from './operations'
 
 const narrowQuery = '(max-width: 850px)'
@@ -60,6 +67,11 @@ function ConversationView({ identity }: { identity: string }) {
   const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
+  const draftVersion = useRef(0)
+  const submittedDraft = useRef<{
+    operationId: string
+    version: number
+  } | null>(null)
   const [operationId, setOperationId] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const [stateDraft, setStateDraft] = useState<{
@@ -94,9 +106,31 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, operation.data, savedOperations.data])
 
+  const confirmSend = useCallback(
+    (result: OperationView, submitted: SendInput) => {
+      cache.setQueryData<OperationView>(
+        q.getOperationQueryKey({ path: { identity: result.id } }),
+        (previous) => keepTerminal(previous, result),
+      )
+      setOperationId(result.id)
+      if (
+        submittedDraft.current?.operationId === submitted.operation_id &&
+        submittedDraft.current.version === draftVersion.current
+      )
+        setText('')
+      setPrepared(null)
+      void cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({ path: { identity } }),
+      })
+      void cache.invalidateQueries({
+        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
+      })
+    },
+    [cache, identity],
+  )
   const send = useMutation({
     ...q.sendTurnMutation(),
-    onError: (error) => {
+    onError: (error, submitted) => {
       const code =
         error && typeof error === 'object' && 'code' in error
           ? error.code
@@ -110,25 +144,25 @@ function ConversationView({ identity }: { identity: string }) {
         ].includes(String(code))
       )
         setPrepared(null)
+      else setOperationId(submitted.body.operation_id)
     },
     onSuccess: (result, submitted) => {
-      cache.setQueryData<OperationView>(
-        q.getOperationQueryKey({ path: { identity: result.id ?? '' } }),
-        (previous) => keepTerminal(previous, result),
-      )
-      setOperationId(result.id)
-      setText((current) => (current === submitted.body.text ? '' : current))
-      setPrepared(null)
-      void cache.invalidateQueries({
-        queryKey: q.getConversationQueryKey({
-          path: { identity: identity ?? '' },
-        }),
-      })
-      void cache.invalidateQueries({
-        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
-      })
+      confirmSend(result, submitted.body)
     },
   })
+  const resetSend = send.reset
+  useEffect(() => {
+    if (!send.isError || !prepared) return
+    return watchReceipt(
+      cache,
+      q.getOperationQueryKey({ path: { identity: prepared.operation_id } }),
+      prepared.operation_id,
+      (confirmed: OperationView) => {
+        confirmSend(confirmed, prepared)
+        resetSend()
+      },
+    )
+  }, [cache, send.isError, prepared, confirmSend, resetSend])
   const reset = useMutation({
     ...q.applyCommandMutation(),
     onSuccess: () =>
@@ -460,6 +494,10 @@ function ConversationView({ identity }: { identity: string }) {
                   allow_real_llm: true,
                   locale: preferences.value.locale,
                 }
+                submittedDraft.current = {
+                  operationId: body.operation_id,
+                  version: draftVersion.current,
+                }
                 setPrepared(body)
                 send.mutate({ path: { identity }, body })
               }
@@ -470,7 +508,10 @@ function ConversationView({ identity }: { identity: string }) {
               placeholder={messages.placeholder}
               rows={2}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                draftVersion.current += 1
+                setText(event.target.value)
+              }}
             />
             <Button
               className="draw-button"

@@ -1,5 +1,7 @@
 # 検証記録を読む
 
+[会話開始・受付確認・保存の再レビュー](results/zero-base-library-review.md)は、受付応答の切断からの復帰、直接入力の開始設定、実際のQueryキーを使った回帰検査、残る生成品質を扱います。
+
 [LLM処理の統合と画像参照復旧](results/finish-library-and-llm.md)は、指定チャットの統合、実DBの復旧、上限付きの実4B比較、不採用の削減と残る品質を扱います。
 
 [設定・LLM実行・標準機能への委譲](results/library-delegation.md)は、共通実行、設定共有、Query生成、文書解析、画面検査の確認範囲と未確認事項を扱います。

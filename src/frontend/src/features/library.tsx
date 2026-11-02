@@ -45,6 +45,8 @@ const fields = {
     'address',
     'description',
     'appearance',
+    'initial_clothing',
+    'initial_held_objects',
     'role',
   ],
   character: [
@@ -53,6 +55,8 @@ const fields = {
     'gender',
     'description',
     'appearance',
+    'initial_clothing',
+    'initial_held_objects',
     'role',
     'personality',
     'speech',
@@ -82,6 +86,9 @@ async function save(
     name: value.name,
     description: value.description ?? '',
     appearance: value.appearance ?? '',
+    initial_clothing: value.initial_clothing || null,
+    initial_held_objects: value.initial_held_objects ?? [],
+    visual_review_required: false,
     role: value.role ?? '',
     address: value.address ?? '',
     age: value.age ?? '',
@@ -460,7 +467,16 @@ function PresetEditor({
     },
   })
   const update = (key: keyof Fields, text: string) => {
-    setValue((old) => ({ ...old, [key]: text }))
+    setValue((old) => ({
+      ...old,
+      [key]:
+        key === 'initial_held_objects'
+          ? text
+              .split('\n')
+              .map((item) => item.trim())
+              .filter(Boolean)
+          : text,
+    }))
     setNotice('')
   }
   return (
@@ -493,13 +509,21 @@ function PresetEditor({
                   <input
                     required={field === 'name'}
                     maxLength={120}
-                    value={value[field] ?? ''}
+                    value={
+                      Array.isArray(value[field])
+                        ? value[field].join('\n')
+                        : (value[field] ?? '')
+                    }
                     onChange={(event) => update(field, event.target.value)}
                   />
                 ) : (
                   <textarea
                     rows={index < 3 ? 3 : 2}
-                    value={value[field] ?? ''}
+                    value={
+                      Array.isArray(value[field])
+                        ? value[field].join('\n')
+                        : (value[field] ?? '')
+                    }
                     onChange={(event) => update(field, event.target.value)}
                   />
                 )}

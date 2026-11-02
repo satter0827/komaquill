@@ -112,7 +112,7 @@ tests = ["tests/integration/test_conversations.py", "tests/integration/test_conv
 [requirements.REQ-CHAT-COMMAND]
 summary = "コマンドで状態と会話方針を明示的に変更する"
 status = "in_progress"
-implementation_note = "状態の設定・初期化と版の競合検出を実装。ターン限定の方針、コマンド自体の操作IDと変更履歴は未実装。"
+implementation_note = "本人が確認する移動・待機・身支度・目標、操作IDと変更前後の記録、版の競合検出を実装。状態の全置換・初期化は廃止。ターン限定の方針は未実装。"
 acceptance = ["コマンドをLLMへ解釈させず検証する", "状態の確定変更と生成への指示を区別する", "次のターン限定と継続適用を区別する", "適用前後の版と操作IDを保存する", "不明な項目と変更権限のない操作を拒否する", "CLIの対話終了とGPU停止を区別する"]
 sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
 tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py"]
@@ -493,3 +493,10 @@ acceptance = [
 ]
 sources = ["src/frontend/src/app/styles.css", "src/frontend/src/features/library.tsx", "src/frontend/src/features/runtime.tsx"]
 tests = ["tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/fixtures.ts"]
+
+[requirements.REQ-PLAYER-ACTIONS]
+summary = "自分の行動を確認して確定し会話と画像へ同じ状態を反映する"
+status = "implemented"
+acceptance = ["自分の行動案は確認前に適用しない", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する"]
+sources = ["src/backend/src/komaquill/conversations/actions.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/database.py", "src/frontend/src/features/player-actions.tsx"]
+tests = ["tests/integration/test_player_actions.py", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]

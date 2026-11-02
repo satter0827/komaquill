@@ -36,7 +36,6 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
     tmp_path, monkeypatch, failed
 ):
     import langchain_openai
-    from komaquill.domain.roleplay import ConversationState
 
     class Model:
         def __init__(self, **options):
@@ -44,7 +43,8 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
 
         def bind(self, **options):
             self.summary = (
-                "narration" not in options["response_format"]["json_schema"]["schema"]["properties"]
+                "current_state"
+                not in options["response_format"]["json_schema"]["schema"]["properties"]
             )
             return self
 
@@ -63,11 +63,19 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
                 {"text": text}
                 if self.summary
                 else {
-                    "current_state": ConversationState().model_dump(),
+                    "current_state": {
+                        "relationship": "",
+                        "companion_movement": "stay",
+                        "scenery": "",
+                        "character": {
+                            "clothing": None,
+                            "pose": None,
+                            "expression": None,
+                            "held_objects": None,
+                        },
+                    },
+                    "requested_player_action": None,
                     "text": text,
-                    "narration": "静かな海に波が寄せている。"
-                    if japanese
-                    else "Waves wash over the quiet beach.",
                 }
             )
             return AIMessage(

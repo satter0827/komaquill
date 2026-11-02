@@ -3,7 +3,6 @@
 from komaquill.api.client import Client as Client
 from komaquill.conversations.models import ConversationInput as ConversationInput
 from komaquill.conversations.models import SendInput as SendInput
-from komaquill.conversations.models import StateCommand as StateCommand
 from komaquill.domain.errors import (
     ErrorCode as ErrorCode,
 )
@@ -36,6 +35,12 @@ from komaquill.library.recovery import ImageLinkInspection as ImageLinkInspectio
 from komaquill.library.recovery import ImageLinkRepairResult as ImageLinkRepairResult
 
 __all__ = [
+    "ActionRequest",
+    "MoveAction",
+    "WaitAction",
+    "PrepareAction",
+    "IntentionAction",
+    "VisualReview",
     "ImageLinkInspection",
     "ImageLinkRepairResult",
     "PresetSaveOptions",
@@ -61,7 +66,6 @@ __all__ = [
     "Client",
     "ConversationInput",
     "SendInput",
-    "StateCommand",
     "CompiledImageInput",
     "ImageInput",
     "ImagePurpose",
@@ -77,6 +81,12 @@ __all__ = [
     "KomaquillError",
 ]
 
+from komaquill.conversations.actions import ActionRequest as ActionRequest
+from komaquill.conversations.actions import IntentionAction as IntentionAction
+from komaquill.conversations.actions import MoveAction as MoveAction
+from komaquill.conversations.actions import PrepareAction as PrepareAction
+from komaquill.conversations.actions import WaitAction as WaitAction
+from komaquill.conversations.visuals import VisualReview as VisualReview
 from komaquill.domain.roleplay import CharacterDefinition as CharacterDefinition
 from komaquill.domain.roleplay import ConversationState as ConversationState
 from komaquill.domain.roleplay import PersonDefinition as PersonDefinition

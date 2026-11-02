@@ -19,6 +19,7 @@ from pydantic import BaseModel, SecretStr
 
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.configuration import WorkspaceConfiguration
+from komaquill.adapters.llm.constraints import ResponseConstraintError
 from komaquill.adapters.llm.language import ResponseLanguageError
 from komaquill.adapters.llm_configuration import ConversationSettings, LLMProfile
 from komaquill.domain.errors import KomaquillError
@@ -295,6 +296,8 @@ class StructuredExecution:
                         "validation": "rejected",
                         "failure_kind": "language"
                         if isinstance(error, ResponseLanguageError)
+                        else "constraint"
+                        if isinstance(error, ResponseConstraintError)
                         else "schema",
                     },
                     purpose,
@@ -316,7 +319,10 @@ class StructuredExecution:
             )
             return (
                 "Correct the previous response. Return valid JSON matching "
-                "the supplied schema. Preserve the facts. " + correction + detail
+                "the supplied schema. Preserve the facts. "
+                + correction
+                + detail
+                + (" " + invalid.correction if isinstance(invalid, ResponseConstraintError) else "")
             )
 
         try:

@@ -30,7 +30,10 @@ test('automatically collects a portrait and preserves it after duplication', asy
   await page.getByLabel(ja.name, { exact: true }).fill(name)
   await page
     .getByLabel(ja.appearance, { exact: true })
-    .fill('An adult with short red hair and a green coat.')
+    .fill('An adult with short red hair.')
+  await page
+    .getByLabel(ja.initial_clothing, { exact: true })
+    .fill('A green coat')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
   await expect(page.locator('.cover-preview img')).toHaveJSProperty(
     'naturalWidth',

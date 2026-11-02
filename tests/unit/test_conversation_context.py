@@ -11,6 +11,7 @@ from komaquill.domain.roleplay import ConversationState, StatePatch
 def test_prose_never_overrides_current_people_or_location():
     state = ConversationState(
         place="sea",
+        character_place="sea",
         player={"clothing": "red coat"},
         character={"clothing": "black apron", "pose": "standing"},
     )
@@ -31,9 +32,12 @@ def test_prose_never_overrides_current_people_or_location():
             )
         ],
     )
-    assert scene_context(conversation)["current_state"] == state.model_dump()
+    assert scene_context(conversation)["current_state"] == state.model_dump(
+        exclude={"player": {"appearance"}, "character": {"appearance"}}
+    )
     drawing = drawing_context(conversation)
-    assert drawing["current_character"] == state.character.model_dump()
+    assert drawing["character"]["clothing"] == "black apron"
+    assert "current_character" not in drawing
     assert drawing["setting"]["place"] == "sea"
     assert drawing["character"]["age"] == "60"
     assert "red coat" not in str(drawing)

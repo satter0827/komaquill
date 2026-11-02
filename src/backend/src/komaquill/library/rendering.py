@@ -28,7 +28,7 @@ def preset_changes(
 
 def preset_image_input(kind: PresetKind, value: Preset | PresetInput) -> dict[str, object]:
     fields = (
-        ("age", "gender", "appearance", "role", "description")
+        ("age", "gender", "appearance", "initial_clothing", "initial_held_objects")
         if kind == "character"
         else ("world", "place", "description")
     )

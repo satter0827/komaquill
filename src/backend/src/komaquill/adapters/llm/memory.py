@@ -5,16 +5,30 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
-from typing import Protocol
+from typing import Literal, Protocol
 from uuid import UUID
 
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 
 from komaquill.adapters.llm_configuration import ConversationSettings
-from komaquill.conversations.models import Conversation, SendInput
+from komaquill.conversations.models import Conversation, SendInput, Turn
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import ConversationMemory, Record
+
+
+def history_input(conversation: Conversation, turn: Turn) -> str:
+    if turn.action_id is None:
+        return turn.user
+    action = next(
+        (a for a in conversation.actions if a.request.operation_id == turn.action_id), None
+    )
+    if action is None:
+        raise KomaquillError(code="storage_failed", retryable=False)
+    return json.dumps(
+        {"confirmed_player_action": action.request.action.model_dump(mode="json")},
+        ensure_ascii=False,
+    )
 
 
 class SummaryResponder(Protocol):
@@ -57,11 +71,34 @@ def history_hash(conversation: Conversation, through: int, source_version: int =
     return hashlib.sha256(
         json.dumps(
             [
-                turn.model_dump(
-                    mode="json",
-                    include={"user", "assistant", "narration"}
-                    | ({"state"} if source_version == 2 else set()),
-                )
+                {
+                    **turn.model_dump(mode="json", include={"user", "assistant", "narration"}),
+                    **(
+                        {
+                            "state": turn.state.model_dump(
+                                mode="json",
+                                include={
+                                    "place",
+                                    "time",
+                                    "goal",
+                                    "relationship",
+                                    "player",
+                                    "character",
+                                },
+                            )
+                        }
+                        if source_version == 2
+                        else {}
+                    ),
+                    **(
+                        {"state": turn.state.model_dump(mode="json")} if source_version == 3 else {}
+                    ),
+                    **(
+                        {"confirmed_input": history_input(conversation, turn)}
+                        if source_version == 3
+                        else {}
+                    ),
+                }
                 for turn in conversation.turns[:through]
             ],
             sort_keys=True,
@@ -93,7 +130,7 @@ def history_messages(
         raise KomaquillError(code="storage_failed", retryable=False)
     pairs = [
         (
-            turn.user,
+            history_input(conversation, turn),
             json.dumps(
                 {"text": turn.assistant, "narration": turn.narration},
                 ensure_ascii=False,
@@ -132,7 +169,7 @@ def history_messages(
     if count > 0 and (len(pairs) >= responder.settings.context_turns or needs_summary):
         prefix: list[BaseMessage] = []
         for index, turn in enumerate(conversation.turns[: start + count]):
-            user = turn.user
+            user = history_input(conversation, turn)
             prefix.extend(
                 [
                     HumanMessage(content=user, id=f"{turn.operation_id}:user"),
@@ -224,11 +261,12 @@ def history_messages(
             for index, turn in enumerate(conversation.turns)
             if f"{turn.operation_id}:assistant" == result.running_summary.last_summarized_message_id
         )
+        source_version: Literal[3] = 3
         updated = ConversationMemory(
-            source_version=2,
+            source_version=source_version,
             text=result.running_summary.summary,
             through_turn=through,
-            source_sha256=history_hash(conversation, through),
+            source_sha256=history_hash(conversation, through, source_version),
             locale=locale,
             model=profile.model,
             instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest(),

@@ -18,8 +18,11 @@ from komaquill.api import (
     StoryInput,
 )
 from komaquill.conversations.models import SendInput
+from komaquill.domain.roleplay import ConversationState
 from komaquill.interfaces.http.app import create_app
 from komaquill.library.service import sample_id
+
+from tests.support.conversations import set_state
 
 
 def selection(locale="ja", profile="fake"):
@@ -250,12 +253,7 @@ def test_fixed_samples_do_not_claim_to_understand_arbitrary_settings(tmp_path, c
             )
         )
     elif case == "changed_state":
-        from komaquill.conversations.models import StateCommand
-
-        api.conversations.command(
-            conversation.id,
-            StateCommand(command="set_state", expected_revision=0, state={"place": "Elsewhere"}),
-        )
+        set_state(api, conversation.id, ConversationState.model_validate({"place": "Elsewhere"}), 0)
     result = api.conversations.send(
         conversation.id,
         SendInput(
@@ -295,7 +293,16 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     library = api.library
     service = api.characters if kind == "portrait" else api.stories
     model = CharacterInput if kind == "portrait" else StoryInput
-    value = service.create(model(name="Saved", description="Original setting"))
+    value = service.create(
+        model(
+            name="Saved",
+            **(
+                {"appearance": "silver hair"}
+                if kind == "portrait"
+                else {"description": "Original setting"}
+            ),
+        )
+    )
     calls = []
     runs = {}
 

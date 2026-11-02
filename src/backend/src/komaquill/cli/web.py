@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import typer
 
 from komaquill.api import Client, CreationRequest, KomaquillError
-from komaquill.conversations.models import ConversationInput, SendInput, StateCommand
+from komaquill.conversations.models import ConversationInput, SendInput
 from komaquill.domain.roleplay import StoryDefinition
 from komaquill.messages import error_message, message
 
@@ -167,22 +167,34 @@ def bind(
     ) -> None:
         typer.echo(Client(ctx.obj or Path.cwd()).conversations.resume(identity).model_dump_json())
 
-    @chat.command("command", help=message("chat.command"))
+    @chat.command("act", help=message("chat.act"))
     @guarded
-    def command(
+    def act(
         ctx: typer.Context,
         identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
-        action: Annotated[
-            Literal["reset_state", "set_state"], typer.Argument(help=message("chat.action"))
-        ],
+        action: Annotated[str, typer.Argument(help=message("chat.action_json"))],
         expected_revision: Annotated[int, typer.Option(help=message("chat.revision"), min=0)],
-        state: Annotated[str, typer.Option(help=message("chat.state"))] = "{}",
+        operation_id: Annotated[UUID | None, typer.Option(help=message("chat.action_id"))] = None,
+        allow_real_llm: Annotated[bool, typer.Option(help=message("chat.allow_real"))] = False,
     ) -> None:
         import json
 
-        request = StateCommand(
-            command=action, expected_revision=expected_revision, state=json.loads(state)
+        from komaquill.conversations.actions import ActionRequest
+
+        request = ActionRequest(
+            operation_id=operation_id or uuid4(),
+            expected_revision=expected_revision,
+            action=json.loads(action),
+            allow_real_llm=allow_real_llm,
         )
         typer.echo(
-            Client(ctx.obj or Path.cwd()).conversations.command(identity, request).model_dump_json()
+            Client(ctx.obj or Path.cwd()).conversations.act(identity, request).model_dump_json()
         )
+
+    @chat.command("actions", help=message("chat.actions"))
+    @guarded
+    def actions(
+        ctx: typer.Context, identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))]
+    ) -> None:
+        for record in Client(ctx.obj or Path.cwd()).conversations.actions(identity):
+            typer.echo(record.model_dump_json())

@@ -341,6 +341,8 @@ class LibraryService:
                 raise KomaquillError(code="invalid_request", retryable=False)
             kind: PresetKind = "character" if request.kind == "portrait" else "story"
             value = self.store.get(kind, request.target_id)
+            if isinstance(value, CharacterPreset) and value.visual_review_required:
+                raise KomaquillError(code="visual_review_required", retryable=False)
             if value.revision != request.expected_revision:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             original = json.dumps(preset_image_input(kind, value), ensure_ascii=False)
@@ -373,11 +375,20 @@ class LibraryService:
                     if not any(scenery.get(key) for key in ("world", "place", "description")):
                         scenery["opening"] = captured.get("opening", "")
                     source = json.dumps(scenery, ensure_ascii=False)
+                environment_only = job.request.kind == "conversation_image" and not json.loads(
+                    source
+                ).get("character_visible", True)
+                image_purpose = (
+                    "banner" if environment_only else cast(ImagePurpose, job.request.kind)
+                )
                 prompt = job.prompt_en
                 if prompt is None:
-                    prompt = IMAGE_COMPOSITION[
-                        job.request.kind
-                    ] + self.image_describer.prepare_image(
+                    composition = (
+                        "Unoccupied setting, environment only. "
+                        if environment_only
+                        else IMAGE_COMPOSITION[job.request.kind]
+                    )
+                    prompt = composition + self.image_describer.prepare_image(
                         source,
                         job.id,
                         job.request.llm_profile,
@@ -390,8 +401,8 @@ class LibraryService:
                 self.images.submit(
                     prompt,
                     run_id=job.id,
-                    parameters=self.image_parameters.get(job.request.kind),
-                    purpose=cast(ImagePurpose, job.request.kind),
+                    parameters=self.image_parameters.get(image_purpose),
+                    purpose=image_purpose,
                 )
                 job = job.model_copy(update={"state": "submitted", "image_id": job.id})
         except KomaquillError as error:

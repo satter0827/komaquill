@@ -5,6 +5,65 @@ export type ClientOptions = {
 };
 
 /**
+ * ActionRecord
+ */
+export type ActionRecord = {
+    request: ActionRequest;
+    before: ConversationState;
+    after: ConversationState;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Reaction Id
+     */
+    reaction_id: string;
+    /**
+     * Created At
+     */
+    created_at?: string;
+};
+
+/**
+ * ActionRequest
+ */
+export type ActionRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Action
+     */
+    action: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction);
+    /**
+     * Proposal Id
+     */
+    proposal_id?: string | null;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en';
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
+};
+
+/**
  * ArchivedConversation
  */
 export type ArchivedConversation = {
@@ -77,6 +136,18 @@ export type CharacterDefinition = {
      */
     gender?: string;
     /**
+     * Initial Clothing
+     */
+    initial_clothing?: string | null;
+    /**
+     * Initial Held Objects
+     */
+    initial_held_objects?: Array<string>;
+    /**
+     * Visual Review Required
+     */
+    visual_review_required?: boolean;
+    /**
      * Personality
      */
     personality?: string;
@@ -126,6 +197,18 @@ export type CharacterInput = {
      * Gender
      */
     gender?: string;
+    /**
+     * Initial Clothing
+     */
+    initial_clothing?: string | null;
+    /**
+     * Initial Held Objects
+     */
+    initial_held_objects?: Array<string>;
+    /**
+     * Visual Review Required
+     */
+    visual_review_required?: boolean;
     /**
      * Personality
      */
@@ -200,6 +283,18 @@ export type CharacterPreset = {
      * Gender
      */
     gender: string;
+    /**
+     * Initial Clothing
+     */
+    initial_clothing: string | null;
+    /**
+     * Initial Held Objects
+     */
+    initial_held_objects: Array<string>;
+    /**
+     * Visual Review Required
+     */
+    visual_review_required: boolean;
     /**
      * Personality
      */
@@ -338,6 +433,18 @@ export type Conversation = {
      * Created At
      */
     created_at?: string;
+    /**
+     * Actions
+     */
+    actions?: Array<ActionRecord>;
+    /**
+     * Proposals
+     */
+    proposals?: Array<ProposedAction>;
+    /**
+     * Visual Reviews
+     */
+    visual_reviews?: Array<VisualReviewRecord>;
 };
 
 /**
@@ -405,7 +512,7 @@ export type ConversationMemory = {
     /**
      * Source Version
      */
-    source_version?: 1 | 2;
+    source_version?: 1 | 2 | 3;
     /**
      * Text
      */
@@ -476,6 +583,22 @@ export type ConversationState = {
      * Relationship
      */
     relationship?: string;
+    /**
+     * Character Place
+     */
+    character_place?: string;
+    /**
+     * Scenery
+     */
+    scenery?: string;
+    /**
+     * Intention
+     */
+    intention?: string;
+    /**
+     * Elapsed Minutes
+     */
+    elapsed_minutes?: number;
     player?: PersonState;
     character?: PersonState;
 };
@@ -566,7 +689,7 @@ export type CreationRequest = {
  *
  * Identify safe, machine-readable product failure categories.
  */
-export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'storage_failed' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
+export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
  * FailureInfo
@@ -740,6 +863,34 @@ export type InputArtifact = {
 };
 
 /**
+ * IntentionAction
+ */
+export type IntentionAction = {
+    /**
+     * Kind
+     */
+    kind?: 'intention';
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
+ * MoveAction
+ */
+export type MoveAction = {
+    /**
+     * Kind
+     */
+    kind?: 'move';
+    /**
+     * Destination
+     */
+    destination: string;
+};
+
+/**
  * OperationStage
  *
  * Identify the operation phase independently of displayed text.
@@ -846,6 +997,18 @@ export type PersonDefinition = {
      * Gender
      */
     gender?: string;
+    /**
+     * Initial Clothing
+     */
+    initial_clothing?: string | null;
+    /**
+     * Initial Held Objects
+     */
+    initial_held_objects?: Array<string>;
+    /**
+     * Visual Review Required
+     */
+    visual_review_required?: boolean;
 };
 
 /**
@@ -908,6 +1071,18 @@ export type PlayerInput = {
      * Gender
      */
     gender?: string;
+    /**
+     * Initial Clothing
+     */
+    initial_clothing?: string | null;
+    /**
+     * Initial Held Objects
+     */
+    initial_held_objects?: Array<string>;
+    /**
+     * Visual Review Required
+     */
+    visual_review_required?: boolean;
 };
 
 /**
@@ -966,6 +1141,18 @@ export type PlayerProfile = {
      * Gender
      */
     gender: string;
+    /**
+     * Initial Clothing
+     */
+    initial_clothing: string | null;
+    /**
+     * Initial Held Objects
+     */
+    initial_held_objects: Array<string>;
+    /**
+     * Visual Review Required
+     */
+    visual_review_required: boolean;
 };
 
 /**
@@ -996,6 +1183,32 @@ export type Preferences = {
      * Llm Profile
      */
     llm_profile?: string;
+};
+
+/**
+ * PrepareAction
+ */
+export type PrepareAction = {
+    /**
+     * Kind
+     */
+    kind?: 'prepare';
+    /**
+     * Clothing
+     */
+    clothing?: string | null;
+    /**
+     * Pose
+     */
+    pose?: string | null;
+    /**
+     * Expression
+     */
+    expression?: string | null;
+    /**
+     * Held Objects
+     */
+    held_objects?: Array<string> | null;
 };
 
 /**
@@ -1089,6 +1302,58 @@ export type PromptSource = {
      * Role
      */
     role: 'positive' | 'negative' | 'input';
+};
+
+/**
+ * ProposalDismissal
+ */
+export type ProposalDismissal = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+};
+
+/**
+ * ProposedAction
+ */
+export type ProposedAction = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Turn Id
+     */
+    turn_id: string;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Action
+     */
+    action: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction);
+    /**
+     * State
+     */
+    state?: 'pending' | 'applied' | 'dismissed' | 'expired';
+    /**
+     * Decision Id
+     */
+    decision_id?: string | null;
 };
 
 /**
@@ -1397,7 +1662,11 @@ export type SendInput = {
     /**
      * Text
      */
-    text: string;
+    text?: string;
+    /**
+     * Action Id
+     */
+    action_id?: string | null;
     /**
      * Allow Real Llm
      */
@@ -1468,21 +1737,6 @@ export type SettingsView = {
      * Sample Input
      */
     sample_input: string;
-};
-
-/**
- * StateCommand
- */
-export type StateCommand = {
-    /**
-     * Command
-     */
-    command: 'reset_state' | 'set_state';
-    /**
-     * Expected Revision
-     */
-    expected_revision: number;
-    state?: ConversationState;
 };
 
 /**
@@ -1671,6 +1925,10 @@ export type Turn = {
      * Created At
      */
     created_at?: string;
+    /**
+     * Action Id
+     */
+    action_id?: string | null;
 };
 
 /**
@@ -1699,6 +1957,69 @@ export type ValidationError = {
     ctx?: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * VisualPerson
+ */
+export type VisualPerson = {
+    /**
+     * Appearance
+     */
+    appearance: string;
+    /**
+     * Initial Clothing
+     */
+    initial_clothing: string;
+    /**
+     * Current Clothing
+     */
+    current_clothing: string;
+};
+
+/**
+ * VisualReview
+ */
+export type VisualReview = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    player: VisualPerson;
+    character: VisualPerson;
+};
+
+/**
+ * VisualReviewRecord
+ */
+export type VisualReviewRecord = {
+    request: VisualReview;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Created At
+     */
+    created_at?: string;
+};
+
+/**
+ * WaitAction
+ */
+export type WaitAction = {
+    /**
+     * Kind
+     */
+    kind?: 'wait';
+    /**
+     * Minutes
+     */
+    minutes: number;
 };
 
 export type ListArchivedConversationsData = {
@@ -2405,8 +2726,8 @@ export type SendTurnResponses = {
 
 export type SendTurnResponse = SendTurnResponses[keyof SendTurnResponses];
 
-export type ApplyCommandData = {
-    body: StateCommand;
+export type GetActionsData = {
+    body?: never;
     path: {
         /**
          * Identity
@@ -2414,26 +2735,122 @@ export type ApplyCommandData = {
         identity: string;
     };
     query?: never;
-    url: '/api/v1/conversations/{identity}/commands';
+    url: '/api/v1/conversations/{identity}/actions';
 };
 
-export type ApplyCommandErrors = {
+export type GetActionsErrors = {
     /**
      * Validation Error
      */
     422: HttpValidationError;
 };
 
-export type ApplyCommandError = ApplyCommandErrors[keyof ApplyCommandErrors];
+export type GetActionsError = GetActionsErrors[keyof GetActionsErrors];
 
-export type ApplyCommandResponses = {
+export type GetActionsResponses = {
+    /**
+     * Response Get Actions
+     *
+     * Successful Response
+     */
+    200: Array<ActionRecord>;
+};
+
+export type GetActionsResponse = GetActionsResponses[keyof GetActionsResponses];
+
+export type PerformActionData = {
+    body: ActionRequest;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/actions';
+};
+
+export type PerformActionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type PerformActionError = PerformActionErrors[keyof PerformActionErrors];
+
+export type PerformActionResponses = {
+    /**
+     * Successful Response
+     */
+    202: ActionRecord;
+};
+
+export type PerformActionResponse = PerformActionResponses[keyof PerformActionResponses];
+
+export type DismissProposalData = {
+    body: ProposalDismissal;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+        /**
+         * Proposal Id
+         */
+        proposal_id: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/proposals/{proposal_id}/dismiss';
+};
+
+export type DismissProposalErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type DismissProposalError = DismissProposalErrors[keyof DismissProposalErrors];
+
+export type DismissProposalResponses = {
     /**
      * Successful Response
      */
     200: Conversation;
 };
 
-export type ApplyCommandResponse = ApplyCommandResponses[keyof ApplyCommandResponses];
+export type DismissProposalResponse = DismissProposalResponses[keyof DismissProposalResponses];
+
+export type ReviewVisualsData = {
+    body: VisualReview;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/visuals';
+};
+
+export type ReviewVisualsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ReviewVisualsError = ReviewVisualsErrors[keyof ReviewVisualsErrors];
+
+export type ReviewVisualsResponses = {
+    /**
+     * Successful Response
+     */
+    200: Conversation;
+};
+
+export type ReviewVisualsResponse = ReviewVisualsResponses[keyof ReviewVisualsResponses];
 
 export type ResumeConversationData = {
     body?: never;

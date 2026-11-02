@@ -14,13 +14,14 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.api import Client, KomaquillError, Run, SessionStatus
+from komaquill.conversations.actions import ActionRecord, ActionRequest, ProposalDismissal
 from komaquill.conversations.models import (
     Conversation,
     ConversationInput,
     Operation,
     SendInput,
-    StateCommand,
 )
+from komaquill.conversations.visuals import VisualReview
 from komaquill.domain.materials import InputArtifact
 from komaquill.messages import error_message, message
 
@@ -206,12 +207,43 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         return describe_operation(operation)
 
     @app.post(
-        "/api/v1/conversations/{identity}/commands",
-        response_model=Conversation,
-        operation_id="apply_command",
+        "/api/v1/conversations/{identity}/actions",
+        response_model=ActionRecord,
+        status_code=202,
+        operation_id="perform_action",
     )
-    def command(identity: UUID, body: StateCommand) -> Conversation:
-        return selected().conversations.command(identity, body)
+    def perform_action(identity: UUID, body: ActionRequest, tasks: BackgroundTasks) -> ActionRecord:
+        service = selected().conversations
+        record, created = service.accept_action(identity, body)
+        if created:
+            tasks.add_task(service.execute, record.reaction_id)
+        return record
+
+    @app.get(
+        "/api/v1/conversations/{identity}/actions",
+        response_model=list[ActionRecord],
+        operation_id="get_actions",
+    )
+    def get_actions(identity: UUID) -> list[ActionRecord]:
+        return selected().conversations.actions(identity)
+
+    @app.post(
+        "/api/v1/conversations/{identity}/proposals/{proposal_id}/dismiss",
+        response_model=Conversation,
+        operation_id="dismiss_proposal",
+    )
+    def dismiss_proposal(
+        identity: UUID, proposal_id: UUID, body: ProposalDismissal
+    ) -> Conversation:
+        return selected().conversations.dismiss_proposal(identity, proposal_id, body)
+
+    @app.put(
+        "/api/v1/conversations/{identity}/visuals",
+        response_model=Conversation,
+        operation_id="review_visuals",
+    )
+    def review_visuals(identity: UUID, body: VisualReview) -> Conversation:
+        return selected().conversations.review_visuals(identity, body)
 
     @app.post(
         "/api/v1/conversations/{identity}/resume",

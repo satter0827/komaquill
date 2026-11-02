@@ -358,6 +358,119 @@ describe('conversation workflow', () => {
       m.errors.operation_conflict,
     )
   })
+  it.each(['intention', 'pose'])(
+    'starts a new %s draft at the current revision after discarding another action',
+    async (next) => {
+      const cache = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false },
+          mutations: { retry: false },
+        },
+      })
+      const commands: unknown[] = []
+      server.use(
+        http.post(
+          `${base}/api/v1/conversations/one/actions`,
+          async ({ request }) => {
+            commands.push(await request.json())
+            return HttpResponse.json(
+              { code: 'operation_conflict' },
+              { status: 409 },
+            )
+          },
+        ),
+      )
+      app('/conversations/one', cache)
+      await screen.findByLabelText(m.destination)
+      if (next === 'pose')
+        await userEvent.selectOptions(
+          screen.getByLabelText(m.chooseAction),
+          'prepare',
+        )
+      await userEvent.type(
+        screen.getByLabelText(
+          next === 'pose' ? m.preparationValue : m.destination,
+        ),
+        'discarded',
+      )
+      act(() =>
+        cache.setQueryData(
+          getConversationQueryKey({ path: { identity: 'one' } }),
+          {
+            id: 'one',
+            definition: { title: 'Scene', llm_profile: 'fake' },
+            turns: [],
+            state: {},
+            revision: 1,
+          },
+        ),
+      )
+      if (next === 'pose')
+        await userEvent.selectOptions(
+          screen.getByLabelText(m.choosePreparation),
+          'pose',
+        )
+      else
+        await userEvent.selectOptions(
+          screen.getByLabelText(m.chooseAction),
+          'intention',
+        )
+      await userEvent.type(
+        screen.getByLabelText(
+          next === 'pose' ? m.preparationValue : m.currentIntention,
+        ),
+        'new draft',
+      )
+      await userEvent.click(
+        screen.getByRole('button', { name: m.confirmAction }),
+      )
+      await waitFor(() => expect(commands).toHaveLength(1))
+      expect(commands[0]).toMatchObject({
+        expected_revision: 1,
+        action:
+          next === 'pose'
+            ? { kind: 'prepare', pose: 'new draft' }
+            : { kind: 'intention', text: 'new draft' },
+      })
+    },
+  )
+  it('refreshes a required visual review after a rejected send without resending or losing input', async () => {
+    let rejected = false
+    let posts = 0
+    server.use(
+      http.get(`${base}/api/v1/conversations/one`, () =>
+        HttpResponse.json({
+          id: 'one',
+          definition: {
+            title: 'Scene',
+            llm_profile: 'fake',
+            character: { visual_review_required: rejected },
+          },
+          state: {},
+          turns: [],
+          revision: 0,
+        }),
+      ),
+      http.post(`${base}/api/v1/conversations/one/turns`, () => {
+        posts++
+        rejected = true
+        return HttpResponse.json(
+          { code: 'visual_review_required' },
+          { status: 409 },
+        )
+      }),
+    )
+    app('/conversations/one')
+    const input = await screen.findByRole('textbox', { name: m.messageLabel })
+    await userEvent.type(input, 'Keep this message')
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await screen.findByLabelText(m.appearance)
+    expect(input).toHaveValue('Keep this message')
+    expect(
+      screen.queryByRole('button', { name: m.retryRequest }),
+    ).not.toBeInTheDocument()
+    expect(posts).toBe(1)
+  })
   it('retains an unknown action receipt when the pane closes and never resends it', async () => {
     const requests: Array<{ operation_id: string }> = []
     server.use(
@@ -491,6 +604,59 @@ describe('conversation workflow', () => {
       await screen.findByRole('button', { name: m.checkAction }),
     )
     expect(await screen.findByLabelText(m.destination)).toBeEnabled()
+  })
+  it('reviews only the unconfirmed person and keeps unspecified clothes as null', async () => {
+    let submitted: unknown
+    server.use(
+      http.get(`${base}/api/v1/conversations/one`, () =>
+        HttpResponse.json({
+          id: 'one',
+          definition: {
+            title: 'Review',
+            llm_profile: 'fake',
+            user: { appearance: 'Brown hair', initial_clothing: 'Red coat' },
+            character: {
+              appearance: 'Silver hair and apron',
+              visual_review_required: true,
+              initial_clothing: null,
+            },
+          },
+          state: {
+            player: { clothing: 'Red coat' },
+            character: { clothing: null },
+          },
+          turns: [],
+          revision: 0,
+        }),
+      ),
+      http.put(
+        `${base}/api/v1/conversations/one/visuals`,
+        async ({ request }) => {
+          submitted = await request.json()
+          return HttpResponse.json(
+            { code: 'operation_conflict' },
+            { status: 409 },
+          )
+        },
+      ),
+    )
+    app('/conversations/one')
+    const input = await screen.findByLabelText(m.appearance)
+    expect(screen.getAllByLabelText(m.appearance)).toHaveLength(1)
+    await userEvent.type(input, 'Silver hair')
+    await userEvent.click(
+      screen.getByRole('button', { name: m.confirmAppearance }),
+    )
+    await waitFor(() =>
+      expect(submitted).toMatchObject({
+        character: {
+          appearance: 'Silver hair',
+          initial_clothing: null,
+          current_clothing: null,
+        },
+      }),
+    )
+    expect(submitted).not.toHaveProperty('player')
   })
   it.each([true, false])(
     'only recovers a lost response automatically if its receipt is known (%s)',

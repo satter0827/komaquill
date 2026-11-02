@@ -5,6 +5,77 @@ import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'jso
 const REACTION_COMPLETION_TIMEOUT_MS = 15_000
 
 for (const locale of ['ja', 'en'] as const) {
+  test(`${locale}: reviews one person's appearance without changing the other`, async ({
+    page,
+    request,
+    evidence,
+    auditAccessibility,
+  }) => {
+    const m = locale === 'ja' ? ja : en
+    const preferences = await (await request.get('/api/v1/preferences')).json()
+    await request.put('/api/v1/preferences', {
+      data: { ...preferences, locale },
+    })
+    const created = await request.post('/api/v1/conversations', {
+      data: {
+        title: 'Appearance review',
+        locale,
+        llm_profile: 'fake',
+        user: {
+          name: 'Player',
+          appearance: 'Brown hair',
+          initial_clothing: 'Red coat',
+        },
+        character: {
+          name: 'Companion',
+          appearance: 'Silver hair and apron',
+          visual_review_required: true,
+        },
+      },
+    })
+    expect(created.ok()).toBe(true)
+    const original = await created.json()
+    await page.goto(`/conversations/${original.id}`)
+    const appearance = page.getByLabel(m.appearance, { exact: true })
+    await expect(appearance).toHaveCount(1)
+    await appearance.fill('Silver hair')
+    await page
+      .getByRole('textbox', { name: m.messageLabel })
+      .fill('Keep my message')
+    await expect(
+      page.getByRole('button', { name: m.send, exact: true }),
+    ).toBeDisabled()
+    await auditAccessibility()
+    await evidence.capture(
+      'Only the unconfirmed companion needs appearance review',
+    )
+    const saved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().endsWith(`/api/v1/conversations/${original.id}/visuals`),
+    )
+    await page.getByRole('button', { name: m.confirmAppearance }).focus()
+    await page.keyboard.press('Enter')
+    expect((await saved).ok()).toBe(true)
+    await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
+    await expect(
+      page.getByRole('textbox', { name: m.messageLabel }),
+    ).toHaveValue('Keep my message')
+    const confirmed = await (
+      await request.get(`/api/v1/conversations/${original.id}`)
+    ).json()
+    expect(confirmed.definition.user).toEqual(original.definition.user)
+    expect(confirmed.state.player).toEqual(original.state.player)
+    expect(confirmed.definition.character.appearance).toBe('Silver hair')
+    expect(confirmed.definition.character.initial_clothing).toBeNull()
+    expect(confirmed.state.character.clothing).toBeNull()
+    await page.reload()
+    await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
+    await expect(appearance).toHaveCount(0)
+    await evidence.capture(
+      'Review survived reload and retained the other person and unspecified clothes',
+    )
+  })
   test(`${locale}: confirms a player action and preserves it after reload`, async ({
     page,
     request,

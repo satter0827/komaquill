@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import json
+from contextlib import AbstractContextManager
 from typing import Protocol, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -76,7 +77,7 @@ class Store(CreationStore, Protocol):
         options: PresetSaveOptions,
         image_error: str | None,
     ) -> PresetSaveResult: ...
-    def claim(self, identity: UUID) -> CreationJob | None: ...
+    def execution(self, identity: UUID) -> AbstractContextManager[CreationJob | None]: ...
     def conversation_images(self, identity: UUID) -> builtins.list[CreationJob]: ...
 
 
@@ -356,9 +357,10 @@ class LibraryService:
         return job, created
 
     def execute(self, identity: UUID) -> CreationJob:
-        job = self.store.claim(identity)
-        if job is None:
-            return self.job(identity)
+        with self.store.execution(identity) as job:
+            return self._execute(job) if job is not None else self.job(identity)
+
+    def _execute(self, job: CreationJob) -> CreationJob:
         try:
             if job.request.kind.endswith("_draft"):
                 result = self.creator.draft(job.request)
@@ -415,7 +417,7 @@ class LibraryService:
         except Exception:
             job = job.model_copy(update={"state": "failed", "error": "operation_failed"})
         self.store.save_job(job)
-        return self.job(identity)
+        return self.job(job.id)
 
     def job(self, identity: UUID) -> CreationJob:
         return reconcile_job(self.store, self.images.get, identity)

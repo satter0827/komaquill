@@ -246,11 +246,6 @@ def test_visual_review_is_explicit_idempotent_and_used_by_drawing(story):
     review = VisualReview(
         operation_id=uuid4(),
         expected_revision=0,
-        player={
-            "appearance": "Brown hair",
-            "initial_clothing": "Red coat",
-            "current_clothing": "Blue shirt",
-        },
         character={
             "appearance": "Silver hair",
             "initial_clothing": "Black apron",

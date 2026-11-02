@@ -143,10 +143,14 @@ function ConversationView({ identity }: { identity: string }) {
           'request_not_found',
           'operation_conflict',
           'operation_busy',
+          'visual_review_required',
         ].includes(String(code))
-      )
+      ) {
         setPrepared(null)
-      else setOperationId(submitted.body.operation_id)
+        void cache.invalidateQueries({
+          queryKey: q.getConversationQueryKey({ path: { identity } }),
+        })
+      } else setOperationId(submitted.body.operation_id)
     },
     onSuccess: (result, submitted) => {
       confirmSend(result, submitted.body)

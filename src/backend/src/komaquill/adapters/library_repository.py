@@ -4,6 +4,8 @@ import builtins
 import hashlib
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import cast
 from uuid import UUID
 
@@ -602,7 +604,16 @@ class LibraryRepository:
                 alive = False
             except psutil.Error:
                 alive = True
+            else:
+                if value.state == "running":
+                    with self.database.execution_lock(identity) as available:
+                        alive = not available
             return value, alive
+
+    @contextmanager
+    def execution(self, identity: UUID) -> Iterator[CreationJob | None]:
+        with self.database.execution_lock(identity) as acquired:
+            yield self.claim(identity) if acquired else None
 
     @stored
     def claim(self, identity: UUID) -> CreationJob | None:

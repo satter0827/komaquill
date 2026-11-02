@@ -1757,13 +1757,19 @@
             "title": "Proposal Id"
           },
           "locale": {
-            "type": "string",
-            "enum": [
-              "ja",
-              "en"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ja",
+                  "en"
+                ]
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Locale",
-            "default": "ja"
+            "title": "Locale"
           },
           "allow_real_llm": {
             "type": "boolean",
@@ -5359,13 +5365,27 @@
             "title": "Appearance"
           },
           "initial_clothing": {
-            "type": "string",
-            "maxLength": 3000,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Initial Clothing"
           },
           "current_clothing": {
-            "type": "string",
-            "maxLength": 3000,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Current Clothing"
           }
         },
@@ -5391,19 +5411,31 @@
             "title": "Expected Revision"
           },
           "player": {
-            "$ref": "#/components/schemas/VisualPerson"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "character": {
-            "$ref": "#/components/schemas/VisualPerson"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "operation_id",
-          "expected_revision",
-          "player",
-          "character"
+          "expected_revision"
         ],
         "title": "VisualReview"
       },

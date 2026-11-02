@@ -28,12 +28,21 @@ def preset_changes(
 
 def preset_image_input(kind: PresetKind, value: Preset | PresetInput) -> dict[str, object]:
     fields = (
-        ("age", "gender", "appearance", "role", "description")
+        ("age", "gender", "appearance", "initial_clothing", "initial_held_objects")
         if kind == "character"
         else ("world", "place", "description")
     )
     data = value.model_dump(mode="json")
-    result = {key: data[key] for key in fields if data.get(key)}
+    result = {
+        key: data[key]
+        for key in fields
+        if data.get(key)
+        or (
+            kind == "character"
+            and key in {"initial_clothing", "initial_held_objects"}
+            and data.get(key) is not None
+        )
+    }
     if kind == "story" and not result:
         result["opening"] = data.get("opening", "")
     return result

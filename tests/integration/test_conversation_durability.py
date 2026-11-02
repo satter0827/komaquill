@@ -8,8 +8,8 @@ from uuid import uuid4
 
 import pytest
 from komaquill.adapters.database import Database, conversations, operations
-from komaquill.api import Client, KomaquillError
-from komaquill.conversations.models import ConversationInput, Reply, SendInput, StateCommand
+from komaquill.api import ActionRequest, Client, KomaquillError, MoveAction
+from komaquill.conversations.models import ConversationInput, Reply, SendInput
 from sqlalchemy import select
 
 
@@ -22,7 +22,7 @@ def test_validated_reply_survives_restart_without_another_model_call(tmp_path, m
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
     assert repository.running(request.operation_id)
-    reply = Reply(text="Retained response", state_patch={"place": "home"})
+    reply = Reply(text="Retained response", state_patch={"character": {"pose": "standing"}})
     repository.checkpoint(request.operation_id, reply)
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))
@@ -123,7 +123,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0007"
+                == "0008"
             )
         storage.engine.dispose()
 
@@ -139,9 +139,11 @@ def test_state_command_reconciles_a_dead_owner_before_applying(tmp_path):
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))
     assert not repository.running(request.operation_id)
-    changed = api.conversations.command(
+    changed, _ = api.conversations.accept_action(
         conversation.id,
-        StateCommand(command="set_state", expected_revision=0, state={"place": "home"}),
+        ActionRequest(
+            operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="home")
+        ),
     )
     assert changed.revision == 1
     assert api.operations.get(request.operation_id).state == "interrupted"
@@ -270,6 +272,8 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        connection.exec_driver_sql("DROP TABLE command_receipts")
+        connection.exec_driver_sql("DROP TABLE state_migration_originals")
         connection.exec_driver_sql("DROP TABLE preset_saves")
         connection.exec_driver_sql("DROP TABLE archived_conversations")
         connection.exec_driver_sql("DROP INDEX one_active_player")

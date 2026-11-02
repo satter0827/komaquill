@@ -61,5 +61,7 @@
   "efficiency.output": "New private output directory beneath .artifacts.",
   "efficiency.budget_exhausted": "The comparison budget is exhausted.",
   "efficiency.source_mismatch": "The loaded package does not match the selected source.",
-  "efficiency.progress": "{variant} {locale}, history={history}, turn={turn}: {state}"
+  "efficiency.progress": "{variant} {locale}, history={history}, turn={turn}: {state}",
+  "actions.collect_help": "Collect bounded player action and memory evidence with an explicitly permitted local model.",
+  "actions.output_path": "The output must be inside .artifacts."
 }

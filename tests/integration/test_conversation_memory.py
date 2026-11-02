@@ -10,6 +10,8 @@ from komaquill.conversations.models import Turn
 from komaquill.domain.roleplay import ConversationMemory
 from langchain_core.messages import AIMessage
 
+from tests.support.conversations import wire_scene
+
 
 def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, context_turns=4):
     import langchain_openai
@@ -26,7 +28,8 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
 
         def bind(self, **options):
             self.summary = (
-                "narration" not in options["response_format"]["json_schema"]["schema"]["properties"]
+                "current_state"
+                not in options["response_format"]["json_schema"]["schema"]["properties"]
             )
             self.limit = options["max_completion_tokens"]
             return self
@@ -45,13 +48,11 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
                     result = {"wrong": "value"}
             else:
                 result = {
-                    "current_state": api.conversations.get(saved.id).state.model_dump(mode="json"),
+                    "current_state": wire_scene(api.conversations.get(saved.id).state),
+                    "requested_player_action": None,
                     "text": "Let us go to the lighthouse."
                     if locale == "en"
                     else "約束の灯台へ行きましょう。",
-                    "narration": "The waves wash over the beach."
-                    if locale == "en"
-                    else "海辺で波の音が響いている。",
                 }
             return AIMessage(
                 content=json.dumps(result, ensure_ascii=False),
@@ -100,7 +101,7 @@ def test_summary_is_saved_and_reused_after_restart_without_rewriting_history(
     assert saved.state == original.state
     assert [summary for summary, _, _ in calls] == [True, False]
     assert calls[0][2] == 512
-    assert saved.memory.source_version == 2
+    assert saved.memory.source_version == 3
     summary_messages = calls[0][1]
     confirmed = [
         json.loads(message.content)["confirmed_state"]

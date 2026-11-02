@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4, uuid5
 
 import psutil
 from filelock import FileLock
@@ -31,15 +31,23 @@ from sqlalchemy import (
 from sqlalchemy.engine import URL, Connection
 
 from komaquill.adapters.storage_errors import stored
+from komaquill.conversations.actions import (
+    ActionRecord,
+    ActionRequest,
+    ProposalDismissal,
+    ProposedAction,
+    apply_action,
+)
 from komaquill.conversations.models import (
     Conversation,
     ConversationInput,
     Operation,
     Reply,
     SendInput,
-    StateCommand,
     Turn,
 )
+from komaquill.conversations.transitions import apply_reply, published_reply
+from komaquill.conversations.visuals import VisualReview, VisualReviewRecord
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import Run
 from komaquill.domain.roleplay import ConversationMemory
@@ -92,6 +100,12 @@ evaluations = Table(
     metadata,
     Column("id", String, primary_key=True),
     Column("payload", Text, nullable=False),
+)
+command_receipts = Table(
+    "command_receipts",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("fingerprint", String, nullable=False),
 )
 
 
@@ -156,6 +170,47 @@ class ConversationRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
 
+    def _command_key(
+        self, identity: UUID, kind: str, request: ActionRequest | ProposalDismissal | VisualReview
+    ) -> str:
+        return hashlib.sha256(
+            (str(identity) + kind + request.model_dump_json()).encode()
+        ).hexdigest()
+
+    def _known_command(
+        self,
+        connection: Connection,
+        identity: UUID,
+        kind: str,
+        request: ActionRequest | ProposalDismissal | VisualReview,
+    ) -> bool:
+        operation_id = str(request.operation_id)
+        previous = connection.execute(
+            select(command_receipts.c.fingerprint).where(command_receipts.c.id == operation_id)
+        ).scalar_one_or_none()
+        if previous is not None:
+            if previous != self._command_key(identity, kind, request):
+                raise conflict()
+            return True
+        if connection.execute(
+            select(operations.c.id).where(operations.c.id == operation_id)
+        ).first():
+            raise conflict()
+        return False
+
+    def _register_command(
+        self,
+        connection: Connection,
+        identity: UUID,
+        kind: str,
+        request: ActionRequest | ProposalDismissal | VisualReview,
+    ) -> None:
+        connection.execute(
+            command_receipts.insert().values(
+                id=str(request.operation_id), fingerprint=self._command_key(identity, kind, request)
+            )
+        )
+
     @stored
     def create(self, definition: ConversationInput) -> Conversation:
         result = Conversation(definition=definition, state=definition.initial_state)
@@ -202,6 +257,12 @@ class ConversationRepository:
             (str(identity) + request.model_dump_json()).encode()
         ).hexdigest()
         with self.database.transaction() as connection:
+            if connection.execute(
+                select(command_receipts.c.id).where(
+                    command_receipts.c.id == str(request.operation_id)
+                )
+            ).first():
+                raise conflict()
             previous = (
                 connection.execute(
                     select(operations).where(operations.c.id == str(request.operation_id))
@@ -220,6 +281,9 @@ class ConversationRepository:
                     raise conflict()
                 return self._operation(dict(previous)), False
             conversation = self._get(connection, identity)
+            if request.action_id is not None:
+                raise KomaquillError(code="invalid_request", retryable=False)
+            self._require_reviewed(conversation)
             if connection.execute(
                 select(operations.c.id).where(operations.c.active_slot == 1)
             ).first():
@@ -240,6 +304,222 @@ class ConversationRepository:
             )
             connection.commit()
             return result, True
+
+    def _require_reviewed(self, conversation: Conversation) -> None:
+        if any(
+            person.visual_review_required
+            for person in (conversation.definition.user, conversation.definition.character)
+        ):
+            raise KomaquillError(code="visual_review_required", retryable=False)
+
+    @stored
+    def accept_action(self, identity: UUID, request: ActionRequest) -> tuple[ActionRecord, bool]:
+        with self.database.transaction() as connection:
+            known = self._known_command(connection, identity, "action", request)
+            conversation = self._get(connection, identity)
+            for previous in conversation.actions:
+                if previous.request.operation_id == request.operation_id:
+                    if previous.request != request:
+                        raise conflict()
+                    return previous, False
+            if known:
+                raise KomaquillError(code="storage_failed", retryable=False)
+            self._require_reviewed(conversation)
+            if (
+                conversation.revision != request.expected_revision
+                or connection.execute(
+                    select(operations.c.id).where(operations.c.active_slot == 1)
+                ).first()
+            ):
+                raise conflict()
+            proposals = list(conversation.proposals)
+            if request.proposal_id is not None:
+                proposed = next((p for p in proposals if p.id == request.proposal_id), None)
+                if (
+                    proposed is None
+                    or proposed.state != "pending"
+                    or proposed.revision != conversation.revision
+                    or proposed.action != request.action
+                ):
+                    raise conflict()
+                proposals = [
+                    p.model_copy(update={"state": "applied", "decision_id": request.operation_id})
+                    if p.id == proposed.id
+                    else p
+                    for p in proposals
+                ]
+            state = apply_action(conversation.state, request.action)
+            reaction_id = uuid5(request.operation_id, "reaction")
+            if (
+                connection.execute(
+                    select(operations.c.id).where(operations.c.id == str(reaction_id))
+                ).first()
+                or connection.execute(
+                    select(command_receipts.c.id).where(command_receipts.c.id == str(reaction_id))
+                ).first()
+            ):
+                raise conflict()
+            record = ActionRecord(
+                request=request,
+                before=conversation.state,
+                after=state,
+                revision=conversation.revision + 1,
+                reaction_id=reaction_id,
+            )
+            updated = conversation.model_copy(
+                update={
+                    "state": state,
+                    "revision": record.revision,
+                    "actions": [*conversation.actions, record],
+                    "proposals": [
+                        p.model_copy(update={"state": "expired"}) if p.state == "pending" else p
+                        for p in proposals
+                    ],
+                }
+            )
+            reaction = SendInput(
+                operation_id=reaction_id,
+                action_id=request.operation_id,
+                locale=request.locale,
+                allow_real_llm=request.allow_real_llm,
+            )
+            operation = Operation(id=reaction_id, conversation_id=identity, state="accepted")
+            connection.execute(
+                conversations.update()
+                .where(conversations.c.id == str(identity))
+                .values(payload=updated.model_dump_json())
+            )
+            connection.execute(
+                operations.insert().values(
+                    id=str(reaction_id),
+                    conversation_id=str(identity),
+                    request=reaction.model_dump_json(),
+                    fingerprint=hashlib.sha256(
+                        (str(identity) + reaction.model_dump_json()).encode()
+                    ).hexdigest(),
+                    payload=operation.model_dump_json(),
+                    active_slot=1,
+                    owner_pid=os.getpid(),
+                    owner_started=str(psutil.Process().create_time()),
+                    base_revision=updated.revision,
+                )
+            )
+            self._register_command(connection, identity, "action", request)
+            connection.commit()
+            return record, True
+
+    @stored
+    def dismiss_proposal(
+        self, identity: UUID, proposal_id: UUID, request: ProposalDismissal
+    ) -> Conversation:
+        with self.database.transaction() as connection:
+            self._known_command(connection, identity, f"dismiss:{proposal_id}", request)
+            conversation = self._get(connection, identity)
+            proposed = next((p for p in conversation.proposals if p.id == proposal_id), None)
+            if (
+                proposed is not None
+                and proposed.state == "dismissed"
+                and proposed.decision_id == request.operation_id
+            ):
+                return conversation
+            if (
+                proposed is None
+                or proposed.state != "pending"
+                or conversation.revision != request.expected_revision
+            ):
+                raise conflict()
+            updated = conversation.model_copy(
+                update={
+                    "proposals": [
+                        p.model_copy(
+                            update={"state": "dismissed", "decision_id": request.operation_id}
+                        )
+                        if p.id == proposal_id
+                        else p
+                        for p in conversation.proposals
+                    ]
+                }
+            )
+            connection.execute(
+                conversations.update()
+                .where(conversations.c.id == str(identity))
+                .values(payload=updated.model_dump_json())
+            )
+            self._register_command(connection, identity, f"dismiss:{proposal_id}", request)
+            connection.commit()
+            return updated
+
+    @stored
+    def review_visuals(self, identity: UUID, review: VisualReview) -> Conversation:
+        with self.database.transaction() as connection:
+            self._known_command(connection, identity, "visual_review", review)
+            conversation = self._get(connection, identity)
+            for previous in conversation.visual_reviews:
+                if previous.request.operation_id == review.operation_id:
+                    if previous.request != review:
+                        raise conflict()
+                    return conversation
+            if (
+                conversation.revision != review.expected_revision
+                or connection.execute(
+                    select(operations.c.id).where(operations.c.active_slot == 1)
+                ).first()
+            ):
+                raise conflict()
+            if not any(
+                p.visual_review_required
+                for p in (conversation.definition.user, conversation.definition.character)
+            ):
+                raise conflict()
+            people, current, initial = {}, {}, {}
+            for role, key in (("player", "user"), ("character", "character")):
+                chosen = getattr(review, role)
+                people[key] = getattr(conversation.definition, key).model_copy(
+                    update={
+                        "appearance": chosen.appearance,
+                        "initial_clothing": chosen.initial_clothing,
+                        "visual_review_required": False,
+                    }
+                )
+                current[role] = getattr(conversation.state, role).model_copy(
+                    update={
+                        "appearance": None,
+                        "clothing": chosen.current_clothing,
+                    }
+                )
+                initial[role] = getattr(conversation.definition.initial_state, role).model_copy(
+                    update={
+                        "appearance": None,
+                        "clothing": chosen.initial_clothing,
+                    }
+                )
+            definition = conversation.definition.model_copy(
+                update={
+                    **people,
+                    "initial_state": conversation.definition.initial_state.model_copy(
+                        update=initial
+                    ),
+                }
+            )
+            updated = conversation.model_copy(
+                update={
+                    "definition": definition,
+                    "state": conversation.state.model_copy(update=current),
+                    "revision": conversation.revision + 1,
+                    "visual_reviews": [
+                        *conversation.visual_reviews,
+                        VisualReviewRecord(request=review, revision=conversation.revision + 1),
+                    ],
+                }
+            )
+            connection.execute(
+                conversations.update()
+                .where(conversations.c.id == str(identity))
+                .values(payload=updated.model_dump_json())
+            )
+            self._register_command(connection, identity, "visual_review", review)
+            connection.commit()
+            return updated
 
     def _row(self, connection: Connection, identity: UUID) -> dict[str, object]:
         row = (
@@ -336,7 +616,7 @@ class ConversationRepository:
             connection.execute(
                 operations.update()
                 .where(operations.c.id == str(identity))
-                .values(reply=reply.model_dump_json())
+                .values(reply=reply.model_dump_json(exclude_unset=True))
             )
             connection.commit()
 
@@ -351,22 +631,37 @@ class ConversationRepository:
         row = self._row(connection, identity)
         operation = self._operation(row)
         conversation = self._get(connection, operation.conversation_id)
+        reply = published_reply(conversation, reply)
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
         request = SendInput.model_validate_json(str(row["request"]))
-        state = reply.state_patch.apply(conversation.state)
+        state = apply_reply(conversation, reply)
         turn = Turn(
             operation_id=identity,
             user=request.text,
             assistant=reply.text,
             narration=reply.narration,
             state=state,
+            action_id=request.action_id,
         )
         updated = conversation.model_copy(
             update={
                 "state": state,
                 "turns": [*conversation.turns, turn],
                 "revision": conversation.revision + 1,
+                "proposals": [
+                    p.model_copy(update={"state": "expired"}) if p.state == "pending" else p
+                    for p in conversation.proposals
+                ]
+                + [
+                    ProposedAction(
+                        id=uuid4(),
+                        turn_id=identity,
+                        revision=conversation.revision + 1,
+                        action=action,
+                    )
+                    for action in reply.action_proposals
+                ],
             }
         )
         connection.execute(
@@ -419,31 +714,6 @@ class ConversationRepository:
                 ),
             )
             connection.commit()
-
-    @stored
-    def command(self, identity: UUID, command: StateCommand) -> Conversation:
-        with self.database.transaction() as connection:
-            conversation = self._get(connection, identity)
-            active = connection.execute(
-                select(operations.c.id).where(operations.c.active_slot == 1)
-            ).first()
-            if active or conversation.revision != command.expected_revision:
-                raise conflict()
-            state = (
-                conversation.definition.initial_state
-                if command.command == "reset_state"
-                else command.state
-            )
-            result = conversation.model_copy(
-                update={"state": state, "revision": conversation.revision + 1}
-            )
-            connection.execute(
-                conversations.update()
-                .where(conversations.c.id == str(identity))
-                .values(payload=result.model_dump_json())
-            )
-            connection.commit()
-            return result
 
     @stored
     def reconcile(self) -> None:

@@ -49,6 +49,7 @@ class ErrorCode(StrEnum):
     STOPPING = "stopping"
     PUBLICATION_FAILED = "publication_failed"
     MIGRATION_REQUIRED = "migration_required"
+    VISUAL_REVIEW_REQUIRED = "visual_review_required"
     STORAGE_FAILED = "storage_failed"
     SUBMISSION_UNKNOWN = "submission_unknown"
     UNSUPPORTED_ASSET = "unsupported_asset"

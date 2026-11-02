@@ -17,6 +17,9 @@ class PersonDefinition(Record):
     address: str = Field(default="", max_length=120)
     age: str = Field(default="", max_length=120)
     gender: str = Field(default="", max_length=120)
+    initial_clothing: str | None = Field(default=None, max_length=3000)
+    initial_held_objects: list[str] = Field(default_factory=list, max_length=30)
+    visual_review_required: bool = False
 
 
 class CharacterDefinition(PersonDefinition):
@@ -55,6 +58,10 @@ class ConversationState(Record):
     time: str = Field(default="", max_length=1000)
     goal: str = Field(default="", max_length=2000)
     relationship: str = Field(default="", max_length=2000)
+    character_place: str = Field(default="", max_length=1000)
+    scenery: str = Field(default="", max_length=4000)
+    intention: str = Field(default="", max_length=2000)
+    elapsed_minutes: int = Field(default=0, ge=0)
     player: PersonState = Field(default_factory=PersonState)
     character: PersonState = Field(default_factory=PersonState)
 
@@ -81,6 +88,8 @@ class StatePatch(Record):
     time: str | None = Field(default=None, max_length=1000)
     goal: str | None = Field(default=None, max_length=2000)
     relationship: str | None = Field(default=None, max_length=2000)
+    character_place: str | None = Field(default=None, max_length=1000)
+    scenery: str | None = Field(default=None, max_length=4000)
     player: PersonStatePatch | None = None
     character: PersonStatePatch | None = None
 
@@ -121,7 +130,7 @@ class StatePatch(Record):
 
 
 class ConversationMemory(Record):
-    source_version: Literal[1, 2] = 1
+    source_version: Literal[1, 2, 3] = 1
     text: str = Field(max_length=2048)
     through_turn: int = Field(ge=1)
     source_sha256: str

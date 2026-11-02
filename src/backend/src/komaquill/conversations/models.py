@@ -4,8 +4,10 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
+from komaquill.conversations.actions import ActionRecord, PlayerAction, ProposedAction
+from komaquill.conversations.visuals import VisualReviewRecord
 from komaquill.domain.roleplay import (
     CharacterDefinition,
     ConversationMemory,
@@ -56,6 +58,7 @@ class Turn(Record):
     state: ConversationState
     image_id: UUID | None = None
     created_at: datetime = Field(default_factory=now)
+    action_id: UUID | None = None
 
 
 class Conversation(Record):
@@ -66,13 +69,23 @@ class Conversation(Record):
     turns: list[Turn] = Field(default_factory=list)
     revision: int = 0
     created_at: datetime = Field(default_factory=now)
+    actions: list[ActionRecord] = Field(default_factory=list)
+    proposals: list[ProposedAction] = Field(default_factory=list)
+    visual_reviews: list[VisualReviewRecord] = Field(default_factory=list)
 
 
 class SendInput(Record):
     operation_id: UUID
-    text: str = Field(min_length=1, max_length=20000)
+    text: str = Field(default="", max_length=20000)
+    action_id: UUID | None = None
     allow_real_llm: bool = False
     locale: Literal["ja", "en"] | None = None
+
+    @model_validator(mode="after")
+    def content_required(self) -> "SendInput":
+        if not self.text.strip() and self.action_id is None:
+            raise ValueError("A message or a confirmed action is required.")
+        return self
 
 
 class Reply(Record):
@@ -82,7 +95,6 @@ class Reply(Record):
         description="Visible scene, background and character actions in the requested language.",
     )
     text: str = Field(
-        min_length=1,
         max_length=20000,
         description=(
             "Spoken words by assistant_character addressed to human_player. "
@@ -90,6 +102,7 @@ class Reply(Record):
         ),
     )
     state_patch: StatePatch
+    action_proposals: list[PlayerAction] = Field(default_factory=list, max_length=4)
 
 
 class Operation(Record):
@@ -101,9 +114,3 @@ class Operation(Record):
     image_id: UUID | None = None
     image_error: str | None = None
     created_at: datetime = Field(default_factory=now)
-
-
-class StateCommand(Record):
-    command: Literal["reset_state", "set_state"]
-    expected_revision: int = Field(ge=0)
-    state: ConversationState = Field(default_factory=ConversationState)

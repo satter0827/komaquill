@@ -288,13 +288,11 @@ def run_acceptance(wheel: Path | None = None) -> None:
             assert json.loads(command("chat", "status", conversation["id"]))["revision"] == 2
             command(
                 "chat",
-                "command",
+                "act",
                 conversation["id"],
-                "set_state",
                 "--expected-revision",
                 "2",
-                "--state",
-                '{"place":"garden"}',
+                '{"kind":"move","destination":"garden"}',
             )
             assert (
                 json.loads(command("chat", "resume", conversation["id"]))["state"]["place"]

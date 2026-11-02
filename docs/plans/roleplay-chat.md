@@ -115,7 +115,7 @@ Reactはfrontendのpackage.json、JavaScriptの固定依存と共通開発ツー
 | client.conversations.list / get | 保存済みの会話一覧と、選択した会話の確定済み履歴を取得する |
 | client.conversations.send | 会話ID、本文、操作IDを受け、一つの入力に対する進捗と結果を返す |
 | client.conversations.status | 公開可能な現在状態と処理状況を保存記録から取得する |
-| client.conversations.command | 型付きコマンドを検証して適用する |
+| client.conversations.act | 本人が確認した行動を適用し反応を生成する |
 | client.conversations.resume | 保存済み会話と未完了処理を照合し、元の入力から再開する |
 | client.operations.get | 受付済みの操作の進捗と結果を保存記録から取得する |
 | client.images.submit / get / collect | 完了を待たずに要求を送信し、状態取得と回収を行う |

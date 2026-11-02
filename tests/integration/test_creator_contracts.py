@@ -24,6 +24,8 @@ def downgrade(api, revision="0004"):
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        connection.exec_driver_sql("DROP TABLE command_receipts")
+        connection.exec_driver_sql("DROP TABLE state_migration_originals")
         connection.exec_driver_sql("DROP TABLE preset_saves")
         connection.exec_driver_sql("DROP TABLE archived_conversations")
         connection.exec_driver_sql("DROP INDEX one_active_player")
@@ -63,7 +65,20 @@ def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(tmp_pa
         record["backup_sha256"]
         == hashlib.sha256(report.with_name("before.sqlite3").read_bytes()).hexdigest()
     )
-    assert all(record["after"][key] == value for key, value in record["before"].items())
+    assert all(
+        record["after"][key] == value
+        for key, value in record["before"].items()
+        if key not in {"presets", "conversations"}
+    )
+    with storage.database(
+        tmp_path / ".artifacts/data/komaquill.sqlite3"
+    ).engine.connect() as connection:
+        assert (
+            connection.exec_driver_sql(
+                "SELECT count(*) FROM state_migration_originals"
+            ).scalar_one()
+            >= 1
+        )
     assert Client(tmp_path).conversations.get(saved.id) == before
     assert Client(tmp_path).library.preferences().locale == "ja"
 

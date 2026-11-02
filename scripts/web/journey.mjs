@@ -36,11 +36,10 @@ export async function captureJourney(page, evidence, { live = false } = {}) {
     await page.getByLabel(ja.name, { exact: true }).fill(actor)
     await page
       .getByLabel(ja.appearance, { exact: true })
-      .fill(
-        live
-          ? '32歳の成人女性。短い赤茶色の髪。緑のコート。'
-          : 'An adult with short red hair and a green coat.',
-      )
+      .fill(live ? '短い赤茶色の髪。' : 'An adult with short red hair.')
+    await page
+      .getByLabel(ja.initial_clothing, { exact: true })
+      .fill(live ? '緑のコート' : 'A green coat')
     if (live) {
       await page.getByLabel(ja.age, { exact: true }).fill('32')
       await page.getByLabel(ja.gender, { exact: true }).fill('女性')

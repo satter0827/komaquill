@@ -39,14 +39,16 @@ from komaquill.api import CharacterInput, PresetSaveOptions
 
 result = client.library.save_preset(
     "character",
-    CharacterInput(name="Mira", age="60", gender="man", appearance="Short silver hair, black apron"),
+    CharacterInput(name="Mira", age="60", gender="man", appearance="Short silver hair", initial_clothing="Black apron"),
     PresetSaveOptions(operation_id=uuid4(), allow_real_llm=True),
 )
 ```
 
 result.presetは保存済み本文、result.jobは画像の操作、result.image_errorは画像受付の失敗を表す。更新ではtarget_idとexpected_revisionを渡す。再確認は同じ操作IDと同じ入力を使い、明示的な再生成はimage_policyのalwaysを指定する。本文だけを保存するときはnoneを使う。HTTPはcharacters/saveとstories/saveで同じ処理を呼ぶ。
 
-ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateと状態編集はConversationStateを使い、自分と相手の服装・持ち物を別に保持する。長い会話の要約は自動保存され、元の本文と現在状態は維持される。
+ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateはConversationStateを使い、自分と相手の服装・持ち物を別に保持する。長い会話の要約は自動保存され、元の本文と現在状態は維持される。
+
+開始時のplace・goalをinitial_stateへ指定しなければ、scenarioの同じ項目を使う。initial_stateへ明示した値は空文字列も含めて優先する。解決した初期状態は会話に保存される。現在状態の変更には行動を使い、開始状態への全置換は提供しない。プリセット経由とHTTPも同じ処理を使う。
 
 旧状態を安全に変換できない会話はarchive.conversationsとarchive.conversationで読む。元の記録を新しい会話として推測変換しない。
 
@@ -60,3 +62,24 @@ ConversationInputのuser・character・scenarioは、公開するPersonDefinitio
 inspection = client.inspect_image_links()
 result = client.repair_image_links(inspection.id)
 ```
+
+## 自分の行動を確定する
+
+```python
+from komaquill.api import ActionRequest, MoveAction
+
+saved = client.conversations.get(conversation.id)
+record = client.conversations.act(
+    saved.id,
+    ActionRequest(
+        operation_id=uuid4(),
+        expected_revision=saved.revision,
+        action=MoveAction(destination="Beach"),
+        locale="en",
+        allow_real_llm=True,
+    ),
+)
+reaction = client.operations.get(record.reaction_id)
+```
+
+行動は返答より先に保存する。反応の失敗と行動の確定を区別し、同じ行動をやり直さず同じ操作IDで結果を確認する。保存済みの行動はconversations.actions、会話中の案はConversation.proposalsで取得する。古い版の案は適用しない。詳細は[自分の行動と現在の場面](../current/player-actions.md)を参照する。

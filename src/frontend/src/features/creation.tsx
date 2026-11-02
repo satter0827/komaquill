@@ -4,7 +4,12 @@ import * as q from '../api/generated/@tanstack/react-query.gen'
 import type { CreationJob, CreationRequest } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
-import { creationOptions, keepTerminal, refreshPresets } from './operations'
+import {
+  creationOptions,
+  keepTerminal,
+  refreshPresets,
+  watchReceipt,
+} from './operations'
 
 export function useCreation() {
   const cache = useQueryClient()
@@ -40,6 +45,20 @@ export function useCreation() {
     ...creationOptions(identity ?? prepared?.operation_id ?? ''),
     enabled: !!identity || (!!prepared && mutation.isError),
   })
+  const reset = mutation.reset
+  useEffect(() => {
+    if (!mutation.isError || !prepared) return
+    return watchReceipt(
+      cache,
+      q.getJobQueryKey({ path: { identity: prepared.operation_id } }),
+      prepared.operation_id,
+      (confirmed: CreationJob) => {
+        setIdentity(confirmed.id)
+        setPrepared(null)
+        reset()
+      },
+    )
+  }, [cache, mutation.isError, prepared, reset])
 
   useEffect(() => {
     if (job.data?.state === 'complete') void refreshPresets(cache)

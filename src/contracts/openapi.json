@@ -966,10 +966,10 @@
         }
       }
     },
-    "/api/v1/conversations/{identity}/commands": {
+    "/api/v1/conversations/{identity}/actions": {
       "post": {
-        "summary": "Command",
-        "operationId": "apply_command",
+        "summary": "Perform Action",
+        "operationId": "perform_action",
         "parameters": [
           {
             "name": "identity",
@@ -987,7 +987,159 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StateCommand"
+                "$ref": "#/components/schemas/ActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Get Actions",
+        "operationId": "get_actions",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ActionRecord"
+                  },
+                  "title": "Response Get Actions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/proposals/{proposal_id}/dismiss": {
+      "post": {
+        "summary": "Dismiss Proposal",
+        "operationId": "dismiss_proposal",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Proposal Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposalDismissal"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/visuals": {
+      "put": {
+        "summary": "Review Visuals",
+        "operationId": "review_visuals",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisualReview"
               }
             }
           }
@@ -1517,6 +1669,117 @@
   },
   "components": {
     "schemas": {
+      "ActionRecord": {
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/ActionRequest"
+          },
+          "before": {
+            "$ref": "#/components/schemas/ConversationState"
+          },
+          "after": {
+            "$ref": "#/components/schemas/ConversationState"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "reaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Reaction Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request",
+          "before",
+          "after",
+          "revision",
+          "reaction_id"
+        ],
+        "title": "ActionRecord"
+      },
+      "ActionRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MoveAction"
+              },
+              {
+                "$ref": "#/components/schemas/WaitAction"
+              },
+              {
+                "$ref": "#/components/schemas/PrepareAction"
+              },
+              {
+                "$ref": "#/components/schemas/IntentionAction"
+              }
+            ],
+            "title": "Action",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "intention": "#/components/schemas/IntentionAction",
+                "move": "#/components/schemas/MoveAction",
+                "prepare": "#/components/schemas/PrepareAction",
+                "wait": "#/components/schemas/WaitAction"
+              }
+            }
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "ja",
+              "en"
+            ],
+            "title": "Locale",
+            "default": "ja"
+          },
+          "allow_real_llm": {
+            "type": "boolean",
+            "title": "Allow Real Llm",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "action"
+        ],
+        "title": "ActionRequest"
+      },
       "ArchivedConversation": {
         "properties": {
           "id": {
@@ -1618,6 +1881,31 @@
             "title": "Gender",
             "default": ""
           },
+          "initial_clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Clothing"
+          },
+          "initial_held_objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Initial Held Objects"
+          },
+          "visual_review_required": {
+            "type": "boolean",
+            "title": "Visual Review Required",
+            "default": false
+          },
           "personality": {
             "type": "string",
             "maxLength": 3000,
@@ -1691,6 +1979,31 @@
             "maxLength": 120,
             "title": "Gender",
             "default": ""
+          },
+          "initial_clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Clothing"
+          },
+          "initial_held_objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Initial Held Objects"
+          },
+          "visual_review_required": {
+            "type": "boolean",
+            "title": "Visual Review Required",
+            "default": false
           },
           "personality": {
             "type": "string",
@@ -1824,6 +2137,31 @@
             "title": "Gender",
             "default": ""
           },
+          "initial_clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Clothing"
+          },
+          "initial_held_objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Initial Held Objects"
+          },
+          "visual_review_required": {
+            "type": "boolean",
+            "title": "Visual Review Required",
+            "default": false
+          },
           "personality": {
             "type": "string",
             "maxLength": 3000,
@@ -1865,6 +2203,9 @@
           "address",
           "age",
           "gender",
+          "initial_clothing",
+          "initial_held_objects",
+          "visual_review_required",
           "personality",
           "speech",
           "background",
@@ -2078,6 +2419,27 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ActionRecord"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedAction"
+            },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "visual_reviews": {
+            "items": {
+              "$ref": "#/components/schemas/VisualReviewRecord"
+            },
+            "type": "array",
+            "title": "Visual Reviews"
           }
         },
         "additionalProperties": false,
@@ -2193,7 +2555,8 @@
             "type": "integer",
             "enum": [
               1,
-              2
+              2,
+              3
             ],
             "title": "Source Version",
             "default": 1
@@ -2311,6 +2674,30 @@
             "maxLength": 2000,
             "title": "Relationship",
             "default": ""
+          },
+          "character_place": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Character Place",
+            "default": ""
+          },
+          "scenery": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Scenery",
+            "default": ""
+          },
+          "intention": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Intention",
+            "default": ""
+          },
+          "elapsed_minutes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Elapsed Minutes",
+            "default": 0
           },
           "player": {
             "$ref": "#/components/schemas/PersonState"
@@ -2544,6 +2931,7 @@
           "stopping",
           "publication_failed",
           "migration_required",
+          "visual_review_required",
           "storage_failed",
           "submission_unknown",
           "unsupported_asset",
@@ -2858,6 +3246,50 @@
         "title": "InputArtifact",
         "description": "Reference immutable validated local bytes independently of a GPU endpoint."
       },
+      "IntentionAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "intention",
+            "title": "Kind",
+            "default": "intention"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "IntentionAction"
+      },
+      "MoveAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "move",
+            "title": "Kind",
+            "default": "move"
+          },
+          "destination": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Destination"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "destination"
+        ],
+        "title": "MoveAction"
+      },
       "OperationStage": {
         "type": "string",
         "enum": [
@@ -3068,6 +3500,31 @@
             "maxLength": 120,
             "title": "Gender",
             "default": ""
+          },
+          "initial_clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Clothing"
+          },
+          "initial_held_objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Initial Held Objects"
+          },
+          "visual_review_required": {
+            "type": "boolean",
+            "title": "Visual Review Required",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3189,6 +3646,31 @@
             "maxLength": 120,
             "title": "Gender",
             "default": ""
+          },
+          "initial_clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Clothing"
+          },
+          "initial_held_objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Initial Held Objects"
+          },
+          "visual_review_required": {
+            "type": "boolean",
+            "title": "Visual Review Required",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3297,6 +3779,31 @@
             "maxLength": 120,
             "title": "Gender",
             "default": ""
+          },
+          "initial_clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Clothing"
+          },
+          "initial_held_objects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Initial Held Objects"
+          },
+          "visual_review_required": {
+            "type": "boolean",
+            "title": "Visual Review Required",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3314,7 +3821,10 @@
           "role",
           "address",
           "age",
-          "gender"
+          "gender",
+          "initial_clothing",
+          "initial_held_objects",
+          "visual_review_required"
         ],
         "title": "PlayerProfile"
       },
@@ -3372,6 +3882,70 @@
         "additionalProperties": false,
         "type": "object",
         "title": "Preferences"
+      },
+      "PrepareAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "prepare",
+            "title": "Kind",
+            "default": "prepare"
+          },
+          "clothing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clothing"
+          },
+          "pose": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose"
+          },
+          "expression": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expression"
+          },
+          "held_objects": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 30
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Objects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PrepareAction"
       },
       "PresetRef": {
         "properties": {
@@ -3533,6 +4107,103 @@
         ],
         "title": "PromptSource",
         "description": "Retain original UTF-8 input without an absolute path."
+      },
+      "ProposalDismissal": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision"
+        ],
+        "title": "ProposalDismissal"
+      },
+      "ProposedAction": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Turn Id"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "action": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MoveAction"
+              },
+              {
+                "$ref": "#/components/schemas/WaitAction"
+              },
+              {
+                "$ref": "#/components/schemas/PrepareAction"
+              },
+              {
+                "$ref": "#/components/schemas/IntentionAction"
+              }
+            ],
+            "title": "Action",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "intention": "#/components/schemas/IntentionAction",
+                "move": "#/components/schemas/MoveAction",
+                "prepare": "#/components/schemas/PrepareAction",
+                "wait": "#/components/schemas/WaitAction"
+              }
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "dismissed",
+              "expired"
+            ],
+            "title": "State",
+            "default": "pending"
+          },
+          "decision_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "turn_id",
+          "revision",
+          "action"
+        ],
+        "title": "ProposedAction"
       },
       "RetainedImageInput": {
         "properties": {
@@ -4119,8 +4790,20 @@
           "text": {
             "type": "string",
             "maxLength": 20000,
-            "minLength": 1,
-            "title": "Text"
+            "title": "Text",
+            "default": ""
+          },
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
           },
           "allow_real_llm": {
             "type": "boolean",
@@ -4146,8 +4829,7 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "operation_id",
-          "text"
+          "operation_id"
         ],
         "title": "SendInput"
       },
@@ -4265,33 +4947,6 @@
           "sample_input"
         ],
         "title": "SettingsView"
-      },
-      "StateCommand": {
-        "properties": {
-          "command": {
-            "type": "string",
-            "enum": [
-              "reset_state",
-              "set_state"
-            ],
-            "title": "Command"
-          },
-          "expected_revision": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Expected Revision"
-          },
-          "state": {
-            "$ref": "#/components/schemas/ConversationState"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "command",
-          "expected_revision"
-        ],
-        "title": "StateCommand"
       },
       "StoryDefinition": {
         "properties": {
@@ -4632,6 +5287,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
           }
         },
         "additionalProperties": false,
@@ -4683,6 +5350,107 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VisualPerson": {
+        "properties": {
+          "appearance": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Appearance"
+          },
+          "initial_clothing": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Initial Clothing"
+          },
+          "current_clothing": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Current Clothing"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "appearance",
+          "initial_clothing",
+          "current_clothing"
+        ],
+        "title": "VisualPerson"
+      },
+      "VisualReview": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "player": {
+            "$ref": "#/components/schemas/VisualPerson"
+          },
+          "character": {
+            "$ref": "#/components/schemas/VisualPerson"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "player",
+          "character"
+        ],
+        "title": "VisualReview"
+      },
+      "VisualReviewRecord": {
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/VisualReview"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request",
+          "revision"
+        ],
+        "title": "VisualReviewRecord"
+      },
+      "WaitAction": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "wait",
+            "title": "Kind",
+            "default": "wait"
+          },
+          "minutes": {
+            "type": "integer",
+            "maximum": 43200.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "minutes"
+        ],
+        "title": "WaitAction"
       }
     }
   }

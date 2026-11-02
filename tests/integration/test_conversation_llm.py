@@ -9,9 +9,17 @@ from komaquill.conversations.models import ConversationInput, SendInput
 from komaquill.domain.roleplay import ConversationState
 from komaquill.library.models import CreationRequest
 
+from tests.support.conversations import set_state
+
 
 def wire_state(value):
-    return ConversationState.model_validate(value).model_dump(mode="json")
+    state = ConversationState.model_validate(value)
+    return {
+        "relationship": state.relationship,
+        "companion_movement": "join_player" if state.place else "stay",
+        "scenery": state.scenery,
+        "character": state.character.model_dump(exclude={"appearance"}),
+    }
 
 
 @pytest.mark.parametrize("repair", [False, True])
@@ -30,7 +38,7 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
-            if "narration" in wire.get("properties", {}):
+            if "current_state" in wire.get("properties", {}):
                 from komaquill.adapters.llm.conversation import NarrativeReply
 
                 assert wire["properties"]["text"]["description"].startswith(
@@ -72,7 +80,7 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     from types import SimpleNamespace
 
     from komaquill.adapters.llm.conversation import NarrativeReply
-    from komaquill.conversations.models import Reply, StateCommand
+    from komaquill.conversations.models import Reply
 
     api = Client.initialize(tmp_path)
     original = api.conversations.responder
@@ -82,7 +90,8 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
             locale="en",
             user={"name": "灯", "age": "28", "gender": "woman"},
             character={"name": "Mira", "age": "32", "gender": "woman", "appearance": "green coat"},
-            scenario={"description": "A quiet bookshop"},
+            scenario={"description": "A quiet bookshop", "goal": "find a book"},
+            initial_state={"place": "garden"},
         )
     )
     api.conversations.responder = SimpleNamespace(
@@ -91,8 +100,6 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
             narration="Mira sits in the garden wearing a blue shirt.",
             state_patch={
                 "character": {"clothing": "blue shirt"},
-                "place": "garden",
-                "goal": "find a book",
             },
         )
     )
@@ -100,21 +107,16 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
         conversation.id, SendInput(operation_id=uuid4(), text="Sit in the garden")
     )
     current = api.conversations.get(conversation.id)
-    api.conversations.command(
-        current.id,
-        StateCommand(
-            command="set_state",
-            expected_revision=current.revision,
-            state=current.state.model_copy(update={"place": "tower"}),
-        ),
+    set_state(
+        api, current.id, current.state.model_copy(update={"place": "tower"}), current.revision
     )
     calls = []
     original.execution.invoke = lambda *_a, **_k: (
         calls.append(_a)
         or NarrativeReply(
+            requested_player_action=None,
             current_state=wire_state({"place": "tower", "character": {"clothing": "blue shirt"}}),
             text="Here we are.",
-            narration="Mira sits in the tower wearing a blue shirt.",
         )
     )
     original.reply(
@@ -151,7 +153,7 @@ def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkey
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
-            if "narration" in wire.get("properties", {}):
+            if "current_state" in wire.get("properties", {}):
                 from komaquill.adapters.llm.conversation import NarrativeReply
 
                 assert wire["properties"]["text"]["description"].startswith(
@@ -207,8 +209,8 @@ def test_operation_conditions_replace_frozen_prompt_defaults(tmp_path, monkeypat
             return AIMessage(
                 content=json.dumps(
                     {
+                        "requested_player_action": None,
                         "current_state": wire_state({}),
-                        "narration": "Rain taps against the window.",
                         "text": "Here is the book.",
                     }
                 ),
@@ -315,9 +317,10 @@ def test_image_description_requires_english_with_one_bounded_repair(
             return AIMessage(
                 content=json.dumps(
                     {
+                        "status": "translated",
                         "text": first_scene
                         if len(calls) == 1
-                        else "An adult woman with short silver hair points at a book."
+                        else "An adult woman with short silver hair points at a book.",
                     }
                 ),
                 response_metadata={"model_name": self.model},
@@ -343,8 +346,8 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
     options = []
     response = json.dumps(
         {
-            "current_state": wire_state({"place": "home"}),
-            "narration": "Rain taps against the window.",
+            "requested_player_action": None,
+            "current_state": wire_state({}),
             "text": "A saved reply.",
         }
     )
@@ -422,7 +425,7 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
         )
     if case in {"valid", "repair"}:
         assert result.state == "complete"
-        assert client.conversations.get(conversation.id).state.place == "home"
+        assert client.conversations.get(conversation.id).state.place == ""
     else:
         assert result.state == "failed" and client.conversations.get(conversation.id).turns == []
         assert "private" not in (result.error or "")
@@ -569,7 +572,7 @@ def test_language_switch_schema_and_repair_target_narration(
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
-            if "narration" in wire.get("properties", {}):
+            if "current_state" in wire.get("properties", {}):
                 from komaquill.adapters.llm.conversation import NarrativeReply
 
                 assert wire["properties"]["text"]["description"].startswith(
@@ -582,9 +585,11 @@ def test_language_switch_schema_and_repair_target_narration(
             return AIMessage(
                 content=json.dumps(
                     {
-                        "current_state": wire_state({}),
+                        "requested_player_action": None,
+                        "current_state": wire_state(
+                            {"scenery": wrong if len(calls) == 1 else right}
+                        ),
                         "text": "こんにちは。" if locale == "ja" else "Hello.",
-                        "narration": wrong if len(calls) == 1 else right,
                     },
                     ensure_ascii=False,
                 ),
@@ -614,6 +619,6 @@ def test_language_switch_schema_and_repair_target_narration(
         SendInput(operation_id=uuid4(), text="Continue", locale=locale, allow_real_llm=True),
     )
     assert operation.state == "complete" and len(calls) == 2
-    assert language in schemas[0]["properties"]["narration"]["description"]
-    assert "narration" in calls[-1][-1].content
+    assert language in calls[0][0].content
+    assert "scenery" in calls[-1][-1].content
     assert sum(message.type == "system" for message in calls[-1]) == 1

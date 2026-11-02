@@ -45,6 +45,8 @@ def legacy(tmp_path, *, state=None, corrupt=False):
             text("INSERT INTO conversations(id,payload) VALUES(:id,:payload)"),
             {"id": str(identity), "payload": payload},
         )
+        connection.exec_driver_sql("DROP TABLE command_receipts")
+        connection.exec_driver_sql("DROP TABLE state_migration_originals")
         connection.exec_driver_sql("DROP TABLE preset_saves")
         connection.exec_driver_sql("DROP TABLE archived_conversations")
         connection.exec_driver_sql("UPDATE alembic_version SET version_num='0006'")

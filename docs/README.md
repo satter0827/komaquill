@@ -45,3 +45,7 @@ Klein 4B・9Bの切替、負プロンプトの廃止、GPUとCUの制限は[設�
 モデルと操作の共通化、AniEdit・WAI構成、直接取得の判断は[設計判断](decisions/0012-model-interface-and-acquisition.md)、実施中の確認事項は[移行計画](plans/model-interface.md)を参照してください。
 
 複数題材の未達解消は[継続計画](plans/story-stability.md)、実行と判定は[継続検証](verification/story-stability.md)を参照してください。
+
+右ペインからの行動と、会話・画像へ反映する状態の契約は[自分の行動と現在の場面](current/player-actions.md)、判断の背景は[行動の確定と視覚情報の共有](decisions/0016-player-actions-and-visual-state.md)を参照してください。
+
+今回の機能確認、実4B・WAIの結果と残る制約は[自分の行動と現在場面の検証](verification/results/player-actions-and-scenes.md)を参照してください。

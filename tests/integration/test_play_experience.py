@@ -7,8 +7,11 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from komaquill.api import Client, CreationRequest, KomaquillError, PlayerInput
-from komaquill.conversations.models import Reply, SendInput, StateCommand
+from komaquill.conversations.models import Reply, SendInput
+from komaquill.domain.roleplay import ConversationState
 from komaquill.interfaces.http.app import create_app
+
+from tests.support.conversations import set_state
 
 
 def start(api):
@@ -48,13 +51,14 @@ def test_dialogue_persists_narration_without_submitting_an_image(tmp_path):
         reply=lambda *_: Reply(
             text="Shall we visit the garden?",
             narration="The shopkeeper puts on a blue coat.",
-            state_patch={"place": "garden", "character": {"clothing": "blue coat"}},
+            state_patch={"character": {"clothing": "blue coat"}, "scenery": "Rain on the windows."},
         )
     )
     request = SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
     assert api.conversations.send(conversation.id, request).state == "complete"
     saved = Client(tmp_path).conversations.get(conversation.id)
-    assert saved.turns[0].narration == "The shopkeeper puts on a blue coat."
+    assert saved.turns[0].narration == "Rain on the windows."
+    assert saved.state.character.clothing == "blue coat"
     assert api.images.list() == []
     assert api.library.conversation_images(conversation.id) == []
     drawing, _ = api.library.accept(
@@ -72,13 +76,13 @@ def test_dialogue_persists_narration_without_submitting_an_image(tmp_path):
 def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_path):
     api = Client.initialize(tmp_path)
     conversation = start(api)
-    changed = api.conversations.command(
+    changed = set_state(
+        api,
         conversation.id,
-        StateCommand(
-            command="set_state",
-            expected_revision=0,
-            state={"place": "garden", "character": {"clothing": "blue coat"}},
+        ConversationState.model_validate(
+            {"place": "garden", "character_place": "garden", "character": {"clothing": "blue coat"}}
         ),
+        0,
     )
     request = CreationRequest(
         operation_id=uuid4(),
@@ -88,12 +92,9 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         allow_real_llm=True,
     )
     accepted, created = api.library.accept(request)
-    assert created and json.loads(accepted.original)["current_character"]["clothing"] == "blue coat"
-    api.conversations.command(
-        conversation.id,
-        StateCommand(
-            command="set_state", expected_revision=changed.revision, state={"place": "tower"}
-        ),
+    assert created and json.loads(accepted.original)["character"]["clothing"] == "blue coat"
+    set_state(
+        api, conversation.id, ConversationState.model_validate({"place": "tower"}), changed.revision
     )
     calls = []
 
@@ -123,6 +124,39 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         api.library.accept(request.model_copy(update={"operation_id": uuid4()}))
 
 
+def test_absent_companion_uses_environment_conditions_before_submission(tmp_path):
+    from komaquill.api import ConversationInput
+
+    api = Client.initialize(tmp_path)
+    conversation = api.conversations.create(
+        ConversationInput(
+            title="Alone",
+            initial_state={
+                "place": "Beach",
+                "character_place": "Bookshop",
+                "time": "Sunset",
+            },
+        )
+    )
+    submitted = []
+    api.library.images = SimpleNamespace(
+        submit=lambda prompt, **options: submitted.append((prompt, options)),
+        get=lambda identity: (_ for _ in ()).throw(KomaquillError(code="request_not_found")),
+    )
+    request = CreationRequest(
+        operation_id=uuid4(),
+        kind="conversation_image",
+        target_id=conversation.id,
+        expected_revision=0,
+    )
+    job, _ = api.library.accept(request)
+    assert api.library.execute(job.id).state == "submitted"
+    prompt, options = submitted[0]
+    assert options["purpose"] == "banner"
+    assert prompt.startswith("Unoccupied setting, environment only.")
+    assert "Bookshop" not in prompt and "Beach" in prompt
+
+
 @pytest.mark.parametrize("choice", ["selected", "unique", "ambiguous", "busy"])
 def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_work(
     tmp_path, choice
@@ -138,6 +172,8 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
         api.conversations.accept(conversation.id, SendInput(operation_id=uuid4(), text="Pending"))
     source = tmp_path / ".artifacts/data/komaquill.sqlite3"
     with sqlite3.connect(source) as db:
+        db.execute("DROP TABLE command_receipts")
+        db.execute("DROP TABLE state_migration_originals")
         db.execute("DROP TABLE preset_saves")
         db.execute("DROP TABLE archived_conversations")
         db.execute("DROP INDEX one_active_player")
@@ -170,8 +206,9 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
     record = json.loads(report.read_bytes())
     assert record["state"] == "complete"
     reopened = Client(tmp_path)
-    assert reopened.player.get() == profile
-    assert reopened.conversations.get(conversation.id) == conversation
+    assert reopened.player.get().name == profile.name
+    assert reopened.player.get().visual_review_required == bool(profile.appearance)
+    assert reopened.conversations.get(conversation.id).turns == conversation.turns
     assert reopened.library.preferences().llm_profile == "lmstudio-4b"
     assert report.with_name("before.sqlite3").is_file()
 
@@ -239,7 +276,6 @@ def test_drawing_uses_canonical_state_instead_of_conflicting_narration(tmp_path)
             narration="The woman wears a white shirt in a shop.",
             state_patch={
                 "character": {"clothing": "blue shirt", "pose": "sitting"},
-                "place": "garden",
             },
         )
     )
@@ -270,4 +306,4 @@ def test_drawing_uses_canonical_state_instead_of_conflicting_narration(tmp_path)
     assert "blue shirt" in calls[0][0] and "white shirt" not in calls[0][0]
     assert '"player"' not in calls[0][0]
     assert calls[0][1]["purpose"] == "conversation_image"
-    assert json.loads(captured.original)["current_character"]["clothing"] == "blue shirt"
+    assert json.loads(captured.original)["character"]["clothing"] == "blue shirt"

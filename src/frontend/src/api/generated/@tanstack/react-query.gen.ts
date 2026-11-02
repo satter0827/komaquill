@@ -3,8 +3,8 @@
 import { type DefaultError, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { applyCommand, collectImage, createConversation, createJob, deleteCharacter, deleteStory, drawConversation, duplicateCharacter, duplicateStory, getArchivedConversation, getCharacter, getConversation, getConversationOperations, getImage, getImageFile, getJob, getOperation, getPlayer, getPreferences, getRuntime, getRuntimeViews, getRuntimeWorkflow, getSettings, getStory, importInput, listArchivedConversations, listCharacters, listConversationImages, listConversations, listImages, listStories, type Options, refreshRuntime, resumeConversation, saveCharacter, savePreferences, saveStory, sendTurn, startConversation, startRuntime, stopRuntime, submitImage, updatePlayer } from '../sdk.gen';
-import type { ApplyCommandData, ApplyCommandError, ApplyCommandResponse, CollectImageData, CollectImageError, CollectImageResponse, CreateConversationData, CreateConversationError, CreateConversationResponse, CreateJobData, CreateJobError, CreateJobResponse, DeleteCharacterData, DeleteCharacterError, DeleteCharacterResponse, DeleteStoryData, DeleteStoryError, DeleteStoryResponse, DrawConversationData, DrawConversationError, DrawConversationResponse, DuplicateCharacterData, DuplicateCharacterError, DuplicateCharacterResponse, DuplicateStoryData, DuplicateStoryError, DuplicateStoryResponse, GetArchivedConversationData, GetArchivedConversationError, GetArchivedConversationResponse, GetCharacterData, GetCharacterError, GetCharacterResponse, GetConversationData, GetConversationError, GetConversationOperationsData, GetConversationOperationsError, GetConversationOperationsResponse, GetConversationResponse, GetImageData, GetImageError, GetImageFileData, GetImageFileError, GetImageResponse, GetJobData, GetJobError, GetJobResponse, GetOperationData, GetOperationError, GetOperationResponse, GetPlayerData, GetPlayerResponse, GetPreferencesData, GetPreferencesResponse, GetRuntimeData, GetRuntimeResponse, GetRuntimeViewsData, GetRuntimeViewsResponse, GetRuntimeWorkflowData, GetRuntimeWorkflowError, GetSettingsData, GetSettingsResponse, GetStoryData, GetStoryError, GetStoryResponse, ImportInputData, ImportInputError, ImportInputResponse, ListArchivedConversationsData, ListArchivedConversationsResponse, ListCharactersData, ListCharactersResponse, ListConversationImagesData, ListConversationImagesError, ListConversationImagesResponse, ListConversationsData, ListConversationsResponse, ListImagesData, ListImagesResponse, ListStoriesData, ListStoriesResponse, RefreshRuntimeData, RefreshRuntimeResponse, ResumeConversationData, ResumeConversationError, ResumeConversationResponse, SaveCharacterData, SaveCharacterError, SaveCharacterResponse, SavePreferencesData, SavePreferencesError, SavePreferencesResponse, SaveStoryData, SaveStoryError, SaveStoryResponse, SendTurnData, SendTurnError, SendTurnResponse, StartConversationData, StartConversationError, StartConversationResponse, StartRuntimeData, StartRuntimeError, StartRuntimeResponse, StopRuntimeData, StopRuntimeResponse, SubmitImageData, SubmitImageError, SubmitImageResponse, UpdatePlayerData, UpdatePlayerError, UpdatePlayerResponse } from '../types.gen';
+import { collectImage, createConversation, createJob, deleteCharacter, deleteStory, dismissProposal, drawConversation, duplicateCharacter, duplicateStory, getActions, getArchivedConversation, getCharacter, getConversation, getConversationOperations, getImage, getImageFile, getJob, getOperation, getPlayer, getPreferences, getRuntime, getRuntimeViews, getRuntimeWorkflow, getSettings, getStory, importInput, listArchivedConversations, listCharacters, listConversationImages, listConversations, listImages, listStories, type Options, performAction, refreshRuntime, resumeConversation, reviewVisuals, saveCharacter, savePreferences, saveStory, sendTurn, startConversation, startRuntime, stopRuntime, submitImage, updatePlayer } from '../sdk.gen';
+import type { CollectImageData, CollectImageError, CollectImageResponse, CreateConversationData, CreateConversationError, CreateConversationResponse, CreateJobData, CreateJobError, CreateJobResponse, DeleteCharacterData, DeleteCharacterError, DeleteCharacterResponse, DeleteStoryData, DeleteStoryError, DeleteStoryResponse, DismissProposalData, DismissProposalError, DismissProposalResponse, DrawConversationData, DrawConversationError, DrawConversationResponse, DuplicateCharacterData, DuplicateCharacterError, DuplicateCharacterResponse, DuplicateStoryData, DuplicateStoryError, DuplicateStoryResponse, GetActionsData, GetActionsError, GetActionsResponse, GetArchivedConversationData, GetArchivedConversationError, GetArchivedConversationResponse, GetCharacterData, GetCharacterError, GetCharacterResponse, GetConversationData, GetConversationError, GetConversationOperationsData, GetConversationOperationsError, GetConversationOperationsResponse, GetConversationResponse, GetImageData, GetImageError, GetImageFileData, GetImageFileError, GetImageResponse, GetJobData, GetJobError, GetJobResponse, GetOperationData, GetOperationError, GetOperationResponse, GetPlayerData, GetPlayerResponse, GetPreferencesData, GetPreferencesResponse, GetRuntimeData, GetRuntimeResponse, GetRuntimeViewsData, GetRuntimeViewsResponse, GetRuntimeWorkflowData, GetRuntimeWorkflowError, GetSettingsData, GetSettingsResponse, GetStoryData, GetStoryError, GetStoryResponse, ImportInputData, ImportInputError, ImportInputResponse, ListArchivedConversationsData, ListArchivedConversationsResponse, ListCharactersData, ListCharactersResponse, ListConversationImagesData, ListConversationImagesError, ListConversationImagesResponse, ListConversationsData, ListConversationsResponse, ListImagesData, ListImagesResponse, ListStoriesData, ListStoriesResponse, PerformActionData, PerformActionError, PerformActionResponse, RefreshRuntimeData, RefreshRuntimeResponse, ResumeConversationData, ResumeConversationError, ResumeConversationResponse, ReviewVisualsData, ReviewVisualsError, ReviewVisualsResponse, SaveCharacterData, SaveCharacterError, SaveCharacterResponse, SavePreferencesData, SavePreferencesError, SavePreferencesResponse, SaveStoryData, SaveStoryError, SaveStoryResponse, SendTurnData, SendTurnError, SendTurnResponse, StartConversationData, StartConversationError, StartConversationResponse, StartRuntimeData, StartRuntimeError, StartRuntimeResponse, StopRuntimeData, StopRuntimeResponse, SubmitImageData, SubmitImageError, SubmitImageResponse, UpdatePlayerData, UpdatePlayerError, UpdatePlayerResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -512,13 +512,65 @@ export const sendTurnMutation = (options?: Partial<Options<SendTurnData>>): UseM
     return mutationOptions;
 };
 
+export const getActionsQueryKey = (options: Options<GetActionsData>) => createQueryKey('getActions', options);
+
 /**
- * Command
+ * Get Actions
  */
-export const applyCommandMutation = (options?: Partial<Options<ApplyCommandData>>): UseMutationOptions<ApplyCommandResponse, ApplyCommandError, Options<ApplyCommandData>> => {
-    const mutationOptions: UseMutationOptions<ApplyCommandResponse, ApplyCommandError, Options<ApplyCommandData>> = {
+export const getActionsOptions = (options: Options<GetActionsData>) => queryOptions<GetActionsResponse, GetActionsError, GetActionsResponse, ReturnType<typeof getActionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getActions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getActionsQueryKey(options)
+});
+
+/**
+ * Perform Action
+ */
+export const performActionMutation = (options?: Partial<Options<PerformActionData>>): UseMutationOptions<PerformActionResponse, PerformActionError, Options<PerformActionData>> => {
+    const mutationOptions: UseMutationOptions<PerformActionResponse, PerformActionError, Options<PerformActionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await applyCommand({
+            const { data } = await performAction({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Dismiss Proposal
+ */
+export const dismissProposalMutation = (options?: Partial<Options<DismissProposalData>>): UseMutationOptions<DismissProposalResponse, DismissProposalError, Options<DismissProposalData>> => {
+    const mutationOptions: UseMutationOptions<DismissProposalResponse, DismissProposalError, Options<DismissProposalData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await dismissProposal({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+/**
+ * Review Visuals
+ */
+export const reviewVisualsMutation = (options?: Partial<Options<ReviewVisualsData>>): UseMutationOptions<ReviewVisualsResponse, ReviewVisualsError, Options<ReviewVisualsData>> => {
+    const mutationOptions: UseMutationOptions<ReviewVisualsResponse, ReviewVisualsError, Options<ReviewVisualsData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await reviewVisuals({
                 ...options,
                 ...fnOptions,
                 throwOnError: true

@@ -33,16 +33,30 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
     tables = {row[0] for row in before.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "preferences" not in tables:
         return True
-    if before.execute("SELECT version_num FROM alembic_version").fetchall() == after.execute(
-        "SELECT version_num FROM alembic_version"
-    ).fetchall() or before.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {
+    retained = {
+        identity: payload
+        for identity, payload in after.execute(
+            "SELECT id,payload FROM state_migration_originals WHERE kind='presets'"
+        )
+    }
+    if before.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {
         "0006",
         "0007",
+        "0008",
     }:
-        return all(
-            before.execute(f"SELECT * FROM {name} ORDER BY id").fetchall()
-            == after.execute(f"SELECT * FROM {name} ORDER BY id").fetchall()
-            for name in ("preferences", "presets")
+        current = {
+            row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
+        }
+        return before.execute("SELECT * FROM preferences ORDER BY id").fetchall() == after.execute(
+            "SELECT * FROM preferences ORDER BY id"
+        ).fetchall() and all(
+            identity in current
+            and kind == current[identity][0]
+            and deleted == current[identity][2]
+            and (payload == current[identity][1] or payload == retained.get(identity))
+            for identity, kind, payload, deleted in before.execute(
+                "SELECT id,kind,payload,deleted FROM presets"
+            )
         )
     previous = before.execute("SELECT payload FROM preferences WHERE id=1").fetchone()
     if previous is None:
@@ -59,7 +73,8 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
         row[0]: row[1:] for row in before.execute("SELECT id,kind,payload,deleted FROM presets")
     }
     updated = {
-        row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
+        row[0]: (row[1], retained.get(row[0], row[2]), row[3])
+        for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
     }
     active = [identity for identity, row in original.items() if row[0] == "player" and not row[2]]
     if chosen not in active and len(active) == 1:
@@ -84,8 +99,13 @@ def conversations_preserved(before: sqlite3.Connection, after: sqlite3.Connectio
         return True
     current = dict(after.execute("SELECT id,payload FROM conversations"))
     archive = dict(after.execute("SELECT id,payload FROM archived_conversations"))
+    retained = dict(
+        after.execute("SELECT id,payload FROM state_migration_originals WHERE kind='conversations'")
+    )
     return all(
-        current.get(identity) == payload or archive.get(identity) == payload
+        current.get(identity) == payload
+        or archive.get(identity) == payload
+        or retained.get(identity) == payload
         for identity, payload in before.execute("SELECT id,payload FROM conversations")
     )
 

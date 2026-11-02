@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, PanelRight, Sparkles } from 'lucide-react'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { Link, useParams } from 'react-router'
 import { POLL_INTERVAL_MS } from '../api/client'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import type {
-  ConversationState,
   CreationJob,
   OperationView,
   PersonDefinition,
@@ -22,10 +27,18 @@ import { Button } from '../components/ui/button'
 import { CreationStatus, useCreation } from './creation'
 import { ImageResult } from './images'
 import {
+  ActionDescription,
+  PlayerActions,
+  usePlayerActions,
+  useVisualReview,
+  VisualReviewForm,
+} from './player-actions'
+import {
   isTerminal,
   keepTerminal,
   operationOptions,
   operationPending,
+  watchReceipt,
 } from './operations'
 
 const narrowQuery = '(max-width: 850px)'
@@ -60,12 +73,13 @@ function ConversationView({ identity }: { identity: string }) {
   const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
+  const draftVersion = useRef(0)
+  const submittedDraft = useRef<{
+    operationId: string
+    version: number
+  } | null>(null)
   const [operationId, setOperationId] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
-  const [stateDraft, setStateDraft] = useState<{
-    value: ConversationState
-    revision: number
-  } | null>(null)
   const narrow = useSyncExternalStore(
     subscribeViewport,
     narrowViewport,
@@ -94,9 +108,31 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, operation.data, savedOperations.data])
 
+  const confirmSend = useCallback(
+    (result: OperationView, submitted: SendInput) => {
+      cache.setQueryData<OperationView>(
+        q.getOperationQueryKey({ path: { identity: result.id } }),
+        (previous) => keepTerminal(previous, result),
+      )
+      setOperationId(result.id)
+      if (
+        submittedDraft.current?.operationId === submitted.operation_id &&
+        submittedDraft.current.version === draftVersion.current
+      )
+        setText('')
+      setPrepared(null)
+      void cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({ path: { identity } }),
+      })
+      void cache.invalidateQueries({
+        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
+      })
+    },
+    [cache, identity],
+  )
   const send = useMutation({
     ...q.sendTurnMutation(),
-    onError: (error) => {
+    onError: (error, submitted) => {
       const code =
         error && typeof error === 'object' && 'code' in error
           ? error.code
@@ -110,45 +146,25 @@ function ConversationView({ identity }: { identity: string }) {
         ].includes(String(code))
       )
         setPrepared(null)
+      else setOperationId(submitted.body.operation_id)
     },
     onSuccess: (result, submitted) => {
-      cache.setQueryData<OperationView>(
-        q.getOperationQueryKey({ path: { identity: result.id ?? '' } }),
-        (previous) => keepTerminal(previous, result),
-      )
-      setOperationId(result.id)
-      setText((current) => (current === submitted.body.text ? '' : current))
-      setPrepared(null)
-      void cache.invalidateQueries({
-        queryKey: q.getConversationQueryKey({
-          path: { identity: identity ?? '' },
-        }),
-      })
-      void cache.invalidateQueries({
-        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
-      })
+      confirmSend(result, submitted.body)
     },
   })
-  const reset = useMutation({
-    ...q.applyCommandMutation(),
-    onSuccess: () =>
-      cache.invalidateQueries({
-        queryKey: q.getConversationQueryKey({
-          path: { identity: identity ?? '' },
-        }),
-      }),
-  })
-  const updateState = useMutation({
-    ...q.applyCommandMutation(),
-    onSuccess: async () => {
-      setStateDraft(null)
-      await cache.invalidateQueries({
-        queryKey: q.getConversationQueryKey({
-          path: { identity: identity ?? '' },
-        }),
-      })
-    },
-  })
+  const resetSend = send.reset
+  useEffect(() => {
+    if (!send.isError || !prepared) return
+    return watchReceipt(
+      cache,
+      q.getOperationQueryKey({ path: { identity: prepared.operation_id } }),
+      prepared.operation_id,
+      (confirmed: OperationView) => {
+        confirmSend(confirmed, prepared)
+        resetSend()
+      },
+    )
+  }, [cache, send.isError, prepared, confirmSend, resetSend])
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
@@ -164,6 +180,15 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
   const dialog = useRef<HTMLDialogElement>(null)
+  const actionControls = usePlayerActions({
+    identity,
+    conversation: detail.data,
+    onReaction: setOperationId,
+  })
+  const reviewControls = useVisualReview({
+    identity,
+    conversation: detail.data,
+  })
   useEffect(() => {
     if (narrow && showState) dialog.current?.showModal()
     else dialog.current?.close()
@@ -177,18 +202,29 @@ function ConversationView({ identity }: { identity: string }) {
   if (!detail.data) return <p className="loading">{messages.loading}</p>
   const conversation = detail.data
   const busy =
+    actionControls.unresolved ||
+    !!reviewControls.prepared ||
     send.isPending ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
     savedOperations.data?.some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
-  const canSend = !busy && !(send.isError && prepared !== null) && !!text.trim()
+  const needsReview = !!(
+    conversation.definition.user?.visual_review_required ||
+    conversation.definition.character?.visual_review_required
+  )
+  const canSend =
+    !needsReview &&
+    !busy &&
+    !(send.isError && prepared !== null) &&
+    !!text.trim()
   const latestOperation = operation.data ?? savedOperations.data?.[0]
   const snapshots = conversation.definition.presets
   const stateLabels = {
     place: messages.currentPlace,
     time: messages.currentTime,
-    goal: messages.goal,
+    intention: messages.currentIntention,
+    scenery: messages.narrationLabel,
     relationship: messages.relationship,
   }
   const visibleState = Object.entries(stateLabels)
@@ -200,7 +236,7 @@ function ConversationView({ identity }: { identity: string }) {
           conversation.state?.[key as keyof typeof stateLabels],
         ] as const,
     )
-    .filter(([, value]) => !!value)
+    .filter(([, , value]) => !!value)
   const content = (value: PersonDefinition | StoryDefinition | undefined) =>
     value
       ? ('opening' in value && value.opening) ||
@@ -228,10 +264,64 @@ function ConversationView({ identity }: { identity: string }) {
       )}
       <div className="eyebrow">{messages.context}</div>
       <h2>{messages.currentState}</h2>
-      {conversation.turns?.at(-1)?.narration && (
-        <p className="state-description">
-          {conversation.turns.at(-1)!.narration}
-        </p>
+      <div className="state-items">
+        {visibleState.map(([key, label, value]) => (
+          <div key={key}>
+            <span>{label}</span>
+            <p>{value}</p>
+          </div>
+        ))}
+        <div>
+          <span>{messages.companionPlace}</span>
+          <p>{conversation.state?.character_place || messages.notSpecified}</p>
+        </div>
+        {(['player', 'character'] as const).map((role) => (
+          <div key={role}>
+            <span>{role === 'player' ? messages.you : messages.character}</span>
+            <dl>
+              {(
+                ['clothing', 'pose', 'expression', 'held_objects'] as const
+              ).map((field) => {
+                const value = conversation.state?.[role]?.[field]
+                return (
+                  <div key={field}>
+                    <dt>
+                      {field === 'held_objects'
+                        ? messages.heldObjects
+                        : messages[field]}
+                    </dt>
+                    <dd>
+                      {value == null
+                        ? messages.notSpecified
+                        : (Array.isArray(value) ? value.join(', ') : value) ||
+                          messages.emptyValue}
+                    </dd>
+                  </div>
+                )
+              })}
+            </dl>
+          </div>
+        ))}
+        {!!conversation.state?.elapsed_minutes && (
+          <p>
+            {formatMessage('elapsedTime', {
+              minutes: conversation.state.elapsed_minutes,
+            })}
+          </p>
+        )}
+      </div>
+      {needsReview || reviewControls.prepared ? (
+        <VisualReviewForm
+          conversation={conversation}
+          busy={!!busy}
+          controls={reviewControls}
+        />
+      ) : (
+        <PlayerActions
+          conversation={conversation}
+          busy={!!busy}
+          controls={actionControls}
+        />
       )}
       <h3>{messages.scenario}</h3>
       <p className="state-description">
@@ -246,98 +336,37 @@ function ConversationView({ identity }: { identity: string }) {
         </>
       )}
       <details className="story-details">
-        <summary>{messages.details}</summary>
-        <div className="state-items">
-          {visibleState.map(([key, label, value]) => (
-            <div key={key}>
-              <span>{label}</span>
-              <p>{value}</p>
-            </div>
-          ))}
-          {!visibleState.length && !conversation.turns?.at(-1)?.narration && (
-            <p className="subtle">{messages.noState}</p>
-          )}
-        </div>
-
+        <summary>{messages.fixedSettings}</summary>
+        <p>{conversation.state?.goal}</p>
+        {(['user', 'character'] as const).map((role) => (
+          <div key={role}>
+            <h3>{role === 'user' ? messages.you : messages.character}</h3>
+            <dl>
+              {(
+                [
+                  'name',
+                  'age',
+                  'gender',
+                  'appearance',
+                  'initial_clothing',
+                ] as const
+              ).map((field) => (
+                <div key={field}>
+                  <dt>{messages[field]}</dt>
+                  <dd>
+                    {conversation.definition[role]?.[field] ||
+                      messages.notSpecified}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
         <span className="revision">
           {formatMessage('revision', {
             revision: conversation.revision ?? 0,
           })}
         </span>
-        {stateDraft === null ? (
-          <Button
-            disabled={busy}
-            onClick={() =>
-              setStateDraft({
-                value: { ...conversation.state },
-                revision: conversation.revision ?? 0,
-              })
-            }
-          >
-            {messages.editState}
-          </Button>
-        ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              updateState.mutate({
-                path: { identity },
-                body: {
-                  command: 'set_state',
-                  expected_revision: stateDraft!.revision,
-                  state: stateDraft!.value,
-                },
-              })
-            }}
-          >
-            {Object.entries(stateLabels).map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <input
-                  value={
-                    stateDraft.value[key as keyof typeof stateLabels] ?? ''
-                  }
-                  onChange={(event) =>
-                    setStateDraft({
-                      ...stateDraft,
-                      value: { ...stateDraft.value, [key]: event.target.value },
-                    })
-                  }
-                />
-              </label>
-            ))}
-            <Button type="submit" disabled={busy || updateState.isPending}>
-              {messages.saveState}
-            </Button>
-            <Button onClick={() => setStateDraft(null)}>
-              {messages.cancel}
-            </Button>
-          </form>
-        )}
-        {updateState.error && (
-          <p role="alert" className="error">
-            {failure(updateState.error)}
-          </p>
-        )}
-        <Button
-          onClick={() =>
-            reset.mutate({
-              path: { identity },
-              body: {
-                command: 'reset_state',
-                expected_revision: conversation.revision ?? 0,
-              },
-            })
-          }
-          disabled={busy || reset.isPending}
-        >
-          {messages.resetState}
-        </Button>
-        {reset.error && (
-          <p role="alert" className="error">
-            {failure(reset.error)}
-          </p>
-        )}
       </details>
     </aside>
   )
@@ -389,16 +418,58 @@ function ConversationView({ identity }: { identity: string }) {
           )}
           {(conversation.turns ?? []).map((turn) => (
             <article className="turn" key={turn.operation_id}>
-              <div className="user-message">
-                <span className="message-label">{messages.you}</span>
-                <p>{turn.user}</p>
-              </div>
+              {turn.user && (
+                <div className="user-message">
+                  <span className="message-label">{messages.you}</span>
+                  <p>{turn.user}</p>
+                </div>
+              )}
+              {(conversation.proposals ?? [])
+                .filter((proposal) => proposal.turn_id === turn.operation_id)
+                .map((proposal) => (
+                  <div className="action-preview" key={proposal.id}>
+                    <ActionDescription action={proposal.action} />
+                    {proposal.state === 'pending' ? (
+                      <Button onClick={() => setShowState(true)}>
+                        {messages.reviewAction}
+                      </Button>
+                    ) : (
+                      <p className="subtle">
+                        {proposal.state === 'applied'
+                          ? messages.actionApplied
+                          : proposal.state === 'dismissed'
+                            ? messages.actionDismissed
+                            : messages.actionExpired}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              {turn.action_id &&
+                conversation.actions?.find(
+                  (record) => record.request.operation_id === turn.action_id,
+                ) && (
+                  <div className="user-message">
+                    <span className="message-label">{messages.myActions}</span>
+                    <ActionDescription
+                      action={
+                        conversation.actions.find(
+                          (record) =>
+                            record.request.operation_id === turn.action_id,
+                        )!.request.action
+                      }
+                    />
+                  </div>
+                )}
               <div className="assistant-message">
-                <span className="message-label">
-                  <Sparkles size={14} />
-                  {snapshots?.character?.name ?? messages.character}
-                </span>
-                <p className="scene-narration">{turn.narration}</p>
+                {turn.assistant && (
+                  <span className="message-label">
+                    <Sparkles size={14} />
+                    {snapshots?.character?.name ?? messages.character}
+                  </span>
+                )}
+                {turn.narration && (
+                  <p className="scene-narration">{turn.narration}</p>
+                )}
                 <p>{turn.assistant}</p>
                 {turn.image_id && (
                   <ImageResult
@@ -460,6 +531,10 @@ function ConversationView({ identity }: { identity: string }) {
                   allow_real_llm: true,
                   locale: preferences.value.locale,
                 }
+                submittedDraft.current = {
+                  operationId: body.operation_id,
+                  version: draftVersion.current,
+                }
                 setPrepared(body)
                 send.mutate({ path: { identity }, body })
               }
@@ -470,13 +545,16 @@ function ConversationView({ identity }: { identity: string }) {
               placeholder={messages.placeholder}
               rows={2}
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                draftVersion.current += 1
+                setText(event.target.value)
+              }}
             />
             <Button
               className="draw-button"
               aria-label={messages.drawScene}
               title={messages.drawScene}
-              disabled={!!busy || drawing.busy || sampleDrawing}
+              disabled={!!busy || needsReview || drawing.busy || sampleDrawing}
               onClick={() =>
                 drawing.start({
                   kind: 'conversation_image',

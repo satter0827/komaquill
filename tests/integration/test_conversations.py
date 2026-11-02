@@ -1,11 +1,11 @@
 """Verify durable turns, cross-client exclusion and safe HTTP contracts offline."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from komaquill.api import Client, KomaquillError
-from komaquill.conversations.models import ConversationInput, SendInput, StateCommand
+from komaquill.api import ActionRequest, Client, KomaquillError, MoveAction
+from komaquill.conversations.models import ConversationInput, SendInput
 from komaquill.interfaces.http.app import create_app
 
 
@@ -75,19 +75,55 @@ def test_command_revision_and_reset(chat):
             locale="en", llm_profile="fake", title="State", initial_state={"place": "home"}
         )
     )
-    changed = chat.conversations.command(
+    changed, _ = chat.conversations.accept_action(
         conversation.id,
-        StateCommand(command="set_state", expected_revision=0, state={"place": "garden"}),
+        ActionRequest(
+            operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="garden")
+        ),
     )
-    assert changed.state.place == "garden"
+    assert changed.after.place == "garden"
     with pytest.raises(KomaquillError):
-        chat.conversations.command(
-            conversation.id, StateCommand(command="reset_state", expected_revision=0)
+        chat.conversations.accept_action(
+            conversation.id,
+            ActionRequest(
+                operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="home")
+            ),
         )
-    reset = chat.conversations.command(
-        conversation.id, StateCommand(command="reset_state", expected_revision=1)
+
+
+@pytest.mark.parametrize("via_http", [False, True])
+@pytest.mark.parametrize("initial", [None, {"time": "night"}, {"place": "", "goal": ""}])
+def test_direct_definitions_resolve_story_defaults_and_preserve_explicit_state(
+    chat, initial, via_http
+):
+    body = {
+        "title": "Story defaults",
+        "scenario": {"place": "Lighthouse", "goal": "Find the missing letter"},
+    }
+    if initial is not None:
+        body["initial_state"] = initial
+    if via_http:
+        with TestClient(create_app(chat)) as http:
+            response = http.post("/api/v1/conversations", json=body)
+            assert response.status_code == 201
+            saved = chat.conversations.get(UUID(response.json()["id"]))
+    else:
+        saved = chat.conversations.create(ConversationInput.model_validate(body))
+    supplied = initial or {}
+    assert saved.state.place == supplied.get("place", "Lighthouse")
+    assert saved.state.goal == supplied.get("goal", "Find the missing letter")
+    assert saved.state.time == supplied.get("time", "")
+    assert saved.definition.initial_state == saved.state
+    changed, _ = chat.conversations.accept_action(
+        saved.id,
+        ActionRequest(
+            operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="Pier")
+        ),
     )
-    assert reset.state.place == "home"
+    resumed = Client(chat.workspace).conversations.get(saved.id)
+    assert resumed.state.place == "Pier"
+    assert resumed.definition.initial_state == saved.state
+    assert resumed.definition.scenario == saved.definition.scenario
 
 
 def test_restart_marks_unknown_without_resending(chat):

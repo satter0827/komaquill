@@ -13,7 +13,6 @@ from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.workspace import find_project
 from komaquill.api import Client
 from komaquill.domain.models import Session
-from komaquill.domain.roleplay import ConversationState
 from komaquill.interfaces.http.app import create_app
 
 from tests.support.comfy import ComfyStub
@@ -25,6 +24,7 @@ def scripted_completion(body: dict) -> dict:
     """Return declared fixture values, without claiming to understand arbitrary input."""
     schema = body["response_format"]["json_schema"]["schema"]["properties"]
     english = False
+    context = {}
     for line in body["messages"][0]["content"].splitlines():
         try:
             context = json.loads(line)
@@ -34,15 +34,34 @@ def scripted_completion(body: dict) -> dict:
             english = context["response_language"] == "English"
             break
     if "current_state" in schema:
+        current = context.get("current_state", {})
+        visible = current.get("character_place", "") == current.get("place", "")
         value = {
-            "current_state": ConversationState(place="古書店の店内").model_dump(mode="json"),
+            "current_state": {
+                "relationship": "",
+                "companion_movement": "stay",
+                "scenery": "Rain taps against the bookshop window."
+                if english
+                else "雨音が店内に響く。",
+                "character": {
+                    "clothing": None,
+                    "pose": None,
+                    "expression": None,
+                    "held_objects": None,
+                },
+            },
+            "requested_player_action": {"kind": "move", "destination": "Beach"}
+            if body["messages"][-1]["content"].split("\n")[0] == "I head to the beach."
+            else None,
             "text": "A scripted reply for browser verification."
             if english
             else "画面検証用の決まった返答です。",
-            "narration": "Rain taps against the bookshop window."
-            if english
-            else "雨音が古書店の窓をたたく。店主が本を取り出した。",
         }
+        if not visible:
+            value["text"] = ""
+            value["current_state"]["scenery"] = (
+                "Waves wash over the beach." if english else "波が海辺に寄せている。"
+            )
     elif "personality" in schema:
         value = {
             "name": "Fixture character",
@@ -63,8 +82,12 @@ def scripted_completion(body: dict) -> dict:
             "scenery": "Empty aisles, wooden shelves and a counter.",
             "atmosphere": "Rain streaks the windows.",
         }
+    elif "text" not in schema:
+        value = {key: f"Fixture translated {key.replace('_', ' ')}" for key in schema}
     else:
         value = {"text": "An adult woman in a quiet bookshop, no lettering."}
+        if "status" in schema:
+            value["status"] = "translated"
     return {
         "id": "fixture-completion",
         "object": "chat.completion",

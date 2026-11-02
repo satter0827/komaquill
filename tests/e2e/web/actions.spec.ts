@@ -2,6 +2,8 @@ import { test, expect } from './fixtures'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 
+const REACTION_COMPLETION_TIMEOUT_MS = 15_000
+
 for (const locale of ['ja', 'en'] as const) {
   test(`${locale}: confirms a player action and preserves it after reload`, async ({
     page,
@@ -18,9 +20,28 @@ for (const locale of ['ja', 'en'] as const) {
     await expect(page).toHaveURL(/\/conversations\//)
     const identity = page.url().split('/').at(-1)!
     await page.getByLabel(m.destination, { exact: true }).fill('Beach')
+    const receipt = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().endsWith(`/api/v1/conversations/${identity}/actions`),
+    )
     await page
       .getByRole('button', { name: m.confirmAction, exact: true })
       .click()
+    const accepted = await receipt
+    expect(accepted.status()).toBe(202)
+    const action = await accepted.json()
+    await expect
+      .poll(
+        async () =>
+          (
+            await (
+              await request.get(`/api/v1/operations/${action.reaction_id}`)
+            ).json()
+          ).state,
+        { timeout: REACTION_COMPLETION_TIMEOUT_MS },
+      )
+      .toBe('complete')
     await expect(page.locator('.scene-narration')).toHaveCount(1)
     const saved = await (
       await request.get(`/api/v1/conversations/${identity}`)
@@ -68,9 +89,28 @@ test('a chat action remains a proposal until the player confirms it', async ({
   await evidence.capture(
     'An unconfirmed action leaves the current scene unchanged',
   )
+  const receipt = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/api/v1/conversations/${identity}/actions`),
+  )
   await proposal
     .getByRole('button', { name: ja.confirmAction, exact: true })
     .click()
+  const accepted = await receipt
+  expect(accepted.status()).toBe(202)
+  const action = await accepted.json()
+  await expect
+    .poll(
+      async () =>
+        (
+          await (
+            await request.get(`/api/v1/operations/${action.reaction_id}`)
+          ).json()
+        ).state,
+      { timeout: REACTION_COMPLETION_TIMEOUT_MS },
+    )
+    .toBe('complete')
   await expect(proposal).toHaveCount(0)
   await expect(page.locator('.scene-narration')).toHaveCount(1)
   const confirmed = await (

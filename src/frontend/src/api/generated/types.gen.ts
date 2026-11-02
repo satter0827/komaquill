@@ -56,7 +56,7 @@ export type ActionRequest = {
     /**
      * Locale
      */
-    locale?: 'ja' | 'en';
+    locale?: 'ja' | 'en' | null;
     /**
      * Allow Real Llm
      */
@@ -1970,11 +1970,11 @@ export type VisualPerson = {
     /**
      * Initial Clothing
      */
-    initial_clothing: string;
+    initial_clothing: string | null;
     /**
      * Current Clothing
      */
-    current_clothing: string;
+    current_clothing: string | null;
 };
 
 /**
@@ -1989,8 +1989,8 @@ export type VisualReview = {
      * Expected Revision
      */
     expected_revision: number;
-    player: VisualPerson;
-    character: VisualPerson;
+    player?: VisualPerson | null;
+    character?: VisualPerson | null;
 };
 
 /**

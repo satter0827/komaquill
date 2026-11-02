@@ -60,7 +60,7 @@ class ActionRequest(Record):
     expected_revision: int = Field(ge=0)
     action: PlayerAction
     proposal_id: UUID | None = None
-    locale: Literal["ja", "en"] = "ja"
+    locale: Literal["ja", "en"] | None = None
     allow_real_llm: bool = False
 
 

@@ -4,17 +4,18 @@
 
 ReactはHTTP APIを呼び、HTTPとCLIは公開Python APIの同じ処理を使います。GPU側のComfyUIが画像を生成します。Colabの認証とランタイム操作には公式Colab CLI、接続にはOpenSSH、生成にはComfyUI標準APIを使用します。
 
-| 区分 | 責務 |
-|---|---|
-| api・composition | 作業場所と機能別サービスの組み立て |
-| conversations | 会話と状態の確定、画像処理の呼出し |
-| images | 画像の送信、照合、回収、完了待ち |
-| runtime | 実行環境の起動、所有、監視、終了 |
-| domain | 要求、状態、設定スナップショット、エラーコード |
-| application | 終了調整、準備、評価の判断 |
-| cli・interfaces/http | 端末とHTTPの入力、結果の表示・変換 |
-| adapters | HTTP、Colab CLI、SSH、ファイル保存、資格情報、接続の維持 |
-| worker | GPU側の環境準備とComfyUI起動 |
+| 区分                 | 責務                                                     |
+| -------------------- | -------------------------------------------------------- |
+| api・composition     | 作業場所と機能別サービスの組み立て                       |
+| conversations        | 会話と状態の確定、本人の行動、外見の確認                 |
+| library              | プリセット、個人設定、下書き、会話画像の受付と関連付け   |
+| images               | 画像の送信、照合、回収、完了待ち                         |
+| runtime              | 実行環境の起動、所有、監視、終了                         |
+| domain               | 要求、状態、設定スナップショット、エラーコード           |
+| application          | 終了調整、準備、評価の判断                               |
+| cli・interfaces/http | 端末とHTTPの入力、結果の表示・変換                       |
+| adapters             | HTTP、Colab CLI、SSH、ファイル保存、資格情報、接続の維持 |
+| worker               | GPU側の環境準備とComfyUI起動                             |
 
 生成・回収はGenerationBackendとRunRepositoryのProtocolを使用します。Workspaceが設定、ワークフロー、出自、保存契約を束ねます。終了調整はShutdownActionsを受け取り、プロバイダーやファイル操作を直接呼びません。具体的な実装は接続・作業フォルダーの入口で組み立てます。DBや別の画面を追加する場合も、業務処理とこれらの契約を再利用します。
 

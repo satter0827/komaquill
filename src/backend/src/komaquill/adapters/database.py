@@ -14,7 +14,7 @@ from typing import Literal
 from uuid import UUID, uuid4, uuid5
 
 import psutil
-from filelock import FileLock
+from filelock import FileLock, Timeout
 from sqlalchemy import (
     Column,
     Integer,
@@ -38,6 +38,7 @@ from komaquill.conversations.actions import (
     ProposedAction,
     apply_action,
 )
+from komaquill.conversations.context import require_reviewed
 from komaquill.conversations.models import (
     Conversation,
     ConversationInput,
@@ -125,6 +126,7 @@ def conflict() -> KomaquillError:
 
 class Database:
     def __init__(self, path: Path, *, migrate: bool = False) -> None:
+        self.path = path.resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(
             URL.create("sqlite", database=str(path.resolve())),
@@ -165,10 +167,30 @@ class Database:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             yield connection
 
+    @contextmanager
+    def execution_lock(self, identity: UUID) -> Iterator[bool]:
+        lock = FileLock(str(self.path.with_name(f".{self.path.name}.{identity}.execution.lock")))
+        try:
+            lock.acquire(timeout=0)
+        except Timeout:
+            yield False
+            return
+        except OSError:
+            raise KomaquillError(code="storage_failed", stage="storage", retryable=False) from None
+        try:
+            yield True
+        finally:
+            lock.release()
+
 
 class ConversationRepository:
     def __init__(self, database: Database) -> None:
         self.database = database
+
+    @contextmanager
+    def execution(self, identity: UUID) -> Iterator[bool]:
+        with self.database.execution_lock(identity) as acquired:
+            yield acquired and self.running(identity)
 
     def _command_key(
         self, identity: UUID, kind: str, request: ActionRequest | ProposalDismissal | VisualReview
@@ -283,7 +305,7 @@ class ConversationRepository:
             conversation = self._get(connection, identity)
             if request.action_id is not None:
                 raise KomaquillError(code="invalid_request", retryable=False)
-            self._require_reviewed(conversation)
+            require_reviewed(conversation)
             if connection.execute(
                 select(operations.c.id).where(operations.c.active_slot == 1)
             ).first():
@@ -305,13 +327,6 @@ class ConversationRepository:
             connection.commit()
             return result, True
 
-    def _require_reviewed(self, conversation: Conversation) -> None:
-        if any(
-            person.visual_review_required
-            for person in (conversation.definition.user, conversation.definition.character)
-        ):
-            raise KomaquillError(code="visual_review_required", retryable=False)
-
     @stored
     def accept_action(self, identity: UUID, request: ActionRequest) -> tuple[ActionRecord, bool]:
         with self.database.transaction() as connection:
@@ -324,7 +339,7 @@ class ConversationRepository:
                     return previous, False
             if known:
                 raise KomaquillError(code="storage_failed", retryable=False)
-            self._require_reviewed(conversation)
+            require_reviewed(conversation)
             if (
                 conversation.revision != request.expected_revision
                 or connection.execute(
@@ -380,7 +395,7 @@ class ConversationRepository:
             reaction = SendInput(
                 operation_id=reaction_id,
                 action_id=request.operation_id,
-                locale=request.locale,
+                locale=request.locale or conversation.definition.locale,
                 allow_real_llm=request.allow_real_llm,
             )
             operation = Operation(id=reaction_id, conversation_id=identity, state="accepted")
@@ -466,14 +481,21 @@ class ConversationRepository:
                 ).first()
             ):
                 raise conflict()
-            if not any(
-                p.visual_review_required
-                for p in (conversation.definition.user, conversation.definition.character)
-            ):
+            roles = (("player", "user"), ("character", "character"))
+            required = {
+                role
+                for role, key in roles
+                if getattr(conversation.definition, key).visual_review_required
+            }
+            if not required:
                 raise conflict()
+            if {role for role, _ in roles if getattr(review, role) is not None} != required:
+                raise KomaquillError(code="invalid_request", retryable=False)
             people, current, initial = {}, {}, {}
-            for role, key in (("player", "user"), ("character", "character")):
+            for role, key in roles:
                 chosen = getattr(review, role)
+                if chosen is None:
+                    continue
                 people[key] = getattr(conversation.definition, key).model_copy(
                     update={
                         "appearance": chosen.appearance,
@@ -506,6 +528,10 @@ class ConversationRepository:
                     "definition": definition,
                     "state": conversation.state.model_copy(update=current),
                     "revision": conversation.revision + 1,
+                    "proposals": [
+                        p.model_copy(update={"state": "expired"}) if p.state == "pending" else p
+                        for p in conversation.proposals
+                    ],
                     "visual_reviews": [
                         *conversation.visual_reviews,
                         VisualReviewRecord(request=review, revision=conversation.revision + 1),
@@ -751,6 +777,11 @@ class ConversationRepository:
                     alive = False
                 except psutil.Error:
                     continue
+                if value.state == "running":
+                    with self.database.execution_lock(value.id) as available:
+                        if not available:
+                            continue
+                        alive = False
                 if not alive:
                     if value.state == "running" and row["reply"] is not None:
                         try:

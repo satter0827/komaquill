@@ -122,7 +122,7 @@ summary = "一回の構造化応答をプログラムで検証し確定状態と
 status = "implemented"
 acceptance = ["会話サービスが受付・順序・上限・保存確定を管理する", "通常一回のLLM応答から本文・状態変更案・描く場面を受け取る", "LLMはDBとGPUを直接変更しない", "修正と使用量を失敗を含めて記録し無限ループを作らない", "中断後は保存済み応答とチェックポイントを再利用する", "本文確定後は画像完了待ちで次の会話入力を妨げない", "会話の排他で状態取得・画像回収・GPU停止を妨げない"]
 sources = ["src/backend/src/komaquill/conversations/models.py", "src/backend/src/komaquill/conversations/service.py", "src/backend/src/komaquill/adapters/database.py"]
-tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py"]
+tests = ["tests/integration/test_conversations.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_player_review_regressions.py"]
 
 [requirements.REQ-CHAT-DATABASE]
 summary = "SQLiteを初版の正本としPostgreSQLやSupabaseへ変更できる保存境界を設ける"
@@ -497,6 +497,6 @@ tests = ["tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/fixtures.ts"]
 [requirements.REQ-PLAYER-ACTIONS]
 summary = "自分の行動を確認して確定し会話と画像へ同じ状態を反映する"
 status = "implemented"
-acceptance = ["自分の行動案は確認前に適用しない", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する"]
+acceptance = ["自分の行動案は確認前に適用しない", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
 sources = ["src/backend/src/komaquill/conversations/actions.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/database.py", "src/frontend/src/features/player-actions.tsx"]
-tests = ["tests/integration/test_player_actions.py", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]
+tests = ["tests/integration/test_player_actions.py", "tests/integration/test_player_review_regressions.py", "src/frontend/tests/conversations.test.tsx", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]

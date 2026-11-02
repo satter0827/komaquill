@@ -5,6 +5,14 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import PersonDefinition, PersonState
 
 
+def require_reviewed(conversation: Conversation) -> None:
+    if any(
+        person.visual_review_required
+        for person in (conversation.definition.user, conversation.definition.character)
+    ):
+        raise KomaquillError(code="visual_review_required", retryable=False)
+
+
 def visible_person(person: PersonDefinition, state: PersonState) -> dict[str, object]:
     if person.visual_review_required:
         raise KomaquillError(code="visual_review_required", retryable=False)
@@ -32,6 +40,7 @@ def scene_context(conversation: Conversation) -> dict[str, object]:
 
 def drawing_context(conversation: Conversation) -> dict[str, object]:
     """Resolve the visible partner while keeping the player out of the image."""
+    require_reviewed(conversation)
     visible = conversation.state.character_place == conversation.state.place
     return {
         "character": visible_person(conversation.definition.character, conversation.state.character)

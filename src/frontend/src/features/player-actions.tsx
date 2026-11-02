@@ -6,6 +6,7 @@ import type {
   Conversation,
   ProposalDismissal,
   VisualReview,
+  VisualPerson,
 } from '../api/generated/types.gen'
 import {
   useFailure,
@@ -92,8 +93,10 @@ export function usePlayerActions({
           'operation_busy',
           'visual_review_required',
         ].includes(String(code))
-      )
+      ) {
         setPrepared(null)
+        void refresh()
+      }
     },
     onSuccess: (record) => {
       setPrepared(null)
@@ -260,6 +263,7 @@ export function PlayerActions({
               onChange={(event) => {
                 setKind(event.target.value as PlayerAction['kind'])
                 setValue('')
+                draftRevisionRef.current = null
               }}
             >
               <option value="move">{m.actionMove}</option>
@@ -276,6 +280,7 @@ export function PlayerActions({
                 onChange={(event) => {
                   setPrepareField(event.target.value as typeof prepareField)
                   setValue('')
+                  draftRevisionRef.current = null
                 }}
               >
                 <option value="clothing">{m.clothing}</option>
@@ -424,9 +429,9 @@ export function useVisualReview({
   conversation: Conversation | undefined
 }) {
   const cache = useQueryClient()
-  const [values, setValues] = useState<Pick<
-    VisualReview,
-    'player' | 'character'
+  const [values, setValues] = useState<Record<
+    'player' | 'character',
+    VisualPerson
   > | null>(null)
   const [prepared, setPrepared] = useState<VisualReview | null>(null)
   const resolved =
@@ -440,11 +445,11 @@ export function useVisualReview({
             (role === 'player'
               ? conversation?.definition.user
               : conversation?.definition.character
-            )?.initial_clothing ?? '',
-          current_clothing: conversation?.state?.[role]?.clothing ?? '',
+            )?.initial_clothing ?? null,
+          current_clothing: conversation?.state?.[role]?.clothing ?? null,
         },
       ]),
-    ) as Pick<VisualReview, 'player' | 'character'>)
+    ) as Record<'player' | 'character', VisualPerson>)
   const review = useMutation({
     ...q.reviewVisualsMutation(),
     onSuccess: (result) => {
@@ -499,7 +504,12 @@ export function VisualReviewForm({
         const body: VisualReview = {
           operation_id: crypto.randomUUID(),
           expected_revision: conversation.revision ?? 0,
-          ...values,
+          ...(conversation.definition.user?.visual_review_required
+            ? { player: values.player }
+            : {}),
+          ...(conversation.definition.character?.visual_review_required
+            ? { character: values.character }
+            : {}),
         }
         setPrepared(body)
         review.mutate({ path: { identity }, body })
@@ -508,39 +518,50 @@ export function VisualReviewForm({
       <h3>{m.reviewAppearance}</h3>
       <p>{m.reviewAppearanceHelp}</p>
       <fieldset disabled={busy || review.isPending || !!prepared}>
-        {(['player', 'character'] as const).map((role) => (
-          <fieldset key={role}>
-            <legend>{role === 'player' ? m.you : m.character}</legend>
-            <p>
-              {
-                (role === 'player'
-                  ? conversation.definition.user
-                  : conversation.definition.character
-                )?.appearance
-              }
-            </p>
-            {(
-              ['appearance', 'initial_clothing', 'current_clothing'] as const
-            ).map((field) => (
-              <label key={field}>
-                {field === 'appearance'
-                  ? m.appearance
-                  : field === 'initial_clothing'
-                    ? m.initial_clothing
-                    : m.clothing}
-                <input
-                  value={values[role][field]}
-                  onChange={(event) =>
-                    setValues({
-                      ...values,
-                      [role]: { ...values[role], [field]: event.target.value },
-                    })
-                  }
-                />
-              </label>
-            ))}
-          </fieldset>
-        ))}
+        {(['player', 'character'] as const)
+          .filter(
+            (role) =>
+              (role === 'player'
+                ? conversation.definition.user
+                : conversation.definition.character
+              )?.visual_review_required,
+          )
+          .map((role) => (
+            <fieldset key={role}>
+              <legend>{role === 'player' ? m.you : m.character}</legend>
+              <p>
+                {
+                  (role === 'player'
+                    ? conversation.definition.user
+                    : conversation.definition.character
+                  )?.appearance
+                }
+              </p>
+              {(
+                ['appearance', 'initial_clothing', 'current_clothing'] as const
+              ).map((field) => (
+                <label key={field}>
+                  {field === 'appearance'
+                    ? m.appearance
+                    : field === 'initial_clothing'
+                      ? m.initial_clothing
+                      : m.clothing}
+                  <input
+                    value={values[role][field] ?? ''}
+                    onChange={(event) =>
+                      setValues({
+                        ...values,
+                        [role]: {
+                          ...values[role],
+                          [field]: event.target.value,
+                        },
+                      })
+                    }
+                  />
+                </label>
+              ))}
+            </fieldset>
+          ))}
         <Button type="submit">{m.confirmAppearance}</Button>
       </fieldset>
       {review.error && (

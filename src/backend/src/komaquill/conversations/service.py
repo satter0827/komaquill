@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+from contextlib import AbstractContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -27,7 +28,7 @@ class Repository(Protocol):
     def accept(self, identity: UUID, request: SendInput) -> tuple[Operation, bool]: ...
     def request(self, identity: UUID) -> tuple[Conversation, SendInput]: ...
     def operation(self, identity: UUID) -> Operation: ...
-    def running(self, identity: UUID) -> bool: ...
+    def execution(self, identity: UUID) -> AbstractContextManager[bool]: ...
     def commit(self, identity: UUID, reply: Reply) -> Operation: ...
     def checkpoint(self, identity: UUID, reply: Reply) -> None: ...
     def fail(self, identity: UUID, code: str) -> Operation: ...
@@ -66,7 +67,9 @@ class ConversationService:
         )
         resolved = resolved.model_copy(
             update={
-                "character_place": resolved.character_place or resolved.place,
+                "character_place": resolved.character_place
+                if "character_place" in initial.model_fields_set
+                else resolved.place,
                 **{
                     role: getattr(resolved, role).model_copy(
                         update={
@@ -113,19 +116,20 @@ class ConversationService:
         return self.repository.accept(identity, request)
 
     def execute(self, identity: UUID) -> Operation:
-        if not self.repository.running(identity):
+        with self.repository.execution(identity) as claimed:
+            if not claimed:
+                return self.repository.operation(identity)
+            try:
+                conversation, request = self.repository.request(identity)
+                reply = published_reply(conversation, self.responder.reply(conversation, request))
+                apply_reply(conversation, reply)
+            except KomaquillError as error:
+                return self.repository.fail(identity, error.code.value)
+            except Exception:
+                return self.repository.fail(identity, "operation_failed")
+            self.repository.checkpoint(identity, reply)
+            self.repository.commit(identity, reply)
             return self.repository.operation(identity)
-        try:
-            conversation, request = self.repository.request(identity)
-            reply = published_reply(conversation, self.responder.reply(conversation, request))
-            apply_reply(conversation, reply)
-        except KomaquillError as error:
-            return self.repository.fail(identity, error.code.value)
-        except Exception:
-            return self.repository.fail(identity, "operation_failed")
-        self.repository.checkpoint(identity, reply)
-        self.repository.commit(identity, reply)
-        return self.repository.operation(identity)
 
     def send(self, identity: UUID, request: SendInput) -> Operation:
         operation, created = self.accept(identity, request)

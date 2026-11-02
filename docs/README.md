@@ -49,3 +49,5 @@ Klein 4B・9Bの切替、負プロンプトの廃止、GPUとCUの制限は[設�
 右ペインからの行動と、会話・画像へ反映する状態の契約は[自分の行動と現在の場面](current/player-actions.md)、判断の背景は[行動の確定と視覚情報の共有](decisions/0016-player-actions-and-visual-state.md)を参照してください。
 
 今回の機能確認、実4B・WAIの結果と残る制約は[自分の行動と現在場面の検証](verification/results/player-actions-and-scenes.md)を参照してください。
+
+main反映後の機能再レビューと保存復旧の修正は[行動・外見確認・保存復旧の再レビュー](verification/results/zero-base-player-review.md)を参照してください。

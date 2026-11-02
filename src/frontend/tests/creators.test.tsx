@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { LibraryPage } from '../src/features/library'
+import { LibraryPage, PlayerPage } from '../src/features/library'
 import { client } from '../src/api/generated/client.gen'
 import type {
   CreationJob,
@@ -32,6 +32,92 @@ const server = setupServer(
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterAll(() => server.close())
 afterEach(() => server.resetHandlers())
+
+it.each(['player', 'character'] as const)(
+  'retains %s multiline item drafts and preserves explicit empty clothes',
+  async (kind) => {
+    let stored: Record<string, unknown> = {
+      id: 'saved',
+      name: 'Mira',
+      revision: 0,
+      initial_clothing: null,
+      initial_held_objects: ['Cup', 'Book'],
+    }
+    const requests: Array<Record<string, unknown>> = []
+    const update = (value: Record<string, unknown>) => {
+      requests.push(value)
+      stored = { ...stored, ...value, revision: Number(stored.revision) + 1 }
+      return stored
+    }
+    server.use(
+      http.get(`${base}/api/v1/player`, () => HttpResponse.json(stored)),
+      http.get(`${base}/api/v1/characters`, () => HttpResponse.json([stored])),
+      http.put(`${base}/api/v1/player`, async ({ request }) =>
+        HttpResponse.json(
+          update((await request.json()) as Record<string, unknown>),
+        ),
+      ),
+      http.post(`${base}/api/v1/characters/save`, async ({ request }) => {
+        const body = (await request.json()) as {
+          value: Record<string, unknown>
+        }
+        return HttpResponse.json({
+          preset: update(body.value),
+          job: null,
+          image_error: null,
+        })
+      }),
+    )
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: {
+              queries: { retry: false },
+              mutations: { retry: false },
+            },
+          })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[kind === 'player' ? '/player' : '/characters/saved']}
+        >
+          <Routes>
+            <Route path="/player" element={<PlayerPage />} />
+            <Route
+              path="/characters/:identity"
+              element={<LibraryPage kind="character" />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const items = await screen.findByLabelText(m.initial_held_objects)
+    expect(items).toHaveValue('Cup\nBook')
+    await userEvent.type(screen.getByLabelText(m.name), ' Updated')
+    await userEvent.click(screen.getByRole('button', { name: m.save }))
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0]).toMatchObject({
+      initial_clothing: null,
+      initial_held_objects: ['Cup', 'Book'],
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: m.save })).toBeEnabled(),
+    )
+    await userEvent.clear(items)
+    await userEvent.type(items, 'Cup{Enter}Book{Enter}Key{Enter}')
+    expect(items).toHaveValue('Cup\nBook\nKey\n')
+    const clothes = screen.getByLabelText(m.initial_clothing)
+    await userEvent.type(clothes, 'Shirt')
+    await userEvent.clear(clothes)
+    await userEvent.click(screen.getByRole('button', { name: m.save }))
+    await waitFor(() => expect(requests).toHaveLength(2))
+    expect(requests[1]).toMatchObject({
+      initial_clothing: '',
+      initial_held_objects: ['Cup', 'Book', 'Key'],
+    })
+  },
+)
 
 it('shows an empty library after filtering samples for another language', async () => {
   server.use(

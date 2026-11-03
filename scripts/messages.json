@@ -63,5 +63,6 @@
   "efficiency.source_mismatch": "The loaded package does not match the selected source.",
   "efficiency.progress": "{variant} {locale}, history={history}, turn={turn}: {state}",
   "actions.collect_help": "Collect bounded player action and memory evidence with an explicitly permitted local model.",
-  "actions.output_path": "The output must be inside .artifacts."
+  "actions.output_path": "The output must be inside .artifacts.",
+  "acceptance.model_required": "Select the exact loaded model for live acceptance checks."
 }

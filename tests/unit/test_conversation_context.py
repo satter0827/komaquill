@@ -95,16 +95,76 @@ def test_generated_snapshot_retains_unknown_values_and_applies_known_changes():
     assert previous.character.clothing == "black apron"
 
 
-def test_wire_snapshot_requires_every_field_and_preserves_canonical_limits():
+def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     from komaquill.adapters.llm.conversation import (
-        GeneratedPersonState,
-        GeneratedState,
+        DialogueResult,
         NarrativeReply,
+        SceneChange,
+        resolve_scene,
     )
 
-    for model in (GeneratedState, GeneratedPersonState, NarrativeReply):
+    for model in (DialogueResult, SceneChange, NarrativeReply):
         schema = model.model_json_schema()
         assert set(schema["required"]) == set(schema["properties"])
-    assert next(iter(NarrativeReply.model_fields)) == "requested_player_action"
+    assert set(NarrativeReply.model_fields) == {"response"}
     with pytest.raises(ValueError):
-        GeneratedState.model_validate({**ConversationState().model_dump(), "place": "x" * 1001})
+        SceneChange(field="place", value="Another place")
+    with pytest.raises(ValueError):
+        resolve_scene(
+            Conversation(definition=ConversationInput(title="Limits")),
+            DialogueResult(
+                kind="companion",
+                changes=[SceneChange(field="pose", value="x" * 1001)],
+                action_narration="",
+                text="Hello",
+            ),
+        )
+
+
+def test_history_projection_preserves_repetitions_and_distinct_state_boundaries():
+    import json
+    from types import SimpleNamespace
+
+    from komaquill.adapters.llm.context import ContextBudget
+    from komaquill.adapters.llm.memory import history_messages
+    from komaquill.conversations.models import SendInput
+
+    state = ConversationState(place="Bookshop")
+    rows = [
+        Turn(operation_id=uuid4(), user="Again", assistant="Yes", state=state),
+        Turn(operation_id=uuid4(), user="Again", assistant="Yes", state=state),
+        Turn(
+            operation_id=uuid4(),
+            user="Again",
+            assistant="Yes",
+            state=state,
+            notes=["Keep the key."],
+        ),
+        Turn(
+            operation_id=uuid4(),
+            user="Again",
+            assistant="Yes",
+            state=state.model_copy(update={"place": "Garden"}),
+        ),
+    ]
+    conversation = Conversation(
+        definition=ConversationInput(title="Repeated turns"), turns=rows, turn_count=len(rows)
+    )
+    responder = SimpleNamespace(
+        settings=SimpleNamespace(recent_turns=1, memory_max_batches=1),
+        budget=lambda *_: ContextBudget(32768, 32768, 512, 128, "{}"),
+        system_text=lambda _, value: value,
+    )
+    messages, memory = history_messages(
+        responder,
+        conversation,
+        SendInput(operation_id=uuid4(), text="Continue"),
+        lambda _: "Instructions",
+        "Continue",
+        "{}",
+        lambda _: "",
+    )
+    projected = json.loads(messages[0][1])["history"]
+    assert [(p["turn"], p["consecutive_turns"]) for p in projected] == [(0, 2), (2, 1), (3, 1)]
+    assert all(p["user"] == "Again" and p["assistant"] == "Yes" for p in projected)
+    assert memory is None and conversation.turns == rows

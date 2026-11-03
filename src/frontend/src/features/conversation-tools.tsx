@@ -92,7 +92,7 @@ export function ConversationNotes({
       </form>
       <details>
         <summary>{m.exportConversation}</summary>
-        <label>
+        <label className="checkbox">
           <input
             type="checkbox"
             checked={includeImages}
@@ -100,7 +100,7 @@ export function ConversationNotes({
           />
           {m.includeImages}
         </label>
-        <label>
+        <label className="checkbox">
           <input
             type="checkbox"
             checked={includeConditions}

@@ -2,10 +2,11 @@
 request_timeout = 300.0
 max_output_tokens = 4096
 repair_attempts = 1
-context_turns = 12
+recent_turns = 6
 max_input_characters = 32768
 summary_max_output_tokens = 512
 summary_max_characters = 2048
+memory_max_batches = 4
 context_window_tokens = 32768
 repair_reserve_tokens = 1024
 
@@ -20,3 +21,5 @@ base_url = "http://127.0.0.1:1234/v1"
 require_model_match = true
 temperature = 0.3
 reasoning_effort = "none"
+token_counting = "lmstudio"
+schema_in_context = false

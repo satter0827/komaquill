@@ -26,6 +26,8 @@
 
 [会話実行とコンテンツ設定](current/execution-and-content.md)は、公式チェックポイント、履歴の分離、NSFW、固定メモ、場面の分岐と共有用の出力を扱います。設計判断は[会話実行の永続化](decisions/0017-durable-conversations-and-content.md)を参照してください。
 
+文脈予算と原文参照による記憶、事実回答と画像の不採用判断は[原文を根拠にした会話](decisions/0018-source-backed-conversation.md)、実機結果は[会話とWAIの受入検証](verification/results/llm-acceptance.md)を参照してください。
+
 ## 文書の状態と正本
 
 設定・LLM・API取得・検査の現在の分担は[標準機能への委譲](current/library-delegation.md)を参照してください。

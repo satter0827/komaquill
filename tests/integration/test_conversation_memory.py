@@ -9,7 +9,7 @@ from komaquill.conversations.models import Turn
 from komaquill.domain.roleplay import ConversationMemory
 from langchain_core.messages import AIMessage
 
-from tests.support.conversations import wire_scene
+from tests.support.conversations import wire_reply, wire_scene
 
 
 def prepare(
@@ -19,14 +19,16 @@ def prepare(
     locale="en",
     failure=None,
     count=4,
-    context_turns=4,
+    recent_turns=2,
     action_narration="",
 ):
     import langchain_openai
 
     api = Client.initialize(tmp_path)
     (tmp_path / "komaquill.toml").write_text(
-        f"[conversation]\ncontext_turns={context_turns}\n", encoding="utf-8"
+        f"[conversation]\nrecent_turns={recent_turns}\ncontext_window_tokens=1440\n"
+        "max_output_tokens=512\nrepair_reserve_tokens=128\n",
+        encoding="utf-8",
     )
     calls = []
 
@@ -36,8 +38,7 @@ def prepare(
 
         def bind(self, **options):
             self.summary = (
-                "current_state"
-                not in options["response_format"]["json_schema"]["schema"]["properties"]
+                "response" not in options["response_format"]["json_schema"]["schema"]["properties"]
             )
             self.limit = options["max_completion_tokens"]
             return self
@@ -47,11 +48,16 @@ def prepare(
             if self.summary and failure == "transport":
                 raise RuntimeError("Injected transport failure")
             if self.summary:
+                sources = json.loads(messages[-1].content)
                 result = {
-                    "text": "They promised to visit the lighthouse. The player owns the red coat."
-                    if locale == "en"
-                    else "二人は灯台を訪れる約束をした。赤いコートの持ち主は旅人である。"
+                    "passages": [
+                        {"source": item["source"], "quote": item["text"]}
+                        for item in sources
+                        if item["speaker"] == "user"
+                    ][:2]
                 }
+                if failure == "fabricated":
+                    result = {"passages": [{"source": 0, "quote": "An invented fact."}]}
                 if failure == "invalid":
                     result = {"wrong": "value"}
             else:
@@ -64,11 +70,37 @@ def prepare(
                     else "約束の灯台へ行きましょう。",
                 }
             return AIMessage(
-                content=json.dumps(result, ensure_ascii=False),
+                content=json.dumps(wire_reply(result), ensure_ascii=False),
                 response_metadata={"model_name": self.model},
             )
 
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    from dataclasses import replace
+
+    from komaquill.adapters.llm.execution import StructuredExecution
+
+    original_budget = StructuredExecution.budget
+    monkeypatch.setattr(
+        StructuredExecution,
+        "budget",
+        lambda self, *args: replace(
+            original_budget(self, *args),
+            count=lambda messages: (
+                200
+                + sum(
+                    200
+                    * sum(
+                        item["consecutive_turns"]
+                        for item in json.loads(m.content).get("history", [])
+                    )
+                    for m in messages
+                    if m.type == "human"
+                    and isinstance(m.content, str)
+                    and m.content.startswith('{"history":')
+                )
+            ),
+        ),
+    )
     saved = api.conversations.create(
         ConversationInput(
             title="Memory",
@@ -106,10 +138,14 @@ def test_summary_receives_companion_actions_separately_from_scenery_and_dialogue
         original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
     )
     assert result.state == "complete"
-    summary_input = [json.loads(message.content) for message in calls[0][1] if message.type == "ai"]
-    assert len(summary_input) == 2
-    assert all(message["action_narration"] == action for message in summary_input)
-    assert all(message["narration"] == "The beach is quiet." for message in summary_input)
+    summary_input = json.loads(calls[0][1][-1].content)
+    assert [item["text"] for item in summary_input if item["speaker"] == "action_narration"] == [
+        action,
+        action,
+    ]
+    assert [item["text"] for item in summary_input if item["speaker"] == "narration"] == [
+        "The beach is quiet."
+    ] * 2
     assert api.conversations.get(original.id).turns[:4] == original.turns
 
 
@@ -127,16 +163,14 @@ def test_summary_is_saved_and_reused_after_restart_without_rewriting_history(
     assert saved.state == original.state
     assert [summary for summary, _, _ in calls] == [True, False]
     assert calls[0][2] == 512
-    assert saved.memory.source_version == 4
+    assert saved.memory.source_version == 5
     summary_messages = calls[0][1]
-    confirmed = [
-        json.loads(message.content)["confirmed_state"]
-        for message in summary_messages
-        if message.type == "ai"
-    ]
-    assert confirmed == [turn.state.model_dump(mode="json") for turn in original.turns[:2]]
-    assert "confirmed_state" in summary_messages[0].content
-    assert "human_player" in summary_messages[0].content
+    summary_sources = json.loads(summary_messages[-1].content)
+    assert {item["speaker"] for item in summary_sources} == {"user", "assistant", "narration"}
+    assert saved.memory.text == "\n".join(turn.user for turn in original.turns[:2])
+    assert {p.turn_id for p in saved.memory.passages} == {
+        str(turn.operation_id) for turn in original.turns[:2]
+    }
     assert sum(item.type == "system" for item in calls[1][1]) == 1
     assert "lighthouse" in str(calls[1][1]) or "灯台" in str(calls[1][1])
     assert Client(tmp_path).conversations.send(original.id, request).state == "complete"
@@ -193,9 +227,9 @@ def test_later_summary_advances_from_saved_message_ids_without_resending_old_tur
     current = api.conversations.get(original.id)
     assert current.memory.through_turn == 4
     assert current.turns[:4] == original.turns
-    human_text = [item.content for item in summaries[1] if item.type == "human"]
-    assert original.turns[0].user not in human_text
-    assert original.turns[2].user in human_text
+    source_text = [item["text"] for item in json.loads(summaries[1][-1].content)]
+    assert original.turns[2].user in source_text
+    assert original.turns[0].user in source_text
 
 
 def test_memory_hash_and_scope_are_validated_before_another_call(tmp_path, monkeypatch):
@@ -223,43 +257,13 @@ def test_memory_hash_and_scope_are_validated_before_another_call(tmp_path, monke
     assert api.conversations.get(original.id).memory == bad
 
 
-def test_summary_hash_covers_consumed_text_and_ignores_unconsumed_record_metadata(
-    tmp_path, monkeypatch
-):
-    from komaquill.adapters.llm.memory import history_hash
-
-    _, original, _ = prepare(tmp_path, monkeypatch)
-    changed = original.model_copy(deep=True)
-    changed.turns[0] = changed.turns[0].model_copy(update={"image_id": uuid4()})
-    assert history_hash(changed, 2) == history_hash(original, 2)
-    changed.turns[0] = changed.turns[0].model_copy(update={"user": "A different promise"})
-    assert history_hash(changed, 2) != history_hash(original, 2)
-
-
-def test_missing_summary_dependency_is_typed_and_does_not_change_history(tmp_path, monkeypatch):
-    import sys
-
-    api, original, calls = prepare(tmp_path, monkeypatch, count=1)
-    monkeypatch.setitem(sys.modules, "langmem.short_term", None)
+def test_fabricated_memory_evidence_stops_before_dialogue(tmp_path, monkeypatch):
+    api, original, calls = prepare(tmp_path, monkeypatch, failure="fabricated")
     operation = api.conversations.send(
         original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
     )
-    assert operation.error == "llm_dependencies_missing"
-    assert calls == [] and api.conversations.get(original.id) == original
-
-
-def test_summary_source_versions_preserve_old_hashes_and_cover_confirmed_outcomes(
-    tmp_path, monkeypatch
-):
-    from komaquill.adapters.llm.memory import history_hash
-
-    _, original, _ = prepare(tmp_path, monkeypatch)
-    changed = original.model_copy(deep=True)
-    changed.turns[0] = changed.turns[0].model_copy(
-        update={"state": changed.state.model_copy(update={"place": "Another place"})}
-    )
-    assert history_hash(changed, 2, 1) == history_hash(original, 2, 1)
-    assert history_hash(changed, 2, 2) != history_hash(original, 2, 2)
+    assert operation.error == "invalid_response" and len(calls) == 1
+    assert api.conversations.get(original.id) == original
 
 
 def test_oversized_required_input_does_not_send_summary_or_dialogue(tmp_path, monkeypatch):
@@ -276,24 +280,24 @@ def test_oversized_required_input_does_not_send_summary_or_dialogue(tmp_path, mo
 
 
 @pytest.mark.parametrize("count", [0, 1])
-def test_single_history_slot_allows_continuation_until_a_summary_prefix_exists(
+def test_recent_history_does_not_trigger_summary_until_the_budget_is_exceeded(
     tmp_path, monkeypatch, count
 ):
-    api, original, calls = prepare(tmp_path, monkeypatch, count=count, context_turns=1)
-    for index in range(2 - count):
+    api, original, calls = prepare(tmp_path, monkeypatch, count=count, recent_turns=1)
+    for index in range(4 - count):
         operation = api.conversations.send(
             original.id,
             SendInput(operation_id=uuid4(), text=f"Continue {index}", allow_real_llm=True),
         )
         assert operation.state == "complete"
-    assert [summary for summary, _, _ in calls] == [False] * (2 - count)
+    assert [summary for summary, _, _ in calls] == [False] * (4 - count)
     saved = api.conversations.get(original.id)
-    assert len(saved.turns) == 2 and saved.memory is None
+    assert len(saved.turns) == 4 and saved.memory is None
     operation = api.conversations.send(
         original.id, SendInput(operation_id=uuid4(), text="Continue again", allow_real_llm=True)
     )
     assert operation.state == "complete"
     assert [summary for summary, _, _ in calls][-2:] == [True, False]
     continued = api.conversations.get(original.id)
-    assert continued.turns[:2] == saved.turns
-    assert continued.memory.through_turn == 1
+    assert continued.turns[:4] == saved.turns
+    assert continued.memory.through_turn == 3

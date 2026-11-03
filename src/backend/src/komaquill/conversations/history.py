@@ -2,7 +2,21 @@
 
 import hashlib
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from komaquill.conversations.models import Turn
+
+
+def memory_sources(turn: "Turn") -> dict[str, str]:
+    values = {
+        field: getattr(turn, field)
+        for field in ("user", "assistant", "narration", "action_narration")
+        if getattr(turn, field)
+    }
+    if turn.action is not None:
+        values["action"] = turn.action.model_dump_json()
+    return values
 
 
 def advance_history(previous: str, turn: dict[str, Any]) -> str:

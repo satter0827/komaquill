@@ -36,6 +36,9 @@ def offline_network(monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", local_only)
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv(
+        "KOMAQUILL_CONVERSATION__LLM_PROFILES__LMSTUDIO-4B__TOKEN_COUNTING", "approximate"
+    )
 
 
 @pytest.fixture

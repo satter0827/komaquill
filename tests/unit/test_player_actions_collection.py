@@ -6,6 +6,7 @@ from komaquill.api import Client
 from langchain_core.messages import AIMessage
 
 from scripts.verify_player_actions import collect
+from tests.support.conversations import wire_reply
 
 
 def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch):
@@ -19,8 +20,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
 
         def bind(self, **options):
             self.summary = (
-                "current_state"
-                not in options["response_format"]["json_schema"]["schema"]["properties"]
+                "response" not in options["response_format"]["json_schema"]["schema"]["properties"]
             )
             return self
 
@@ -74,17 +74,17 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                     else "",
                 }
             return AIMessage(
-                content=json.dumps(value, ensure_ascii=False),
+                content=json.dumps(wire_reply(value), ensure_ascii=False),
                 response_metadata={"model_name": self.model},
             )
 
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
     client = Client.initialize(tmp_path)
-    (tmp_path / "komaquill.toml").write_text("[conversation]\ncontext_turns=4\n", encoding="utf-8")
+    (tmp_path / "komaquill.toml").write_text("[conversation]\nrecent_turns=4\n", encoding="utf-8")
     results = collect(client, tmp_path)
     assert len(results) == 2
-    assert len(calls) == 12
+    assert len(calls) == 10
     for result in results:
         assert all(result["checks"].values())
-        assert result["conversation"]["memory"]["source_version"] == 4
+        assert result["conversation"]["memory"] is None
         assert (tmp_path / f"{result['locale']}.json").is_file()

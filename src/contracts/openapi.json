@@ -3216,7 +3216,8 @@
               1,
               2,
               3,
-              4
+              4,
+              5
             ],
             "title": "Source Version",
             "default": 1
@@ -3246,6 +3247,14 @@
           "instructions_sha256": {
             "type": "string",
             "title": "Instructions Sha256"
+          },
+          "passages": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryPassage"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "title": "Passages"
           }
         },
         "additionalProperties": false,
@@ -3970,6 +3979,41 @@
           "text"
         ],
         "title": "IntentionAction"
+      },
+      "MemoryPassage": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Turn Id"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant",
+              "narration",
+              "action_narration",
+              "action"
+            ],
+            "title": "Field"
+          },
+          "quote": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Quote"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "turn_id",
+          "field",
+          "quote"
+        ],
+        "title": "MemoryPassage"
       },
       "MoveAction": {
         "properties": {

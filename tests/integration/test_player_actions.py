@@ -109,7 +109,7 @@ def test_published_background_uses_the_same_facts_as_drawing(story):
 
 
 def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
-    from komaquill.adapters.llm.conversation import GeneratedState, resolve_scene
+    from komaquill.adapters.llm.conversation import DialogueResult, resolve_scene
     from komaquill.domain.roleplay import PersonState
 
     _, _, conversation = story
@@ -122,12 +122,7 @@ def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
             )
         }
     )
-    generated = GeneratedState(
-        relationship="",
-        companion_movement="stay",
-        scenery="",
-        character={"clothing": None, "pose": None, "expression": None, "held_objects": None},
-    )
+    generated = DialogueResult(kind="companion", changes=[], action_narration="", text="Hello")
     result = resolve_scene(current, generated)
     assert result.character.clothing == "" and result.character.held_objects == []
 

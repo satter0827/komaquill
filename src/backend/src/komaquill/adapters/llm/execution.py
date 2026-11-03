@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -23,6 +23,10 @@ from komaquill.adapters.llm.constraints import ResponseConstraintError
 from komaquill.adapters.llm.language import ResponseLanguageError
 from komaquill.adapters.llm_configuration import ConversationSettings, LLMProfile
 from komaquill.domain.errors import KomaquillError
+
+if TYPE_CHECKING:
+    from komaquill.adapters.llm.context import ContextBudget
+    from komaquill.adapters.llm.tokenization import NativeTokens
 
 
 def response_schema(schema: type[BaseModel], field_language: str | None) -> dict[str, Any]:
@@ -47,6 +51,7 @@ class StructuredExecution:
     ) -> None:
         self.workspace = workspace
         self.configuration = configuration
+        self._counters: dict[str, NativeTokens] = {}
 
     @cached_property
     def checkpoints(self) -> Any:
@@ -63,9 +68,36 @@ class StructuredExecution:
         return compile_request(self.checkpoints.saver)
 
     def close(self) -> None:
+        for counter in self._counters.values():
+            counter.close()
+        self._counters.clear()
         if "checkpoints" in self.__dict__:
             self.checkpoints.close()
         self.__dict__.pop("graph", None)
+
+    def budget(
+        self, schema: str, profile_id: str, output_tokens: int | None = None
+    ) -> "ContextBudget":
+        from komaquill.adapters.llm.context import ContextBudget, tokens
+        from komaquill.adapters.llm.tokenization import NativeTokens
+
+        profile = self.settings.llm_profiles[profile_id]
+        counter = None
+        if profile.token_counting == "lmstudio":
+            if profile_id not in self._counters:
+                self._counters[profile_id] = NativeTokens(profile)
+            counter = self._counters[profile_id]
+        return ContextBudget(
+            max_characters=self.settings.max_input_characters,
+            window_tokens=min(self.settings.context_window_tokens, counter.window_tokens)
+            if counter
+            else self.settings.context_window_tokens,
+            output_tokens=output_tokens or self.settings.max_output_tokens,
+            repair_tokens=self.settings.repair_reserve_tokens,
+            schema=schema,
+            count=counter or tokens,
+            schema_in_context=profile.schema_in_context,
+        )
 
     @cached_property
     def settings(self) -> ConversationSettings:
@@ -73,6 +105,14 @@ class StructuredExecution:
             return self.configuration().conversation
         except (OSError, ValueError):
             raise KomaquillError(code="invalid_configuration", retryable=False) from None
+
+    def system_text(self, operation: UUID, system: str) -> str:
+        from komaquill.adapters.database import database
+
+        enabled = database(self.workspace / ".artifacts/data/komaquill.sqlite3").content.capture(
+            operation
+        )
+        return json.dumps({"content_settings": {"nsfw_enabled": enabled}}) + "\n" + system
 
     @cached_property
     def lock(self) -> FileLock:
@@ -187,13 +227,12 @@ class StructuredExecution:
             "::1",
         }:
             raise KomaquillError(code="invalid_configuration", retryable=False)
-        system = json.dumps({"content_settings": {"nsfw_enabled": enabled}}) + "\n" + system
+        system = self.system_text(operation, system)
         try:
             from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
             from langsmith import tracing_context
             from openai import ContentFilterFinishReasonError, LengthFinishReasonError
 
-            from komaquill.adapters.llm.context import ContextBudget, tokens
             from komaquill.adapters.llm.graph import WORKFLOW_VERSION, run_request
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing") from None
@@ -204,13 +243,7 @@ class StructuredExecution:
         )
         wire_schema = response_schema(schema, field_language)
         output_limit = output_tokens or self.settings.max_output_tokens
-        budget = ContextBudget(
-            max_characters=self.settings.max_input_characters,
-            window_tokens=self.settings.context_window_tokens,
-            output_tokens=output_limit,
-            repair_tokens=self.settings.repair_reserve_tokens,
-            schema=json.dumps(wire_schema, ensure_ascii=False),
-        )
+        budget = self.budget(json.dumps(wire_schema, ensure_ascii=False), profile_id, output_limit)
         bound = self._model(profile).bind(
             max_completion_tokens=output_limit,
             response_format={
@@ -250,7 +283,14 @@ class StructuredExecution:
                 "temperature": profile.temperature,
                 "reasoning_effort": profile.reasoning_effort,
                 "usage": None,
-                "input_tokens_estimated": tokens(context) + budget.schema_tokens,
+                "input_tokens_estimated": budget.count(context) + budget.schema_tokens
+                if profile.token_counting == "approximate"
+                else None,
+                "input_tokens_counted": budget.count(context) + budget.schema_tokens
+                if profile.token_counting == "lmstudio"
+                else None,
+                "token_counting": profile.token_counting,
+                "schema_in_context": profile.schema_in_context,
                 "context_window_tokens": budget.window_tokens,
                 "repair_reserve_tokens": budget.repair_tokens,
             }

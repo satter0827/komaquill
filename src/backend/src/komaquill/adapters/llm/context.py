@@ -1,6 +1,6 @@
 """Apply one conservative token estimate and independent character safety limits."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from langchain_core.messages import (
@@ -27,10 +27,12 @@ class ContextBudget:
     output_tokens: int
     repair_tokens: int
     schema: str
+    count: Callable[[Sequence[BaseMessage]], int] = tokens
+    schema_in_context: bool = True
 
     @property
     def schema_tokens(self) -> int:
-        return tokens([HumanMessage(content=self.schema)])
+        return self.count([HumanMessage(content=self.schema)]) if self.schema_in_context else 0
 
     @property
     def input_tokens(self) -> int:
@@ -40,7 +42,7 @@ class ContextBudget:
         if (
             sum(len(str(item.content)) for item in messages) + len(self.schema)
             > self.max_characters
-            or tokens(messages) > self.input_tokens
+            or self.count(messages) > self.input_tokens
         ):
             raise KomaquillError(code="context_limit_exceeded", retryable=False)
 
@@ -61,7 +63,7 @@ class ContextBudget:
         context = trim_messages(
             context,
             max_tokens=self.input_tokens,
-            token_counter=tokens,
+            token_counter=self.count,
             strategy="last",
             start_on="human",
             include_system=True,

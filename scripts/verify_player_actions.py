@@ -150,7 +150,7 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                 "companion_not_moved_by_player_action": record.after.character_place == place,
                 "player_clothing_preserved": final.state.player.clothing
                 == prepared.after.player.clothing,
-                "summary_saved": final.memory is not None,
+                "history_available_after_restart": len(final.turns) == 5,
             },
         }
         atomic_json(output / f"{locale}.json", result)
@@ -209,7 +209,7 @@ def main() -> None:
     client = Client.initialize(workspace)
     settings = workspace / "komaquill.toml"
     settings.write_text(
-        'models=["wai-illustrious"]\n[conversation]\ncontext_turns=4\nmax_output_tokens=1024\n',
+        'models=["wai-illustrious"]\n[conversation]\nrecent_turns=4\nmax_output_tokens=1024\n',
         encoding="utf-8",
     )
     try:

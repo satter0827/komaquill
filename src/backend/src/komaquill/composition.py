@@ -21,7 +21,10 @@ from komaquill.conversations.service import ConversationService
 def conversations(workspace: Path, execution: StructuredExecution) -> ConversationService:
     storage = database(workspace / ".artifacts/data/komaquill.sqlite3")
     repository = ConversationRepository(storage)
-    return ConversationService(repository, ConversationResponder(execution, repository.save_memory))
+    return ConversationService(
+        repository,
+        ConversationResponder(execution, repository.save_memory, repository.history_hash),
+    )
 
 
 def library(

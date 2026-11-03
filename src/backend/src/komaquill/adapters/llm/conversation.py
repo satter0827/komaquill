@@ -4,11 +4,11 @@ import json
 from collections.abc import Callable
 from functools import cached_property
 from importlib.resources import files
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self, cast
 from uuid import UUID
 
 from filelock import Timeout
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from komaquill.adapters.llm.constraints import ResponseConstraintError
 from komaquill.adapters.llm.execution import StructuredExecution, response_schema
@@ -21,7 +21,6 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import (
     ConversationMemory,
     ConversationState,
-    PersonState,
     PhysicalObjects,
     Record,
     StatePatch,
@@ -31,35 +30,6 @@ from komaquill.library.models import (
     PlayerInput,
     StoryInput,
 )
-
-
-class GeneratedPersonState(Record):
-    """Require every current property in the model response, including unknown values."""
-
-    clothing: str | None = Field(max_length=3000)
-    expression: str | None = Field(max_length=1000)
-    pose: str | None = Field(max_length=1000)
-    held_objects: PhysicalObjects | None = Field(
-        description=PersonState.model_fields["held_objects"].description
-    )
-
-
-class GeneratedState(Record):
-    relationship: str = Field(max_length=2000)
-    companion_movement: Literal["stay", "join_player"] = Field(
-        description=(
-            "stay keeps the companion's location; "
-            "join_player moves the companion to the player's current place."
-        )
-    )
-    scenery: str = Field(
-        max_length=4000,
-        description="Visible environment, furniture, weather and lighting at the player's place. "
-        "Do not include people, dialogue or unconfirmed player actions.",
-    )
-    character: GeneratedPersonState = Field(
-        description="You, assistant_character. Perform second-person requests and imperatives here."
-    )
 
 
 class ProposedMove(MoveAction):
@@ -88,53 +58,58 @@ GeneratedAction = Annotated[
 ]
 
 
-def resolve_scene(conversation: Conversation, generated: GeneratedState) -> ConversationState:
-    return conversation.state.model_copy(
-        update={
-            "relationship": generated.relationship,
-            "scenery": generated.scenery,
-            "character_place": conversation.state.place
-            if generated.companion_movement == "join_player"
-            else conversation.state.character_place,
-            "character": conversation.state.character.model_copy(
-                update={
-                    key: getattr(generated.character, key)
-                    for key in type(generated.character).model_fields
-                    if getattr(generated.character, key) is not None
-                }
-            ),
-        }
-    )
+class SceneChange(Record):
+    field: Literal[
+        "relationship", "movement", "scenery", "clothing", "expression", "pose", "held_objects"
+    ]
+    value: str | PhysicalObjects
+
+    @model_validator(mode="after")
+    def matching_value(self) -> Self:
+        if (self.field == "held_objects") != isinstance(self.value, list):
+            raise ValueError("The scene field and value type must match.")
+        if self.field == "movement" and self.value not in ("stay", "join_player"):
+            raise ValueError("Movement must retain the companion's place or join the player.")
+        return self
+
+
+class DialogueResult(Record):
+    kind: Literal["companion"]
+    changes: list[SceneChange] = Field(max_length=7)
+    action_narration: str = Field(max_length=6000)
+    text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
+
+    @model_validator(mode="after")
+    def unique_changes(self) -> Self:
+        if len({change.field for change in self.changes}) != len(self.changes):
+            raise ValueError("A scene field may only change once.")
+        return self
+
+
+class ProposalResult(Record):
+    kind: Literal["player"]
+    action: GeneratedAction
 
 
 class NarrativeReply(Record):
-    requested_player_action: GeneratedAction | None = Field(
-        description=(
-            "Extract one action the human player explicitly requests for themselves in the latest "
-            "message. Return null for questions, dialogue and companion requests. "
-            "First-person clothing changes require kind=prepare with clothing; movement requires "
-            "kind=move. Do not complete these actions in scenery or classify them as intention. "
-            "Never suggest possible future actions."
-        ),
-    )
-    current_state: GeneratedState = Field(
-        description=(
-            "Permitted scene and companion changes only. Never change player state. "
-            "Carry forward unchanged facts. "
-            "Null person fields mean unknown, not removal. "
-            "Use empty clothing only when the person explicitly removes it."
-        )
-    )
-    action_narration: str = Field(
-        max_length=6000,
-        description="Visible actions by the companion, consistent with current_state. "
-        "Never invent player actions or feelings.",
-    )
-    text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
+    response: Annotated[ProposalResult | DialogueResult, Field(discriminator="kind")]
 
 
 class ReactionReply(NarrativeReply):
-    requested_player_action: None
+    response: DialogueResult
+
+
+def resolve_scene(conversation: Conversation, generated: DialogueResult) -> ConversationState:
+    changes: dict[str, Any] = {}
+    for change in generated.changes:
+        if change.field == "movement":
+            if change.value == "join_player":
+                changes["character_place"] = conversation.state.place
+        elif change.field in {"relationship", "scenery"}:
+            changes[change.field] = change.value
+        else:
+            changes.setdefault("character", {})[change.field] = change.value
+    return StatePatch.model_validate(changes).apply(conversation.state)
 
 
 class ConversationResponder:
@@ -148,9 +123,11 @@ class ConversationResponder:
         self,
         execution: StructuredExecution,
         save_memory: Callable[[UUID, ConversationMemory], None],
+        read_history_hash: Callable[[UUID, int], str],
     ) -> None:
         self.execution = execution
         self.save_memory = save_memory
+        self.read_history_hash = read_history_hash
         self.instructions = (
             files("komaquill")
             .joinpath("resources/conversations/instructions.txt")
@@ -183,7 +160,8 @@ class ConversationResponder:
             (a for a in conversation.actions if a.request.operation_id == request.action_id), None
         )
         latest = (
-            "React to this confirmed player action without changing its result: "
+            "The human player has completed this action. React as the companion; "
+            "keep the companion's own clothing and possessions: "
             + action.request.action.model_dump_json()
             if action is not None
             else request.text
@@ -259,6 +237,18 @@ class ConversationResponder:
         story = definition.scenario.model_dump(exclude_defaults=True, exclude={"place", "goal"})
         if conversation.turns:
             story.pop("opening", None)
+        scene = cast(dict[str, Any], scene_context(conversation))
+        scene["current_state"] = {
+            key: value for key, value in scene["current_state"].items() if value != ""
+        }
+        scene["people"] = {
+            role: {
+                key: value
+                for key, value in person.items()
+                if value is not None and (value != "" or key == "clothing")
+            }
+            for role, person in scene["people"].items()
+        }
         context = {
             "assistant_character": definition.character.model_dump(
                 exclude_defaults=True,
@@ -283,7 +273,7 @@ class ConversationResponder:
                 },
             ),
             "story": story,
-            **scene_context(conversation),
+            **scene,
             **({"pinned_notes": conversation.notes} if conversation.notes else {}),
             **(
                 {
@@ -301,18 +291,29 @@ class ConversationResponder:
             "response_language": language,
         }
 
-        def system(summary: str | None = None) -> str:
-            values = {**context, **({"historical_summary": summary} if summary else {})}
+        def system(summary: ConversationMemory | None = None) -> str:
+            values = {
+                **context,
+                **(
+                    {
+                        "historical_evidence": [
+                            {"speaker": p.field, "text": p.quote} for p in summary.passages
+                        ]
+                    }
+                    if summary
+                    else {}
+                ),
+            }
             return (
                 self.instructions
                 + "\n"
-                + json.dumps(values, ensure_ascii=False)
-                + f"\nThe visible text and scenery must be {language}."
+                + json.dumps(values, ensure_ascii=False, separators=(",", ":"))
+                + f"\nWrite text, action_narration and changes to scenery only in {language}."
             )
 
         language_contract = (
-            f"The JSON text and current_state.scenery must be written in {language}. "
-            "Return the permitted companion and scenery fields before dialogue."
+            "Write dialogue, action_narration and scenery changes in " + language + ". "
+            "Use kind=player for a future player action; use kind=companion otherwise."
         )
         reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
@@ -324,8 +325,9 @@ class ConversationResponder:
                 conversation,
                 request,
                 system,
-                latest + "\n\n" + language_contract,
+                latest,
                 json.dumps(response_schema(reply_schema, field_language), ensure_ascii=False),
+                lambda through: self.read_history_hash(conversation.id, through),
             )
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
@@ -334,7 +336,7 @@ class ConversationResponder:
                 raise KomaquillError(code="storage_failed", retryable=False)
             self.save_memory(conversation.id, memory)
         active_memory = memory or conversation.memory
-        messages.append(("user", latest + "\n\n" + language_contract))
+        messages.append(("user", latest))
         names = [
             value
             for person in (conversation.definition.user, conversation.definition.character)
@@ -343,17 +345,29 @@ class ConversationResponder:
         ]
 
         def validate(reply: NarrativeReply) -> None:
-            if reply.requested_player_action is not None:
+            if isinstance(reply.response, ProposalResult):
                 return
-            desired = resolve_scene(conversation, reply.current_state)
+            value = reply.response
+            desired = resolve_scene(conversation, value)
             proposed = StatePatch.between(conversation.state, desired).apply(conversation.state)
-            for field, value in (
-                ("action_narration", reply.action_narration),
-                ("text", reply.text if proposed.character_place == proposed.place else ""),
-                ("scenery", reply.current_state.scenery),
+            if (
+                action is None
+                and proposed.character_place == proposed.place
+                and not value.text.strip()
+                and not value.action_narration.strip()
+                and proposed == conversation.state
+            ):
+                raise ResponseConstraintError("empty_response")
+            for field, content in (
+                ("action_narration", value.action_narration),
+                ("text", value.text if proposed.character_place == proposed.place else ""),
+                (
+                    "scenery",
+                    desired.scenery if desired.scenery != conversation.state.scenery else "",
+                ),
             ):
                 try:
-                    check_language(value, locale, tuple(names))
+                    check_language(content, locale, tuple(names))
                 except ValueError:
                     raise ResponseLanguageError(field) from None
             if (
@@ -371,23 +385,23 @@ class ConversationResponder:
             request.operation_id,
             conversation.definition.llm_profile,
             request.allow_real_llm,
-            system(active_memory.text if active_memory else None),
+            system(active_memory),
             messages,
             validate=validate,
             correction=language_contract,
             field_language=field_language,
             trim=False,
         )
-        desired = resolve_scene(conversation, generated.current_state)
+        value = generated.response
+        if isinstance(value, ProposalResult):
+            return Reply(text="", state_patch=StatePatch(), action_proposals=[value.action])
+        desired = resolve_scene(conversation, value)
         return published_reply(
             conversation,
             Reply(
                 narration=desired.scenery,
-                action_narration=generated.action_narration,
-                text=generated.text,
+                action_narration=value.action_narration,
+                text=value.text,
                 state_patch=StatePatch.between(conversation.state, desired),
-                action_proposals=[generated.requested_player_action]
-                if generated.requested_player_action is not None
-                else [],
             ),
         )

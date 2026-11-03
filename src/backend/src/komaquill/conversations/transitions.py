@@ -20,31 +20,7 @@ def published_reply(conversation: Conversation, reply: Reply) -> Reply:
         return reply.model_copy(
             update={"text": "", "action_narration": "", "narration": state.scenery or state.place}
         )
-    before = conversation.state
-    definition = conversation.definition.character
-    unchanged = (
-        state.character_place == before.character_place
-        and all(
-            getattr(state.character, field) == getattr(before.character, field)
-            for field in ("clothing", "pose", "expression")
-        )
-        and (
-            state.character.held_objects
-            if state.character.held_objects is not None
-            else definition.initial_held_objects
-        )
-        == (
-            before.character.held_objects
-            if before.character.held_objects is not None
-            else definition.initial_held_objects
-        )
-    )
-    return reply.model_copy(
-        update={
-            "narration": state.scenery or state.place,
-            "action_narration": "" if unchanged else reply.action_narration,
-        }
-    )
+    return reply.model_copy(update={"narration": state.scenery or state.place})
 
 
 def apply_reply(conversation: Conversation, reply: Reply) -> ConversationState:

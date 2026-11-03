@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 
 class Record(BaseModel):
@@ -155,11 +155,24 @@ class StatePatch(Record):
         return ConversationState.model_validate(result)
 
 
+class MemoryPassage(Record):
+    turn_id: str = Field(min_length=1, max_length=64)
+    field: Literal["user", "assistant", "narration", "action_narration", "action"]
+    quote: str = Field(min_length=1, max_length=2048)
+
+
 class ConversationMemory(Record):
-    source_version: Literal[1, 2, 3, 4] = 1
+    source_version: Literal[1, 2, 3, 4, 5] = 1
     text: str = Field(max_length=2048)
     through_turn: int = Field(ge=1)
     source_sha256: str
     locale: str
     model: str
     instructions_sha256: str
+    passages: list[MemoryPassage] = Field(default_factory=list, max_length=16)
+
+    @model_validator(mode="after")
+    def matching_passages(self) -> Self:
+        if self.source_version == 5 and self.text != "\n".join(p.quote for p in self.passages):
+            raise ValueError("Memory text must match its source passages.")
+        return self

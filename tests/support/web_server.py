@@ -16,6 +16,7 @@ from komaquill.domain.models import Session
 from komaquill.interfaces.http.app import create_app
 
 from tests.support.comfy import ComfyStub
+from tests.support.conversations import wire_reply
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -33,7 +34,7 @@ def scripted_completion(body: dict) -> dict:
         if isinstance(context, dict) and "response_language" in context:
             english = context["response_language"] == "English"
             break
-    if "current_state" in schema:
+    if "response" in schema:
         current = context.get("current_state", {})
         visible = current.get("character_place", "") == current.get("place", "")
         value = {
@@ -97,7 +98,10 @@ def scripted_completion(body: dict) -> dict:
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": json.dumps(value, ensure_ascii=False)},
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(wire_reply(value), ensure_ascii=False),
+                },
                 "finish_reason": "stop",
             }
         ],
@@ -156,7 +160,10 @@ def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     session.endpoint = f"http://127.0.0.1:{server.server_port}"
     with (target / "komaquill.toml").open("a", encoding="utf-8") as configuration:
-        configuration.write(f'\n[llm_profiles.lmstudio-4b]\nbase_url = "{session.endpoint}/v1"\n')
+        configuration.write(
+            f'\n[llm_profiles.lmstudio-4b]\nbase_url = "{session.endpoint}/v1"\n'
+            'token_counting = "approximate"\n'
+        )
     atomic_json(workspace.session_file, session.model_dump(mode="json"))
     if output := os.environ.get("KOMAQUILL_WEB_EVIDENCE_DIR"):
         atomic_json(

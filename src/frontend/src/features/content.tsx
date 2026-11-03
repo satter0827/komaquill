@@ -21,7 +21,7 @@ export function ContentSettings() {
   return (
     <section>
       <h2>{m.contentSettings}</h2>
-      <label>
+      <label className="checkbox">
         <input
           type="checkbox"
           checked={requested ?? preferences.value.nsfw_enabled}

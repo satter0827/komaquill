@@ -9,7 +9,7 @@ from komaquill.conversations.models import ConversationInput, SendInput
 from komaquill.domain.roleplay import ConversationState
 from komaquill.library.models import CreationRequest
 
-from tests.support.conversations import set_state
+from tests.support.conversations import set_state, wire_reply
 
 
 def wire_state(value):
@@ -38,23 +38,23 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
-            if "current_state" in wire.get("properties", {}):
-                from komaquill.adapters.llm.conversation import NarrativeReply
-
-                assert wire["properties"]["text"]["description"].startswith(
-                    NarrativeReply.model_json_schema()["properties"]["text"]["description"]
-                )
+            if "response" in wire.get("properties", {}):
+                assert set(wire["properties"]) == {"response"}
             return self
 
         def invoke(self, messages, config):
             calls.append(list(messages))
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "location": "古書店" if repair and len(calls) == 1 else "An old bookshop.",
-                        "scenery": "Wooden shelves and a counter.",
-                        "atmosphere": "Rain streaks the windows.",
-                    },
+                    wire_reply(
+                        {
+                            "location": "古書店"
+                            if repair and len(calls) == 1
+                            else "An old bookshop.",
+                            "scenery": "Wooden shelves and a counter.",
+                            "atmosphere": "Rain streaks the windows.",
+                        }
+                    ),
                     ensure_ascii=False,
                 ),
                 response_metadata={"model_name": self.model},
@@ -113,11 +113,17 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     calls = []
     original.execution.invoke = lambda *_a, **_k: (
         calls.append(_a)
-        or NarrativeReply(
-            action_narration="",
-            requested_player_action=None,
-            current_state=wire_state({"place": "tower", "character": {"clothing": "blue shirt"}}),
-            text="Here we are.",
+        or NarrativeReply.model_validate(
+            wire_reply(
+                {
+                    "action_narration": "",
+                    "requested_player_action": None,
+                    "current_state": wire_state(
+                        {"place": "tower", "character": {"clothing": "blue shirt"}}
+                    ),
+                    "text": "Here we are.",
+                }
+            )
         )
     )
     original.reply(
@@ -154,23 +160,21 @@ def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkey
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
-            if "current_state" in wire.get("properties", {}):
-                from komaquill.adapters.llm.conversation import NarrativeReply
-
-                assert wire["properties"]["text"]["description"].startswith(
-                    NarrativeReply.model_json_schema()["properties"]["text"]["description"]
-                )
+            if "response" in wire.get("properties", {}):
+                assert set(wire["properties"]) == {"response"}
             return self
 
         def invoke(self, messages, config):
             calls.append(messages)
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "name": "A seaside shop",
-                        "opening": "A visitor enters the shop.",
-                        "character_id": str(uuid4()) if len(calls) == 1 else None,
-                    }
+                    wire_reply(
+                        {
+                            "name": "A seaside shop",
+                            "opening": "A visitor enters the shop.",
+                            "character_id": str(uuid4()) if len(calls) == 1 else None,
+                        }
+                    )
                 ),
                 response_metadata={"model_name": self.model},
             )
@@ -209,12 +213,14 @@ def test_operation_conditions_replace_frozen_prompt_defaults(tmp_path, monkeypat
             calls.append(messages)
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "action_narration": "",
-                        "requested_player_action": None,
-                        "current_state": wire_state({}),
-                        "text": "Here is the book.",
-                    }
+                    wire_reply(
+                        {
+                            "action_narration": "",
+                            "requested_player_action": None,
+                            "current_state": wire_state({}),
+                            "text": "Here is the book.",
+                        }
+                    )
                 ),
                 response_metadata={"model_name": self.model},
             )
@@ -265,20 +271,22 @@ def test_english_drafts_preserve_requested_proper_names(tmp_path, monkeypatch, k
             calls.append(messages)
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "name": "栞",
-                        "description": "A quiet seaside bookshop.",
-                        **(
-                            {
-                                "appearance": "Short silver hair",
-                                "personality": "Calm",
-                                "age": "unknown",
-                                "gender": "unknown",
-                            }
-                            if kind == "character_draft"
-                            else {"opening": "A visitor enters."}
-                        ),
-                    }
+                    wire_reply(
+                        {
+                            "name": "栞",
+                            "description": "A quiet seaside bookshop.",
+                            **(
+                                {
+                                    "appearance": "Short silver hair",
+                                    "personality": "Calm",
+                                    "age": "unknown",
+                                    "gender": "unknown",
+                                }
+                                if kind == "character_draft"
+                                else {"opening": "A visitor enters."}
+                            ),
+                        }
+                    )
                 ),
                 response_metadata={"model_name": self.model},
             )
@@ -318,12 +326,14 @@ def test_image_description_requires_english_with_one_bounded_repair(
             calls.append(messages)
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "status": "translated",
-                        "text": first_scene
-                        if len(calls) == 1
-                        else "An adult woman with short silver hair points at a book.",
-                    }
+                    wire_reply(
+                        {
+                            "status": "translated",
+                            "text": first_scene
+                            if len(calls) == 1
+                            else "An adult woman with short silver hair points at a book.",
+                        }
+                    )
                 ),
                 response_metadata={"model_name": self.model},
             )
@@ -347,12 +357,14 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
     calls = []
     options = []
     response = json.dumps(
-        {
-            "action_narration": "",
-            "requested_player_action": None,
-            "current_state": wire_state({}),
-            "text": "A saved reply.",
-        }
+        wire_reply(
+            {
+                "action_narration": "",
+                "requested_player_action": None,
+                "current_state": wire_state({}),
+                "text": "A saved reply.",
+            }
+        )
     )
 
     class Model:
@@ -437,7 +449,6 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
 @pytest.mark.parametrize("case", ["fixed_context", "history"])
 def test_context_limit_preserves_fixed_data_and_bounds_history(tmp_path, monkeypatch, case):
     import langchain_openai
-    from komaquill.adapters.database import conversations
     from komaquill.conversations.models import Turn
     from langchain_core.messages import AIMessage
 
@@ -477,19 +488,20 @@ def test_context_limit_preserves_fixed_data_and_bounds_history(tmp_path, monkeyp
         value = conversation.model_copy(
             update={
                 "revision": 30,
+                "turn_count": 30,
                 "turns": [
                     Turn(
                         operation_id=uuid4(),
-                        user="user " + "x" * 1000,
+                        user=f"user {index} " + "x" * 1000,
                         assistant="reply " + "y" * 1000,
                         state={},
                     )
-                    for _ in range(30)
+                    for index in range(30)
                 ],
             }
         )
         with api.conversations.repository.database.engine.begin() as connection:
-            connection.execute(conversations.update().values(payload=value.model_dump_json()))
+            api.conversations.repository._store(connection, value)
     result = api.conversations.send(
         conversation.id,
         SendInput(operation_id=uuid4(), text="Current message", allow_real_llm=True),
@@ -516,13 +528,15 @@ def test_character_draft_repairs_missing_or_template_attributes(tmp_path, monkey
             age = "32" if len(calls) > 1 else ("" if invalid == "empty" else "{32}")
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "name": "Mira",
-                        "age": age,
-                        "gender": "woman",
-                        "appearance": "Short red hair",
-                        "personality": "Calm",
-                    }
+                    wire_reply(
+                        {
+                            "name": "Mira",
+                            "age": age,
+                            "gender": "woman",
+                            "appearance": "Short red hair",
+                            "personality": "Calm",
+                        }
+                    )
                 ),
                 response_metadata={"model_name": self.model},
             )
@@ -575,26 +589,24 @@ def test_language_switch_schema_and_repair_target_narration(
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
-            if "current_state" in wire.get("properties", {}):
-                from komaquill.adapters.llm.conversation import NarrativeReply
-
-                assert wire["properties"]["text"]["description"].startswith(
-                    NarrativeReply.model_json_schema()["properties"]["text"]["description"]
-                )
+            if "response" in wire.get("properties", {}):
+                assert set(wire["properties"]) == {"response"}
             return self
 
         def invoke(self, messages, config):
             calls.append(messages)
             return AIMessage(
                 content=json.dumps(
-                    {
-                        "action_narration": "",
-                        "requested_player_action": None,
-                        "current_state": wire_state(
-                            {"scenery": wrong if len(calls) == 1 else right}
-                        ),
-                        "text": "こんにちは。" if locale == "ja" else "Hello.",
-                    },
+                    wire_reply(
+                        {
+                            "action_narration": "",
+                            "requested_player_action": None,
+                            "current_state": wire_state(
+                                {"scenery": wrong if len(calls) == 1 else right}
+                            ),
+                            "text": "こんにちは。" if locale == "ja" else "Hello.",
+                        }
+                    ),
                     ensure_ascii=False,
                 ),
                 response_metadata={"model_name": self.model},

@@ -32,4 +32,5 @@ def test_scripted_completion_produces_known_values_for_each_request_contract(sch
     if schema is StoryDraft:
         assert value.character_id is None
     if schema is NarrativeReply:
-        assert value.current_state.scenery and value.text.startswith("A scripted")
+        assert any(change.field == "scenery" for change in value.response.changes)
+        assert value.response.text.startswith("A scripted")

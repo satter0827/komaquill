@@ -69,3 +69,7 @@ Grimpは対象ファイルの範囲と動的importを含む選択漏れ防止を
 - [Hypothesisの操作列と不変条件](https://hypothesis.readthedocs.io/en/latest/stateful.html)
 - [LangChainの構造化出力と使用量](https://docs.langchain.com/oss/python/langchain/models)
 - [LangGraphの永続化](https://docs.langchain.com/oss/python/langgraph/persistence)
+
+## 文脈管理の更新
+
+自由文の要約と履歴の投影に関する現在の判断は[原文を根拠にした会話](0018-source-backed-conversation.md)を参照する。本文は当時の判断として保持する。

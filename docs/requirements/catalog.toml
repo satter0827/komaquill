@@ -3,7 +3,7 @@ format_version = 1
 [requirements.REQ-CHAT-WORKFLOW]
 summary = "LangGraphで構造化LLM要求と有限の修正を実行する"
 status = "implemented"
-implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期要約はREQ-CHAT-MEMORYで扱う。グラフ単体の永続再開は対象外とし、会話の意味整合性と画質の未達は実出力の受入で管理する。"
+implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期要約はREQ-CHAT-MEMORYで扱う。公式チェックポイントで受信済み応答から再開し、会話の意味整合性と画質の未達は実出力の受入で管理する。"
 acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
 sources = ["src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
 tests = ["tests/unit/test_llm_graph.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py"]
@@ -373,23 +373,23 @@ sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/koma
 tests = ["tests/unit/test_conversation_context.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_play_experience.py", "tests/e2e/web/workflow.spec.ts", "tests/live/play_acceptance.py"]
 
 [requirements.REQ-CHAT-MEMORY]
-summary = "古い確定履歴を要約して保存し、元の本文と現在状態を保持して再開する"
+summary = "古い確定履歴から根拠を選んで保存し、元の本文と現在状態を保持して再開する"
 status = "implemented"
-acceptance = ["短い会話を要約せず履歴枠と入力上限で古い部分を対象にする", "一回の送信で追加する要約は最大一回とする", "要約範囲・内容ハッシュ・モデル・指示・言語を保存して再利用する", "人物定義と現在状態を要約で上書きしない", "失敗や中断で元の履歴を失わず追加送信を止める", "日本語と英語で実LLMの記憶と役割を確認する"]
+acceptance = ["文脈予算に収まる間は記憶作成を呼ばず、超過時だけ古い完全なターンを対象にする", "一回の送信で作成する記憶は設定された処理回数に制限する", "要約範囲・内容ハッシュ・モデル・指示・言語を保存して再利用する", "人物定義と現在状態を要約で上書きしない", "失敗や中断で元の履歴を失わず追加送信を止める", "日本語と英語で実LLMの記憶と役割を確認する"]
 sources = ["src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/domain/roleplay.py", "src/backend/src/komaquill/adapters/database.py", "scripts/review_roleplay.py"]
 tests = ["tests/integration/test_conversation_memory.py", "tests/unit/test_roleplay_review.py"]
-implementation_note = "要約へ対象ターンの確定状態と人物の役割を渡し、本文と状態を版付きハッシュで検証する。要約の忠実さは実出力の受入で別に確認する。"
+implementation_note = "引用とターンID・項目・範囲・内容ハッシュを保存し、元の履歴と照合する。旧要約は原本として保持する。根拠の選択と質問への意味の正確さは実出力で別に確認する。"
 
 [requirements.REQ-LLM-EFFICIENCY]
 summary = "会話の精度と自然さを維持しながらLLMのトークン量と不要な呼び出しを減らす"
 status = "in_progress"
-implementation_note = "共通予算・LangMem・使用量集計、公式チェックポイント、正規化した履歴と必要情報の投影、Fakeで検査する実4Bの限定比較処理を実装した。入力JSON圧縮は総量が減った例でも品質維持を確認できず採用しない。要約の言語指定と失敗分類を修正した。品質維持と総量削減の受入は未完了とする。"
+implementation_note = "共通予算、公式SDKによる読込済みモデルの計数、予算超過時の原文選択、状態の差分回答、回数と境界を保持する履歴投影、公式チェックポイントを実装した。実LLM比較では意味の誤りが残り、専用の事実回答と候補モデルへの切替は不採用とした。全呼び出しと失敗した生成物を保持し、品質維持と総量削減の受入は未完了とする。"
 acceptance = [
     "人物の役割・現在状態・所有関係・生成言語・重要事項の参照と文章の自然さを削減前後で確認する",
     "指示・状態・履歴・スキーマの不要な重複を減らし、必要情報の削除や不自然な短文化を強制しない",
     "保存済みの原文と履歴を保持し、LLMへ渡す内容だけを最適化する",
     "文脈予算を一か所で管理し、必須情報・完全な直近履歴・スキーマ・出力・修正の余裕を含め、概算・実測・不明値を区別する",
-    "履歴選択と要約で同じトークン概算を使い、文字数の安全上限とは分け、修正時の前応答を含めて送信直前に予算を再計算する",
+    "履歴選択と記憶作成で同じ計数方法を使い、文字数の安全上限とは分け、修正時の前応答を含めて送信直前に予算を再計算する",
     "要約・修正・下書き・画像用英訳も含む入力と出力の総トークン量・呼び出し回数・待ち時間を同じ条件で比較する",
     "呼び出し別の使用量を正本とし、標準の使用量集計で既知分を合算しても、不明な呼び出しをゼロや完全な総量として扱わない",
     "短い会話へ不要な要約を追加せず、保存済みの要約と英訳を再利用する",

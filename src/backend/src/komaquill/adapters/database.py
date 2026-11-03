@@ -45,7 +45,7 @@ from komaquill.conversations.actions import (
 )
 from komaquill.conversations.context import require_reviewed
 from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
-from komaquill.conversations.history import advance_history
+from komaquill.conversations.history import advance_history, memory_sources
 from komaquill.conversations.models import (
     Conversation,
     ConversationInput,
@@ -527,8 +527,9 @@ class ConversationRepository:
             raise ValueError("Conversation history is incomplete.")
         values = []
         for position, row in enumerate(rows, start):
-            turn = Turn.model_validate_json(row["payload"])
-            prefix = advance_history(prefix, turn.model_dump(mode="json"))
+            source = json.loads(row["payload"])
+            turn = Turn.model_validate(source)
+            prefix = advance_history(prefix, source)
             if (
                 row["position"] != position
                 or row["turn_id"] != str(turn.operation_id)
@@ -539,6 +540,21 @@ class ConversationRepository:
         if len({turn.operation_id for turn in values}) != len(values):
             raise ValueError("Conversation history identity mismatch.")
         return values, original_prefix, anchor_id
+
+    @stored
+    def history_hash(self, identity: UUID, through: int) -> str:
+        if through == 0:
+            return ""
+        with self.database.engine.connect() as reader:
+            prefix = reader.execute(
+                select(conversation_turns.c.prefix_sha256).where(
+                    conversation_turns.c.conversation_id == str(identity),
+                    conversation_turns.c.position == through - 1,
+                )
+            ).scalar_one_or_none()
+        if prefix is None:
+            raise ValueError("Conversation history is incomplete.")
+        return str(prefix)
 
     @stored
     def get(self, identity: UUID) -> Conversation:
@@ -894,10 +910,25 @@ class ConversationRepository:
             header = self._get(connection, UUID(str(row["conversation_id"])), with_turns=False)
             start = (
                 header.memory.through_turn
-                if header.memory and header.memory.source_version == 4
+                if header.memory and header.memory.source_version == 5
                 else 0
             )
             request = SendInput.model_validate_json(str(row["request"]))
+            if header.memory and header.memory.source_version == 5:
+                for passage in header.memory.passages:
+                    position = connection.execute(
+                        select(conversation_turns.c.position).where(
+                            conversation_turns.c.conversation_id == str(header.id),
+                            conversation_turns.c.turn_id == passage.turn_id,
+                        )
+                    ).scalar_one_or_none()
+                    if position is None or position >= header.memory.through_turn:
+                        raise ValueError("Memory references an unavailable historical turn.")
+                    turns, _, _ = self._read_turns(
+                        connection, str(header.id), position, position + 1
+                    )
+                    if passage.quote not in memory_sources(turns[0]).get(passage.field, ""):
+                        raise ValueError("Memory passage differs from its retained source.")
             value = self._get(
                 connection, UUID(str(row["conversation_id"])), from_turn=start, with_events=False
             )

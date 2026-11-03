@@ -14,6 +14,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel
 
+from tests.support.conversations import wire_reply
+
 
 class Result(BaseModel):
     text: str
@@ -364,22 +366,24 @@ def test_explicit_resume_reuses_response_after_validation_storage_failure(tmp_pa
         calls.append(True)
         return AIMessage(
             content=json.dumps(
-                {
-                    "current_state": {
-                        "relationship": "",
-                        "companion_movement": "stay",
-                        "scenery": "A quiet room.",
-                        "character": {
-                            "clothing": None,
-                            "pose": None,
-                            "expression": None,
-                            "held_objects": None,
+                wire_reply(
+                    {
+                        "current_state": {
+                            "relationship": "",
+                            "companion_movement": "stay",
+                            "scenery": "A quiet room.",
+                            "character": {
+                                "clothing": None,
+                                "pose": None,
+                                "expression": None,
+                                "held_objects": None,
+                            },
                         },
-                    },
-                    "action_narration": "",
-                    "text": "Hello.",
-                    "requested_player_action": None,
-                }
+                        "action_narration": "",
+                        "text": "Hello.",
+                        "requested_player_action": None,
+                    }
+                )
             ),
             response_metadata={"model_name": execution.settings.llm_profiles["lmstudio-4b"].model},
         )
@@ -437,7 +441,7 @@ def test_drawing_pair_requires_presence_and_wai(tmp_path, monkeypatch):
     assert json.loads(job.original)["viewpoint"] == "observer"
 
 
-def test_action_narration_requires_a_confirmed_visible_companion_change(tmp_path):
+def test_visible_companion_gestures_do_not_require_a_persistent_state_change(tmp_path):
     from komaquill.conversations.models import Reply
     from komaquill.conversations.transitions import published_reply
 
@@ -445,10 +449,10 @@ def test_action_narration_requires_a_confirmed_visible_companion_change(tmp_path
     scene = create(api)
     unsupported = Reply(
         text="Hello.",
-        action_narration="The companion walks away.",
+        action_narration="The companion briefly nods.",
         state_patch={"character": {"held_objects": []}},
     )
-    assert published_reply(scene, unsupported).action_narration == ""
+    assert published_reply(scene, unsupported).action_narration == unsupported.action_narration
     supported = Reply(
         text="Hello.",
         action_narration="The companion smiles.",

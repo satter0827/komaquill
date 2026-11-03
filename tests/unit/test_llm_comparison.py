@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage
 
 from scripts import compare_llm as comparison
 from scripts._support import atomic_json
+from tests.support.conversations import wire_reply
 
 
 def budget(path, *, max_calls=52, deadline=None):
@@ -43,8 +44,7 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
 
         def bind(self, **options):
             self.summary = (
-                "current_state"
-                not in options["response_format"]["json_schema"]["schema"]["properties"]
+                "response" not in options["response_format"]["json_schema"]["schema"]["properties"]
             )
             return self
 
@@ -80,7 +80,7 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
                 }
             )
             return AIMessage(
-                content=json.dumps(response, ensure_ascii=False),
+                content=json.dumps(wire_reply(response), ensure_ascii=False),
                 response_metadata={"model_name": self.model},
                 usage_metadata={"input_tokens": 10, "output_tokens": 10, "total_tokens": 20},
             )
@@ -100,13 +100,13 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
         sys.path[:] = original_path
     calls = json.loads((output / "budget.json").read_bytes())["calls"]
     rows = json.loads((output / "after.json").read_bytes())["results"]
-    assert len(calls) == (4 if failed else 14)
+    assert len(calls) == (4 if failed else 12)
     assert all(item["status"] == ("failed" if failed else "response") for item in calls)
     assert len(rows) == (4 if failed else 12)
     assert all(item["operation"]["state"] == ("failed" if failed else "complete") for item in rows)
     if not failed:
         assert all(item["usage"]["total_tokens"] == 20 for item in calls)
-        assert rows[-1]["conversation"]["memory"] is not None
+        assert rows[-1]["conversation"]["memory"] is None
 
 
 def test_parent_creates_frozen_inputs_and_uses_separate_interpreters(tmp_path, monkeypatch):

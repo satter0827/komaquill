@@ -1,0 +1,44 @@
+[
+  [
+    "older-man",
+    "conversation_image",
+    "Solo character, observer viewpoint. Full body, the specified pose and held objects visible. age: 60. gender: man. physical features: short grey hair and full grey beard. clothing: black apron. pose: sitting on a wooden chair with hands clasped on his lap. place: bookshop.",
+    "1man, solo, male focus, (elderly man:1.3), 60-year-old man, short grey hair, full grey beard, facial wrinkles, black apron, sitting on a wooden chair, hands clasped on his lap, full body, bookshop interior",
+    "woman, girl, child, young, feminine"
+  ],
+  [
+    "seated-woman",
+    "conversation_image",
+    "Solo character, observer viewpoint. Full body, the specified pose and held objects visible. age: 32. gender: woman. physical features: short auburn hair. clothing: green coat. pose: sitting on a wooden chair with hands clasped on her lap. place: seaside garden.",
+    "1woman, solo, adult woman, 32 years old, short auburn hair, green coat, sitting on a wooden chair, hands clasped on her lap, full body, seaside garden",
+    "man, boy, child, crossed arms"
+  ],
+  [
+    "pair-observer",
+    "conversation_image",
+    "Two distinct people, observer viewpoint. player age: 32. player gender: woman. player physical features: long blonde braid. player clothing: red coat. character age: 60. character gender: man. character physical features: short grey hair and full grey beard. character clothing: black apron. place: bookshop.",
+    "2people, 1man, 1woman, two distinct adults, full body, observer viewpoint, standing side by side in a bookshop. On the left an elderly 60-year-old man with short grey hair, full grey beard, wrinkles and a black apron. On the right an adult 32-year-old woman with a long blonde braid and a red coat.",
+    "twins, duplicate, extra people, child"
+  ],
+  [
+    "pair-player",
+    "conversation_image",
+    "Two distinct people, first-person viewpoint from the player; the player may be partially visible. player age: 32. player gender: woman. player physical features: long blonde braid. player clothing: red coat. character age: 60. character gender: man. character physical features: short grey hair and full grey beard. character clothing: black apron. place: bookshop.",
+    "pov, first-person view of an adult woman, red coat sleeves and hands visible in the foreground. Facing an elderly 60-year-old man, short grey hair, full grey beard, wrinkles, black apron, standing behind a bookshop counter. Two people: a partly visible female viewer and one elderly man facing her.",
+    "third-person view, extra people, twins, child"
+  ],
+  [
+    "empty-seaside",
+    "banner",
+    "Unoccupied setting, environment only. place: seaside. scenery: an empty wooden bench beside the sea.",
+    "scenery, empty seaside, unoccupied wooden bench beside the sea, distant horizon, daylight, landscape, no humans",
+    "people, person, human, character, portrait, silhouette"
+  ],
+  [
+    "empty-bookshop",
+    "banner",
+    "Unoccupied setting, environment only. place: bookshop entrance. scenery: a closed blue umbrella leaning beside the open entrance door.",
+    "scenery, unoccupied bookshop entrance, open wooden doorway, closed blue umbrella leaning against the wall beside the door, umbrella resting on the floor, visible floor and bookshelves, rainy afternoon, no humans",
+    "people, person, human, character, portrait, hand, arm, silhouette"
+  ]
+]

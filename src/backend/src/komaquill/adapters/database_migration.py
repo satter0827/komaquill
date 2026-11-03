@@ -47,6 +47,7 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
         "0007",
         "0008",
         "0009",
+        "0010",
     }:
         current = {
             row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
@@ -112,7 +113,8 @@ def conversations_preserved(before: sqlite3.Connection, after: sqlite3.Connectio
     )
     retained.update(
         after.execute(
-            "SELECT id,payload FROM execution_migration_originals WHERE kind='conversation'"
+            "SELECT id,payload FROM execution_migration_originals "
+            "WHERE kind IN ('conversation','conversation_memory')"
         )
     )
 
@@ -145,6 +147,17 @@ def operations_preserved(before: sqlite3.Connection, after: sqlite3.Connection) 
         for identity, reply in before.execute(
             "SELECT id,reply FROM operations WHERE reply IS NOT NULL"
         )
+    )
+
+
+def originals_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    exists = before.execute(
+        "SELECT name FROM sqlite_master WHERE name='execution_migration_originals'"
+    ).fetchone()
+    if exists is None:
+        return True
+    return set(before.execute("SELECT * FROM execution_migration_originals")).issubset(
+        set(after.execute("SELECT * FROM execution_migration_originals"))
     )
 
 
@@ -194,12 +207,20 @@ def migrate(workspace: Path) -> Path:
                 not library_preserved(copied, connection)
                 or not conversations_preserved(copied, connection)
                 or not operations_preserved(copied, connection)
+                or not originals_preserved(copied, connection)
             ):
                 raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     if any(
         after.get(key) != value
         for key, value in before.items()
-        if key not in {"presets", "preferences", "conversations", "operations"}
+        if key
+        not in {
+            "presets",
+            "preferences",
+            "conversations",
+            "operations",
+            "execution_migration_originals",
+        }
     ):
         raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     atomic_json(report, {**record, "after": after, "state": "complete"})

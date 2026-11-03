@@ -645,7 +645,7 @@ export type ConversationMemory = {
     /**
      * Source Version
      */
-    source_version?: 1 | 2 | 3 | 4;
+    source_version?: 1 | 2 | 3 | 4 | 5;
     /**
      * Text
      */
@@ -670,6 +670,10 @@ export type ConversationMemory = {
      * Instructions Sha256
      */
     instructions_sha256: string;
+    /**
+     * Passages
+     */
+    passages?: Array<MemoryPassage>;
 };
 
 /**
@@ -1031,6 +1035,24 @@ export type IntentionAction = {
      * Text
      */
     text: string;
+};
+
+/**
+ * MemoryPassage
+ */
+export type MemoryPassage = {
+    /**
+     * Turn Id
+     */
+    turn_id: string;
+    /**
+     * Field
+     */
+    field: 'user' | 'assistant' | 'narration' | 'action_narration' | 'action';
+    /**
+     * Quote
+     */
+    quote: string;
 };
 
 /**

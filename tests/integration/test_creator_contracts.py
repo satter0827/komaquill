@@ -51,7 +51,15 @@ def test_migration_stop_check_distinguishes_database_use_from_editor_tools(
     )
 
 
-def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(tmp_path):
+@pytest.fixture
+def stopped_database(monkeypatch):
+    """Keep migration contracts independent of unrelated host processes."""
+    monkeypatch.setattr(database_migration, "file_users", lambda _: set())
+
+
+def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(
+    tmp_path, stopped_database
+):
     api = Client.initialize(tmp_path)
     saved = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Before migration")
@@ -91,7 +99,9 @@ def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(tmp_pa
 
 
 @pytest.mark.parametrize("case", ["busy", "missing", "backup_invalid", "after_invalid"])
-def test_migration_failure_is_recorded_without_rewriting_existing_data(tmp_path, monkeypatch, case):
+def test_migration_failure_is_recorded_without_rewriting_existing_data(
+    tmp_path, monkeypatch, stopped_database, case
+):
     api = Client.initialize(tmp_path)
     if case == "busy":
         monkeypatch.setattr(database_migration, "database_in_use", lambda *_, **__: True)

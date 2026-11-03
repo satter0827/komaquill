@@ -23,25 +23,55 @@ def visible_person(person: PersonDefinition, state: PersonState) -> dict[str, ob
         "clothing": person.initial_clothing if state.clothing is None else state.clothing,
         "expression": state.expression,
         "pose": state.pose,
-        "held_objects": person.initial_held_objects
-        if state.held_objects is None
-        else state.held_objects,
+        "held_objects": [
+            item.model_dump()
+            for item in (
+                person.initial_held_objects if state.held_objects is None else state.held_objects
+            )
+        ],
     }
 
 
 def scene_context(conversation: Conversation) -> dict[str, object]:
     return {
         "current_state": conversation.state.model_dump(
-            mode="json", exclude={"player": {"appearance"}, "character": {"appearance"}}
+            mode="json", exclude={"player", "character"}
         ),
-        "visible_scene": drawing_context(conversation),
+        "people": {
+            "player": visible_person(conversation.definition.user, conversation.state.player),
+            "character": visible_person(
+                conversation.definition.character, conversation.state.character
+            ),
+        },
     }
 
 
-def drawing_context(conversation: Conversation) -> dict[str, object]:
+def drawing_context(
+    conversation: Conversation, subjects: str = "character", viewpoint: str = "player"
+) -> dict[str, object]:
     """Resolve the visible partner while keeping the player out of the image."""
     require_reviewed(conversation)
     visible = conversation.state.character_place == conversation.state.place
+    if subjects == "pair":
+        if not visible:
+            raise KomaquillError(code="invalid_request", retryable=False)
+        return {
+            "subjects": {
+                "player": visible_person(conversation.definition.user, conversation.state.player),
+                "character": visible_person(
+                    conversation.definition.character, conversation.state.character
+                ),
+            },
+            "viewpoint": viewpoint,
+            "character_visible": True,
+            "setting": {
+                "place": conversation.state.place,
+                "time": conversation.state.time,
+                "scenery": conversation.state.scenery,
+            },
+        }
+    if subjects == "environment":
+        visible = False
     return {
         "character": visible_person(conversation.definition.character, conversation.state.character)
         if visible

@@ -41,6 +41,9 @@ def legacy(tmp_path, *, state=None, corrupt=False):
     }
     payload = "invalid" if corrupt else json.dumps(value, ensure_ascii=False)
     with api.conversations.repository.database.engine.begin() as connection:
+        from tests.support.migrations import legacy_execution
+
+        legacy_execution(connection)
         connection.execute(
             text("INSERT INTO conversations(id,payload) VALUES(:id,:payload)"),
             {"id": str(identity), "payload": payload},
@@ -63,7 +66,11 @@ def test_structured_old_fields_are_mapped_without_using_prose_and_original_is_re
     report = api.migrate()
     record = json.loads(report.read_bytes())
     assert record["state"] == "complete" and report.with_name("before.sqlite3").is_file()
-    saved = Client(tmp_path).conversations.get(identity)
+    reopened = Client(tmp_path)
+    reopened.library.save_preferences(
+        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
+    )
+    saved = reopened.conversations.get(identity)
     assert saved.state.place == "sea" and saved.state.character.clothing == "black apron"
     assert saved.state.player.clothing == "red coat" and saved.definition.character.age == "60"
     assert saved.definition.scenario.description == "A quiet beach"
@@ -87,7 +94,11 @@ def test_ambiguous_or_unreadable_state_is_preserved_as_read_only_instead_of_gues
     api, identity, payload = legacy(tmp_path, state={"unknown_owner": "red coat"}, corrupt=corrupt)
     api.migrate()
     assert Client(tmp_path).conversations.list() == []
-    archived = Client(tmp_path).archive.conversations()
+    reopened = Client(tmp_path)
+    reopened.library.save_preferences(
+        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
+    )
+    archived = reopened.archive.conversations()
     assert len(archived) == 1 and archived[0].id == identity
     assert archived[0].readable is not corrupt
     if not corrupt:

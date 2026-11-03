@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { createContext, useContext, useEffect } from 'react'
 import { failure } from '../api/client'
 import * as q from '../api/generated/@tanstack/react-query.gen'
-import { savePreferences } from '../api/generated/sdk.gen'
+import { getPreferences, savePreferences } from '../api/generated/sdk.gen'
 import type { Preferences } from '../api/generated/types.gen'
 import { Button } from '../components/ui/button'
 import type { MessageKey } from './messages'
@@ -11,6 +11,7 @@ import { formatMessage, messageCatalog } from './messages'
 
 export type EffectivePreferences = Required<Preferences>
 export const defaultPreferences: EffectivePreferences = {
+  nsfw_enabled: false,
   revision: 0,
   locale: 'ja',
   font_size: 'normal',
@@ -38,6 +39,23 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const cache = useQueryClient()
   const query = useQuery({
     ...q.getPreferencesOptions(),
+    queryFn: async ({ signal }) => {
+      const data = (await getPreferences({ signal })).data!
+      const old = cache.getQueryData<Preferences>(q.getPreferencesQueryKey())
+      if (old && old.nsfw_enabled !== data.nsfw_enabled) {
+        await cache.cancelQueries({
+          predicate: (query) =>
+            JSON.stringify(query.queryKey) !==
+            JSON.stringify(q.getPreferencesQueryKey()),
+        })
+        cache.removeQueries({
+          predicate: (query) =>
+            JSON.stringify(query.queryKey) !==
+            JSON.stringify(q.getPreferencesQueryKey()),
+        })
+      }
+      return data
+    },
   })
   const value = { ...defaultPreferences, ...query.data }
   const save = useMutation({
@@ -46,11 +64,41 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
         cache.getQueryData<Preferences>(q.getPreferencesQueryKey()) ?? value
       return (await savePreferences({ body: { ...current, ...changes } })).data!
     },
-    onSuccess: (data) => cache.setQueryData(q.getPreferencesQueryKey(), data),
+    onSuccess: async (data) => {
+      const previous = cache.getQueryData<Preferences>(
+        q.getPreferencesQueryKey(),
+      )
+      if (previous?.nsfw_enabled !== data.nsfw_enabled) {
+        await cache.cancelQueries({
+          predicate: (query) =>
+            JSON.stringify(query.queryKey) !==
+            JSON.stringify(q.getPreferencesQueryKey()),
+        })
+        cache.removeQueries({
+          predicate: (query) =>
+            JSON.stringify(query.queryKey) !==
+            JSON.stringify(q.getPreferencesQueryKey()),
+        })
+        if (typeof BroadcastChannel !== 'undefined') {
+          const channel = new BroadcastChannel('komaquill-preferences')
+          channel.postMessage('changed')
+          channel.close()
+        }
+      }
+      cache.setQueryData(q.getPreferencesQueryKey(), data)
+    },
     onError: () => {
       void cache.invalidateQueries({ queryKey: q.getPreferencesQueryKey() })
     },
   })
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel('komaquill-preferences')
+    channel.onmessage = () => {
+      void cache.invalidateQueries({ queryKey: q.getPreferencesQueryKey() })
+    }
+    return () => channel.close()
+  }, [cache])
   useEffect(() => {
     document.documentElement.lang = value.locale
     document.documentElement.dataset.fontSize = value.font_size
@@ -95,7 +143,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
           {failure(query.error, value.locale)}
         </p>
       )}
-      {children}
+      <div key={String(value.nsfw_enabled)}>{children}</div>
     </Context.Provider>
   )
 }

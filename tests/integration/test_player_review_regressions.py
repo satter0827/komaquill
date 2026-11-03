@@ -115,7 +115,9 @@ def test_finished_creator_is_not_kept_running_when_result_save_fails(tmp_path, m
     with pytest.raises(KomaquillError, match="storage_failed"):
         api.library.execute(request.operation_id)
     monkeypatch.setattr(api.library.store, "save_job", original)
-    assert api.library.job(request.operation_id).state == "interrupted"
+    monkeypatch.setattr(api.library.creator, "draft", lambda _: pytest.fail("No second request"))
+    restored = api.library.job(request.operation_id)
+    assert restored.state == "complete" and restored.result.name == "Draft"
 
 
 def test_live_creator_is_not_reclaimed_or_invoked_twice(tmp_path):
@@ -212,7 +214,7 @@ def test_http_reply_commit_recovers_while_server_process_stays_alive(tmp_path, m
         assert receipt.status_code == 202
         monkeypatch.setattr(repository, "commit", original)
         assert http.get(f"/api/v1/operations/{identity}").json()["state"] == "complete"
-        assert len(http.get(f"/api/v1/conversations/{c.id}").json()["turns"]) == 1
+        assert len(http.get(f"/api/v1/conversations/{c.id}/turns").json()["items"]) == 1
     assert len(calls) == 1
 
 

@@ -74,6 +74,7 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
                             "held_objects": None,
                         },
                     },
+                    "action_narration": "",
                     "requested_player_action": None,
                     "text": text,
                 }

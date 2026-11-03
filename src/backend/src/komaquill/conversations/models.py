@@ -31,6 +31,9 @@ class PresetSnapshot(Record):
 
 
 class ConversationInput(Record):
+    tone: str = Field(default="", max_length=2000)
+    topics: str = Field(default="", max_length=3000)
+    avoid: str = Field(default="", max_length=3000)
     title: str = Field(min_length=1, max_length=120)
     scenario: StoryDefinition = Field(default_factory=StoryDefinition)
     character: CharacterDefinition = Field(default_factory=CharacterDefinition)
@@ -51,6 +54,8 @@ class ConnectionProfile(Record):
 
 
 class Turn(Record):
+    action_narration: str = ""
+    notes: list[str] = Field(default_factory=list)
     operation_id: UUID
     user: str
     assistant: str
@@ -59,9 +64,17 @@ class Turn(Record):
     image_id: UUID | None = None
     created_at: datetime = Field(default_factory=now)
     action_id: UUID | None = None
+    action: PlayerAction | None = None
 
 
 class Conversation(Record):
+    turn_count: int = 0
+    turn_offset: int = 0
+    history_prefix_sha256: str = ""
+    history_anchor: str = ""
+    notes: list[str] = Field(default_factory=list)
+    source_conversation_id: UUID | None = None
+    source_turn_id: UUID | None = None
     id: UUID = Field(default_factory=uuid4)
     definition: ConversationInput
     state: ConversationState = Field(default_factory=ConversationState)
@@ -89,6 +102,7 @@ class SendInput(Record):
 
 
 class Reply(Record):
+    action_narration: str = Field(default="", max_length=20000)
     narration: str = Field(
         default="",
         max_length=20000,
@@ -106,6 +120,8 @@ class Reply(Record):
 
 
 class Operation(Record):
+    can_resume: bool = False
+    nsfw_enabled: bool = False
     id: UUID
     conversation_id: UUID
     state: Literal["accepted", "running", "complete", "failed", "interrupted"]

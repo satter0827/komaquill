@@ -8,7 +8,10 @@
       "description": "港町を訪れた旅人。青い封筒を持っている。",
       "initial_clothing": "赤いコート",
       "initial_held_objects": [
-        "青い封筒"
+        {
+          "id": "sample-ja-player-0",
+          "name": "青い封筒"
+        }
       ]
     },
     "character": {
@@ -38,7 +41,10 @@
       "description": "A traveler visiting a harbor town, carrying a blue envelope.",
       "initial_clothing": "A red coat",
       "initial_held_objects": [
-        "A blue envelope"
+        {
+          "id": "sample-en-player-0",
+          "name": "A blue envelope"
+        }
       ]
     },
     "character": {

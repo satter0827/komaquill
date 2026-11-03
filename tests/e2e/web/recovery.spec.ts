@@ -33,6 +33,7 @@ for (const [locale, messages] of [
     await page.route(
       `**/api/v1/conversations/${identity}/turns`,
       async (route) => {
+        if (route.request().method() !== 'POST') return route.continue()
         sent += 1
         if (sent !== 1) return route.continue()
         const response = await route.fetch()
@@ -58,8 +59,11 @@ for (const [locale, messages] of [
     await expect(page.locator('.assistant-message')).toHaveCount(2)
     expect(sent).toBe(2)
     expect(
-      (await (await request.get(`/api/v1/conversations/${identity}`)).json())
-        .turns,
+      (
+        await (
+          await request.get(`/api/v1/conversations/${identity}/turns`)
+        ).json()
+      ).items,
     ).toHaveLength(2)
   })
 }
@@ -127,6 +131,7 @@ test('keeps an unconfirmed turn for explicit retry using the same operation', as
   await page.route(
     `**/api/v1/conversations/${identity}/turns`,
     async (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
       submitted.push(route.request().postDataJSON().operation_id)
       return submitted.length === 1 ? route.abort('failed') : route.continue()
     },

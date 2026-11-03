@@ -35,6 +35,11 @@ from komaquill.library.recovery import ImageLinkInspection as ImageLinkInspectio
 from komaquill.library.recovery import ImageLinkRepairResult as ImageLinkRepairResult
 
 __all__ = [
+    "Bookmark",
+    "NotesRequest",
+    "SceneRequest",
+    "ContentLabel",
+    "ContentUpdate",
     "ActionRequest",
     "MoveAction",
     "WaitAction",
@@ -86,7 +91,12 @@ from komaquill.conversations.actions import IntentionAction as IntentionAction
 from komaquill.conversations.actions import MoveAction as MoveAction
 from komaquill.conversations.actions import PrepareAction as PrepareAction
 from komaquill.conversations.actions import WaitAction as WaitAction
+from komaquill.conversations.editing import Bookmark as Bookmark
+from komaquill.conversations.editing import NotesRequest as NotesRequest
+from komaquill.conversations.editing import SceneRequest as SceneRequest
 from komaquill.conversations.visuals import VisualReview as VisualReview
+from komaquill.domain.content import ContentLabel as ContentLabel
+from komaquill.domain.content import ContentUpdate as ContentUpdate
 from komaquill.domain.roleplay import CharacterDefinition as CharacterDefinition
 from komaquill.domain.roleplay import ConversationState as ConversationState
 from komaquill.domain.roleplay import PersonDefinition as PersonDefinition

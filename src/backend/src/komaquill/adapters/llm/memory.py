@@ -12,6 +12,7 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel, Field
 
 from komaquill.adapters.llm_configuration import ConversationSettings
+from komaquill.conversations.history import advance_history
 from komaquill.conversations.models import Conversation, SendInput, Turn
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import ConversationMemory, Record
@@ -20,6 +21,10 @@ from komaquill.domain.roleplay import ConversationMemory, Record
 def history_input(conversation: Conversation, turn: Turn) -> str:
     if turn.action_id is None:
         return turn.user
+    if turn.action is not None:
+        return json.dumps(
+            {"confirmed_player_action": turn.action.model_dump(mode="json")}, ensure_ascii=False
+        )
     action = next(
         (a for a in conversation.actions if a.request.operation_id == turn.action_id), None
     )
@@ -68,6 +73,14 @@ class SummaryText(Record):
 
 
 def history_hash(conversation: Conversation, through: int, source_version: int = 2) -> str:
+    if source_version == 4:
+        end = through - conversation.turn_offset
+        if end < 0 or end > len(conversation.turns):
+            raise KomaquillError(code="storage_failed", retryable=False)
+        value = conversation.history_prefix_sha256
+        for turn in conversation.turns[:end]:
+            value = advance_history(value, turn.model_dump(mode="json"))
+        return value
     return hashlib.sha256(
         json.dumps(
             [
@@ -123,16 +136,27 @@ def history_messages(
     from komaquill.adapters.llm.language import check_language
 
     memory = conversation.memory
-    start = memory.through_turn if memory else 0
-    if start > len(conversation.turns) or (
-        memory and history_hash(conversation, start, memory.source_version) != memory.source_sha256
+    offset = conversation.turn_offset
+    start = memory.through_turn - offset if memory else 0
+    if (
+        start < 0
+        or start > len(conversation.turns)
+        or (
+            memory
+            and history_hash(conversation, start + offset, memory.source_version)
+            != memory.source_sha256
+        )
     ):
         raise KomaquillError(code="storage_failed", retryable=False)
     pairs = [
         (
             history_input(conversation, turn),
             json.dumps(
-                {"text": turn.assistant, "narration": turn.narration},
+                {
+                    "text": turn.assistant,
+                    "narration": turn.narration,
+                    "action_narration": turn.action_narration,
+                },
                 ensure_ascii=False,
             ),
         )
@@ -178,6 +202,7 @@ def history_messages(
                             {
                                 "text": turn.assistant,
                                 "narration": turn.narration,
+                                "action_narration": turn.action_narration,
                                 "confirmed_state": conversation.turns[index].state.model_dump(
                                     mode="json"
                                 ),
@@ -230,15 +255,29 @@ def history_messages(
                 raise KomaquillError(code="invalid_response", retryable=False)
             return AIMessage(content=result.text)
 
-        last_id = f"{conversation.turns[start - 1].operation_id}:assistant" if memory else None
+        last_id = (
+            (
+                conversation.history_anchor
+                if offset
+                else f"{conversation.turns[start - 1].operation_id}:assistant"
+            )
+            if memory
+            else None
+        )
+        if memory and offset:
+            prefix.insert(0, AIMessage(content=memory.text, id=last_id))
         previous = (
             RunningSummary(
                 summary=memory.text,
-                summarized_message_ids={
-                    f"{turn.operation_id}:{role}"
-                    for turn in conversation.turns[:start]
-                    for role in ("user", "assistant")
-                },
+                summarized_message_ids=(
+                    {last_id}
+                    if offset and last_id
+                    else {
+                        f"{turn.operation_id}:{role}"
+                        for turn in conversation.turns[:start]
+                        for role in ("user", "assistant")
+                    }
+                ),
                 last_summarized_message_id=last_id,
             )
             if memory
@@ -250,23 +289,29 @@ def history_messages(
                 running_summary=previous,
                 model=RunnableLambda(summarize),
                 max_tokens=budget.window_tokens - responder.settings.summary_max_output_tokens,
-                max_tokens_before_summary=tokens(prefix[2 * start :]),
+                max_tokens_before_summary=tokens(prefix[1:] if offset else prefix[2 * start :]),
                 max_summary_tokens=responder.settings.summary_max_output_tokens,
                 token_counter=tokens,
             )
         if result.running_summary is None:
             raise KomaquillError(code="invalid_response", retryable=False)
         through = next(
-            index + 1
-            for index, turn in enumerate(conversation.turns)
-            if f"{turn.operation_id}:assistant" == result.running_summary.last_summarized_message_id
+            (
+                index + 1
+                for index, turn in enumerate(conversation.turns)
+                if f"{turn.operation_id}:assistant"
+                == result.running_summary.last_summarized_message_id
+            ),
+            None,
         )
-        source_version: Literal[3] = 3
+        if through is None or through + offset <= (memory.through_turn if memory else 0):
+            raise KomaquillError(code="invalid_response", retryable=False)
+        source_version: Literal[4] = 4
         updated = ConversationMemory(
             source_version=source_version,
             text=result.running_summary.summary,
-            through_turn=through,
-            source_sha256=history_hash(conversation, through, source_version),
+            through_turn=through + offset,
+            source_sha256=history_hash(conversation, through + offset, source_version),
             locale=locale,
             model=profile.model,
             instructions_sha256=hashlib.sha256(instructions.encode()).hexdigest(),

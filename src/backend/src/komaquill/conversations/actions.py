@@ -7,7 +7,13 @@ from uuid import UUID
 from pydantic import Field, model_validator
 
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.roleplay import ConversationState, PersonStatePatch, Record, StatePatch
+from komaquill.domain.roleplay import (
+    ConversationState,
+    PersonStatePatch,
+    PhysicalObjects,
+    Record,
+    StatePatch,
+)
 
 MAX_WAIT_MINUTES = 60 * 24 * 30
 
@@ -27,7 +33,7 @@ class PrepareAction(Record):
     clothing: str | None = Field(default=None, max_length=3000)
     pose: str | None = Field(default=None, max_length=1000)
     expression: str | None = Field(default=None, max_length=1000)
-    held_objects: list[str] | None = Field(default=None, max_length=30)
+    held_objects: PhysicalObjects | None = Field(default=None, max_length=30)
 
     @model_validator(mode="after")
     def has_change(self) -> "PrepareAction":
@@ -87,6 +93,8 @@ def apply_action(state: ConversationState, action: PlayerAction) -> Conversation
         return state.model_copy(update={"intention": action.text})
     changes = action.model_dump(exclude_none=True, exclude={"kind"})
     objects = changes.get("held_objects") or []
-    if set(objects).intersection(state.character.held_objects or []):
+    if {item["id"] for item in objects}.intersection(
+        item.id for item in state.character.held_objects or []
+    ):
         raise KomaquillError(code="invalid_request", retryable=False)
     return StatePatch(player=PersonStatePatch.model_validate(changes)).apply(state)

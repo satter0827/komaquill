@@ -24,6 +24,7 @@ llm = [
     "langchain-core>=1,<2",
     "langchain-openai>=1,<2",
     "langgraph>=1,<2",
+    "langgraph-checkpoint-sqlite>=3,<4",
     "langmem>=0.0.30,<0.1",
 ]
 

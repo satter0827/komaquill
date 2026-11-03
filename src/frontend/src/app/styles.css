@@ -65,9 +65,15 @@ h3 {
   font-size: 14px;
   font-weight: 600;
 }
+.application {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
 .workspace {
   display: flex;
-  min-height: 100dvh;
+  min-height: 0;
+  position: relative;
 }
 .navigation {
   width: 248px;
@@ -76,8 +82,8 @@ h3 {
   padding: 30px 18px 18px;
   display: flex;
   flex-direction: column;
-  position: fixed;
-  inset: 0 auto 0 0;
+  position: relative;
+  flex-shrink: 0;
   z-index: 20;
 }
 .brand {
@@ -178,8 +184,11 @@ nav a.active {
   color: #315f47;
 }
 .main-area {
-  margin-left: 248px;
-  width: calc(100% - 248px);
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
 }
 .mobile-header {
   display: none;
@@ -332,7 +341,8 @@ textarea {
 .conversation-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 270px;
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
 }
 .conversation-layout.state-hidden {
   grid-template-columns: minmax(0, 1fr);
@@ -648,10 +658,6 @@ dd {
   .navigation {
     width: 220px;
   }
-  .main-area {
-    margin-left: 220px;
-    width: calc(100% - 220px);
-  }
 }
 @media (max-width: 850px) {
   .state-panel {
@@ -665,12 +671,13 @@ dd {
   }
   .conversation-layout {
     grid-template-columns: minmax(0, 1fr);
-    height: calc(100dvh - 58px);
   }
   .conversation-layout:not(.state-hidden) .state-panel {
     display: block;
   }
   .navigation {
+    position: absolute;
+    inset: 0 auto 0 0;
     transform: translateX(-100%);
     visibility: hidden;
     width: 248px;
@@ -1033,4 +1040,45 @@ summary {
   .preset-grid {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
+}
+
+.privacy-controls {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: #fafbf9;
+  border-bottom: 1px solid var(--line);
+}
+.content-classification {
+  display: grid;
+  gap: 12px;
+}
+.action-narration {
+  white-space: pre-wrap;
+}
+
+.content-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.content-item strong {
+  overflow-wrap: anywhere;
+}
+.content-item small {
+  display: block;
+  color: var(--muted);
+}
+.content-item img {
+  display: block;
+  max-width: 128px;
+  max-height: 96px;
+  margin-top: 8px;
 }

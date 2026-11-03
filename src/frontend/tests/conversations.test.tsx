@@ -14,6 +14,9 @@ import { getConversationQueryKey } from '../src/api/generated/@tanstack/react-qu
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.get(`${base}/api/v1/conversations/:id/bookmarks`, () =>
+    HttpResponse.json([]),
+  ),
   http.get(`${base}/api/v1/player`, () =>
     HttpResponse.json({ id: 'player', name: 'Player', revision: 0 }),
   ),

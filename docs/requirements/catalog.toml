@@ -383,7 +383,7 @@ implementation_note = "要約へ対象ターンの確定状態と人物の役割
 [requirements.REQ-LLM-EFFICIENCY]
 summary = "会話の精度と自然さを維持しながらLLMのトークン量と不要な呼び出しを減らす"
 status = "in_progress"
-implementation_note = "共通予算・LangMem・使用量集計と、Fakeで検査する実4Bの限定比較処理を実装した。入力JSON圧縮は総量が減った例でも品質維持を確認できず採用しない。要約の言語指定と失敗分類を修正した。品質維持と総量削減の受入は未完了とする。"
+implementation_note = "共通予算・LangMem・使用量集計、公式チェックポイント、正規化した履歴と必要情報の投影、Fakeで検査する実4Bの限定比較処理を実装した。入力JSON圧縮は総量が減った例でも品質維持を確認できず採用しない。要約の言語指定と失敗分類を修正した。品質維持と総量削減の受入は未完了とする。"
 acceptance = [
     "人物の役割・現在状態・所有関係・生成言語・重要事項の参照と文章の自然さを削減前後で確認する",
     "指示・状態・履歴・スキーマの不要な重複を減らし、必要情報の削除や不自然な短文化を強制しない",
@@ -500,3 +500,24 @@ status = "implemented"
 acceptance = ["自分の行動案は確認前に適用しない", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
 sources = ["src/backend/src/komaquill/conversations/actions.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/database.py", "src/frontend/src/features/player-actions.tsx"]
 tests = ["tests/integration/test_player_actions.py", "tests/integration/test_player_review_regressions.py", "src/frontend/tests/conversations.test.tsx", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]
+
+[requirements.REQ-CHAT-CHECKPOINT]
+summary = "公式チェックポイントで受信済み応答を再利用し、保存と実行の正本を分ける"
+status = "implemented"
+acceptance = ["同じSQLite内の公式SqliteSaverで会話入力と要求・検証・有限修正を保存する", "原応答、使用量、設定の照合を保持し、受付不明の送信を再送しない", "保存直前の失敗から追加生成なしで復旧し、条件が変わった再開を停止する", "本文とイベントを分離し、概要とページ取得を全文の取得から分ける", "停止・バックアップ・内容照合を伴う明示移行で旧JSONと応答を保持する"]
+sources = ["src/backend/src/komaquill/adapters/checkpoints.py", "src/backend/src/komaquill/adapters/llm/workflow.py", "src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/database.py"]
+tests = ["tests/integration/test_execution_content.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_conversation_memory.py"]
+
+[requirements.REQ-CONTENT-MODE]
+summary = "NSFWを明示設定で切り替え、既存作品と処理中の保存を保全する"
+status = "implemented"
+acceptance = ["作業フォルダー単位のNSFWチェックボックスを既定OFFで保存し、現在の設定を表示する", "OFFでNSFWと未分類を一覧・詳細・画像・出力から隠す", "ONの実LLM送信はローカル接続に限定し、操作の設定を受付時に固定する", "設定変更でも受付済み処理の保存と回収を妨げない", "既存記録は未分類とし、分類変更には版と操作IDを必要とする", "画面の非表示は入力を保持し、表示切替では作品のキャッシュを破棄する"]
+sources = ["src/backend/src/komaquill/adapters/content.py", "src/backend/src/komaquill/domain/content.py", "src/frontend/src/features/content.tsx", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/shell.tsx"]
+tests = ["tests/integration/test_execution_content.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/content.spec.ts"]
+
+[requirements.REQ-SCENE-TOOLS]
+summary = "メモと確定場面を保存し、分岐・描画・共有用コピーへ反映する"
+status = "implemented"
+acceptance = ["固定メモ、文体、話題と避けたい内容を生成文脈へ渡す", "環境、相手の動作、台詞を分け、物理的な持ち物を識別子で区別する", "確定場面の状態とメモを保存し、元作品を変更せず指定ターンから分岐する", "相手、自分と相手、風景の対象と視点を固定し、二人はWAIで扱う", "共有用ZIPの画像と生成条件を個別選択し、原本を変更せず画像コピーのメタデータを除く"]
+sources = ["src/backend/src/komaquill/conversations/editing.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/conversation_export.py", "src/frontend/src/features/conversation-tools.tsx"]
+tests = ["tests/integration/test_execution_content.py", "tests/unit/test_conversation_context.py", "tests/e2e/web/content.spec.ts"]

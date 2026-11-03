@@ -8,6 +8,7 @@ from typing import Protocol
 from uuid import UUID
 
 from komaquill.conversations.actions import ActionRecord, ActionRequest, ProposalDismissal
+from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.conversations.models import (
     ConnectionProfile,
     Conversation,
@@ -25,6 +26,15 @@ class Repository(Protocol):
     def create(self, definition: ConversationInput) -> Conversation: ...
     def list(self) -> list[Conversation]: ...
     def get(self, identity: UUID) -> Conversation: ...
+    def overview(self, identity: UUID) -> Conversation: ...
+    def prepare_resume(self, identity: UUID, allow_real_llm: bool) -> Operation: ...
+    def turns(
+        self, identity: UUID, before: int | None = None, limit: int = 30
+    ) -> dict[str, object]: ...
+    def save_notes(self, identity: UUID, request: NotesRequest) -> Conversation: ...
+    def bookmark(self, identity: UUID, request: SceneRequest) -> Bookmark: ...
+    def bookmarks(self, identity: UUID) -> builtins.list[Bookmark]: ...
+    def fork(self, identity: UUID, request: SceneRequest) -> Conversation: ...
     def accept(self, identity: UUID, request: SendInput) -> tuple[Operation, bool]: ...
     def request(self, identity: UUID) -> tuple[Conversation, SendInput]: ...
     def operation(self, identity: UUID) -> Operation: ...
@@ -42,6 +52,7 @@ class Repository(Protocol):
     ) -> Conversation: ...
     def review_visuals(self, identity: UUID, review: VisualReview) -> Conversation: ...
     def operations(self, identity: UUID) -> builtins.list[Operation]: ...
+    def actions(self, identity: UUID) -> builtins.list[ActionRecord]: ...
 
 
 class Responder(Protocol):
@@ -50,6 +61,32 @@ class Responder(Protocol):
 
 
 class ConversationService:
+    def resume_operation(
+        self, identity: UUID, *, allow_real_llm: bool = False, execute: bool = True
+    ) -> Operation:
+        result = self.repository.prepare_resume(identity, allow_real_llm)
+        return self.execute(identity) if execute and result.state == "accepted" else result
+
+    def overview(self, identity: UUID) -> Conversation:
+        return self.repository.overview(identity)
+
+    def turns(
+        self, identity: UUID, before: int | None = None, limit: int = 30
+    ) -> dict[str, object]:
+        return self.repository.turns(identity, before, limit)
+
+    def save_notes(self, identity: UUID, request: NotesRequest) -> Conversation:
+        return self.repository.save_notes(identity, request)
+
+    def bookmark(self, identity: UUID, request: SceneRequest) -> Bookmark:
+        return self.repository.bookmark(identity, request)
+
+    def bookmarks(self, identity: UUID) -> list[Bookmark]:
+        return self.repository.bookmarks(identity)
+
+    def fork(self, identity: UUID, request: SceneRequest) -> Conversation:
+        return self.repository.fork(identity, request)
+
     def __init__(self, repository: Repository, responder: Responder) -> None:
         self.repository = repository
         self.responder = responder
@@ -146,7 +183,7 @@ class ConversationService:
         return record
 
     def actions(self, identity: UUID) -> builtins.list[ActionRecord]:
-        return self.get(identity).actions
+        return self.repository.actions(identity)
 
     def dismiss_proposal(
         self, identity: UUID, proposal_id: UUID, request: ProposalDismissal

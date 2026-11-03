@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { Button } from '../components/ui/button'
@@ -7,6 +8,7 @@ import { paths } from './library'
 
 export function NewConversation() {
   const m = useMessages()
+  const [style, setStyle] = useState({ tone: '', topics: '', avoid: '' })
   const failure = useFailure()
   const preferences = usePreferences()
   const cache = useQueryClient()
@@ -63,6 +65,7 @@ export function NewConversation() {
                 character: { id: character!.id, revision: character!.revision },
                 story: { id: story!.id, revision: story!.revision },
                 locale: preferences.value.locale,
+                ...style,
               },
             })
         }}
@@ -126,6 +129,20 @@ export function NewConversation() {
             )
           })}
         </div>
+        <details>
+          <summary>{m.expressionSettings}</summary>
+          {(['tone', 'topics', 'avoid'] as const).map((key) => (
+            <label key={key}>
+              {m[key]}
+              <textarea
+                value={style[key]}
+                onChange={(event) =>
+                  setStyle({ ...style, [key]: event.target.value })
+                }
+              />
+            </label>
+          ))}
+        </details>
         <Button
           className="primary"
           type="submit"

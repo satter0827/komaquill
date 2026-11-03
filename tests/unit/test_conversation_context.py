@@ -33,7 +33,7 @@ def test_prose_never_overrides_current_people_or_location():
         ],
     )
     assert scene_context(conversation)["current_state"] == state.model_dump(
-        exclude={"player": {"appearance"}, "character": {"appearance"}}
+        exclude={"player", "character"}
     )
     drawing = drawing_context(conversation)
     assert drawing["character"]["clothing"] == "black apron"
@@ -46,18 +46,20 @@ def test_prose_never_overrides_current_people_or_location():
 def test_patch_retains_clears_and_transfers_ownership_without_mutating_previous():
     previous = ConversationState(
         place="shop",
-        player={"held_objects": ["red coat"]},
+        player={"held_objects": [{"id": "coat", "name": "red coat"}]},
         character={"clothing": "black apron", "pose": "standing"},
     )
     updated = StatePatch.model_validate(
         {
             "place": "sea",
             "player": {"held_objects": []},
-            "character": {"held_objects": ["red coat"], "pose": None},
+            "character": {"held_objects": [{"id": "coat", "name": "red coat"}], "pose": None},
         }
     ).apply(previous)
     assert updated.place == "sea" and updated.character.clothing == "black apron"
-    assert updated.character.held_objects == ["red coat"] and not updated.player.held_objects
+    assert [item.model_dump() for item in updated.character.held_objects] == [
+        {"id": "coat", "name": "red coat"}
+    ] and not updated.player.held_objects
     assert updated.character.pose == "" and previous.character.pose == "standing"
     assert StatePatch().apply(previous) == previous
     assert StatePatch(character=None, place=None).apply(previous).character.clothing is None
@@ -81,7 +83,7 @@ def test_generated_snapshot_retains_unknown_values_and_applies_known_changes():
     previous = ConversationState(
         place="shop",
         player={"clothing": "red coat"},
-        character={"clothing": "black apron", "held_objects": ["shell"]},
+        character={"clothing": "black apron", "held_objects": [{"id": "shell", "name": "shell"}]},
     )
     desired = ConversationState(
         place="sea", character={"clothing": "blue shirt", "pose": "sitting", "held_objects": []}
@@ -103,6 +105,6 @@ def test_wire_snapshot_requires_every_field_and_preserves_canonical_limits():
     for model in (GeneratedState, GeneratedPersonState, NarrativeReply):
         schema = model.model_json_schema()
         assert set(schema["required"]) == set(schema["properties"])
-    assert next(iter(NarrativeReply.model_fields)) == "current_state"
+    assert next(iter(NarrativeReply.model_fields)) == "requested_player_action"
     with pytest.raises(ValueError):
         GeneratedState.model_validate({**ConversationState().model_dump(), "place": "x" * 1001})

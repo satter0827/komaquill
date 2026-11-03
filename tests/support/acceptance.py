@@ -356,7 +356,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 saved = http.get('/api/v1/operations/' + operation['id']).json()
                                 assert saved['state'] == 'complete'
                                 restored = http.get('/api/v1/conversations/' + identity).json()
-                                assert len(restored['turns']) == 1
+                                assert restored['turn_count'] == 1
+                                assert len(http.get(turn_url).json()['items']) == 1
 
                         """),
                     ],

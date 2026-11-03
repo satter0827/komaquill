@@ -204,6 +204,7 @@ def test_image_execution_reuses_saved_english_without_retranslation(tmp_path):
         submit=lambda prompt, **_k: submissions.append(prompt),
         get=lambda identity: SimpleNamespace(state="queued", images=[], run_id=identity),
     )
+    library.image_lookup = library.images.get
     assert library.execute(job.id).state == "submitted"
     assert translations == [] and submissions == ["Frozen English prompt"]
 
@@ -317,6 +318,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
         return runs[identity]
 
     library.images = SimpleNamespace(submit=submit, get=get)
+    library.image_lookup = library.images.get
     library.image_describer = SimpleNamespace(
         prepare_image=lambda *args, **kwargs: (
             "One person in a bookshop" if kind == "portrait" else "Wide view of a bookshop, no text"
@@ -360,6 +362,7 @@ def test_failure_preserves_presets_and_does_not_retry(tmp_path, failure):
         assert library.execute(job.id).state == "interrupted"
     elif failure == "image_failed":
         library.images = SimpleNamespace(get=lambda _: SimpleNamespace(state="failed", images=[]))
+        library.image_lookup = library.images.get
         assert library.job(job.id).state == "failed"
     else:
         if failure == "unexpected":

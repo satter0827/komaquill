@@ -114,6 +114,7 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     original.execution.invoke = lambda *_a, **_k: (
         calls.append(_a)
         or NarrativeReply(
+            action_narration="",
             requested_player_action=None,
             current_state=wire_state({"place": "tower", "character": {"clothing": "blue shirt"}}),
             text="Here we are.",
@@ -130,11 +131,11 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     context = json.loads(
         next(line for line in reversed(calls[0][4].splitlines()) if line.startswith("{"))
     )
-    assert context["human_player"]["age"] == "28"
-    assert context["assistant_character"]["age"] == "32"
+    assert context["people"]["player"]["age"] == "28"
+    assert context["people"]["character"]["age"] == "32"
     assert context["story"]["description"] == "A quiet bookshop"
     assert context["current_state"]["place"] == "tower"
-    assert context["current_state"]["character"]["clothing"] == "blue shirt"
+    assert context["people"]["character"]["clothing"] == "blue shirt"
     assert context["current_state"]["goal"] == "find a book"
     assert api.conversations.get(current.id).turns == current.turns
 
@@ -209,6 +210,7 @@ def test_operation_conditions_replace_frozen_prompt_defaults(tmp_path, monkeypat
             return AIMessage(
                 content=json.dumps(
                     {
+                        "action_narration": "",
                         "requested_player_action": None,
                         "current_state": wire_state({}),
                         "text": "Here is the book.",
@@ -346,6 +348,7 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
     options = []
     response = json.dumps(
         {
+            "action_narration": "",
             "requested_player_action": None,
             "current_state": wire_state({}),
             "text": "A saved reply.",
@@ -411,7 +414,7 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
     assert "A private prompt" in records[0].read_text()
     record = json.loads(records[0].read_bytes())
     assert len(record["instructions_sha256"]) == 64
-    assert record["workflow"] == {"engine": "langgraph", "version": 1}
+    assert record["workflow"] == {"engine": "langgraph", "version": 2}
     assert record["model"] == "qwen3.5-4b-uncensored-hauhaucs-aggressive" and "usage" in record
     assert record["status"] == (
         "failed" if case in {"unavailable", "length", "filter"} else "response_received"
@@ -585,6 +588,7 @@ def test_language_switch_schema_and_repair_target_narration(
             return AIMessage(
                 content=json.dumps(
                     {
+                        "action_narration": "",
                         "requested_player_action": None,
                         "current_state": wire_state(
                             {"scenery": wrong if len(calls) == 1 else right}

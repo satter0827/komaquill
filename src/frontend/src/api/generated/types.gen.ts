@@ -104,6 +104,33 @@ export type ArchivedTurn = {
 };
 
 /**
+ * Bookmark
+ */
+export type Bookmark = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Conversation Id
+     */
+    conversation_id: string;
+    /**
+     * Turn Id
+     */
+    turn_id: string;
+    /**
+     * Name
+     */
+    name: string;
+    state: ConversationState;
+    /**
+     * Notes
+     */
+    notes: Array<string>;
+};
+
+/**
  * CharacterDefinition
  */
 export type CharacterDefinition = {
@@ -142,7 +169,7 @@ export type CharacterDefinition = {
     /**
      * Initial Held Objects
      */
-    initial_held_objects?: Array<string>;
+    initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
      */
@@ -204,7 +231,7 @@ export type CharacterInput = {
     /**
      * Initial Held Objects
      */
-    initial_held_objects?: Array<string>;
+    initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
      */
@@ -290,7 +317,7 @@ export type CharacterPreset = {
     /**
      * Initial Held Objects
      */
-    initial_held_objects: Array<string>;
+    initial_held_objects: Array<PhysicalObject>;
     /**
      * Visual Review Required
      */
@@ -411,9 +438,95 @@ export type CompiledImageInput = {
 };
 
 /**
+ * ContentLabel
+ */
+export type ContentLabel = {
+    /**
+     * Readable
+     *
+     * Whether the saved display and classification metadata can be read.
+     */
+    readable?: boolean;
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Rating
+     */
+    rating: 'general' | 'nsfw' | 'unclassified';
+    /**
+     * Revision
+     */
+    revision?: number;
+    /**
+     * Title
+     */
+    title?: string;
+};
+
+/**
+ * ContentUpdate
+ */
+export type ContentUpdate = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Rating
+     */
+    rating: 'general' | 'nsfw';
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+};
+
+/**
  * Conversation
  */
 export type Conversation = {
+    /**
+     * Turn Count
+     */
+    turn_count?: number;
+    /**
+     * Turn Offset
+     */
+    turn_offset?: number;
+    /**
+     * History Prefix Sha256
+     */
+    history_prefix_sha256?: string;
+    /**
+     * History Anchor
+     */
+    history_anchor?: string;
+    /**
+     * Notes
+     */
+    notes?: Array<string>;
+    /**
+     * Source Conversation Id
+     */
+    source_conversation_id?: string | null;
+    /**
+     * Source Turn Id
+     */
+    source_turn_id?: string | null;
     /**
      * Id
      */
@@ -452,6 +565,14 @@ export type Conversation = {
  */
 export type ConversationImageRequest = {
     /**
+     * Subjects
+     */
+    subjects?: 'character' | 'pair' | 'environment';
+    /**
+     * Viewpoint
+     */
+    viewpoint?: 'player' | 'observer';
+    /**
      * Operation Id
      */
     operation_id: string;
@@ -469,6 +590,18 @@ export type ConversationImageRequest = {
  * ConversationInput
  */
 export type ConversationInput = {
+    /**
+     * Tone
+     */
+    tone?: string;
+    /**
+     * Topics
+     */
+    topics?: string;
+    /**
+     * Avoid
+     */
+    avoid?: string;
     /**
      * Title
      */
@@ -512,7 +645,7 @@ export type ConversationMemory = {
     /**
      * Source Version
      */
-    source_version?: 1 | 2 | 3;
+    source_version?: 1 | 2 | 3 | 4;
     /**
      * Text
      */
@@ -543,6 +676,18 @@ export type ConversationMemory = {
  * ConversationStart
  */
 export type ConversationStart = {
+    /**
+     * Tone
+     */
+    tone?: string;
+    /**
+     * Topics
+     */
+    topics?: string;
+    /**
+     * Avoid
+     */
+    avoid?: string;
     /**
      * Player Revision
      */
@@ -608,6 +753,10 @@ export type ConversationState = {
  */
 export type CreationJob = {
     /**
+     * Nsfw Enabled
+     */
+    nsfw_enabled?: boolean;
+    /**
      * Id
      */
     id: string;
@@ -651,6 +800,14 @@ export type CreationJob = {
  */
 export type CreationRequest = {
     /**
+     * Subjects
+     */
+    subjects?: 'character' | 'pair' | 'environment';
+    /**
+     * Viewpoint
+     */
+    viewpoint?: 'player' | 'observer';
+    /**
      * Operation Id
      */
     operation_id: string;
@@ -689,7 +846,7 @@ export type CreationRequest = {
  *
  * Identify safe, machine-readable product failure categories.
  */
-export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
+export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
  * FailureInfo
@@ -891,6 +1048,24 @@ export type MoveAction = {
 };
 
 /**
+ * NotesRequest
+ */
+export type NotesRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Notes
+     */
+    notes: Array<string>;
+};
+
+/**
  * OperationStage
  *
  * Identify the operation phase independently of displayed text.
@@ -901,6 +1076,14 @@ export type OperationStage = 'check' | 'cleanup' | 'colab_control' | 'collection
  * OperationView
  */
 export type OperationView = {
+    /**
+     * Can Resume
+     */
+    can_resume?: boolean;
+    /**
+     * Nsfw Enabled
+     */
+    nsfw_enabled?: boolean;
     /**
      * Id
      */
@@ -1004,7 +1187,7 @@ export type PersonDefinition = {
     /**
      * Initial Held Objects
      */
-    initial_held_objects?: Array<string>;
+    initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
      */
@@ -1036,7 +1219,23 @@ export type PersonState = {
      *
      * Physical objects currently held in this person's hands. Promises, wishes and knowledge are not objects.
      */
-    held_objects?: Array<string> | null;
+    held_objects?: Array<PhysicalObject> | null;
+};
+
+/**
+ * PhysicalObject
+ */
+export type PhysicalObject = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Name
+     *
+     * A physical item. Agreements, feelings and knowledge belong in notes, not here.
+     */
+    name: string;
 };
 
 /**
@@ -1078,7 +1277,7 @@ export type PlayerInput = {
     /**
      * Initial Held Objects
      */
-    initial_held_objects?: Array<string>;
+    initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
      */
@@ -1148,7 +1347,7 @@ export type PlayerProfile = {
     /**
      * Initial Held Objects
      */
-    initial_held_objects: Array<string>;
+    initial_held_objects: Array<PhysicalObject>;
     /**
      * Visual Review Required
      */
@@ -1159,6 +1358,10 @@ export type PlayerProfile = {
  * Preferences
  */
 export type Preferences = {
+    /**
+     * Nsfw Enabled
+     */
+    nsfw_enabled?: boolean;
     /**
      * Revision
      */
@@ -1208,7 +1411,7 @@ export type PrepareAction = {
     /**
      * Held Objects
      */
-    held_objects?: Array<string> | null;
+    held_objects?: Array<PhysicalObject> | null;
 };
 
 /**
@@ -1652,6 +1855,28 @@ export type RuntimeStart = {
 };
 
 /**
+ * SceneRequest
+ */
+export type SceneRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Turn Id
+     */
+    turn_id: string;
+    /**
+     * Name
+     */
+    name: string;
+};
+
+/**
  * SendInput
  */
 export type SendInput = {
@@ -1901,6 +2126,14 @@ export type StorySaveRequest = {
  */
 export type Turn = {
     /**
+     * Action Narration
+     */
+    action_narration?: string;
+    /**
+     * Notes
+     */
+    notes?: Array<string>;
+    /**
      * Operation Id
      */
     operation_id: string;
@@ -1929,6 +2162,32 @@ export type Turn = {
      * Action Id
      */
     action_id?: string | null;
+    /**
+     * Action
+     */
+    action?: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction) | null;
+};
+
+/**
+ * TurnPage
+ */
+export type TurnPage = {
+    /**
+     * Items
+     */
+    items: Array<Turn>;
+    /**
+     * Next Before
+     */
+    next_before: number | null;
 };
 
 /**
@@ -2021,6 +2280,49 @@ export type WaitAction = {
      */
     minutes: number;
 };
+
+export type ListContentData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/content';
+};
+
+export type ListContentResponses = {
+    /**
+     * Response List Content
+     *
+     * Successful Response
+     */
+    200: Array<ContentLabel>;
+};
+
+export type ListContentResponse = ListContentResponses[keyof ListContentResponses];
+
+export type ClassifyContentData = {
+    body: ContentUpdate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/content';
+};
+
+export type ClassifyContentErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ClassifyContentError = ClassifyContentErrors[keyof ClassifyContentErrors];
+
+export type ClassifyContentResponses = {
+    /**
+     * Successful Response
+     */
+    200: ContentLabel;
+};
+
+export type ClassifyContentResponse = ClassifyContentResponses[keyof ClassifyContentResponses];
 
 export type ListArchivedConversationsData = {
     body?: never;
@@ -2664,6 +2966,234 @@ export type GetConversationResponses = {
 
 export type GetConversationResponse = GetConversationResponses[keyof GetConversationResponses];
 
+export type GetTurnsData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: {
+        /**
+         * Before
+         */
+        before?: number | null;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/conversations/{identity}/turns';
+};
+
+export type GetTurnsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetTurnsError = GetTurnsErrors[keyof GetTurnsErrors];
+
+export type GetTurnsResponses = {
+    /**
+     * Successful Response
+     */
+    200: TurnPage;
+};
+
+export type GetTurnsResponse = GetTurnsResponses[keyof GetTurnsResponses];
+
+export type SendTurnData = {
+    body: SendInput;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/turns';
+};
+
+export type SendTurnErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SendTurnError = SendTurnErrors[keyof SendTurnErrors];
+
+export type SendTurnResponses = {
+    /**
+     * Successful Response
+     */
+    202: OperationView;
+};
+
+export type SendTurnResponse = SendTurnResponses[keyof SendTurnResponses];
+
+export type SaveNotesData = {
+    body: NotesRequest;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/notes';
+};
+
+export type SaveNotesErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveNotesError = SaveNotesErrors[keyof SaveNotesErrors];
+
+export type SaveNotesResponses = {
+    /**
+     * Successful Response
+     */
+    200: Conversation;
+};
+
+export type SaveNotesResponse = SaveNotesResponses[keyof SaveNotesResponses];
+
+export type GetBookmarksData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/bookmarks';
+};
+
+export type GetBookmarksErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetBookmarksError = GetBookmarksErrors[keyof GetBookmarksErrors];
+
+export type GetBookmarksResponses = {
+    /**
+     * Response Get Bookmarks
+     *
+     * Successful Response
+     */
+    200: Array<Bookmark>;
+};
+
+export type GetBookmarksResponse = GetBookmarksResponses[keyof GetBookmarksResponses];
+
+export type SaveBookmarkData = {
+    body: SceneRequest;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/bookmarks';
+};
+
+export type SaveBookmarkErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SaveBookmarkError = SaveBookmarkErrors[keyof SaveBookmarkErrors];
+
+export type SaveBookmarkResponses = {
+    /**
+     * Successful Response
+     */
+    200: Bookmark;
+};
+
+export type SaveBookmarkResponse = SaveBookmarkResponses[keyof SaveBookmarkResponses];
+
+export type ForkConversationData = {
+    body: SceneRequest;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/conversations/{identity}/fork';
+};
+
+export type ForkConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ForkConversationError = ForkConversationErrors[keyof ForkConversationErrors];
+
+export type ForkConversationResponses = {
+    /**
+     * Successful Response
+     */
+    200: Conversation;
+};
+
+export type ForkConversationResponse = ForkConversationResponses[keyof ForkConversationResponses];
+
+export type ExportConversationData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: {
+        /**
+         * Include Images
+         */
+        include_images?: boolean;
+        /**
+         * Include Conditions
+         */
+        include_conditions?: boolean;
+    };
+    url: '/api/v1/conversations/{identity}/export';
+};
+
+export type ExportConversationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ExportConversationError = ExportConversationErrors[keyof ExportConversationErrors];
+
+export type ExportConversationResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
 export type GetConversationOperationsData = {
     body?: never;
     path: {
@@ -2695,36 +3225,6 @@ export type GetConversationOperationsResponses = {
 };
 
 export type GetConversationOperationsResponse = GetConversationOperationsResponses[keyof GetConversationOperationsResponses];
-
-export type SendTurnData = {
-    body: SendInput;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query?: never;
-    url: '/api/v1/conversations/{identity}/turns';
-};
-
-export type SendTurnErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type SendTurnError = SendTurnErrors[keyof SendTurnErrors];
-
-export type SendTurnResponses = {
-    /**
-     * Successful Response
-     */
-    202: OperationView;
-};
-
-export type SendTurnResponse = SendTurnResponses[keyof SendTurnResponses];
 
 export type GetActionsData = {
     body?: never;
@@ -2911,6 +3411,41 @@ export type GetOperationResponses = {
 };
 
 export type GetOperationResponse = GetOperationResponses[keyof GetOperationResponses];
+
+export type ResumeOperationData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: {
+        /**
+         * Allow Real Llm
+         */
+        allow_real_llm?: boolean;
+    };
+    url: '/api/v1/operations/{identity}/resume';
+};
+
+export type ResumeOperationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type ResumeOperationError = ResumeOperationErrors[keyof ResumeOperationErrors];
+
+export type ResumeOperationResponses = {
+    /**
+     * Successful Response
+     */
+    200: OperationView;
+};
+
+export type ResumeOperationResponse = ResumeOperationResponses[keyof ResumeOperationResponses];
 
 export type ListImagesData = {
     body?: never;

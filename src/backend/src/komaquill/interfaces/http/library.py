@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks, FastAPI, Response
 from komaquill.adapters.conversation_archive import ArchivedConversation
 from komaquill.api import Client
 from komaquill.conversations.models import Conversation
+from komaquill.domain.content import ContentLabel, ContentUpdate
 from komaquill.library.models import (
     CharacterPreset,
     CharacterSaveRequest,
@@ -26,6 +27,14 @@ from komaquill.library.models import (
 
 
 def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
+    @app.get("/api/v1/content", response_model=list[ContentLabel], operation_id="list_content")
+    def content() -> list[ContentLabel]:
+        return selected().content.list()
+
+    @app.put("/api/v1/content", response_model=ContentLabel, operation_id="classify_content")
+    def classify(body: ContentUpdate) -> ContentLabel:
+        return selected().content.update(body)
+
     @app.get(
         "/api/v1/archive/conversations",
         response_model=list[ArchivedConversation],
@@ -70,6 +79,8 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
                 locale=body.locale,
                 llm_profile=conversation.definition.llm_profile,
                 allow_real_llm=True,
+                subjects=body.subjects,
+                viewpoint=body.viewpoint,
             )
         )
         if created:

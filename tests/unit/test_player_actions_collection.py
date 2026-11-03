@@ -34,10 +34,16 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                 }
             else:
                 context = next(
-                    json.loads(line) for line in system.splitlines() if line.startswith("{")
+                    json.loads(line)
+                    for line in system.splitlines()
+                    if line.startswith("{") and "current_state" in line
                 )
                 current = context["current_state"]
-                companion = dict(current["character"])
+                companion = {
+                    key: value
+                    for key, value in context["people"]["character"].items()
+                    if key in {"clothing", "expression", "pose", "held_objects"}
+                }
                 latest = messages[-1].content
                 char_place = current["character_place"]
                 if latest.startswith("あなたは緑のコート") or latest.startswith(
@@ -59,6 +65,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                         "scenery": "海辺は静かだ。" if ja else "The beach is quiet.",
                         "character": companion,
                     },
+                    "action_narration": "",
                     "requested_player_action": proposals[0] if proposals else None,
                     "text": (
                         "合言葉は銀のコンパスです。" if ja else "The password is silver compass."
@@ -79,5 +86,5 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
     assert len(calls) == 12
     for result in results:
         assert all(result["checks"].values())
-        assert result["conversation"]["memory"]["source_version"] == 3
+        assert result["conversation"]["memory"]["source_version"] == 4
         assert (tmp_path / f"{result['locale']}.json").is_file()

@@ -4,7 +4,6 @@ import json
 from uuid import uuid4
 
 import pytest
-from komaquill.adapters.database import conversations
 from komaquill.api import Client, ConversationInput, SendInput
 from komaquill.conversations.models import Turn
 from komaquill.domain.roleplay import ConversationMemory
@@ -13,7 +12,16 @@ from langchain_core.messages import AIMessage
 from tests.support.conversations import wire_scene
 
 
-def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, context_turns=4):
+def prepare(
+    tmp_path,
+    monkeypatch,
+    *,
+    locale="en",
+    failure=None,
+    count=4,
+    context_turns=4,
+    action_narration="",
+):
     import langchain_openai
 
     api = Client.initialize(tmp_path)
@@ -49,6 +57,7 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
             else:
                 result = {
                     "current_state": wire_scene(api.conversations.get(saved.id).state),
+                    "action_narration": "",
                     "requested_player_action": None,
                     "text": "Let us go to the lighthouse."
                     if locale == "en"
@@ -77,14 +86,31 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
             user=f"Visit the lighthouse. {index}",
             assistant="We promised to go.",
             narration="The beach is quiet.",
+            action_narration=action_narration,
             state=saved.state,
         )
         for index in range(count)
     ]
-    value = saved.model_copy(update={"turns": turns, "revision": count})
+    value = saved.model_copy(update={"turns": turns, "revision": count, "turn_count": count})
     with api.conversations.repository.database.engine.begin() as connection:
-        connection.execute(conversations.update().values(payload=value.model_dump_json()))
+        api.conversations.repository._store(connection, value)
     return api, value, calls
+
+
+def test_summary_receives_companion_actions_separately_from_scenery_and_dialogue(
+    tmp_path, monkeypatch
+):
+    action = "The companion traces a lighthouse in the sand."
+    api, original, calls = prepare(tmp_path, monkeypatch, action_narration=action)
+    result = api.conversations.send(
+        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+    )
+    assert result.state == "complete"
+    summary_input = [json.loads(message.content) for message in calls[0][1] if message.type == "ai"]
+    assert len(summary_input) == 2
+    assert all(message["action_narration"] == action for message in summary_input)
+    assert all(message["narration"] == "The beach is quiet." for message in summary_input)
+    assert api.conversations.get(original.id).turns[:4] == original.turns
 
 
 @pytest.mark.parametrize("locale", ["ja", "en"])
@@ -101,7 +127,7 @@ def test_summary_is_saved_and_reused_after_restart_without_rewriting_history(
     assert saved.state == original.state
     assert [summary for summary, _, _ in calls] == [True, False]
     assert calls[0][2] == 512
-    assert saved.memory.source_version == 3
+    assert saved.memory.source_version == 4
     summary_messages = calls[0][1]
     confirmed = [
         json.loads(message.content)["confirmed_state"]

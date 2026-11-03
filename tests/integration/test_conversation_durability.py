@@ -123,7 +123,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0008"
+                == "0009"
             )
         storage.engine.dispose()
 
@@ -194,6 +194,69 @@ def test_corrupt_inactive_operation_does_not_block_another_conversation(tmp_path
     )
     with pytest.raises(KomaquillError, match="storage_failed"):
         api.operations.get(request.operation_id)
+
+
+@pytest.mark.parametrize("phase", ["failure", "restart"])
+@pytest.mark.parametrize("payload", ["invalid", "[]", '{"status":"response_received"}'])
+def test_unreadable_received_call_does_not_block_healthy_conversations(
+    tmp_path, monkeypatch, phase, payload
+):
+    api = Client.initialize(tmp_path)
+    first = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Unreadable response")
+    )
+    request = SendInput(operation_id=uuid4(), text="Hello")
+    api.conversations.accept(first.id, request)
+    repository = api.conversations.repository
+    assert repository.running(request.operation_id)
+    path = tmp_path / ".artifacts/data/conversation-calls" / str(request.operation_id) / "0.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(payload, encoding="utf-8")
+    if phase == "failure":
+        result = repository.fail(request.operation_id, "storage_failed")
+    else:
+        with repository.database.engine.begin() as connection:
+            connection.execute(operations.update().values(owner_started="0"))
+        api.operations.reconcile()
+        result = api.operations.get(request.operation_id)
+    assert result.state in {"failed", "interrupted"} and not result.can_resume
+    with pytest.raises(KomaquillError, match="submission_unknown"):
+        api.conversations.resume_operation(result.id)
+    assert path.read_text(encoding="utf-8") == payload
+    second = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Healthy")
+    )
+    assert (
+        api.conversations.send(second.id, SendInput(operation_id=uuid4(), text="Hello")).state
+        == "complete"
+    )
+    assert api.conversations.get(first.id).turns == []
+
+
+def test_unreadable_checkpoint_isolated_without_committing_or_resending(tmp_path, monkeypatch):
+    api = Client.initialize(tmp_path)
+    first = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Unreadable checkpoint")
+    )
+    request = SendInput(operation_id=uuid4(), text="Hello")
+    api.conversations.accept(first.id, request)
+    repository = api.conversations.repository
+    assert repository.running(request.operation_id)
+    repository.database.checkpoints.save(f"reply:{request.operation_id}", {"text": 1})
+    with repository.database.engine.begin() as connection:
+        connection.execute(operations.update().values(owner_started="0"))
+    second = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Healthy")
+    )
+    assert (
+        api.conversations.send(second.id, SendInput(operation_id=uuid4(), text="Hello")).state
+        == "complete"
+    )
+    result = api.operations.get(request.operation_id)
+    assert (
+        result.state == "interrupted" and not result.can_resume and result.error == "storage_failed"
+    )
+    assert api.conversations.get(first.id).turns == []
 
 
 def test_failed_migration_rolls_back_ddl_before_retry(tmp_path, monkeypatch):
@@ -272,6 +335,28 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        original = api.conversations.get(conversation.id).model_dump_json(
+            exclude={
+                "turn_count",
+                "turn_offset",
+                "notes",
+                "source_conversation_id",
+                "source_turn_id",
+            }
+        )
+        connection.exec_driver_sql(
+            "UPDATE conversations SET payload=? WHERE id=?", (original, str(conversation.id))
+        )
+        connection.exec_driver_sql("ALTER TABLE operations ADD COLUMN reply TEXT")
+        for table in (
+            "content_labels",
+            "operation_policies",
+            "conversation_turns",
+            "conversation_events",
+            "conversation_bookmarks",
+            "execution_migration_originals",
+        ):
+            connection.exec_driver_sql(f"DROP TABLE {table}")
         connection.exec_driver_sql("DROP TABLE command_receipts")
         connection.exec_driver_sql("DROP TABLE state_migration_originals")
         connection.exec_driver_sql("DROP TABLE preset_saves")
@@ -280,6 +365,8 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
         command.stamp(config, "0005")
         command.downgrade(config, "0003")
     Database(tmp_path / ".artifacts/data/komaquill.sqlite3", migrate=True).engine.dispose()
+    preferences = api.library.preferences()
+    api.library.save_preferences(preferences.model_copy(update={"nsfw_enabled": True}))
     assert len(api.conversations.get(conversation.id).turns) == 1
     assert (
         api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello")).state

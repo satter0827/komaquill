@@ -24,6 +24,9 @@ def downgrade(api, revision="0004"):
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        from tests.support.migrations import legacy_execution
+
+        legacy_execution(connection)
         connection.exec_driver_sql("DROP TABLE command_receipts")
         connection.exec_driver_sql("DROP TABLE state_migration_originals")
         connection.exec_driver_sql("DROP TABLE preset_saves")
@@ -68,7 +71,7 @@ def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(tmp_pa
     assert all(
         record["after"][key] == value
         for key, value in record["before"].items()
-        if key not in {"presets", "conversations"}
+        if key not in {"presets", "conversations", "operations"}
     )
     with storage.database(
         tmp_path / ".artifacts/data/komaquill.sqlite3"
@@ -79,7 +82,11 @@ def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(tmp_pa
             ).scalar_one()
             >= 1
         )
-    assert Client(tmp_path).conversations.get(saved.id) == before
+    reopened = Client(tmp_path)
+    reopened.library.save_preferences(
+        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
+    )
+    assert reopened.conversations.get(saved.id) == before
     assert Client(tmp_path).library.preferences().locale == "ja"
 
 

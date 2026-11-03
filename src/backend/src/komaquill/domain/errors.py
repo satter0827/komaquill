@@ -51,6 +51,8 @@ class ErrorCode(StrEnum):
     MIGRATION_REQUIRED = "migration_required"
     VISUAL_REVIEW_REQUIRED = "visual_review_required"
     STORAGE_FAILED = "storage_failed"
+    IMAGE_COMPOSITION_UNAVAILABLE = "image_composition_unavailable"
+    CONTENT_HIDDEN = "content_hidden"
     SUBMISSION_UNKNOWN = "submission_unknown"
     UNSUPPORTED_ASSET = "unsupported_asset"
     EXTENSION_UNAVAILABLE = "extension_unavailable"

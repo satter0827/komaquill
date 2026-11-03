@@ -25,6 +25,9 @@ class Limits(BaseModel):
     max_calls: int = Field(ge=1)
     max_seconds: int = Field(ge=1)
     history_turns: int = Field(ge=3)
+    context_window_tokens: int = Field(ge=1024)
+    max_output_tokens: int = Field(ge=128)
+    request_timeout: float = Field(gt=0)
 
 
 def source_hashes(source: Path) -> dict[str, str]:
@@ -167,6 +170,16 @@ def child(source: Path, output: Path, variant: str) -> None:
         locale = case["locale"]
         workspace = output / variant / f"{locale}-{'long' if case['long'] else 'short'}"
         api = Client.initialize(workspace)
+        settings = Limits.model_validate(
+            tomllib.loads(
+                Path(__file__).with_name("llm-efficiency.toml").read_text(encoding="utf-8")
+            )
+        )
+        (workspace / "komaquill.toml").write_text(
+            f"[conversation]\ncontext_window_tokens={settings.context_window_tokens}\n"
+            f"max_output_tokens={settings.max_output_tokens}\nrequest_timeout={settings.request_timeout}\n",
+            encoding="utf-8",
+        )
         definition = ConversationInput.model_validate(
             dict(
                 title="Comparison",
@@ -197,13 +210,20 @@ def child(source: Path, output: Path, variant: str) -> None:
         with cast(
             ConversationRepository, api.conversations.repository
         ).database.engine.begin() as connection:
-            connection.execute(
-                update(conversations)
-                .where(conversations.c.id == str(conversation.id))
-                .values(payload=conversation.model_dump_json())
-            )
+            repository = cast(ConversationRepository, api.conversations.repository)
+            if "turn_count" in type(conversation).model_fields:
+                conversation = conversation.model_copy(update={"turn_count": len(history)})
+                repository._store(connection, conversation)
+            else:
+                connection.execute(
+                    update(conversations)
+                    .where(conversations.c.id == str(conversation.id))
+                    .values(payload=conversation.model_dump_json())
+                )
         for index, text in enumerate(case["inputs"]):
             if index == len(case["inputs"]) - 1:
+                if hasattr(api, "close"):
+                    api.close()
                 api = Client(workspace)
             operation = api.conversations.send(
                 conversation.id,

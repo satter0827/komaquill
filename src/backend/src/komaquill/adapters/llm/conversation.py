@@ -2,8 +2,9 @@
 
 import json
 from collections.abc import Callable
+from functools import cached_property
 from importlib.resources import files
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from filelock import Timeout
@@ -21,6 +22,7 @@ from komaquill.domain.roleplay import (
     ConversationMemory,
     ConversationState,
     PersonState,
+    PhysicalObjects,
     Record,
     StatePatch,
 )
@@ -37,7 +39,7 @@ class GeneratedPersonState(Record):
     clothing: str | None = Field(max_length=3000)
     expression: str | None = Field(max_length=1000)
     pose: str | None = Field(max_length=1000)
-    held_objects: list[str] | None = Field(
+    held_objects: PhysicalObjects | None = Field(
         description=PersonState.model_fields["held_objects"].description
     )
 
@@ -95,22 +97,17 @@ def resolve_scene(conversation: Conversation, generated: GeneratedState) -> Conv
             if generated.companion_movement == "join_player"
             else conversation.state.character_place,
             "character": conversation.state.character.model_copy(
-                update=generated.character.model_dump(exclude_none=True)
+                update={
+                    key: getattr(generated.character, key)
+                    for key in type(generated.character).model_fields
+                    if getattr(generated.character, key) is not None
+                }
             ),
         }
     )
 
 
 class NarrativeReply(Record):
-    current_state: GeneratedState = Field(
-        description=(
-            "Permitted scene and companion changes only. Never change player state. "
-            "Carry forward unchanged facts. "
-            "Null person fields mean unknown, not removal. "
-            "Use empty clothing only when the person explicitly removes it."
-        )
-    )
-    text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
     requested_player_action: GeneratedAction | None = Field(
         description=(
             "Extract one action the human player explicitly requests for themselves in the latest "
@@ -120,6 +117,20 @@ class NarrativeReply(Record):
             "Never suggest possible future actions."
         ),
     )
+    current_state: GeneratedState = Field(
+        description=(
+            "Permitted scene and companion changes only. Never change player state. "
+            "Carry forward unchanged facts. "
+            "Null person fields mean unknown, not removal. "
+            "Use empty clothing only when the person explicitly removes it."
+        )
+    )
+    action_narration: str = Field(
+        max_length=6000,
+        description="Visible actions by the companion, consistent with current_state. "
+        "Never invent player actions or feelings.",
+    )
+    text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
 
 
 class ReactionReply(NarrativeReply):
@@ -127,6 +138,12 @@ class ReactionReply(NarrativeReply):
 
 
 class ConversationResponder:
+    @cached_property
+    def graph(self) -> Any:
+        from komaquill.adapters.llm.workflow import compile_conversation
+
+        return compile_conversation(self.execution.checkpoints)
+
     def __init__(
         self,
         execution: StructuredExecution,
@@ -149,9 +166,13 @@ class ConversationResponder:
     def reply(self, conversation: Conversation, request: SendInput) -> Reply:
         try:
             with self.execution.lock:
-                return self._reply(conversation, request)
+                from komaquill.adapters.llm.workflow import run_conversation
+
+                return run_conversation(self.graph, conversation, request, self._reply)
         except Timeout:
             raise KomaquillError(code="operation_busy", retryable=True) from None
+        except ImportError:
+            raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
 
     def _reply(self, conversation: Conversation, request: SendInput) -> Reply:
         profile = self.execution.settings.llm_profiles.get(conversation.definition.llm_profile)
@@ -243,6 +264,8 @@ class ConversationResponder:
                 exclude_defaults=True,
                 exclude={
                     "appearance",
+                    "age",
+                    "gender",
                     "initial_clothing",
                     "initial_held_objects",
                     "visual_review_required",
@@ -250,10 +273,29 @@ class ConversationResponder:
             ),
             "human_player": definition.user.model_dump(
                 exclude_defaults=True,
-                exclude={"initial_clothing", "initial_held_objects", "visual_review_required"},
+                exclude={
+                    "appearance",
+                    "age",
+                    "gender",
+                    "initial_clothing",
+                    "initial_held_objects",
+                    "visual_review_required",
+                },
             ),
             "story": story,
             **scene_context(conversation),
+            **({"pinned_notes": conversation.notes} if conversation.notes else {}),
+            **(
+                {
+                    "style": {
+                        key: getattr(definition, key)
+                        for key in ("tone", "topics", "avoid")
+                        if getattr(definition, key)
+                    }
+                }
+                if any((definition.tone, definition.topics, definition.avoid))
+                else {}
+            ),
             "response_length": definition.response_length,
             "response_policy": definition.instructions,
             "response_language": language,
@@ -306,6 +348,7 @@ class ConversationResponder:
             desired = resolve_scene(conversation, reply.current_state)
             proposed = StatePatch.between(conversation.state, desired).apply(conversation.state)
             for field, value in (
+                ("action_narration", reply.action_narration),
                 ("text", reply.text if proposed.character_place == proposed.place else ""),
                 ("scenery", reply.current_state.scenery),
             ):
@@ -318,8 +361,8 @@ class ConversationResponder:
                 or proposed.place != conversation.state.place
             ):
                 raise ValueError("Player changes require confirmation.")
-            if set(proposed.character.held_objects or []).intersection(
-                proposed.player.held_objects or []
+            if {item.id for item in proposed.character.held_objects or []}.intersection(
+                item.id for item in proposed.player.held_objects or []
             ):
                 raise ResponseConstraintError("object_ownership")
 
@@ -340,6 +383,7 @@ class ConversationResponder:
             conversation,
             Reply(
                 narration=desired.scenery,
+                action_narration=generated.action_narration,
                 text=generated.text,
                 state_patch=StatePatch.between(conversation.state, desired),
                 action_proposals=[generated.requested_player_action]

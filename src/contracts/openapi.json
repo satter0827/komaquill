@@ -5,6 +5,64 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/content": {
+      "get": {
+        "summary": "Content",
+        "operationId": "list_content",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContentLabel"
+                  },
+                  "type": "array",
+                  "title": "Response List Content"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Classify",
+        "operationId": "classify_content",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentLabel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/archive/conversations": {
       "get": {
         "summary": "Archived Conversations",
@@ -872,10 +930,10 @@
         }
       }
     },
-    "/api/v1/conversations/{identity}/operations": {
+    "/api/v1/conversations/{identity}/turns": {
       "get": {
-        "summary": "Conversation Operations",
-        "operationId": "get_conversation_operations",
+        "summary": "Turns",
+        "operationId": "get_turns",
         "parameters": [
           {
             "name": "identity",
@@ -886,6 +944,32 @@
               "format": "uuid",
               "title": "Identity"
             }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Limit"
+            }
           }
         ],
         "responses": {
@@ -894,11 +978,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/OperationView"
-                  },
-                  "title": "Response Get Conversation Operations"
+                  "$ref": "#/components/schemas/TurnPage"
                 }
               }
             }
@@ -914,9 +994,7 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/conversations/{identity}/turns": {
+      },
       "post": {
         "summary": "Send",
         "operationId": "send_turn",
@@ -949,6 +1027,300 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OperationView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/notes": {
+      "put": {
+        "summary": "Notes",
+        "operationId": "save_notes",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/bookmarks": {
+      "get": {
+        "summary": "Bookmarks",
+        "operationId": "get_bookmarks",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Bookmark"
+                  },
+                  "title": "Response Get Bookmarks"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Bookmark",
+        "operationId": "save_bookmark",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bookmark"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/fork": {
+      "post": {
+        "summary": "Fork",
+        "operationId": "fork_conversation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SceneRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conversation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/export": {
+      "get": {
+        "summary": "Export",
+        "operationId": "export_conversation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          },
+          {
+            "name": "include_images",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Images"
+            }
+          },
+          {
+            "name": "include_conditions",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Conditions"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{identity}/operations": {
+      "get": {
+        "summary": "Conversation Operations",
+        "operationId": "get_conversation_operations",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OperationView"
+                  },
+                  "title": "Response Get Conversation Operations"
                 }
               }
             }
@@ -1221,6 +1593,56 @@
               "type": "string",
               "format": "uuid",
               "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operations/{identity}/resume": {
+      "post": {
+        "summary": "Resume Operation",
+        "operationId": "resume_operation",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          },
+          {
+            "name": "allow_real_llm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Allow Real Llm"
             }
           }
         ],
@@ -1843,6 +2265,50 @@
         ],
         "title": "ArchivedTurn"
       },
+      "Bookmark": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversation Id"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Turn Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConversationState"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "conversation_id",
+          "turn_id",
+          "name",
+          "state",
+          "notes"
+        ],
+        "title": "Bookmark"
+      },
       "CharacterDefinition": {
         "properties": {
           "name": {
@@ -1901,7 +2367,7 @@
           },
           "initial_held_objects": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PhysicalObject"
             },
             "type": "array",
             "maxItems": 30,
@@ -2000,7 +2466,7 @@
           },
           "initial_held_objects": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PhysicalObject"
             },
             "type": "array",
             "maxItems": 30,
@@ -2157,7 +2623,7 @@
           },
           "initial_held_objects": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PhysicalObject"
             },
             "type": "array",
             "maxItems": 30,
@@ -2386,8 +2852,152 @@
         "title": "CompiledImageInput",
         "description": "Freeze the original directions and exact positive conditioning for generation."
       },
+      "ContentLabel": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "preset",
+              "image",
+              "archive",
+              "job"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "rating": {
+            "type": "string",
+            "enum": [
+              "general",
+              "nsfw",
+              "unclassified"
+            ],
+            "title": "Rating"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision",
+            "default": 0
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "rating"
+        ],
+        "title": "ContentLabel"
+      },
+      "ContentUpdate": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "preset",
+              "image",
+              "archive",
+              "job"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "rating": {
+            "type": "string",
+            "enum": [
+              "general",
+              "nsfw"
+            ],
+            "title": "Rating"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          }
+        },
+        "type": "object",
+        "required": [
+          "operation_id",
+          "kind",
+          "id",
+          "rating",
+          "expected_revision"
+        ],
+        "title": "ContentUpdate"
+      },
       "Conversation": {
         "properties": {
+          "turn_count": {
+            "type": "integer",
+            "title": "Turn Count",
+            "default": 0
+          },
+          "turn_offset": {
+            "type": "integer",
+            "title": "Turn Offset",
+            "default": 0
+          },
+          "history_prefix_sha256": {
+            "type": "string",
+            "title": "History Prefix Sha256",
+            "default": ""
+          },
+          "history_anchor": {
+            "type": "string",
+            "title": "History Anchor",
+            "default": ""
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "source_conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Conversation Id"
+          },
+          "source_turn_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Turn Id"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -2457,6 +3067,25 @@
       },
       "ConversationImageRequest": {
         "properties": {
+          "subjects": {
+            "type": "string",
+            "enum": [
+              "character",
+              "pair",
+              "environment"
+            ],
+            "title": "Subjects",
+            "default": "character"
+          },
+          "viewpoint": {
+            "type": "string",
+            "enum": [
+              "player",
+              "observer"
+            ],
+            "title": "Viewpoint",
+            "default": "player"
+          },
           "operation_id": {
             "type": "string",
             "format": "uuid",
@@ -2487,6 +3116,24 @@
       },
       "ConversationInput": {
         "properties": {
+          "tone": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Tone",
+            "default": ""
+          },
+          "topics": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Topics",
+            "default": ""
+          },
+          "avoid": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Avoid",
+            "default": ""
+          },
           "title": {
             "type": "string",
             "maxLength": 120,
@@ -2562,7 +3209,8 @@
             "enum": [
               1,
               2,
-              3
+              3,
+              4
             ],
             "title": "Source Version",
             "default": 1
@@ -2608,6 +3256,24 @@
       },
       "ConversationStart": {
         "properties": {
+          "tone": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Tone",
+            "default": ""
+          },
+          "topics": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Topics",
+            "default": ""
+          },
+          "avoid": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Avoid",
+            "default": ""
+          },
           "player_revision": {
             "type": "integer",
             "minimum": 0.0,
@@ -2718,6 +3384,11 @@
       },
       "CreationJob": {
         "properties": {
+          "nsfw_enabled": {
+            "type": "boolean",
+            "title": "Nsfw Enabled",
+            "default": false
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -2819,6 +3490,25 @@
       },
       "CreationRequest": {
         "properties": {
+          "subjects": {
+            "type": "string",
+            "enum": [
+              "character",
+              "pair",
+              "environment"
+            ],
+            "title": "Subjects",
+            "default": "character"
+          },
+          "viewpoint": {
+            "type": "string",
+            "enum": [
+              "player",
+              "observer"
+            ],
+            "title": "Viewpoint",
+            "default": "player"
+          },
           "operation_id": {
             "type": "string",
             "format": "uuid",
@@ -2939,6 +3629,8 @@
           "migration_required",
           "visual_review_required",
           "storage_failed",
+          "image_composition_unavailable",
+          "content_hidden",
           "submission_unknown",
           "unsupported_asset",
           "extension_unavailable",
@@ -3296,6 +3988,38 @@
         ],
         "title": "MoveAction"
       },
+      "NotesRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "notes": {
+            "items": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "notes"
+        ],
+        "title": "NotesRequest"
+      },
       "OperationStage": {
         "type": "string",
         "enum": [
@@ -3333,6 +4057,16 @@
       },
       "OperationView": {
         "properties": {
+          "can_resume": {
+            "type": "boolean",
+            "title": "Can Resume",
+            "default": false
+          },
+          "nsfw_enabled": {
+            "type": "boolean",
+            "title": "Nsfw Enabled",
+            "default": false
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -3521,7 +4255,7 @@
           },
           "initial_held_objects": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PhysicalObject"
             },
             "type": "array",
             "maxItems": 30,
@@ -3591,7 +4325,7 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/PhysicalObject"
                 },
                 "type": "array",
                 "maxItems": 30
@@ -3607,6 +4341,31 @@
         "additionalProperties": false,
         "type": "object",
         "title": "PersonState"
+      },
+      "PhysicalObject": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "description": "A physical item. Agreements, feelings and knowledge belong in notes, not here."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "PhysicalObject"
       },
       "PlayerInput": {
         "properties": {
@@ -3667,7 +4426,7 @@
           },
           "initial_held_objects": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PhysicalObject"
             },
             "type": "array",
             "maxItems": 30,
@@ -3800,7 +4559,7 @@
           },
           "initial_held_objects": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PhysicalObject"
             },
             "type": "array",
             "maxItems": 30,
@@ -3836,6 +4595,11 @@
       },
       "Preferences": {
         "properties": {
+          "nsfw_enabled": {
+            "type": "boolean",
+            "title": "Nsfw Enabled",
+            "default": false
+          },
           "revision": {
             "type": "integer",
             "minimum": 0.0,
@@ -3937,7 +4701,7 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/PhysicalObject"
                 },
                 "type": "array",
                 "maxItems": 30
@@ -4786,6 +5550,40 @@
         "type": "object",
         "title": "RuntimeStart"
       },
+      "SceneRequest": {
+        "properties": {
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "turn_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Turn Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "turn_id",
+          "name"
+        ],
+        "title": "SceneRequest"
+      },
       "SendInput": {
         "properties": {
           "operation_id": {
@@ -5256,6 +6054,18 @@
       },
       "Turn": {
         "properties": {
+          "action_narration": {
+            "type": "string",
+            "title": "Action Narration",
+            "default": ""
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
           "operation_id": {
             "type": "string",
             "format": "uuid",
@@ -5305,6 +6115,39 @@
               }
             ],
             "title": "Action Id"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/MoveAction"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WaitAction"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PrepareAction"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IntentionAction"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "intention": "#/components/schemas/IntentionAction",
+                    "move": "#/components/schemas/MoveAction",
+                    "prepare": "#/components/schemas/PrepareAction",
+                    "wait": "#/components/schemas/WaitAction"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
           }
         },
         "additionalProperties": false,
@@ -5316,6 +6159,34 @@
           "state"
         ],
         "title": "Turn"
+      },
+      "TurnPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_before"
+        ],
+        "title": "TurnPage"
       },
       "ValidationError": {
         "properties": {

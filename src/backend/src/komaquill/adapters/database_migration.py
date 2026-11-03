@@ -39,10 +39,14 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
             "SELECT id,payload FROM state_migration_originals WHERE kind='presets'"
         )
     }
+    execution_retained = dict(
+        after.execute("SELECT id,payload FROM execution_migration_originals WHERE kind='preset'")
+    )
     if before.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {
         "0006",
         "0007",
         "0008",
+        "0009",
     }:
         current = {
             row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
@@ -53,7 +57,11 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
             identity in current
             and kind == current[identity][0]
             and deleted == current[identity][2]
-            and (payload == current[identity][1] or payload == retained.get(identity))
+            and (
+                payload == current[identity][1]
+                or payload == retained.get(identity)
+                or payload == execution_retained.get(identity)
+            )
             for identity, kind, payload, deleted in before.execute(
                 "SELECT id,kind,payload,deleted FROM presets"
             )
@@ -99,14 +107,44 @@ def conversations_preserved(before: sqlite3.Connection, after: sqlite3.Connectio
         return True
     current = dict(after.execute("SELECT id,payload FROM conversations"))
     archive = dict(after.execute("SELECT id,payload FROM archived_conversations"))
-    retained = dict(
+    retained = set(
         after.execute("SELECT id,payload FROM state_migration_originals WHERE kind='conversations'")
     )
+    retained.update(
+        after.execute(
+            "SELECT id,payload FROM execution_migration_originals WHERE kind='conversation'"
+        )
+    )
+
     return all(
         current.get(identity) == payload
         or archive.get(identity) == payload
-        or retained.get(identity) == payload
+        or (identity, payload) in retained
         for identity, payload in before.execute("SELECT id,payload FROM conversations")
+    )
+
+
+def operations_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    columns = [row[1] for row in before.execute("PRAGMA table_info(operations)")]
+    if not columns or "reply" not in columns:
+        return True
+    retained = dict(
+        after.execute(
+            "SELECT id,payload FROM execution_migration_originals WHERE kind='operation_reply'"
+        )
+    )
+    names = [name for name in columns if name != "reply"]
+    selected = ",".join('"' + name + '"' for name in names)
+    if (
+        before.execute(f"SELECT {selected} FROM operations ORDER BY id").fetchall()
+        != after.execute(f"SELECT {selected} FROM operations ORDER BY id").fetchall()
+    ):
+        return False
+    return all(
+        retained.get(identity) == reply
+        for identity, reply in before.execute(
+            "SELECT id,reply FROM operations WHERE reply IS NOT NULL"
+        )
     )
 
 
@@ -152,14 +190,16 @@ def migrate(workspace: Path) -> Path:
     with closing(sqlite3.connect(source)) as connection:
         after = inventory(connection)
         with closing(sqlite3.connect(backup)) as copied:
-            if not library_preserved(copied, connection) or not conversations_preserved(
-                copied, connection
+            if (
+                not library_preserved(copied, connection)
+                or not conversations_preserved(copied, connection)
+                or not operations_preserved(copied, connection)
             ):
                 raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     if any(
         after.get(key) != value
         for key, value in before.items()
-        if key not in {"presets", "preferences", "conversations"}
+        if key not in {"presets", "preferences", "conversations", "operations"}
     ):
         raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     atomic_json(report, {**record, "after": after, "state": "complete"})

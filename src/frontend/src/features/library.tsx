@@ -1,3 +1,4 @@
+import { objectLines, parseObjects } from './physical-objects'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Plus, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -357,7 +358,7 @@ function PresetEditor({
   const [current, setCurrent] = useState(preset)
   const [heldObjects, setHeldObjects] = useState(() =>
     preset && 'initial_held_objects' in preset
-      ? (preset.initial_held_objects ?? []).join('\n')
+      ? objectLines(preset.initial_held_objects)
       : '',
   )
   const [value, setValue] = useState<Fields>(() =>
@@ -438,10 +439,12 @@ function PresetEditor({
     const submission = pendingSave ?? {
       value: {
         ...value,
-        initial_held_objects: heldObjects
-          .split('\n')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        initial_held_objects: parseObjects(
+          heldObjects,
+          current && 'initial_held_objects' in current
+            ? current.initial_held_objects
+            : [],
+        ),
       },
       previous: current,
       options: {
@@ -727,7 +730,9 @@ function PresetEditor({
                           'initial_held_objects' in result &&
                           Array.isArray(result.initial_held_objects)
                         )
-                          setHeldObjects(result.initial_held_objects.join('\n'))
+                          setHeldObjects(
+                            objectLines(result.initial_held_objects),
+                          )
                         setValue((previous) => ({
                           ...previous,
                           ...(Object.fromEntries(

@@ -1,3 +1,4 @@
+import { parseObjects } from './physical-objects'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
@@ -44,7 +45,7 @@ export function ActionDescription({ action }: { action: PlayerAction }) {
             <dt>{labels[field]}</dt>
             <dd>
               {(Array.isArray(action[field])
-                ? action[field].join(', ')
+                ? action[field].map((item) => item.name).join(', ')
                 : action[field]) || m.emptyValue}
             </dd>
           </div>
@@ -246,10 +247,10 @@ export function PlayerActions({
                       kind,
                       [prepareField]:
                         prepareField === 'held_objects'
-                          ? value
-                              .split('\n')
-                              .map((item) => item.trim())
-                              .filter(Boolean)
+                          ? parseObjects(
+                              value,
+                              conversation.state?.player?.held_objects ?? [],
+                            )
                           : value,
                     }
           submit(selected)

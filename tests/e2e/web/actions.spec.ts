@@ -119,7 +119,11 @@ for (const locale of ['ja', 'en'] as const) {
     ).json()
     expect(saved.state.place).toBe('Beach')
     expect(saved.state.character_place).not.toBe('Beach')
-    expect(saved.actions).toHaveLength(1)
+    expect(
+      await (
+        await request.get(`/api/v1/conversations/${identity}/actions`)
+      ).json(),
+    ).toHaveLength(1)
     await evidence.capture(
       'Confirmed player movement with an independent companion location',
     )
@@ -128,7 +132,11 @@ for (const locale of ['ja', 'en'] as const) {
     const resumed = await (
       await request.get(`/api/v1/conversations/${identity}`)
     ).json()
-    expect(resumed.actions).toHaveLength(1)
+    expect(
+      await (
+        await request.get(`/api/v1/conversations/${identity}/actions`)
+      ).json(),
+    ).toHaveLength(1)
     expect(resumed.state.place).toBe('Beach')
   })
 }
@@ -188,8 +196,16 @@ test('a chat action remains a proposal until the player confirms it', async ({
     await request.get(`/api/v1/conversations/${identity}`)
   ).json()
   expect(confirmed.state.place).toBe('Beach')
-  expect(confirmed.actions).toHaveLength(1)
-  expect(confirmed.proposals[0].state).toBe('applied')
+  expect(
+    await (
+      await request.get(`/api/v1/conversations/${identity}/actions`)
+    ).json(),
+  ).toHaveLength(1)
+  expect(confirmed.proposals).toHaveLength(0)
+  const recorded = await (
+    await request.get(`/api/v1/conversations/${identity}/actions`)
+  ).json()
+  expect(recorded[0].request.proposal_id).toBe(pending.proposals[0].id)
   await evidence.capture(
     'Confirmation applies the action once before the next reaction',
   )

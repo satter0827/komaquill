@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import builtins
 import json
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Protocol, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -67,6 +68,8 @@ class Store(CreationStore, Protocol):
     ) -> bool: ...
     def preferences(self) -> Preferences: ...
     def save_preferences(self, value: Preferences) -> Preferences: ...
+    def retain_job(self, value: CreationJob) -> None: ...
+    def require_job(self, identity: UUID) -> None: ...
     def accept(
         self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
     ) -> tuple[CreationJob, bool]: ...
@@ -99,6 +102,8 @@ class ImageDescriber(Protocol):
 
 
 class Images(Protocol):
+    def supports_pair(self) -> bool: ...
+    def read(self, run_id: UUID) -> Run: ...
     def available(self) -> bool: ...
     def submit(
         self,
@@ -185,6 +190,7 @@ class LibraryService:
         images: Images,
         samples: dict[str, dict[str, dict[str, object]]],
         image_parameters: dict[str, dict[str, bool | int | float | str]],
+        image_lookup: Callable[[UUID], Run] | None = None,
     ) -> None:
         self.store, self.conversations, self.creator, self.images = (
             store,
@@ -193,6 +199,7 @@ class LibraryService:
             images,
         )
         self.image_parameters = image_parameters
+        self.image_lookup = image_lookup or images.get
         self.image_describer = image_describer
         self.player = PlayerService(store)
         self.characters = PresetService(store, "character", CharacterInput, CharacterPreset)
@@ -258,6 +265,9 @@ class LibraryService:
         return self.conversations.create(
             ConversationInput(
                 title=request.title.strip() or story.name,
+                tone=request.tone,
+                topics=request.topics,
+                avoid=request.avoid,
                 scenario=StoryDefinition.model_validate(
                     story.model_dump(include=set(StoryDefinition.model_fields))
                 ),
@@ -308,7 +318,7 @@ class LibraryService:
         return result
 
     def reconcile(self) -> list[UUID]:
-        return reconcile_jobs(self.store, self.images.get)
+        return reconcile_jobs(self.store, self.image_lookup)
 
     def accept(self, request: CreationRequest) -> tuple[CreationJob, bool]:
         try:
@@ -323,13 +333,18 @@ class LibraryService:
         original = request.prompt
         turn_id = None
         if request.kind == "conversation_image":
+            if request.subjects == "pair" and not self.images.supports_pair():
+                raise KomaquillError(code="image_composition_unavailable", retryable=False)
             if request.target_id is None:
                 raise KomaquillError(code="invalid_request", retryable=False)
             conversation = self.conversations.get(request.target_id)
             if conversation.revision != request.expected_revision:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             turn_id = conversation.turns[-1].operation_id if conversation.turns else None
-            original = json.dumps(drawing_context(conversation), ensure_ascii=False)
+            original = json.dumps(
+                drawing_context(conversation, request.subjects, request.viewpoint),
+                ensure_ascii=False,
+            )
         elif request.kind in {"portrait", "banner"}:
             try:
                 self.images.get(request.operation_id)
@@ -388,7 +403,22 @@ class LibraryService:
                     composition = (
                         "Unoccupied setting, environment only. "
                         if environment_only
-                        else IMAGE_COMPOSITION[job.request.kind]
+                        else (
+                            (
+                                "Two distinct people, observer viewpoint. "
+                                if job.request.viewpoint == "observer"
+                                else (
+                                    "Two distinct people, first-person viewpoint from the player; "
+                                    "the player may be partially visible. "
+                                )
+                            )
+                            if job.request.subjects == "pair"
+                            else (
+                                "Solo character, observer viewpoint. "
+                                if job.request.viewpoint == "observer"
+                                else IMAGE_COMPOSITION[job.request.kind]
+                            )
+                        )
                     )
                     prompt = composition + self.image_describer.prepare_image(
                         source,
@@ -416,8 +446,12 @@ class LibraryService:
                 job = job.model_copy(update={"state": "failed", "error": error.code.value})
         except Exception:
             job = job.model_copy(update={"state": "failed", "error": "operation_failed"})
+        if job.state == "complete" and job.request.kind.endswith("_draft"):
+            self.store.retain_job(job)
         self.store.save_job(job)
         return self.job(job.id)
 
     def job(self, identity: UUID) -> CreationJob:
-        return reconcile_job(self.store, self.images.get, identity)
+        job = reconcile_job(self.store, self.image_lookup, identity)
+        self.store.require_job(identity)
+        return job

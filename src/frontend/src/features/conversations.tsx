@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { ArrowUp, ImagePlus, PanelRight, Sparkles } from 'lucide-react'
 import {
   useCallback,
@@ -25,6 +30,7 @@ import {
 } from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { CreationStatus, useCreation } from './creation'
+import { ConversationNotes, SceneActions } from './conversation-tools'
 import { ImageResult } from './images'
 import {
   ActionDescription,
@@ -73,6 +79,10 @@ function ConversationView({ identity }: { identity: string }) {
   const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
+  const [subjects, setSubjects] = useState<
+    'character' | 'pair' | 'environment'
+  >('character')
+  const [viewpoint, setViewpoint] = useState<'player' | 'observer'>('player')
   const draftVersion = useRef(0)
   const submittedDraft = useRef<{
     operationId: string
@@ -92,6 +102,21 @@ function ConversationView({ identity }: { identity: string }) {
   const detail = useQuery({
     ...q.getConversationOptions({ path: { identity } }),
   })
+  const history = useInfiniteQuery({
+    ...q.getTurnsInfiniteOptions({ path: { identity } }),
+    initialPageParam: { path: { identity } },
+    getNextPageParam: (last) =>
+      last.next_before == null
+        ? undefined
+        : { path: { identity }, query: { before: last.next_before } },
+    enabled: !!detail.data?.turn_count,
+  })
+  useEffect(() => {
+    if (detail.data?.turn_count)
+      void cache.invalidateQueries({
+        queryKey: q.getTurnsInfiniteQueryKey({ path: { identity } }),
+      })
+  }, [cache, identity, detail.data?.revision, detail.data?.turn_count])
   const savedOperations = useQuery({
     ...q.getConversationOperationsOptions({ path: { identity } }),
     refetchInterval: (query) =>
@@ -169,6 +194,18 @@ function ConversationView({ identity }: { identity: string }) {
       },
     )
   }, [cache, send.isError, prepared, confirmSend, resetSend])
+  const resume = useMutation({
+    ...q.resumeOperationMutation(),
+    onSuccess: (value) => {
+      setOperationId(value.id)
+      void cache.invalidateQueries({
+        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
+      })
+      void cache.invalidateQueries({
+        queryKey: q.getConversationQueryKey({ path: { identity } }),
+      })
+    },
+  })
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
@@ -204,7 +241,12 @@ function ConversationView({ identity }: { identity: string }) {
       </p>
     )
   if (!detail.data) return <p className="loading">{messages.loading}</p>
-  const conversation = detail.data
+  const conversation = {
+    ...detail.data,
+    turns: history.data
+      ? [...history.data.pages].reverse().flatMap((page) => page.items)
+      : (detail.data.turns ?? []),
+  }
   const busy =
     actionControls.unresolved ||
     !!reviewControls.prepared ||
@@ -297,8 +339,9 @@ function ConversationView({ identity }: { identity: string }) {
                     <dd>
                       {value == null
                         ? messages.notSpecified
-                        : (Array.isArray(value) ? value.join(', ') : value) ||
-                          messages.emptyValue}
+                        : (Array.isArray(value)
+                            ? value.map((item) => item.name).join(', ')
+                            : value) || messages.emptyValue}
                     </dd>
                   </div>
                 )
@@ -327,6 +370,7 @@ function ConversationView({ identity }: { identity: string }) {
           controls={actionControls}
         />
       )}
+      <ConversationNotes conversation={conversation} />
       <h3>{messages.scenario}</h3>
       <p className="state-description">
         {content(conversation.definition.scenario) || messages.openConversation}
@@ -420,6 +464,15 @@ function ConversationView({ identity }: { identity: string }) {
               </p>
             </div>
           )}
+          {history.hasNextPage && (
+            <Button
+              onClick={() => void history.fetchNextPage()}
+              disabled={history.isFetchingNextPage}
+            >
+              {messages.olderTurns}
+            </Button>
+          )}
+          {history.error && <p role="alert">{failure(history.error)}</p>}
           {(conversation.turns ?? []).map((turn) => (
             <article className="turn" key={turn.operation_id}>
               {turn.user && (
@@ -448,7 +501,14 @@ function ConversationView({ identity }: { identity: string }) {
                     )}
                   </div>
                 ))}
-              {turn.action_id &&
+              {turn.action && (
+                <div className="user-message">
+                  <span className="message-label">{messages.myActions}</span>
+                  <ActionDescription action={turn.action} />
+                </div>
+              )}
+              {!turn.action &&
+                turn.action_id &&
                 conversation.actions?.find(
                   (record) => record.request.operation_id === turn.action_id,
                 ) && (
@@ -474,7 +534,14 @@ function ConversationView({ identity }: { identity: string }) {
                 {turn.narration && (
                   <p className="scene-narration">{turn.narration}</p>
                 )}
+                {turn.action_narration && (
+                  <p className="action-narration">{turn.action_narration}</p>
+                )}
                 <p>{turn.assistant}</p>
+                <SceneActions
+                  conversation={conversation}
+                  turnId={turn.operation_id}
+                />
                 {turn.image_id && (
                   <ImageResult
                     identity={turn.image_id}
@@ -517,6 +584,24 @@ function ConversationView({ identity }: { identity: string }) {
               {failure({ code: latestOperation.error })}
             </p>
           )}
+          {latestOperation?.can_resume && (
+            <Button
+              disabled={resume.isPending || !!busy}
+              onClick={() =>
+                resume.mutate({
+                  path: { identity: latestOperation.id },
+                  query: { allow_real_llm: true },
+                })
+              }
+            >
+              {messages.resumeOperation}
+            </Button>
+          )}
+          {resume.error && (
+            <p role="alert" className="error">
+              {failure(resume.error)}
+            </p>
+          )}
           {sampleDrawing && (
             <p className="subtle">
               {messages.sampleDrawingUnavailable}{' '}
@@ -524,6 +609,35 @@ function ConversationView({ identity }: { identity: string }) {
             </p>
           )}
           <CreationStatus creation={drawing} />
+          <details>
+            <summary>{messages.drawingSettings}</summary>
+            <label>
+              {messages.drawingSubjects}
+              <select
+                value={subjects}
+                onChange={(event) => {
+                  setSubjects(event.target.value as typeof subjects)
+                  if (event.target.value === 'pair') setViewpoint('observer')
+                }}
+              >
+                <option value="character">{messages.partnerOnly}</option>
+                <option value="pair">{messages.bothPeople}</option>
+                <option value="environment">{messages.environmentOnly}</option>
+              </select>
+            </label>
+            <label>
+              {messages.viewpoint}
+              <select
+                value={viewpoint}
+                onChange={(event) =>
+                  setViewpoint(event.target.value as typeof viewpoint)
+                }
+              >
+                <option value="player">{messages.playerView}</option>
+                <option value="observer">{messages.observerView}</option>
+              </select>
+            </label>
+          </details>
           <form
             className="composer"
             onSubmit={(event) => {
@@ -562,6 +676,8 @@ function ConversationView({ identity }: { identity: string }) {
               onClick={() =>
                 drawing.start({
                   kind: 'conversation_image',
+                  subjects,
+                  viewpoint,
                   target_id: identity,
                   expected_revision: conversation.revision,
                   locale: preferences.value.locale,

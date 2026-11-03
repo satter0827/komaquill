@@ -82,12 +82,20 @@ def bind(
         ctx: typer.Context,
         identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
         allow_real_llm: Annotated[bool, typer.Option(help=message("chat.allow_real"))] = False,
+        subjects: Annotated[
+            Literal["character", "pair", "environment"], typer.Option(help=message("chat.subjects"))
+        ] = "character",
+        viewpoint: Annotated[
+            Literal["player", "observer"], typer.Option(help=message("chat.viewpoint"))
+        ] = "player",
     ) -> None:
         client = Client(ctx.obj or Path.cwd())
         conversation = client.conversations.get(identity)
         request = CreationRequest(
             operation_id=uuid4(),
             kind="conversation_image",
+            subjects=subjects,
+            viewpoint=viewpoint,
             target_id=identity,
             expected_revision=conversation.revision,
             locale=conversation.definition.locale,
@@ -143,6 +151,8 @@ def bind(
             )
             if turn.narration:
                 typer.echo(turn.narration)
+            if turn.action_narration:
+                typer.echo(turn.action_narration)
             typer.echo(turn.assistant)
             if result.image_id:
                 for image in client.images.get(result.image_id).images:
@@ -198,3 +208,89 @@ def bind(
     ) -> None:
         for record in Client(ctx.obj or Path.cwd()).conversations.actions(identity):
             typer.echo(record.model_dump_json())
+
+    @chat.command("nsfw", help=message("chat.nsfw"))
+    @guarded
+    def nsfw(
+        ctx: typer.Context,
+        enabled: Annotated[
+            bool, typer.Option("--enabled/--disabled", help=message("chat.nsfw"))
+        ] = False,
+    ) -> None:
+        client = Client(ctx.obj or Path.cwd())
+        result = client.library.save_preferences(
+            client.library.preferences().model_copy(update={"nsfw_enabled": enabled})
+        )
+        typer.echo(result.model_dump_json())
+
+    @chat.command("notes", help=message("chat.notes"))
+    @guarded
+    def notes(
+        ctx: typer.Context,
+        identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
+        expected_revision: Annotated[int, typer.Option(help=message("chat.revision"))],
+        note: Annotated[list[str] | None, typer.Option(help=message("chat.note"))] = None,
+    ) -> None:
+        from komaquill.api import NotesRequest
+
+        client = Client(ctx.obj or Path.cwd())
+        typer.echo(
+            client.conversations.save_notes(
+                identity,
+                NotesRequest(
+                    operation_id=uuid4(), expected_revision=expected_revision, notes=note or []
+                ),
+            ).model_dump_json()
+        )
+
+    @chat.command("scene", help=message("chat.scene"))
+    @guarded
+    def scene(
+        ctx: typer.Context,
+        identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
+        turn: Annotated[UUID, typer.Option(help=message("chat.turn"))],
+        name: Annotated[str, typer.Option(help=message("chat.scene_name"))],
+        expected_revision: Annotated[int, typer.Option(help=message("chat.revision"))],
+        branch: Annotated[bool, typer.Option(help=message("chat.branch"))] = False,
+    ) -> None:
+        from komaquill.api import SceneRequest
+
+        client = Client(ctx.obj or Path.cwd())
+        request = SceneRequest(
+            operation_id=uuid4(), expected_revision=expected_revision, turn_id=turn, name=name
+        )
+        action = client.conversations.fork if branch else client.conversations.bookmark
+        typer.echo(action(identity, request).model_dump_json())
+
+    @chat.command("export", help=message("chat.export"))
+    @guarded
+    def export(
+        ctx: typer.Context,
+        identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
+        images: Annotated[
+            bool, typer.Option("--images/--no-images", help=message("chat.export_images"))
+        ] = True,
+        conditions: Annotated[bool, typer.Option(help=message("chat.export_conditions"))] = False,
+    ) -> None:
+        client = Client(ctx.obj or Path.cwd())
+        typer.echo(
+            str(
+                client.export_conversation(
+                    identity, include_images=images, include_conditions=conditions
+                )
+            )
+        )
+
+    @chat.command("resume-operation", help=message("chat.resume_operation"))
+    @guarded
+    def resume_operation(
+        ctx: typer.Context,
+        identity: Annotated[UUID, typer.Argument(help=message("chat.operation_id"))],
+        allow_real_llm: Annotated[bool, typer.Option(help=message("chat.allow_real"))] = False,
+    ) -> None:
+        client = Client(ctx.obj or Path.cwd())
+        typer.echo(
+            client.conversations.resume_operation(
+                identity, allow_real_llm=allow_real_llm
+            ).model_dump_json()
+        )

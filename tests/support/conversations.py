@@ -1,7 +1,5 @@
 """Prepare saved scene fixtures without exposing an unrestricted product command."""
 
-from komaquill.adapters.database import conversations
-
 
 def set_state(client, identity, state, expected_revision):
     repository = client.conversations.repository
@@ -9,11 +7,7 @@ def set_state(client, identity, state, expected_revision):
     assert current.revision == expected_revision
     result = current.model_copy(update={"state": state, "revision": current.revision + 1})
     with repository.database.engine.begin() as connection:
-        connection.execute(
-            conversations.update()
-            .where(conversations.c.id == str(identity))
-            .values(payload=result.model_dump_json())
-        )
+        repository._store(connection, result)
     return result
 
 

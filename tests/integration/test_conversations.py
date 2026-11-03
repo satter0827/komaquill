@@ -157,7 +157,7 @@ def test_http_roundtrip_and_origin_validation(chat):
         assert (
             http.get(f"/api/v1/operations/{request['operation_id']}").json()["state"] == "complete"
         )
-        assert len(http.get(f"/api/v1/conversations/{identity}").json()["turns"]) == 1
+        assert len(http.get(f"/api/v1/conversations/{identity}/turns").json()["items"]) == 1
         assert (
             http.post(
                 "/api/v1/conversations",

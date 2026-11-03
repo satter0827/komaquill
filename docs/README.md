@@ -24,6 +24,8 @@
 | LLMの実行基盤と会話品質を改善する               | [LLM処理・文脈管理・画像反映の改善計画](plans/langgraph-and-context.md) | [現在の設計](current/creators.md)、[設計判断](decisions/0014-conversation-state-and-memory.md)、[検証結果](verification/results/conversation-state-and-images.md)、[再レビュー](verification/results/zero-base-state-review.md) |
 | 設定・API取得・文書解析・画面検査の重複を減らす | [標準機能への委譲計画](plans/library-adoption.md)                       | [採用判断と制約](decisions/0015-library-delegation.md)、[要件台帳](requirements/catalog.toml)、[検証戦略](verification/strategy.md)                                                                                             |
 
+[会話実行とコンテンツ設定](current/execution-and-content.md)は、公式チェックポイント、履歴の分離、NSFW、固定メモ、場面の分岐と共有用の出力を扱います。設計判断は[会話実行の永続化](decisions/0017-durable-conversations-and-content.md)を参照してください。
+
 ## 文書の状態と正本
 
 設定・LLM・API取得・検査の現在の分担は[標準機能への委譲](current/library-delegation.md)を参照してください。

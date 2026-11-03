@@ -4,7 +4,6 @@ import json
 from uuid import uuid4
 
 import pytest
-from komaquill.adapters.database import conversations
 from komaquill.api import Client, ConversationInput, SendInput
 from komaquill.conversations.models import Turn
 from komaquill.domain.roleplay import ConversationMemory
@@ -49,6 +48,7 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
             else:
                 result = {
                     "current_state": wire_scene(api.conversations.get(saved.id).state),
+                    "action_narration": "",
                     "requested_player_action": None,
                     "text": "Let us go to the lighthouse."
                     if locale == "en"
@@ -81,9 +81,9 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
         )
         for index in range(count)
     ]
-    value = saved.model_copy(update={"turns": turns, "revision": count})
+    value = saved.model_copy(update={"turns": turns, "revision": count, "turn_count": count})
     with api.conversations.repository.database.engine.begin() as connection:
-        connection.execute(conversations.update().values(payload=value.model_dump_json()))
+        api.conversations.repository._store(connection, value)
     return api, value, calls
 
 
@@ -101,7 +101,7 @@ def test_summary_is_saved_and_reused_after_restart_without_rewriting_history(
     assert saved.state == original.state
     assert [summary for summary, _, _ in calls] == [True, False]
     assert calls[0][2] == 512
-    assert saved.memory.source_version == 3
+    assert saved.memory.source_version == 4
     summary_messages = calls[0][1]
     confirmed = [
         json.loads(message.content)["confirmed_state"]

@@ -2,6 +2,8 @@
 
 状態: 採用。日付: 2026-11-01。実装状態と受入条件は[要件台帳](../requirements/catalog.toml)、実装順序は[委譲計画](../plans/library-adoption.md)で管理する。
 
+CheckpointerとSqliteSaverの見送りは、[会話実行の永続化](0017-durable-conversations-and-content.md)で変更した。任意の巻き戻しと汎用的な承認待ちの基盤は引き続き導入しない。
+
 ## 背景
 
 設定の読込と合成、APIの取得とキャッシュ更新、Markdownの構文抽出に独自処理があり、同じ対象を複数の経路で扱っている。LLMの境界には接続、記録、会話、下書き、英訳の責務が集中している。

@@ -42,4 +42,5 @@ def library(
         images,
         json.loads(root.joinpath("samples.json").read_bytes()),
         tomllib.loads(root.joinpath("defaults.toml").read_text(encoding="utf-8")),
+        image_lookup=images.read,
     )

@@ -32,6 +32,7 @@ def prepared(tmp_path):
         return "A sixty-year-old man with short silver hair, wearing a black apron."
 
     api.library.images = SimpleNamespace(available=lambda: True, get=get, submit=submit)
+    api.library.image_lookup = api.library.images.get
     api.library.image_describer = SimpleNamespace(prepare_image=translate)
     return api, calls, runs, sources
 

@@ -52,11 +52,34 @@ class ImageService:
 
         return RuntimeService(self._project).status().connection == "connected"
 
+    def supports_pair(self) -> bool:
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            settings = self._generation_workspace.settings()
+            if not isinstance(settings, RuntimeSettings):
+                return False
+            return settings.presets[settings.profile_for(None)].model_id == "wai-illustrious"
+
     def list(self) -> list[Run]:
+        from komaquill.adapters.database import database
+        from komaquill.domain.content import visible
+
         with api_operation(OperationStage.STORAGE):
-            return self._project.repository.load()
+            policy = database(self._project.root / ".artifacts/data/komaquill.sqlite3").content
+            return [
+                run
+                for run in self._project.repository.load()
+                if visible(policy.rating("image", run.run_id), policy.enabled())
+            ]
 
     def get(self, run_id: UUID) -> Run:
+        from komaquill.adapters.database import database
+
+        database(self._project.root / ".artifacts/data/komaquill.sqlite3").content.require(
+            "image", run_id
+        )
+        return self.read(run_id)
+
+    def read(self, run_id: UUID) -> Run:
         with api_operation(OperationStage.STORAGE):
             return self._project.repository.read(run_id)
 
@@ -86,6 +109,11 @@ class ImageService:
         from komaquill.domain.workflow import digest
 
         identity = run_id or uuid4()
+        from komaquill.adapters.database import database
+
+        policy = database(self._project.root / ".artifacts/data/komaquill.sqlite3").content
+        if policy.capture(identity):
+            policy.set_rating("image", identity, "nsfw")
         self._generation_workspace.state.mkdir(parents=True, exist_ok=True)
         fingerprint = digest(
             {

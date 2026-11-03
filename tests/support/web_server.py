@@ -50,6 +50,7 @@ def scripted_completion(body: dict) -> dict:
                     "held_objects": None,
                 },
             },
+            "action_narration": "",
             "requested_player_action": {"kind": "move", "destination": "Beach"}
             if body["messages"][-1]["content"].split("\n")[0] == "I head to the beach."
             else None,

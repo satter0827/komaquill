@@ -8,6 +8,7 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     from komaquill.adapters.configuration import WorkspaceConfiguration
+    from komaquill.adapters.content import ContentPolicy
     from komaquill.adapters.llm.execution import StructuredExecution
     from komaquill.api.archive import ArchiveService
     from komaquill.conversations.service import ConversationService
@@ -109,6 +110,43 @@ class Client:
         return OperationService(self.conversations.repository)
 
     @cached_property
+    def content(self) -> "ContentPolicy":
+        from komaquill.adapters.database import database
+
+        return database(self.workspace / ".artifacts/data/komaquill.sqlite3").content
+
+    def close(self) -> None:
+        if "_execution" in self.__dict__:
+            self._execution.close()
+
+    def export_conversation(
+        self, identity: UUID, *, include_images: bool = True, include_conditions: bool = False
+    ) -> Path:
+        from komaquill.adapters.conversation_export import export_conversation
+
+        with api_operation(OperationStage.STORAGE):
+            conversation = self.conversations.get(identity)
+            assets = []
+            if include_images or include_conditions:
+                for job in self.library.conversation_images(identity):
+                    if job.image_id is not None:
+                        run = self.images.get(job.image_id)
+                        paths = (
+                            [self.artifact_path(f"runs/{run.run_id}/{name}") for name in run.images]
+                            if include_images
+                            else []
+                        )
+                        assets.append((run, paths))
+            return export_conversation(
+                self.workspace,
+                conversation,
+                self.content.rating("conversation", identity),
+                assets,
+                include_images=include_images,
+                include_conditions=include_conditions,
+            )
+
+    @cached_property
     def runtime(self) -> RuntimeService:
         return RuntimeService(self._project)
 
@@ -156,3 +194,4 @@ class Client:
         traceback: TracebackType | None,
     ) -> None:
         """Leave the independently managed supervisor and GPU running."""
+        self.close()

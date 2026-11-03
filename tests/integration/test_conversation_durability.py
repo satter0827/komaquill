@@ -123,7 +123,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0008"
+                == "0009"
             )
         storage.engine.dispose()
 
@@ -272,6 +272,28 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     with engine.begin() as connection:
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         config.attributes["connection"] = connection
+        original = api.conversations.get(conversation.id).model_dump_json(
+            exclude={
+                "turn_count",
+                "turn_offset",
+                "notes",
+                "source_conversation_id",
+                "source_turn_id",
+            }
+        )
+        connection.exec_driver_sql(
+            "UPDATE conversations SET payload=? WHERE id=?", (original, str(conversation.id))
+        )
+        connection.exec_driver_sql("ALTER TABLE operations ADD COLUMN reply TEXT")
+        for table in (
+            "content_labels",
+            "operation_policies",
+            "conversation_turns",
+            "conversation_events",
+            "conversation_bookmarks",
+            "execution_migration_originals",
+        ):
+            connection.exec_driver_sql(f"DROP TABLE {table}")
         connection.exec_driver_sql("DROP TABLE command_receipts")
         connection.exec_driver_sql("DROP TABLE state_migration_originals")
         connection.exec_driver_sql("DROP TABLE preset_saves")
@@ -280,6 +302,8 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
         command.stamp(config, "0005")
         command.downgrade(config, "0003")
     Database(tmp_path / ".artifacts/data/komaquill.sqlite3", migrate=True).engine.dispose()
+    preferences = api.library.preferences()
+    api.library.save_preferences(preferences.model_copy(update={"nsfw_enabled": True}))
     assert len(api.conversations.get(conversation.id).turns) == 1
     assert (
         api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello")).state

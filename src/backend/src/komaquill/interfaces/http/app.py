@@ -15,17 +15,24 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.api import Client, KomaquillError, Run, SessionStatus
 from komaquill.conversations.actions import ActionRecord, ActionRequest, ProposalDismissal
+from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.conversations.models import (
     Conversation,
     ConversationInput,
     Operation,
     SendInput,
+    Turn,
 )
 from komaquill.conversations.visuals import VisualReview
 from komaquill.domain.materials import InputArtifact
 from komaquill.messages import error_message, message
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+
+class TurnPage(BaseModel):
+    items: list[Turn]
+    next_before: int | None
 
 
 class ImageInput(BaseModel):
@@ -85,6 +92,8 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
             client.operations.reconcile()
             client.library.reconcile()
         yield
+        if client is not None:
+            client.close()
 
     app = FastAPI(title="Komaquill API", version="1.0.0", lifespan=lifespan)
     ui = ui_directory or Path(str(files("komaquill").joinpath("resources/web")))
@@ -181,7 +190,59 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         operation_id="get_conversation",
     )
     def conversation(identity: UUID) -> Conversation:
-        return selected().conversations.get(identity)
+        return selected().conversations.overview(identity)
+
+    @app.get(
+        "/api/v1/conversations/{identity}/turns", response_model=TurnPage, operation_id="get_turns"
+    )
+    def turns(identity: UUID, before: int | None = None, limit: int = 30) -> dict[str, object]:
+        return selected().conversations.turns(identity, before, limit)
+
+    @app.put(
+        "/api/v1/conversations/{identity}/notes",
+        response_model=Conversation,
+        operation_id="save_notes",
+    )
+    def notes(identity: UUID, body: NotesRequest) -> Conversation:
+        return selected().conversations.save_notes(identity, body)
+
+    @app.get(
+        "/api/v1/conversations/{identity}/bookmarks",
+        response_model=list[Bookmark],
+        operation_id="get_bookmarks",
+    )
+    def bookmarks(identity: UUID) -> list[Bookmark]:
+        return selected().conversations.bookmarks(identity)
+
+    @app.post(
+        "/api/v1/conversations/{identity}/bookmarks",
+        response_model=Bookmark,
+        operation_id="save_bookmark",
+    )
+    def bookmark(identity: UUID, body: SceneRequest) -> Bookmark:
+        return selected().conversations.bookmark(identity, body)
+
+    @app.post(
+        "/api/v1/conversations/{identity}/fork",
+        response_model=Conversation,
+        operation_id="fork_conversation",
+    )
+    def fork(identity: UUID, body: SceneRequest) -> Conversation:
+        return selected().conversations.fork(identity, body)
+
+    @app.get("/api/v1/conversations/{identity}/export", operation_id="export_conversation")
+    def export(
+        identity: UUID, include_images: bool = True, include_conditions: bool = False
+    ) -> FileResponse:
+        path = selected().export_conversation(
+            identity, include_images=include_images, include_conditions=include_conditions
+        )
+        return FileResponse(
+            path,
+            filename="conversation.zip",
+            media_type="application/zip",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get(
         "/api/v1/conversations/{identity}/operations",
@@ -259,6 +320,20 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
     def operation(identity: UUID) -> OperationView:
         return describe_operation(selected().operations.get(identity))
 
+    @app.post(
+        "/api/v1/operations/{identity}/resume",
+        response_model=OperationView,
+        operation_id="resume_operation",
+    )
+    def resume_operation(
+        identity: UUID, tasks: BackgroundTasks, allow_real_llm: bool = False
+    ) -> OperationView:
+        service = selected().conversations
+        result = service.resume_operation(identity, allow_real_llm=allow_real_llm, execute=False)
+        if result.state == "accepted":
+            tasks.add_task(service.execute, identity)
+        return describe_operation(result)
+
     @app.get("/api/v1/images", response_model=list[Run], operation_id="list_images")
     def images() -> list[Run]:
         return selected().images.list()
@@ -300,7 +375,10 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         run = selected().images.get(identity)
         if index < 0 or index >= len(run.images):
             raise KomaquillError(code="request_not_found")
-        return FileResponse(selected().artifact_path(f"runs/{identity}/{run.images[index]}"))
+        return FileResponse(
+            selected().artifact_path(f"runs/{identity}/{run.images[index]}"),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/api/v1/runtime", response_model=SessionStatus, operation_id="get_runtime")
     def runtime() -> SessionStatus:

@@ -15,6 +15,7 @@ from sqlalchemy.engine import Connection
 
 from komaquill.adapters.database import Database, conflict, metadata, missing
 from komaquill.adapters.storage_errors import stored
+from komaquill.domain.content import visible
 from komaquill.domain.errors import KomaquillError
 from komaquill.library.models import (
     CharacterPreset,
@@ -86,9 +87,19 @@ class LibraryRepository:
                 )
             )
             return sorted(
-                (self._decode_job(row.id, row.payload) for row in rows),
+                (
+                    self._decode_job(row.id, row.payload)
+                    for row in rows
+                    if visible(
+                        self.database.content.rating("job", row.id, connection),
+                        self.database.content.enabled(connection),
+                    )
+                ),
                 key=lambda job: job.created_at,
             )
+
+    def require_job(self, identity: UUID) -> None:
+        self.database.content.require("job", identity)
 
     @stored
     def initialize(self, values: list[tuple[PresetKind, Preset]]) -> None:
@@ -121,7 +132,14 @@ class LibraryRepository:
                     presets.c.deleted == False,  # noqa: E712
                 )
             ).mappings()
-            return [self._decode(kind, row["id"], row["payload"]) for row in rows]
+            return [
+                self._decode(kind, row["id"], row["payload"])
+                for row in rows
+                if visible(
+                    self.database.content.rating("preset", row["id"], connection),
+                    self.database.content.enabled(connection),
+                )
+            ]
 
     def _decode(self, kind: PresetKind, identity: str, payload: str) -> Preset:
         value = MODELS[kind].model_validate_json(payload)
@@ -131,6 +149,7 @@ class LibraryRepository:
 
     @stored
     def get(self, kind: PresetKind, identity: UUID) -> Preset:
+        self.database.content.require("preset", identity)
         with self.database.engine.connect() as connection:
             row = (
                 connection.execute(
@@ -152,6 +171,7 @@ class LibraryRepository:
         with self.database.transaction() as connection:
             result: dict[PresetKind, Preset] = {}
             for kind, (identity, revision) in references.items():
+                self.database.content.require("preset", identity, connection)
                 payload = connection.execute(
                     select(presets.c.payload).where(
                         presets.c.id == str(identity),
@@ -178,10 +198,13 @@ class LibraryRepository:
                     id=str(result.id), kind=kind, payload=result.model_dump_json(), deleted=False
                 )
             )
+            if self.database.content.enabled(connection):
+                self.database.content.set_rating("preset", result.id, "nsfw", connection)
         return result
 
     @stored
     def update(self, kind: PresetKind, identity: UUID, revision: int, value: PresetInput) -> Preset:
+        self.database.content.require("preset", identity)
         with self.database.transaction() as connection:
             row = (
                 connection.execute(
@@ -197,6 +220,11 @@ class LibraryRepository:
             if row is None:
                 raise missing()
             previous = self._decode(kind, str(identity), row["payload"])
+            fields = set(type(value).model_fields) - {"name"}
+            if self.database.content.enabled(connection) and value.model_dump(
+                include=fields
+            ) != previous.model_dump(include=fields):
+                self.database.content.set_rating("preset", identity, "nsfw", connection)
             if previous.revision != revision:
                 raise conflict()
             result = MODELS[kind].model_validate(
@@ -345,6 +373,7 @@ class LibraryRepository:
             select(creation_jobs.c.payload).where(creation_jobs.c.id == str(request.operation_id))
         ).scalar_one_or_none()
         if row is not None:
+            self.database.content.require("job", request.operation_id, connection)
             job = self._decode_job(str(request.operation_id), row)
             if job.request != request:
                 raise conflict()
@@ -412,6 +441,17 @@ class LibraryRepository:
             state="accepted",
             turn_id=turn_id,
         )
+        enabled = self.database.content.capture(request.operation_id, connection)
+        job = job.model_copy(update={"nsfw_enabled": enabled})
+        if enabled:
+            self.database.content.set_rating("job", job.id, "nsfw", connection)
+            if request.target_id is not None:
+                self.database.content.set_rating(
+                    "conversation" if request.kind == "conversation_image" else "preset",
+                    request.target_id,
+                    "nsfw",
+                    connection,
+                )
         connection.execute(
             creation_jobs.insert().values(
                 id=str(job.id),
@@ -479,6 +519,7 @@ class LibraryRepository:
                 ).scalar_one_or_none()
                 if payload is None:
                     raise missing()
+                self.database.content.require("preset", options.target_id, connection)
                 previous = self._decode(kind, str(options.target_id), payload)
                 if previous.revision != options.expected_revision:
                     raise conflict()
@@ -498,6 +539,8 @@ class LibraryRepository:
                 is None
             ):
                 raise missing()
+            if isinstance(value, StoryInput) and value.character_id is not None:
+                self.database.content.require("preset", value.character_id, connection)
             changes = preset_changes(kind, value, previous, options)
             record = MODELS[kind].model_validate(
                 {
@@ -532,6 +575,12 @@ class LibraryRepository:
                     .where(presets.c.id == str(record.id))
                     .values(payload=record.model_dump_json())
                 )
+            fields = set(type(value).model_fields) - {"name"}
+            if self.database.content.enabled(connection) and (
+                previous is None
+                or value.model_dump(include=fields) != previous.model_dump(include=fields)
+            ):
+                self.database.content.set_rating("preset", record.id, "nsfw", connection)
             job = None
             if not changes.generate_image:
                 image_error = None
@@ -608,7 +657,13 @@ class LibraryRepository:
                 if value.state == "running":
                     with self.database.execution_lock(identity) as available:
                         alive = not available
-            return value, alive
+        if not alive and value.state == "running":
+            retained = self.database.checkpoints.load(f"creation:{identity}")
+            if retained is not None:
+                saved = self._decode_job(str(identity), json.dumps(retained))
+                if saved.state == "complete" and saved.request.kind.endswith("_draft"):
+                    value = self.save_job(saved)
+        return value, alive
 
     @contextmanager
     def execution(self, identity: UUID) -> Iterator[CreationJob | None]:
@@ -704,6 +759,11 @@ class LibraryRepository:
             )
             connection.commit()
             return value
+
+    @stored
+    def retain_job(self, value: CreationJob) -> None:
+        self._decode_job(str(value.id), value.model_dump_json())
+        self.database.checkpoints.save(f"creation:{value.id}", value.model_dump(mode="json"))
 
     def _decode_job(self, identity: str, payload: str) -> CreationJob:
         value = CreationJob.model_validate_json(payload)

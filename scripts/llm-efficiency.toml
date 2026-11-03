@@ -2,3 +2,6 @@
 max_calls = 52
 max_seconds = 3600
 history_turns = 14
+context_window_tokens = 32768
+max_output_tokens = 1536
+request_timeout = 180.0

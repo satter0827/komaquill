@@ -1,12 +1,38 @@
 """Define people, scenery and explicit updates without transport or model dependencies."""
 
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 
 class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PhysicalObject(Record):
+    id: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    name: str = Field(
+        min_length=1,
+        max_length=300,
+        description=(
+            "A physical item. Agreements, feelings and knowledge belong in notes, not here."
+        ),
+    )
+
+
+def unique_objects(values: list[PhysicalObject]) -> list[PhysicalObject]:
+    if len({value.id for value in values}) != len(values):
+        raise ValueError("Physical object identities must be unique.")
+    return values
+
+
+PhysicalObjects = Annotated[
+    list[PhysicalObject], Field(max_length=30), AfterValidator(unique_objects)
+]
 
 
 class PersonDefinition(Record):
@@ -18,7 +44,7 @@ class PersonDefinition(Record):
     age: str = Field(default="", max_length=120)
     gender: str = Field(default="", max_length=120)
     initial_clothing: str | None = Field(default=None, max_length=3000)
-    initial_held_objects: list[str] = Field(default_factory=list, max_length=30)
+    initial_held_objects: PhysicalObjects = Field(default_factory=list)
     visual_review_required: bool = False
 
 
@@ -43,7 +69,7 @@ class PersonState(Record):
     clothing: str | None = Field(default=None, max_length=3000)
     expression: str | None = Field(default=None, max_length=1000)
     pose: str | None = Field(default=None, max_length=1000)
-    held_objects: list[str] | None = Field(
+    held_objects: PhysicalObjects | None = Field(
         default=None,
         max_length=30,
         description=(
@@ -71,7 +97,7 @@ class PersonStatePatch(Record):
     clothing: str | None = Field(default=None, max_length=3000)
     expression: str | None = Field(default=None, max_length=1000)
     pose: str | None = Field(default=None, max_length=1000)
-    held_objects: list[str] | None = Field(
+    held_objects: PhysicalObjects | None = Field(
         default=None,
         max_length=30,
         description=(
@@ -130,7 +156,7 @@ class StatePatch(Record):
 
 
 class ConversationMemory(Record):
-    source_version: Literal[1, 2, 3] = 1
+    source_version: Literal[1, 2, 3, 4] = 1
     text: str = Field(max_length=2048)
     through_turn: int = Field(ge=1)
     source_sha256: str

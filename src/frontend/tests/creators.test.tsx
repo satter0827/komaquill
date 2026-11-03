@@ -41,7 +41,10 @@ it.each(['player', 'character'] as const)(
       name: 'Mira',
       revision: 0,
       initial_clothing: null,
-      initial_held_objects: ['Cup', 'Book'],
+      initial_held_objects: [
+        { id: 'cup', name: 'Cup' },
+        { id: 'book', name: 'Book' },
+      ],
     }
     const requests: Array<Record<string, unknown>> = []
     const update = (value: Record<string, unknown>) => {
@@ -99,7 +102,10 @@ it.each(['player', 'character'] as const)(
     await waitFor(() => expect(requests).toHaveLength(1))
     expect(requests[0]).toMatchObject({
       initial_clothing: null,
-      initial_held_objects: ['Cup', 'Book'],
+      initial_held_objects: [
+        { id: 'cup', name: 'Cup' },
+        { id: 'book', name: 'Book' },
+      ],
     })
     await waitFor(() =>
       expect(screen.getByRole('button', { name: m.save })).toBeEnabled(),
@@ -114,7 +120,11 @@ it.each(['player', 'character'] as const)(
     await waitFor(() => expect(requests).toHaveLength(2))
     expect(requests[1]).toMatchObject({
       initial_clothing: '',
-      initial_held_objects: ['Cup', 'Book', 'Key'],
+      initial_held_objects: [
+        { id: 'cup', name: 'Cup' },
+        { id: 'book', name: 'Book' },
+        expect.objectContaining({ name: 'Key', id: expect.any(String) }),
+      ],
     })
   },
 )

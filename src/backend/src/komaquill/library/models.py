@@ -54,6 +54,7 @@ PresetInput = PlayerInput | CharacterInput | StoryInput
 
 
 class Preferences(Record):
+    nsfw_enabled: bool = False
     revision: int = Field(default=0, ge=0)
     locale: Locale = "ja"
     font_size: Literal["normal", "large"] = "normal"
@@ -68,6 +69,9 @@ class PresetRef(Record):
 
 
 class ConversationStart(Record):
+    tone: str = Field(default="", max_length=2000)
+    topics: str = Field(default="", max_length=3000)
+    avoid: str = Field(default="", max_length=3000)
     player_revision: int = Field(ge=0)
     character: PresetRef
     story: PresetRef
@@ -77,6 +81,8 @@ class ConversationStart(Record):
 
 
 class CreationRequest(Record):
+    subjects: Literal["character", "pair", "environment"] = "character"
+    viewpoint: Literal["player", "observer"] = "player"
     operation_id: UUID
     kind: Literal["character_draft", "story_draft", "portrait", "banner", "conversation_image"]
     target_id: UUID | None = None
@@ -88,6 +94,7 @@ class CreationRequest(Record):
 
 
 class CreationJob(Record):
+    nsfw_enabled: bool = False
     id: UUID
     request: CreationRequest
     state: Literal["accepted", "running", "submitted", "complete", "failed", "interrupted"]
@@ -105,6 +112,8 @@ class PreparedImage(Record):
 
 
 class ConversationImageRequest(Record):
+    subjects: Literal["character", "pair", "environment"] = "character"
+    viewpoint: Literal["player", "observer"] = "player"
     operation_id: UUID
     expected_revision: int = Field(ge=0)
     locale: Locale = "ja"

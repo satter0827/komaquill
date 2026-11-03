@@ -171,6 +171,10 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
     if choice == "busy":
         api.conversations.accept(conversation.id, SendInput(operation_id=uuid4(), text="Pending"))
     source = tmp_path / ".artifacts/data/komaquill.sqlite3"
+    from tests.support.migrations import legacy_execution
+
+    with api.conversations.repository.database.engine.begin() as connection:
+        legacy_execution(connection)
     with sqlite3.connect(source) as db:
         db.execute("DROP TABLE command_receipts")
         db.execute("DROP TABLE state_migration_originals")
@@ -206,6 +210,9 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
     record = json.loads(report.read_bytes())
     assert record["state"] == "complete"
     reopened = Client(tmp_path)
+    reopened.library.save_preferences(
+        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
+    )
     assert reopened.player.get().name == profile.name
     assert reopened.player.get().visual_review_required == bool(profile.appearance)
     assert reopened.conversations.get(conversation.id).turns == conversation.turns

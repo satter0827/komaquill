@@ -1040,15 +1040,29 @@ class ConversationRepository:
         self._save(connection, result)
         return result
 
-    @stored
-    def fail(self, identity: UUID, code: str) -> Operation:
-        resumable = False
-        if code in {"storage_failed", "operation_failed"}:
+    def _received_calls(self, identity: UUID) -> bool:
+        try:
             path = self.database.path.parent / "conversation-calls" / str(identity)
             calls = [json.loads(item.read_bytes()) for item in path.glob("*.json")]
-            resumable = bool(calls) and all(
-                item.get("status") == "response_received" for item in calls
+            return bool(calls) and all(
+                isinstance(item, dict)
+                and item.get("status") == "response_received"
+                and isinstance(item.get("response"), str)
+                and isinstance(item.get("invocation_id"), str)
+                and bool(item["invocation_id"])
+                and type(item.get("attempt")) is int
+                and item["attempt"] >= 0
+                and isinstance(item.get("messages"), list)
+                for item in calls
             )
+        except (OSError, ValueError):
+            return False
+
+    @stored
+    def fail(self, identity: UUID, code: str) -> Operation:
+        resumable = code in {"storage_failed", "operation_failed"} and self._received_calls(
+            identity
+        )
         with self.database.transaction() as connection:
             result = Operation.model_validate_json(str(self._row(connection, identity)["payload"]))
             if result.state in {"accepted", "running"}:
@@ -1093,7 +1107,8 @@ class ConversationRepository:
 
     @stored
     def reconcile(self) -> None:
-        retained = {}
+        retained: dict[str, Reply | None] = {}
+        retention_errors: dict[str, str] = {}
         with self.database.engine.connect() as reader:
             identities: ScalarResult[str] = reader.execute(
                 select(operations.c.id).where(operations.c.active_slot == 1)
@@ -1101,11 +1116,17 @@ class ConversationRepository:
             for identity in identities:
                 from komaquill.adapters.checkpoints import CONVERSATION_WORKFLOW_VERSION
 
-                retained[identity] = self.database.checkpoints.load(
-                    f"reply:{identity}"
-                ) or self.database.checkpoints.workflow_result(
-                    f"conversation:{identity}", CONVERSATION_WORKFLOW_VERSION
-                )
+                try:
+                    saved = self.database.checkpoints.load(f"reply:{identity}")
+                    if saved is None:
+                        saved = self.database.checkpoints.workflow_result(
+                            f"conversation:{identity}", CONVERSATION_WORKFLOW_VERSION
+                        )
+                    retained[identity] = Reply.model_validate(saved) if saved is not None else None
+                except KomaquillError as error:
+                    retention_errors[identity] = error.code.value
+                except (OSError, ValueError):
+                    retention_errors[identity] = "storage_failed"
         with self.database.transaction() as connection:
             for row in connection.execute(
                 select(operations).where(
@@ -1146,11 +1167,23 @@ class ConversationRepository:
                             continue
                         alive = False
                 if not alive:
+                    if str(value.id) in retention_errors:
+                        self._save(
+                            connection,
+                            value.model_copy(
+                                update={
+                                    "state": "interrupted",
+                                    "error": retention_errors[str(value.id)],
+                                    "can_resume": False,
+                                }
+                            ),
+                        )
+                        continue
                     if value.state == "running" and retained.get(str(value.id)) is not None:
                         try:
-                            value = self._commit(
-                                connection, value.id, Reply.model_validate(retained[str(value.id)])
-                            )
+                            saved_reply = retained[str(value.id)]
+                            assert saved_reply is not None
+                            value = self._commit(connection, value.id, saved_reply)
                         except KomaquillError as error:
                             if error.code != "operation_conflict":
                                 raise
@@ -1166,11 +1199,7 @@ class ConversationRepository:
                         else {"image_state": "failed", "image_error": "submission_unknown"}
                     )
                     if value.state in {"accepted", "running"}:
-                        call_path = self.database.path.parent / "conversation-calls" / str(value.id)
-                        calls = [json.loads(path.read_bytes()) for path in call_path.glob("*.json")]
-                        safe = bool(calls) and all(
-                            item.get("status") == "response_received" for item in calls
-                        )
+                        safe = self._received_calls(value.id)
                         changes["can_resume"] = safe
                         if safe:
                             changes["error"] = "operation_failed"

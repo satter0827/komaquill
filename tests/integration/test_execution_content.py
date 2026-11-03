@@ -512,3 +512,81 @@ def test_optional_graph_dependency_failure_is_reported_explicitly(tmp_path, monk
     monkeypatch.setitem(sys.modules, "komaquill.adapters.llm.workflow", None)
     operation = api.conversations.send(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
     assert operation.state == "failed" and operation.error == "llm_dependencies_missing"
+
+
+@pytest.mark.parametrize(
+    "kind,extra",
+    [
+        ("archive", ",reason"),
+        ("conversation", ""),
+        ("preset", ",kind,deleted"),
+        ("image", ""),
+        ("job", ",owner_pid,owner_started"),
+    ],
+)
+@pytest.mark.parametrize("payload", ["invalid", "[]", '{"definition":null}'])
+def test_classification_isolates_unreadable_records_and_updates_only_target(
+    tmp_path, monkeypatch, kind, extra, payload
+):
+    from komaquill.adapters.content import CONTENT_TABLES
+
+    api = Client.initialize(tmp_path)
+    healthy = create(api)
+    switch(api, True)
+    unreadable = uuid4()
+    extra_values = {"archive": ",'legacy_state'", "preset": ",'character',0", "job": ",1,'0'"}.get(
+        kind, ""
+    )
+    with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
+        connection.execute(
+            f"INSERT INTO {CONTENT_TABLES[kind]}(id,payload{extra}) VALUES(?,?{extra_values})",
+            (str(unreadable), payload),
+        )
+    labels = api.content.list()
+    broken = next(label for label in labels if label.id == unreadable)
+    assert not broken.readable
+    assert next(label for label in labels if label.id == healthy.id).readable
+    monkeypatch.setattr(
+        api.content, "list", lambda: pytest.fail("Single-item updates must not read the collection")
+    )
+    changed = api.content.update(
+        ContentUpdate(
+            operation_id=uuid4(),
+            kind="conversation",
+            id=healthy.id,
+            rating="nsfw",
+            expected_revision=0,
+        )
+    )
+    assert changed.rating == "nsfw" and changed.readable
+    assert (
+        api.content.update(
+            ContentUpdate(
+                operation_id=uuid4(),
+                kind="conversation",
+                id=healthy.id,
+                rating="general",
+                expected_revision=changed.revision,
+            )
+        ).rating
+        == "general"
+    )
+    with pytest.raises(KomaquillError, match="storage_failed"):
+        api.content.update(
+            ContentUpdate(
+                operation_id=uuid4(),
+                kind=kind,
+                id=unreadable,
+                rating="general",
+                expected_revision=0,
+            )
+        )
+    with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
+        assert (
+            connection.execute(
+                f"SELECT payload FROM {CONTENT_TABLES[kind]} WHERE id=?", (str(unreadable),)
+            ).fetchone()[0]
+            == payload
+        )
+    switch(api, False)
+    assert api.conversations.get(healthy.id).id == healthy.id

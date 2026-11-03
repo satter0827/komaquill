@@ -2854,6 +2854,12 @@
       },
       "ContentLabel": {
         "properties": {
+          "readable": {
+            "type": "boolean",
+            "title": "Readable",
+            "description": "Whether the saved display and classification metadata can be read.",
+            "default": true
+          },
           "kind": {
             "type": "string",
             "enum": [

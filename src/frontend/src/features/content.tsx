@@ -88,12 +88,13 @@ function ContentItem({
   const preferences = usePreferences()
   const image = useQuery({
     ...q.getImageOptions({ path: { identity: label.id } }),
-    enabled: label.kind === 'image',
+    enabled: label.readable !== false && label.kind === 'image',
   })
   const job = useQuery({
     ...q.getJobOptions({ path: { identity: label.id } }),
-    enabled: label.kind === 'job',
+    enabled: label.readable !== false && label.kind === 'job',
   })
+  const unreadable = label.readable === false || image.isError || job.isError
   const target = labels.find((item) => item.id === job.data?.request.target_id)
   const created = image.data?.created_at || job.data?.created_at
   const title =
@@ -115,6 +116,13 @@ function ContentItem({
       <span>
         <strong>{title}</strong>
         <small>{kinds[label.kind]}</small>
+        {unreadable && (
+          <span role="status" className="error">
+            {m.contentUnreadable}
+            <br />
+            <code>{label.id}</code>
+          </span>
+        )}
         {!!image.data?.images?.length && (
           <img
             src={`/api/v1/images/${label.id}/files/0`}
@@ -126,7 +134,7 @@ function ContentItem({
       <select
         aria-label={`${m.contentClassification}: ${title}`}
         value={label.rating}
-        disabled={pending}
+        disabled={pending || unreadable}
         onChange={(event) => {
           if (event.target.value !== 'unclassified')
             onChange(event.target.value as 'general' | 'nsfw')

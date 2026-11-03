@@ -513,7 +513,7 @@ summary = "NSFWを明示設定で切り替え、既存作品と処理中の保�
 status = "implemented"
 acceptance = ["作業フォルダー単位のNSFWチェックボックスを既定OFFで保存し、現在の設定を表示する", "OFFでNSFWと未分類を一覧・詳細・画像・出力から隠す", "ONの実LLM送信はローカル接続に限定し、操作の設定を受付時に固定する", "設定変更でも受付済み処理の保存と回収を妨げない", "既存記録は未分類とし、分類変更には版と操作IDを必要とする", "画面の非表示は入力を保持し、表示切替では作品のキャッシュを破棄する"]
 sources = ["src/backend/src/komaquill/adapters/content.py", "src/backend/src/komaquill/domain/content.py", "src/frontend/src/features/content.tsx", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/shell.tsx"]
-tests = ["tests/integration/test_execution_content.py", "tests/e2e/web/content.spec.ts"]
+tests = ["tests/integration/test_execution_content.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/content.spec.ts"]
 
 [requirements.REQ-SCENE-TOOLS]
 summary = "メモと確定場面を保存し、分岐・描画・共有用コピーへ反映する"

@@ -319,5 +319,6 @@
   "contentPreview": "作品の画像",
   "creationLabel": "作成した内容",
   "contentPreset": "保存した設定",
-  "contentArchive": "過去の作品"
+  "contentArchive": "過去の作品",
+  "contentUnreadable": "この作品の情報を読み取れません。元の記録を確認してください。"
 }

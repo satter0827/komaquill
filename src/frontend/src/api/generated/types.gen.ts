@@ -442,6 +442,12 @@ export type CompiledImageInput = {
  */
 export type ContentLabel = {
     /**
+     * Readable
+     *
+     * Whether the saved display and classification metadata can be read.
+     */
+    readable?: boolean;
+    /**
      * Kind
      */
     kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';

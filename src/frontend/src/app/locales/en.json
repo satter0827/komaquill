@@ -319,5 +319,6 @@
   "contentPreview": "Saved image preview",
   "creationLabel": "Created content",
   "contentPreset": "Saved preset",
-  "contentArchive": "Archived work"
+  "contentArchive": "Archived work",
+  "contentUnreadable": "This record cannot be read. Check the retained record."
 }

@@ -12,7 +12,16 @@ from langchain_core.messages import AIMessage
 from tests.support.conversations import wire_scene
 
 
-def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, context_turns=4):
+def prepare(
+    tmp_path,
+    monkeypatch,
+    *,
+    locale="en",
+    failure=None,
+    count=4,
+    context_turns=4,
+    action_narration="",
+):
     import langchain_openai
 
     api = Client.initialize(tmp_path)
@@ -77,6 +86,7 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
             user=f"Visit the lighthouse. {index}",
             assistant="We promised to go.",
             narration="The beach is quiet.",
+            action_narration=action_narration,
             state=saved.state,
         )
         for index in range(count)
@@ -85,6 +95,22 @@ def prepare(tmp_path, monkeypatch, *, locale="en", failure=None, count=4, contex
     with api.conversations.repository.database.engine.begin() as connection:
         api.conversations.repository._store(connection, value)
     return api, value, calls
+
+
+def test_summary_receives_companion_actions_separately_from_scenery_and_dialogue(
+    tmp_path, monkeypatch
+):
+    action = "The companion traces a lighthouse in the sand."
+    api, original, calls = prepare(tmp_path, monkeypatch, action_narration=action)
+    result = api.conversations.send(
+        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+    )
+    assert result.state == "complete"
+    summary_input = [json.loads(message.content) for message in calls[0][1] if message.type == "ai"]
+    assert len(summary_input) == 2
+    assert all(message["action_narration"] == action for message in summary_input)
+    assert all(message["narration"] == "The beach is quiet." for message in summary_input)
+    assert api.conversations.get(original.id).turns[:4] == original.turns
 
 
 @pytest.mark.parametrize("locale", ["ja", "en"])

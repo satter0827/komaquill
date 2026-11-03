@@ -10,9 +10,61 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from komaquill.adapters.storage_errors import stored
-from komaquill.domain.content import ContentLabel, ContentRating, ContentUpdate, visible
+from komaquill.domain.content import (
+    ContentKind,
+    ContentLabel,
+    ContentRating,
+    ContentUpdate,
+    visible,
+)
 from komaquill.domain.errors import KomaquillError
 from komaquill.library.models import Preferences
+
+CONTENT_TABLES: dict[ContentKind, str] = {
+    "conversation": "conversations",
+    "preset": "presets",
+    "image": "images",
+    "archive": "archived_conversations",
+    "job": "creation_jobs",
+}
+
+
+def target_filter(kind: ContentKind) -> str:
+    if kind == "preset":
+        return " AND t.deleted=0"
+    return " AND t.reason!='converted'" if kind == "archive" else ""
+
+
+def describe(
+    kind: ContentKind, identity: str, payload: str, rating: object, revision: object
+) -> ContentLabel:
+    try:
+        data = json.loads(payload)
+        if not isinstance(data, dict):
+            raise ValueError("Invalid display metadata.")
+        title = data.get("name")
+        if title is None:
+            definition = data.get("definition", {})
+            if not isinstance(definition, dict):
+                raise ValueError("Invalid display metadata.")
+            title = definition.get("title", "")
+        if not isinstance(title, str):
+            raise ValueError("Invalid display metadata.")
+        return ContentLabel.model_validate(
+            {
+                "kind": kind,
+                "id": identity,
+                "rating": rating
+                if rating is not None
+                else ("unclassified" if kind == "archive" else "general"),
+                "revision": revision if revision is not None else 0,
+                "title": title,
+            }
+        )
+    except (ValueError, TypeError):
+        return ContentLabel.model_validate(
+            {"kind": kind, "id": identity, "rating": "unclassified", "readable": False}
+        )
 
 
 class ContentDatabase(Protocol):
@@ -27,53 +79,40 @@ class ContentPolicy:
 
     @stored
     def list(self) -> list[ContentLabel]:
-        if not self.enabled():
-            return []
-        tables = {
-            "conversation": "conversations",
-            "preset": "presets",
-            "image": "images",
-            "archive": "archived_conversations",
-            "job": "creation_jobs",
-        }
-        values: dict[tuple[str, str], ContentLabel] = {}
         with self.database.engine.connect() as reader:
-            for kind, table in tables.items():
-                where = (
-                    " WHERE deleted=0"
-                    if kind == "preset"
-                    else (" WHERE reason!='converted'" if kind == "archive" else "")
+            if not self.enabled(reader):
+                return []
+            values: list[ContentLabel] = []
+            for kind, table in CONTENT_TABLES.items():
+                rows = reader.execute(
+                    text(
+                        f"SELECT t.id,t.payload,c.rating,c.revision FROM {table} AS t "
+                        "LEFT JOIN content_labels AS c ON c.id=t.id AND c.kind=:kind "
+                        "WHERE 1=1" + target_filter(kind)
+                    ),
+                    {"kind": kind},
                 )
-                for identity, payload in reader.execute(
-                    text(f"SELECT id,payload FROM {table}{where}")
-                ):
-                    data = json.loads(str(payload))
-                    values[kind, str(identity)] = ContentLabel.model_validate(
-                        {
-                            "kind": kind,
-                            "id": identity,
-                            "rating": self.rating(kind, str(identity), reader),
-                            "title": data.get("name", data.get("definition", {}).get("title", "")),
-                        }
-                    )
-            for row in reader.execute(
-                text("SELECT kind,id,rating,revision FROM content_labels")
-            ).mappings():
-                key = row["kind"], row["id"]
-                if key in values:
-                    values[key] = values[key].model_copy(
-                        update={"rating": row["rating"], "revision": row["revision"]}
-                    )
-        return list(values.values())
+                values.extend(
+                    describe(kind, str(row.id), str(row.payload), row.rating, row.revision)
+                    for row in rows
+                )
+            return values
 
     @stored
     def update(self, request: ContentUpdate) -> ContentLabel:
-        if not self.enabled():
-            raise KomaquillError(code="content_hidden", retryable=False)
-        if not any(label.kind == request.kind and label.id == request.id for label in self.list()):
-            raise KomaquillError(code="request_not_found", retryable=False)
         fingerprint = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
         with self.database.transaction() as writer:
+            if not self.enabled(writer):
+                raise KomaquillError(code="content_hidden", retryable=False)
+            target = writer.execute(
+                text(
+                    f"SELECT t.payload FROM {CONTENT_TABLES[request.kind]} AS t WHERE t.id=:id"
+                    + target_filter(request.kind)
+                ),
+                {"id": str(request.id)},
+            ).scalar_one_or_none()
+            if target is None:
+                raise KomaquillError(code="request_not_found", retryable=False)
             known = writer.execute(
                 text("SELECT fingerprint FROM command_receipts WHERE id=:id"),
                 {"id": str(request.operation_id)},
@@ -86,7 +125,15 @@ class ContentPolicy:
                 .mappings()
                 .one_or_none()
             )
-            revision = row["revision"] if row else 0
+            label = describe(
+                request.kind,
+                str(request.id),
+                str(target),
+                row["rating"] if row else None,
+                row["revision"] if row else None,
+            )
+            if not label.readable:
+                raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
             if known is not None:
                 if known != fingerprint:
                     raise KomaquillError(code="operation_conflict", retryable=False)
@@ -96,29 +143,28 @@ class ContentPolicy:
                     {"id": str(request.operation_id)},
                 ).first():
                     raise KomaquillError(code="operation_conflict", retryable=False)
-                if revision != request.expected_revision:
+                if label.revision != request.expected_revision:
                     raise KomaquillError(code="operation_conflict", retryable=False)
                 if row is None:
-                    self.set_rating(
-                        request.kind,
-                        request.id,
-                        self.rating(request.kind, request.id, writer),
-                        writer,
-                    )
+                    self.set_rating(request.kind, request.id, label.rating, writer)
                 self.set_rating(request.kind, request.id, request.rating, writer)
                 writer.execute(
                     text("INSERT INTO command_receipts VALUES(:id,:fingerprint)"),
                     {"id": str(request.operation_id), "fingerprint": fingerprint},
                 )
+            current = (
+                writer.execute(
+                    text("SELECT rating,revision FROM content_labels WHERE kind=:kind AND id=:id"),
+                    {"kind": request.kind, "id": str(request.id)},
+                )
+                .mappings()
+                .one()
+            )
+            result = describe(
+                request.kind, str(request.id), str(target), current["rating"], current["revision"]
+            )
             writer.commit()
-        return next(
-            (
-                label
-                for label in self.list()
-                if label.id == request.id and label.kind == request.kind
-            ),
-            ContentLabel(kind=request.kind, id=request.id, rating=request.rating),
-        )
+            return result
 
     @stored
     def enabled(self, connection: "Connection | None" = None) -> bool:

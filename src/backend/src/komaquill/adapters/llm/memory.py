@@ -202,6 +202,7 @@ def history_messages(
                             {
                                 "text": turn.assistant,
                                 "narration": turn.narration,
+                                "action_narration": turn.action_narration,
                                 "confirmed_state": conversation.turns[index].state.model_dump(
                                     mode="json"
                                 ),

@@ -1,6 +1,6 @@
 # Python API
 
-長時間動くアプリケーションではClient.configure()で設定を固定します。LLMは同じClient内の会話・下書き・要約・英訳で設定を共有し、初回利用後の設定ファイル変更は次のClientから反映されます。保存済み作品の閲覧、画像の回収、GPU終了はLLM設定を必要としません。[設定の有効期間](../current/library-delegation.md#設定の解決と有効期間)を参照してください。
+長時間動くアプリケーションではClient.configure()で設定を固定します。LLMは同じClient内の会話・下書き・記憶作成・英訳で設定を共有し、初回利用後の設定ファイル変更は次のClientから反映されます。保存済み作品の閲覧、画像の回収、GPU終了はLLM設定を必要としません。[設定の有効期間](../current/library-delegation.md#設定の解決と有効期間)を参照してください。
 
 公開入口は`komaquill.api`です。CLIとHTTPも同じClientを使用します。importで通信、認証、作業ファイルの作成、プロセス起動、表示を行いません。
 
@@ -46,7 +46,7 @@ result = client.library.save_preset(
 
 result.presetは保存済み本文、result.jobは画像の操作、result.image_errorは画像受付の失敗を表す。更新ではtarget_idとexpected_revisionを渡す。再確認は同じ操作IDと同じ入力を使い、明示的な再生成はimage_policyのalwaysを指定する。本文だけを保存するときはnoneを使う。HTTPはcharacters/saveとstories/saveで同じ処理を呼ぶ。
 
-ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateはConversationStateを使い、自分と相手の服装・持ち物を別に保持する。長い会話の要約は自動保存され、元の本文と現在状態は維持される。
+ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateはConversationStateを使い、自分と相手の服装・持ち物を別に保持する。文脈予算を超える場合だけ古い履歴の原文を引用して記憶を保存し、元の本文と現在状態は維持する。
 
 開始時のplace・goalをinitial_stateへ指定しなければ、scenarioの同じ項目を使う。initial_stateへ明示した値は空文字列も含めて優先する。解決した初期状態は会話に保存される。現在状態の変更には行動を使い、開始状態への全置換は提供しない。プリセット経由とHTTPも同じ処理を使う。
 

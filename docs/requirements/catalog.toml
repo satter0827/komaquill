@@ -3,7 +3,7 @@ format_version = 1
 [requirements.REQ-CHAT-WORKFLOW]
 summary = "LangGraphで構造化LLM要求と有限の修正を実行する"
 status = "implemented"
-implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期要約はREQ-CHAT-MEMORYで扱う。公式チェックポイントで受信済み応答から再開し、会話の意味整合性と画質の未達は実出力の受入で管理する。"
+implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期記憶はREQ-CHAT-MEMORYで扱う。公式チェックポイントで受信済み応答から再開し、会話の意味整合性と画質の未達は実出力の受入で管理する。"
 acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
 sources = ["src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
 tests = ["tests/unit/test_llm_graph.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_durability.py"]
@@ -375,7 +375,7 @@ tests = ["tests/unit/test_conversation_context.py", "tests/integration/test_conv
 [requirements.REQ-CHAT-MEMORY]
 summary = "古い確定履歴から根拠を選んで保存し、元の本文と現在状態を保持して再開する"
 status = "implemented"
-acceptance = ["文脈予算に収まる間は記憶作成を呼ばず、超過時だけ古い完全なターンを対象にする", "一回の送信で作成する記憶は設定された処理回数に制限する", "要約範囲・内容ハッシュ・モデル・指示・言語を保存して再利用する", "人物定義と現在状態を要約で上書きしない", "失敗や中断で元の履歴を失わず追加送信を止める", "日本語と英語で実LLMの記憶と役割を確認する"]
+acceptance = ["文脈予算に収まる間は記憶作成を呼ばず、超過時だけ古い完全なターンを対象にする", "一回の送信で作成する記憶は設定された処理回数に制限する", "記憶範囲・内容ハッシュ・モデル・指示・言語を保存して再利用する", "人物定義と現在状態を記憶で上書きしない", "失敗や中断で元の履歴を失わず追加送信を止める", "日本語と英語で実LLMの記憶と役割を確認する"]
 sources = ["src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/domain/roleplay.py", "src/backend/src/komaquill/adapters/database.py", "scripts/review_roleplay.py"]
 tests = ["tests/integration/test_conversation_memory.py", "tests/unit/test_roleplay_review.py"]
 implementation_note = "引用とターンID・項目・範囲・内容ハッシュを保存し、元の履歴と照合する。旧要約は原本として保持する。根拠の選択と質問への意味の正確さは実出力で別に確認する。"
@@ -390,25 +390,25 @@ acceptance = [
     "保存済みの原文と履歴を保持し、LLMへ渡す内容だけを最適化する",
     "文脈予算を一か所で管理し、必須情報・完全な直近履歴・スキーマ・出力・修正の余裕を含め、概算・実測・不明値を区別する",
     "履歴選択と記憶作成で同じ計数方法を使い、文字数の安全上限とは分け、修正時の前応答を含めて送信直前に予算を再計算する",
-    "要約・修正・下書き・画像用英訳も含む入力と出力の総トークン量・呼び出し回数・待ち時間を同じ条件で比較する",
+    "記憶作成・修正・下書き・画像用英訳も含む入力と出力の総トークン量・呼び出し回数・待ち時間を同じ条件で比較する",
     "呼び出し別の使用量を正本とし、標準の使用量集計で既知分を合算しても、不明な呼び出しをゼロや完全な総量として扱わない",
-    "短い会話へ不要な要約を追加せず、保存済みの要約と英訳を再利用する",
+    "短い会話へ不要な記憶作成を追加せず、保存済みの記憶と英訳を再利用する",
     "固定入力と対にしたFake応答・擬似API・保存済み記録を検証の基本とし、実モデルの理解力の証拠とは扱わない",
     "実LLMはFakeで判断できない互換性と品質の代表例へ限定し、操作ごとの明示許可と事前に定めた検証上限を守る",
-    "日英の短い会話・要約を要する会話・訂正・再開を比較し、一律の削減率を課さず品質の後退と総量の削減を別に判定する",
-    "要約の記憶比較では目的欄や現在状態に答えが重複しない入力を使い、追加費用を回収できた範囲と未確認の範囲を示す",
+    "日英の短い会話・記憶作成を要する会話・訂正・再開を比較し、一律の削減率を課さず品質の後退と総量の削減を別に判定する",
+    "記憶の比較では目的欄や現在状態に答えが重複しない入力を使い、追加費用を回収できた範囲と未確認の範囲を示す",
     "比較証跡は版・操作・用途・呼び出し順・モデル・指示・出力参照・使用量・評価者を関連付け、元の生成物と評価を変更しない",
 ]
 sources = ["src/backend/src/komaquill/adapters/llm/context.py", "src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
 tests = ["tests/unit/test_llm_graph.py", "tests/unit/test_llm_execution.py", "tests/integration/test_conversation_memory.py", "tests/unit/test_llm_comparison.py"]
 
 [requirements.REQ-LLM-BOUNDARIES]
-summary = "共通のLLM実行と会話・下書き・英訳・要約の責務を分け、標準機能へ委譲する"
+summary = "共通のLLM実行と会話・下書き・英訳・記憶作成の責務を分け、標準機能へ委譲する"
 status = "implemented"
-implementation_note = "共通実行、会話、下書き、英訳、要約をadapters/llmへ分離し、同じ設定と実行を役割ごとに注入する。公開bindと厳密検証で原応答と失敗分類を保持する。LangGraphの有限実行、実LLM許可、回収と終了の独立を維持する。"
+implementation_note = "共通実行、会話、下書き、英訳、記憶作成をadapters/llmへ分離し、同じ設定と実行を役割ごとに注入する。公開bindと厳密検証で原応答と失敗分類を保持する。LangGraphの有限実行、実LLM許可、回収と終了の独立を維持する。"
 acceptance = [
     "検証済み設定・接続・モデル照合・呼び出し記録を共通実行で扱い、機能間の具象型castと独立した設定再読込を除く",
-    "会話・下書き・画像用英訳・要約を機能別に分け、業務層へSDK型・資格情報・具体的な保存処理を持ち込まない",
+    "会話・下書き・画像用英訳・記憶作成を機能別に分け、業務層へSDK型・資格情報・具体的な保存処理を持ち込まない",
     "標準の構造化出力APIは原文保存・厳密検証・失敗分類を満たす場合だけ採用し、不正応答や出力打ち切りも擬似通信で検査する",
     "メタデータ付き固定応答には標準のFakeチャットモデルを使い、入力と応答を対にし、SDKの通信形式と例外は擬似HTTPで別に検査する",
     "有限の修正、受付不明の自動再送禁止、外部トレース無効、操作ごとの実LLM許可、画像回収とGPU停止の独立を維持する",
@@ -470,7 +470,7 @@ implementation_note = "Pydantic Settingsの公開sourceで優先順位と部分�
 acceptance = [
     "対応するCLI引数・明示入力、環境変数、作業設定、同梱既定値の順に解決し、未指定と明示した空・偽・ゼロを区別する",
     "入れ子のプロファイルを項目単位で更新し、指定のないモデル設定や生成条件を消去しない",
-    "アプリケーションの組み立て時に設定を読み取り検証して固定し、接続・会話・下書き・要約・英訳・回収・終了で必要な型へ分けて共有する",
+    "アプリケーションの組み立て時に設定を読み取り検証して固定し、接続・会話・下書き・記憶作成・英訳・回収・終了で必要な型へ分けて共有する",
     "作業フォルダーごとの設定を分離し、処理途中のファイル変更で既存操作の条件を変えない",
     "手動の再帰マージ・独立した再読込・不要な別名を削除し、厳密な環境変数変換とTOMLの対象節選択に必要な小さなアダプターだけを残す",
     "不明な設定・不正な型・範囲外を安全に拒否し、dotenvや秘密ファイルの暗黙読込、import時のファイル読込・認証を追加しない",

@@ -152,3 +152,29 @@ def test_test_discovery_and_cache_stay_inside_the_artifact_root():
     editor = json.loads((ROOT / ".vscode/settings.json").read_bytes())
     assert set(editor["python.testing.pytestArgs"]) <= set(config["testpaths"])
     assert "tests/live" not in editor["python.testing.pytestArgs"]
+
+
+def test_cached_project_outputs_cannot_replace_verification_records():
+    import json
+
+    defaults = json.loads((ROOT / "nx.json").read_bytes())["targetDefaults"]
+    records = (ROOT / ".artifacts/records").resolve()
+    projects = [
+        *ROOT.glob("*/project.json"),
+        *ROOT.glob("src/*/project.json"),
+        *ROOT.glob("tests/*/project.json"),
+    ]
+    for project in projects:
+        for name, target in json.loads(project.read_bytes())["targets"].items():
+            if not target.get("cache", defaults.get(name, {}).get("cache", False)):
+                continue
+            for output in target.get("outputs", []):
+                path = output.replace("{workspaceRoot}", str(ROOT)).replace(
+                    "{projectRoot}", str(project.parent)
+                )
+                owned = Path(path.split("*", 1)[0]).resolve()
+                assert (
+                    owned != records
+                    and owned not in records.parents
+                    and records not in owned.parents
+                ), (project, name, output)

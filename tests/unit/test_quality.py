@@ -253,9 +253,19 @@ def test_e2e_gate_requires_one_wheel_and_clears_live_flags(tmp_path, monkeypatch
     monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
     calls = []
     monkeypatch.setattr(check_e2e.subprocess, "run", lambda command, **kw: calls.append(kw))
+    monkeypatch.setattr(check_e2e, "input_fingerprint", lambda _: "fixture")
+    monkeypatch.setattr(check_e2e, "source_revision", lambda _: "fixture")
     if valid:
         selected = wheel / "komaquill-1.0-py3-none-any.whl"
-        check_e2e.main(selected, tmp_path / "reports")
+        reports = tmp_path / "reports"
+        reports.mkdir()
+        original = reports / "e2e.xml"
+        original.write_text("Retained evidence")
+        check_e2e.main(selected, reports)
+        check_e2e.main(selected, reports)
+        retained = [json.loads(p.read_bytes()) for p in reports.glob("*/run.json")]
+        assert len(retained) == 2 and all(r["status"] == "passed" for r in retained)
+        assert original.read_text() == "Retained evidence"
         assert calls[0]["env"]["KOMAQUILL_WHEEL"] == str(selected)
         assert "KOMAQUILL_LIVE" not in calls[0]["env"]
         assert "KOMAQUILL_LIVE_STOP" not in calls[0]["env"]
@@ -263,3 +273,28 @@ def test_e2e_gate_requires_one_wheel_and_clears_live_flags(tmp_path, monkeypatch
     else:
         with pytest.raises(SystemExit):
             check_e2e.main(wheel, tmp_path / "reports")
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_installed_wheel_failure_evidence_is_retained(tmp_path, monkeypatch, interrupted):
+    from scripts.checks import installed_wheel as check_e2e
+
+    wheel = tmp_path / "komaquill-1.0-py3-none-any.whl"
+    wheel.write_bytes(b"fixture")
+    monkeypatch.setattr(check_e2e, "input_fingerprint", lambda _: "fixture")
+    monkeypatch.setattr(check_e2e, "source_revision", lambda _: "fixture")
+
+    def fail(*_, **__):
+        if interrupted:
+            raise OSError("private details")
+        raise check_e2e.subprocess.CalledProcessError(2, "fixture")
+
+    monkeypatch.setattr(check_e2e.subprocess, "run", fail)
+    with pytest.raises(OSError if interrupted else check_e2e.subprocess.CalledProcessError):
+        check_e2e.main(wheel, tmp_path / "reports")
+    record = next((tmp_path / "reports").glob("*/run.json")).read_text()
+    result = json.loads(record)
+    assert result["status"] == ("interrupted" if interrupted else "failed")
+    assert result["exit_code"] == (None if interrupted else 2)
+    assert result["wheel_sha256"] and result["finished_at"]
+    assert "private details" not in record

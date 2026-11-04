@@ -189,10 +189,10 @@ tests = ["tests/integration/test_colab_provider.py", "tests/unit/test_lifecycle.
 
 [requirements.REQ-QUALITY]
 summary = "GPUなしで検査し、全工程が成功した場合だけ成功を確定する"
-status = "in_progress"
-acceptance = ["変更の影響を受けるプロジェクトと関連テストを選択する", "中断・不足環境・入力変更と局所成功を区別する", "行90%以上・分岐80%以上を独立判定する"]
-sources = ["scripts/check.py", "scripts/checks/coverage.py"]
-tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py"]
+status = "implemented"
+acceptance = ["変更の影響を受けるプロジェクトと関連テストを選択する", "中断・不足環境・入力変更と局所成功を区別する", "行90%以上・分岐80%以上を独立判定する", "配布検証は実行ごとに対象のSHA256と成否を保存しビルドのキャッシュ復元で上書きしない"]
+sources = ["scripts/check.py", "scripts/checks/coverage.py", "scripts/checks/installed_wheel.py", "src/backend/project.json"]
+tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py", "tests/structure/test_boundaries.py"]
 
 [requirements.REQ-BUNDLES]
 summary = "利用者が生成セットをフォルダー単位で追加・置換できる"

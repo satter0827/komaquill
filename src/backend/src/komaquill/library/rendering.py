@@ -2,19 +2,16 @@
 
 from dataclasses import dataclass
 
-from komaquill.library.models import Preset, PresetInput, PresetKind, PresetSaveOptions
+from komaquill.library.models import Preset, PresetInput, PresetKind
 
 
 @dataclass(frozen=True)
 class PresetChanges:
     content_changed: bool
     image_changed: bool
-    generate_image: bool
 
 
-def preset_changes(
-    kind: PresetKind, value: PresetInput, previous: Preset | None, options: PresetSaveOptions
-) -> PresetChanges:
+def preset_changes(kind: PresetKind, value: PresetInput, previous: Preset | None) -> PresetChanges:
     content = (
         previous is None
         or previous.model_dump(include=set(type(value).model_fields)) != value.model_dump()
@@ -22,8 +19,7 @@ def preset_changes(
     image = previous is None or preset_image_input(kind, previous) != preset_image_input(
         kind, value
     )
-    generate = options.image_policy == "always" or (options.image_policy == "auto" and image)
-    return PresetChanges(content, image, generate)
+    return PresetChanges(content, image)
 
 
 def preset_image_input(kind: PresetKind, value: Preset | PresetInput) -> dict[str, object]:

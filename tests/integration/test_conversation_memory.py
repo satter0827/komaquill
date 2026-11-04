@@ -4,12 +4,14 @@ import json
 from uuid import uuid4
 
 import pytest
-from komaquill.api import Client, ConversationInput, SendInput
+from komaquill.api import Client, ConversationInput, KomaquillError, SendInput
 from komaquill.conversations.models import Turn
 from komaquill.domain.roleplay import ConversationMemory
 from langchain_core.messages import AIMessage
 
 from tests.support.conversations import wire_reply, wire_scene
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def prepare(
@@ -135,7 +137,13 @@ def test_summary_receives_companion_actions_separately_from_scenery_and_dialogue
     action = "The companion traces a lighthouse in the sand."
     api, original, calls = prepare(tmp_path, monkeypatch, action_narration=action)
     result = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        original.id,
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert result.state == "complete"
     summary_input = json.loads(calls[0][1][-1].content)
@@ -155,7 +163,11 @@ def test_summary_is_saved_and_reused_after_restart_without_rewriting_history(
 ):
     api, original, calls = prepare(tmp_path, monkeypatch, locale=locale)
     request = SendInput(
-        operation_id=uuid4(), text="What did we promise?", locale=locale, allow_real_llm=True
+        expected_revision=original.revision,
+        operation_id=uuid4(),
+        text="What did we promise?",
+        locale=locale,
+        allow_real_llm=True,
     )
     assert api.conversations.send(original.id, request).state == "complete"
     saved = Client(tmp_path).conversations.get(original.id)
@@ -176,7 +188,11 @@ def test_summary_is_saved_and_reused_after_restart_without_rewriting_history(
     assert Client(tmp_path).conversations.send(original.id, request).state == "complete"
     assert len(calls) == 2
     next_request = SendInput(
-        operation_id=uuid4(), text="Continue", locale=locale, allow_real_llm=True
+        expected_revision=saved.revision,
+        operation_id=uuid4(),
+        text="Continue",
+        locale=locale,
+        allow_real_llm=True,
     )
     assert Client(tmp_path).conversations.send(original.id, next_request).state == "complete"
     assert [summary for summary, _, _ in calls] == [True, False, False]
@@ -191,7 +207,13 @@ def test_summary_failure_does_not_retry_or_send_dialogue_or_lose_history(
 ):
     api, original, calls = prepare(tmp_path, monkeypatch, failure=failure)
     operation = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        original.id,
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert operation.error == code and len(calls) == 1
     assert api.conversations.get(original.id) == original
@@ -200,17 +222,30 @@ def test_summary_failure_does_not_retry_or_send_dialogue_or_lose_history(
 def test_short_history_does_not_call_summary_and_permission_is_required(tmp_path, monkeypatch):
     api, original, calls = prepare(tmp_path, monkeypatch, count=1)
     operation = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        original.id,
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert (
         operation.state == "complete"
         and len(calls) == 1
         and not any(summary for summary, _, _ in calls)
     )
-    operation = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue")
-    )
-    assert operation.error == "real_llm_not_allowed" and len(calls) == 1
+    with pytest.raises(KomaquillError, match="real_llm_not_allowed"):
+        api.conversations.send(
+            original.id,
+            SendInput(
+                expected_revision=api.conversations.overview(original.id).revision,
+                operation_id=uuid4(),
+                text="Continue",
+                allow_real_llm=False,
+            ),
+        )
+    assert len(calls) == 1
 
 
 def test_later_summary_advances_from_saved_message_ids_without_resending_old_turns(
@@ -219,7 +254,13 @@ def test_later_summary_advances_from_saved_message_ids_without_resending_old_tur
     api, original, calls = prepare(tmp_path, monkeypatch)
     for _ in range(3):
         result = api.conversations.send(
-            original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+            original.id,
+            SendInput(
+                expected_revision=api.conversations.overview(original.id).revision,
+                operation_id=uuid4(),
+                text="Continue",
+                allow_real_llm=True,
+            ),
         )
         assert result.state == "complete"
     summaries = [messages for summary, messages, _ in calls if summary]
@@ -244,7 +285,13 @@ def test_memory_hash_and_scope_are_validated_before_another_call(tmp_path, monke
     )
     api.conversations.repository.save_memory(original.id, bad)
     operation = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        original.id,
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert operation.error == "storage_failed" and calls == []
     with pytest.raises(Exception, match="operation_conflict"):
@@ -260,7 +307,13 @@ def test_memory_hash_and_scope_are_validated_before_another_call(tmp_path, monke
 def test_fabricated_memory_evidence_stops_before_dialogue(tmp_path, monkeypatch):
     api, original, calls = prepare(tmp_path, monkeypatch, failure="fabricated")
     operation = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        original.id,
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert operation.error == "invalid_response" and len(calls) == 1
     assert api.conversations.get(original.id) == original
@@ -272,7 +325,12 @@ def test_oversized_required_input_does_not_send_summary_or_dialogue(tmp_path, mo
     execution.settings = execution.settings.model_copy(update={"context_window_tokens": 500})
     result = api.conversations.send(
         original.id,
-        SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True),
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert result.error == "context_limit_exceeded" and calls == []
     saved = api.conversations.get(original.id)
@@ -287,14 +345,25 @@ def test_recent_history_does_not_trigger_summary_until_the_budget_is_exceeded(
     for index in range(4 - count):
         operation = api.conversations.send(
             original.id,
-            SendInput(operation_id=uuid4(), text=f"Continue {index}", allow_real_llm=True),
+            SendInput(
+                expected_revision=api.conversations.overview(original.id).revision,
+                operation_id=uuid4(),
+                text=f"Continue {index}",
+                allow_real_llm=True,
+            ),
         )
         assert operation.state == "complete"
     assert [summary for summary, _, _ in calls] == [False] * (4 - count)
     saved = api.conversations.get(original.id)
     assert len(saved.turns) == 4 and saved.memory is None
     operation = api.conversations.send(
-        original.id, SendInput(operation_id=uuid4(), text="Continue again", allow_real_llm=True)
+        original.id,
+        SendInput(
+            expected_revision=api.conversations.overview(original.id).revision,
+            operation_id=uuid4(),
+            text="Continue again",
+            allow_real_llm=True,
+        ),
     )
     assert operation.state == "complete"
     assert [summary for summary, _, _ in calls][-2:] == [True, False]

@@ -59,6 +59,8 @@ class LLMProfile(BaseModel):
 
 class ConversationSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
+    connection_observation_ttl: float = Field(default=15.0, gt=0)
+    connection_probe_timeout: float = Field(default=5.0, gt=0)
     request_timeout: float = Field(gt=0)
     max_output_tokens: int = Field(gt=0)
     repair_attempts: int = Field(ge=0, le=1)

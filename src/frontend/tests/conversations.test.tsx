@@ -9,11 +9,17 @@ import { ConversationPage } from '../src/features/conversations'
 import { NewConversation } from '../src/features/start'
 import m from '../src/app/locales/ja.json'
 import { client } from '../src/api/generated/client.gen'
-import { getConversationQueryKey } from '../src/api/generated/@tanstack/react-query.gen'
+import {
+  getConversationQueryKey,
+  getOperationQueryKey,
+} from '../src/api/generated/@tanstack/react-query.gen'
 
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.post(`${base}/api/v1/availability`, () =>
+    HttpResponse.json({ ready: true, connections: [] }),
+  ),
   http.get(`${base}/api/v1/conversations/:id/bookmarks`, () =>
     HttpResponse.json([]),
   ),
@@ -191,6 +197,37 @@ describe('conversation workflow', () => {
     expect(screen.getByRole('button', { name: m.create })).toBeDisabled()
   })
 
+  it.each(['llm_unavailable', 'identity_mismatch'] as const)(
+    'retains editable input and its queued action after a connection rejection: %s',
+    async (code) => {
+      let posts = 0
+      server.use(
+        http.post(`${base}/api/v1/conversations/one/turns`, () => {
+          posts++
+          return HttpResponse.json(
+            { code, stage: 'connection' },
+            { status: 503 },
+          )
+        }),
+      )
+      app('/conversations/one')
+      await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
+      await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+      const input = screen.getByRole('textbox', { name: m.messageLabel })
+      await userEvent.type(input, 'Keep this message')
+      await userEvent.click(screen.getByRole('button', { name: m.send }))
+      await screen.findByText(m.errors[code])
+      expect(input).toHaveValue('Keep this message')
+      expect(
+        screen.getByRole('button', { name: m.removeQueuedAction }),
+      ).toBeEnabled()
+      expect(
+        screen.queryByRole('button', { name: m.retryRequest }),
+      ).not.toBeInTheDocument()
+      await userEvent.type(input, ' edited')
+      expect(posts).toBe(1)
+    },
+  )
   it('keeps an accepted turn busy while its first status response is pending', async () => {
     let release: () => void = () => {}
     let polling = false
@@ -316,53 +353,62 @@ describe('conversation workflow', () => {
     expect(requests).toHaveLength(2)
     expect(requests[0]).toEqual(requests[1])
   })
-  it('keeps the editing revision when a remote update arrives', async () => {
+  it('requires confirmation of a stale action draft and sends it with the message', async () => {
     const cache = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
         mutations: { retry: false },
       },
     })
-    const commands: unknown[] = []
+    const requests: unknown[] = []
     server.use(
       http.post(
-        `${base}/api/v1/conversations/one/actions`,
+        `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
-          commands.push(await request.json())
-          return HttpResponse.json(
-            { code: 'operation_conflict' },
-            { status: 409 },
-          )
+          const body = await request.json()
+          requests.push(body)
+          return HttpResponse.json({
+            id: 'op',
+            conversation_id: 'one',
+            state: 'accepted',
+          })
         },
       ),
     )
     app('/conversations/one', cache)
-    await userEvent.type(await screen.findByLabelText(m.destination), 'draft')
+    await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
     act(() =>
       cache.setQueryData(
         getConversationQueryKey({ path: { identity: 'one' } }),
         {
           id: 'one',
-          definition: { title: 'A new scene', llm_profile: 'fake' },
+          definition: { title: 'Scene', llm_profile: 'fake' },
+          state: {},
           turns: [],
-          state: { place: 'remote' },
           revision: 1,
         },
       ),
     )
-    await userEvent.click(screen.getByRole('button', { name: m.confirmAction }))
-    expect(commands).toHaveLength(1)
-    expect(commands[0]).toMatchObject({
-      expected_revision: 0,
-      action: { kind: 'move', destination: 'draft' },
-    })
-    expect(screen.getByLabelText(m.destination)).toHaveValue('draft')
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      m.errors.operation_conflict,
+    await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+    await userEvent.type(
+      screen.getByRole('textbox', { name: m.messageLabel }),
+      'Go together?',
     )
+    expect(requests).toHaveLength(0)
+    expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
+    await userEvent.click(
+      screen.getByRole('button', { name: m.confirmCurrentAction }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0]).toMatchObject({
+      expected_revision: 1,
+      text: 'Go together?',
+      action: { kind: 'move', destination: 'Beach' },
+    })
   })
   it.each(['intention', 'pose'])(
-    'starts a new %s draft at the current revision after discarding another action',
+    'starts a replacement %s action at the current revision',
     async (next) => {
       const cache = new QueryClient({
         defaultOptions: {
@@ -370,31 +416,20 @@ describe('conversation workflow', () => {
           mutations: { retry: false },
         },
       })
-      const commands: unknown[] = []
+      const requests: unknown[] = []
       server.use(
         http.post(
-          `${base}/api/v1/conversations/one/actions`,
+          `${base}/api/v1/conversations/one/turns`,
           async ({ request }) => {
-            commands.push(await request.json())
-            return HttpResponse.json(
-              { code: 'operation_conflict' },
-              { status: 409 },
-            )
+            requests.push(await request.json())
+            return HttpResponse.json({ id: 'op', state: 'accepted' })
           },
         ),
       )
       app('/conversations/one', cache)
-      await screen.findByLabelText(m.destination)
-      if (next === 'pose')
-        await userEvent.selectOptions(
-          screen.getByLabelText(m.chooseAction),
-          'prepare',
-        )
       await userEvent.type(
-        screen.getByLabelText(
-          next === 'pose' ? m.preparationValue : m.destination,
-        ),
-        'discarded',
+        await screen.findByLabelText(m.destination),
+        'Discarded',
       )
       act(() =>
         cache.setQueryData(
@@ -402,38 +437,40 @@ describe('conversation workflow', () => {
           {
             id: 'one',
             definition: { title: 'Scene', llm_profile: 'fake' },
-            turns: [],
             state: {},
+            turns: [],
             revision: 1,
           },
         ),
+      )
+      await userEvent.selectOptions(
+        screen.getByLabelText(m.chooseAction),
+        next === 'pose' ? 'prepare' : 'intention',
       )
       if (next === 'pose')
         await userEvent.selectOptions(
           screen.getByLabelText(m.choosePreparation),
           'pose',
         )
-      else
-        await userEvent.selectOptions(
-          screen.getByLabelText(m.chooseAction),
-          'intention',
-        )
       await userEvent.type(
         screen.getByLabelText(
           next === 'pose' ? m.preparationValue : m.currentIntention,
         ),
-        'new draft',
+        'New draft',
       )
-      await userEvent.click(
-        screen.getByRole('button', { name: m.confirmAction }),
+      await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+      await userEvent.type(
+        screen.getByRole('textbox', { name: m.messageLabel }),
+        'Hello',
       )
-      await waitFor(() => expect(commands).toHaveLength(1))
-      expect(commands[0]).toMatchObject({
+      await userEvent.click(screen.getByRole('button', { name: m.send }))
+      await waitFor(() => expect(requests).toHaveLength(1))
+      expect(requests[0]).toMatchObject({
         expected_revision: 1,
         action:
           next === 'pose'
-            ? { kind: 'prepare', pose: 'new draft' }
-            : { kind: 'intention', text: 'new draft' },
+            ? { kind: 'prepare', pose: 'New draft' }
+            : { kind: 'intention', text: 'New draft' },
       })
     },
   )
@@ -474,76 +511,95 @@ describe('conversation workflow', () => {
     ).not.toBeInTheDocument()
     expect(posts).toBe(1)
   })
-  it('retains an unknown action receipt when the pane closes and never resends it', async () => {
+  it('retains a queued action when the pane closes and waits for one send receipt', async () => {
     const requests: Array<{ operation_id: string }> = []
+    let received = false
+    const cache = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
     server.use(
       http.post(
-        `${base}/api/v1/conversations/one/actions`,
+        `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
           requests.push((await request.json()) as { operation_id: string })
           return HttpResponse.error()
         },
       ),
-      http.get(`${base}/api/v1/conversations/one/actions`, () =>
-        HttpResponse.json([{ request: requests[0], reaction_id: 'reaction' }]),
-      ),
-      http.get(`${base}/api/v1/operations/reaction`, () =>
-        HttpResponse.json({ id: 'reaction', state: 'complete' }),
+      http.get(`${base}/api/v1/operations/:id`, ({ params }) =>
+        received
+          ? HttpResponse.json({
+              id: params.id,
+              conversation_id: 'one',
+              state: 'complete',
+            })
+          : HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
       ),
     )
-    app('/conversations/one')
+    app('/conversations/one', cache)
     await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
+    await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
     await userEvent.click(screen.getByRole('button', { name: m.closeState }))
-    await userEvent.click(screen.getByRole('button', { name: m.showState }))
-    expect(screen.getByLabelText(m.destination)).toHaveValue('Beach')
-    await userEvent.click(screen.getByRole('button', { name: m.confirmAction }))
-    await screen.findByRole('button', { name: m.checkAction })
-    await userEvent.click(screen.getByRole('button', { name: m.closeState }))
-    await userEvent.type(
-      screen.getByRole('textbox', { name: m.messageLabel }),
-      'Next',
-    )
+    const input = screen.getByRole('textbox', { name: m.messageLabel })
+    await userEvent.type(input, 'Go together?')
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await screen.findByRole('button', { name: m.retryRequest })
+    expect(requests).toHaveLength(1)
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Next draft')
     expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
-    await userEvent.click(screen.getByRole('button', { name: m.showState }))
-    await userEvent.click(
-      await screen.findByRole('button', { name: m.checkAction }),
+    received = true
+    await act(() =>
+      cache.invalidateQueries({
+        queryKey: getOperationQueryKey({
+          path: { identity: requests[0].operation_id },
+        }),
+      }),
     )
     await waitFor(() =>
-      expect(screen.getByLabelText(m.destination)).toHaveValue(''),
+      expect(
+        screen.queryByRole('button', { name: m.removeQueuedAction }),
+      ).not.toBeInTheDocument(),
     )
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: m.send })).toBeEnabled(),
-    )
+    expect(input).toHaveValue('Next draft')
     expect(requests).toHaveLength(1)
   })
-  it('only retries an unknown action explicitly with the same operation', async () => {
+  it('retries a message with its action only explicitly using the same operation', async () => {
     const requests: unknown[] = []
     server.use(
       http.post(
-        `${base}/api/v1/conversations/one/actions`,
+        `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
           const body = await request.json()
           requests.push(body)
           return requests.length === 1
             ? HttpResponse.error()
-            : HttpResponse.json({ request: body, reaction_id: 'reaction' })
+            : HttpResponse.json({ id: 'op', state: 'accepted' })
         },
       ),
-      http.get(`${base}/api/v1/operations/reaction`, () =>
-        HttpResponse.json({ id: 'reaction', state: 'complete' }),
+      http.get(`${base}/api/v1/operations/:id`, () =>
+        HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
       ),
     )
     app('/conversations/one')
     await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
-    await userEvent.click(screen.getByRole('button', { name: m.confirmAction }))
-    const retry = await screen.findByRole('button', { name: m.retryRequest })
-    expect(requests).toHaveLength(1)
-    await userEvent.click(retry)
-    await waitFor(() =>
-      expect(screen.getByLabelText(m.destination)).toHaveValue(''),
+    await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+    await userEvent.type(
+      screen.getByRole('textbox', { name: m.messageLabel }),
+      'Go together?',
     )
-    expect(requests).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: m.retryRequest }),
+    )
+    await waitFor(() => expect(requests).toHaveLength(2))
     expect(requests[0]).toEqual(requests[1])
+    expect(requests[0]).toMatchObject({
+      text: 'Go together?',
+      action: { kind: 'move', destination: 'Beach' },
+    })
   })
   it('keeps visual review recovery reachable after the saved review arrives', async () => {
     const cache = new QueryClient({

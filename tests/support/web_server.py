@@ -133,7 +133,16 @@ def main() -> None:
 
         def dispatch(self) -> None:
             content = self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            if self.path == "/v1/chat/completions":
+            if self.path == "/v1/models":
+                response = httpx.Response(
+                    200,
+                    json={
+                        "data": [
+                            {"id": client._execution.settings.llm_profiles["lmstudio-4b"].model}
+                        ]
+                    },
+                )
+            elif self.path == "/v1/chat/completions":
                 response = httpx.Response(200, json=scripted_completion(json.loads(content)))
             else:
                 response = self.comfy_response(content)

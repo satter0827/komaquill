@@ -39,7 +39,6 @@ def legacy_execution(connection):
             {"id": identity, "payload": json.dumps(value, ensure_ascii=False)},
         )
     for table in (
-        "content_labels",
         "operation_policies",
         "conversation_turns",
         "conversation_events",

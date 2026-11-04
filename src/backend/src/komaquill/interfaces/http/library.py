@@ -8,7 +8,6 @@ from fastapi import BackgroundTasks, FastAPI, Response
 from komaquill.adapters.conversation_archive import ArchivedConversation
 from komaquill.api import Client
 from komaquill.conversations.models import Conversation
-from komaquill.domain.content import ContentLabel, ContentUpdate
 from komaquill.library.models import (
     CharacterPreset,
     CharacterSaveRequest,
@@ -27,14 +26,6 @@ from komaquill.library.models import (
 
 
 def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
-    @app.get("/api/v1/content", response_model=list[ContentLabel], operation_id="list_content")
-    def content() -> list[ContentLabel]:
-        return selected().content.list()
-
-    @app.put("/api/v1/content", response_model=ContentLabel, operation_id="classify_content")
-    def classify(body: ContentUpdate) -> ContentLabel:
-        return selected().content.update(body)
-
     @app.get(
         "/api/v1/archive/conversations",
         response_model=list[ArchivedConversation],
@@ -112,15 +103,12 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
     @app.post(
         "/api/v1/characters/save", response_model=PresetSaveResult, operation_id="save_character"
     )
-    def save_character(body: CharacterSaveRequest, tasks: BackgroundTasks) -> PresetSaveResult:
+    def save_character(body: CharacterSaveRequest) -> PresetSaveResult:
         result = selected().library.save_preset(
             "character",
             body.value,
             PresetSaveOptions.model_validate(body.model_dump(exclude={"value"})),
-            execute=False,
         )
-        if result.job is not None:
-            tasks.add_task(selected().library.execute, result.job.id)
         return result
 
     @app.get(
@@ -150,15 +138,12 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
         return selected().stories.list()
 
     @app.post("/api/v1/stories/save", response_model=PresetSaveResult, operation_id="save_story")
-    def save_story(body: StorySaveRequest, tasks: BackgroundTasks) -> PresetSaveResult:
+    def save_story(body: StorySaveRequest) -> PresetSaveResult:
         result = selected().library.save_preset(
             "story",
             body.value,
             PresetSaveOptions.model_validate(body.model_dump(exclude={"value"})),
-            execute=False,
         )
-        if result.job is not None:
-            tasks.add_task(selected().library.execute, result.job.id)
         return result
 
     @app.get("/api/v1/stories/{identity}", response_model=StoryPreset, operation_id="get_story")

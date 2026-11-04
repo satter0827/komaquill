@@ -1,9 +1,11 @@
+import { isRejectedRequest } from '../api/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import type { CreationJob, CreationRequest } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
+import { recheckAvailability } from './availability'
 import {
   creationOptions,
   keepTerminal,
@@ -18,16 +20,8 @@ export function useCreation() {
   const mutation = useMutation({
     ...q.createJobMutation(),
     onError: (error) => {
-      const code =
-        error && typeof error === 'object' && 'code' in error
-          ? error.code
-          : null
-      if (
-        code === 'invalid_request' ||
-        code === 'request_not_found' ||
-        code === 'operation_conflict' ||
-        code === 'operation_busy'
-      ) {
+      void recheckAvailability(cache)
+      if (isRejectedRequest(error)) {
         setPrepared(null)
       }
     },

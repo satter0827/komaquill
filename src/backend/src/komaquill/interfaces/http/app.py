@@ -14,7 +14,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from komaquill.api import Client, KomaquillError, Run, SessionStatus
-from komaquill.conversations.actions import ActionRecord, ActionRequest, ProposalDismissal
+from komaquill.availability import Availability, AvailabilityRequest
+from komaquill.conversations.actions import ActionRecord, ProposalDismissal
 from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.conversations.models import (
     Conversation,
@@ -176,6 +177,12 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         return selected().conversations.list()
 
     @app.post(
+        "/api/v1/availability", response_model=Availability, operation_id="check_availability"
+    )
+    def availability(body: AvailabilityRequest, refresh: bool = False) -> Availability:
+        return selected().availability.check(body, refresh=refresh)
+
+    @app.post(
         "/api/v1/conversations",
         response_model=Conversation,
         status_code=201,
@@ -266,19 +273,6 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         if created:
             tasks.add_task(service.execute, operation.id)
         return describe_operation(operation)
-
-    @app.post(
-        "/api/v1/conversations/{identity}/actions",
-        response_model=ActionRecord,
-        status_code=202,
-        operation_id="perform_action",
-    )
-    def perform_action(identity: UUID, body: ActionRequest, tasks: BackgroundTasks) -> ActionRecord:
-        service = selected().conversations
-        record, created = service.accept_action(identity, body)
-        if created:
-            tasks.add_task(service.execute, record.reaction_id)
-        return record
 
     @app.get(
         "/api/v1/conversations/{identity}/actions",

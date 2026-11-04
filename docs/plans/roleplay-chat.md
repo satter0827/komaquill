@@ -1,5 +1,7 @@
 # 会話ライブラリ・APIサーバー・React画面の統合計画
 
+発言と行動の同時送信、接続条件、保存と画像生成の分離、固定NSFWへの更新は[操作と接続確認](../current/operations-and-availability.md)へ反映する。検証の対象と残る品質確認は[会話・描画・画面構成の検証](../verification/results/conversation-ui-operations.md)を参照する。
+
 状態: 画面とAPIの基本版を実装・自動検証済み。詳細な状態制約、ターン限定の方針、実LLM・GPUの受入は継続中。現状確認日: 2026-10-31 JST。
 
 確認した製品コードの基準コミットは`91b503b1ee40a71506cc6c26fbf42e64a227651c`。要件は[要件台帳](../requirements/catalog.toml)のREQ-CHAT、REQ-MONOREPO、REQ-WEB、REQ-HTTPで始まる項目を参照する。実装済みの利用方法は現在設計と操作手順を参照する。未確認の受入条件を完了として扱わない。既存の未コミット変更、個人設定、作品、履歴は保全する。

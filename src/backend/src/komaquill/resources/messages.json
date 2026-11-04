@@ -390,14 +390,12 @@
   "storage.repair_applied": "Repair {identity}: {repaired} repaired, {already} already applied, {skipped} skipped.",
   "storage.repair_stop_required": "Close applications using this workspace before repairing image links. Repair is blocked until file usage can be verified.",
   "error.visual_review_required": "Review physical features and clothing before generating a new scene.",
-  "chat.act": "Apply a confirmed player action and generate the companion reaction.",
   "chat.action_json": "A typed player action as JSON.",
   "chat.action_id": "An operation ID for safe confirmation.",
   "chat.actions": "Show confirmed player actions.",
   "error.content_hidden": "This content is hidden. Enable NSFW in content settings to review its classification.",
   "chat.subjects": "People to draw: partner, both people, or environment.",
   "chat.viewpoint": "Camera viewpoint.",
-  "chat.nsfw": "Set the workspace NSFW preference.",
   "chat.notes": "Replace pinned conversation notes.",
   "chat.note": "A pinned note; repeat this option for multiple notes.",
   "chat.scene": "Save a completed scene or create a branch.",
@@ -408,5 +406,6 @@
   "chat.export_images": "Include copies of saved images.",
   "chat.export_conditions": "Include saved generation conditions.",
   "chat.resume_operation": "Resume a retained operation after checking its state.",
-  "error.image_composition_unavailable": "Two-person images require the WAI image model. Select WAI before drawing both people."
+  "error.image_composition_unavailable": "Two-person images require the WAI image model. Select WAI before drawing both people.",
+  "chat.proposal_id": "Identifier of the action proposal attached to this message."
 }

@@ -92,7 +92,13 @@ def verify_conversations(api, report, record):
         for locale, text in turns:
             operation = api.conversations.send(
                 conversation.id,
-                SendInput(operation_id=uuid4(), text=text, locale=locale, allow_real_llm=True),
+                SendInput(
+                    expected_revision=0,
+                    operation_id=uuid4(),
+                    text=text,
+                    locale=locale,
+                    allow_real_llm=True,
+                ),
             )
             report["cases"].append(
                 {

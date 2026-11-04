@@ -497,7 +497,7 @@ tests = ["tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/fixtures.ts"]
 [requirements.REQ-PLAYER-ACTIONS]
 summary = "自分の行動を確認して確定し会話と画像へ同じ状態を反映する"
 status = "implemented"
-acceptance = ["自分の行動案は確認前に適用しない", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
+acceptance = ["自分の行動案は発言と同時に送信するまで適用しない", "行動には発言を必須とし一件の応答操作で受け付ける", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
 sources = ["src/backend/src/komaquill/conversations/actions.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/database.py", "src/frontend/src/features/player-actions.tsx"]
 tests = ["tests/integration/test_player_actions.py", "tests/integration/test_player_review_regressions.py", "src/frontend/tests/conversations.test.tsx", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]
 
@@ -509,11 +509,11 @@ sources = ["src/backend/src/komaquill/adapters/checkpoints.py", "src/backend/src
 tests = ["tests/integration/test_execution_content.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_conversation_memory.py"]
 
 [requirements.REQ-CONTENT-MODE]
-summary = "NSFWを明示設定で切り替え、既存作品と処理中の保存を保全する"
+summary = "すべての保存物を固定NSFWとして扱い実行条件と原本を保全する"
 status = "implemented"
-acceptance = ["作業フォルダー単位のNSFWチェックボックスを既定OFFで保存し、現在の設定を表示する", "OFFでNSFWと未分類を一覧・詳細・画像・出力から隠す", "ONの実LLM送信はローカル接続に限定し、操作の設定を受付時に固定する", "設定変更でも受付済み処理の保存と回収を妨げない", "既存記録は未分類とし、分類変更には版と操作IDを必要とする", "画面の非表示は入力を保持し、表示切替では作品のキャッシュを破棄する"]
-sources = ["src/backend/src/komaquill/adapters/content.py", "src/backend/src/komaquill/domain/content.py", "src/frontend/src/features/content.tsx", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/shell.tsx"]
-tests = ["tests/integration/test_execution_content.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/content.spec.ts"]
+acceptance = ["現役・過去・archiveを固定NSFWとして閲覧できる", "切替・個別分類・区分フィルターを提供しない", "新規の実LLM送信はローカル接続と明示許可を必要とする", "明示移行で旧設定と実行記録・画像・履歴のハッシュを保全する", "画面を隠しても入力とスクロールを保持し復帰できる"]
+sources = ["src/backend/src/komaquill/adapters/content.py", "src/backend/src/komaquill/domain/content.py", "src/backend/src/komaquill/adapters/migrations/versions/0011_fixed_content.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/shell.tsx"]
+tests = ["tests/integration/test_execution_content.py", "tests/integration/test_operation_availability.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/content.spec.ts"]
 
 [requirements.REQ-SCENE-TOOLS]
 summary = "メモと確定場面を保存し、分岐・描画・共有用コピーへ反映する"
@@ -521,3 +521,10 @@ status = "implemented"
 acceptance = ["固定メモ、文体、話題と避けたい内容を生成文脈へ渡す", "環境、相手の動作、台詞を分け、物理的な持ち物を識別子で区別する", "確定場面の状態とメモを保存し、元作品を変更せず指定ターンから分岐する", "相手、自分と相手、風景の対象と視点を固定し、二人はWAIで扱う", "共有用ZIPの画像と生成条件を個別選択し、原本を変更せず画像コピーのメタデータを除く"]
 sources = ["src/backend/src/komaquill/conversations/editing.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/conversation_export.py", "src/frontend/src/features/conversation-tools.tsx"]
 tests = ["tests/integration/test_execution_content.py", "tests/unit/test_conversation_context.py", "tests/e2e/web/content.spec.ts"]
+
+[requirements.REQ-OPERATION-AVAILABILITY]
+summary = "操作の入力から必要接続を求め接続確認後に生成を受け付ける"
+status = "implemented"
+acceptance = ["設定の存在と対象モデル・実行先の観測を区別する", "翻訳不要の描画にLLMを要求しない", "未確認・確認中・期限切れ・利用不可では依存する実行操作を止める", "受付前に共通判定を行い通信中はDBロックを保持しない", "本文保存・履歴閲覧・ダウンロード・保存済み結果の確定に不要な接続を要求しない", "接続確認で推論・モデル読み込み・GPU確保を行わない"]
+sources = ["src/backend/src/komaquill/availability.py", "src/backend/src/komaquill/api/availability.py", "src/frontend/src/features/availability.tsx"]
+tests = ["tests/integration/test_operation_availability.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/layout-availability.spec.ts"]

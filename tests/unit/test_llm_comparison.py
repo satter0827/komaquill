@@ -12,6 +12,8 @@ from scripts import compare_llm as comparison
 from scripts._support import atomic_json
 from tests.support.conversations import wire_reply
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 def budget(path, *, max_calls=52, deadline=None):
     atomic_json(

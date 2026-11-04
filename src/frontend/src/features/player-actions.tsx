@@ -1,22 +1,17 @@
 import { parseObjects } from './physical-objects'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import type {
-  ActionRequest,
+  SendInput,
   Conversation,
   ProposalDismissal,
   VisualReview,
   VisualPerson,
 } from '../api/generated/types.gen'
-import {
-  useFailure,
-  useFormatMessage,
-  useMessages,
-  usePreferences,
-} from '../app/preferences'
+import { useFailure, useFormatMessage, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
-type PlayerAction = ActionRequest['action']
+type PlayerAction = NonNullable<SendInput['action']>
 
 export function ActionDescription({ action }: { action: PlayerAction }) {
   const m = useMessages()
@@ -57,20 +52,21 @@ export function ActionDescription({ action }: { action: PlayerAction }) {
 export function usePlayerActions({
   identity,
   conversation,
-  onReaction,
 }: {
   identity: string
   conversation: Conversation | undefined
-  onReaction: (identity: string) => void
 }) {
-  const preferences = usePreferences()
   const cache = useQueryClient()
   const [kind, setKind] = useState<PlayerAction['kind']>('move')
   const [value, setValue] = useState('')
   const [prepareField, setPrepareField] = useState<
     'clothing' | 'pose' | 'expression' | 'held_objects'
   >('clothing')
-  const [prepared, setPrepared] = useState<ActionRequest | null>(null)
+  const [queued, setQueued] = useState<{
+    action: PlayerAction
+    proposal_id?: string
+    revision: number
+  } | null>(null)
   const [dismissal, setDismissal] = useState<{
     proposal_id: string
     body: ProposalDismissal
@@ -80,68 +76,27 @@ export function usePlayerActions({
     cache.invalidateQueries({
       queryKey: q.getConversationQueryKey({ path: { identity } }),
     })
-  const action = useMutation({
-    ...q.performActionMutation(),
-    onError: (error) => {
-      const code =
-        error && typeof error === 'object' && 'code' in error
-          ? error.code
-          : null
-      if (
-        [
-          'invalid_request',
-          'operation_conflict',
-          'operation_busy',
-          'visual_review_required',
-        ].includes(String(code))
-      ) {
-        setPrepared(null)
-        void refresh()
-      }
-    },
-    onSuccess: (record) => {
-      setPrepared(null)
-      draftRevisionRef.current = null
-      setValue('')
-      onReaction(record.reaction_id)
-      void refresh()
-      void cache.invalidateQueries({
-        queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
-      })
-    },
-  })
+  const clear = useCallback(() => {
+    setQueued(null)
+    setValue('')
+    draftRevisionRef.current = null
+  }, [])
   const dismiss = useMutation({
     ...q.dismissProposalMutation(),
     onSuccess: () => {
       setDismissal(null)
+      clear()
       void refresh()
     },
-    onError: (error) => {
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        ['operation_conflict', 'operation_busy', 'invalid_request'].includes(
-          String(error.code),
-        )
-      )
-        setDismissal(null)
-    },
   })
-  const submit = (selected: PlayerAction, proposal_id?: string) => {
-    const body = prepared ?? {
-      operation_id: crypto.randomUUID(),
-      expected_revision: proposal_id
-        ? (conversation?.revision ?? 0)
-        : (draftRevisionRef.current ?? conversation?.revision ?? 0),
-      action: selected,
+  const queue = (action: PlayerAction, proposal_id?: string) =>
+    setQueued({
+      action,
       proposal_id,
-      locale: preferences.value.locale,
-      allow_real_llm: true,
-    }
-    setPrepared(body)
-    action.mutate({ path: { identity }, body })
-  }
+      revision: proposal_id
+        ? (conversation!.revision ?? 0)
+        : (draftRevisionRef.current ?? conversation!.revision ?? 0),
+    })
   return {
     kind,
     setKind,
@@ -149,19 +104,18 @@ export function usePlayerActions({
     setValue,
     prepareField,
     setPrepareField,
-    prepared,
-    setPrepared,
+    queued,
+    setQueued,
     draftRevisionRef,
-    action,
+    clear,
+    queue,
     dismiss,
     dismissal,
     setDismissal,
-    submit,
-    refresh,
-    unresolved: !!prepared || !!dismissal,
-    cache,
-    onReaction,
     identity,
+    refresh,
+    cache,
+    unresolved: !!dismissal,
   }
 }
 
@@ -183,54 +137,50 @@ export function PlayerActions({
     setValue,
     prepareField,
     setPrepareField,
-    prepared,
-    setPrepared,
+    queued,
+    setQueued,
     draftRevisionRef,
-    action,
+    queue,
     dismiss,
     dismissal,
     setDismissal,
-    submit,
-    refresh,
-    cache,
-    onReaction,
     identity,
+    cache,
   } = controls
-  const blocked = busy || action.isPending || dismiss.isPending || !!dismissal
+  const blocked = busy || dismiss.isPending || !!dismissal
   return (
     <section className="player-actions">
       <h3>{m.myActions}</h3>
+      <p className="subtle">{m.actionWithMessage}</p>
       {(conversation.proposals ?? [])
         .filter((p) => p.state === 'pending')
         .map((p) => (
           <article className="action-proposal" key={p.id}>
             <ActionDescription action={p.action} />
-            <Button
-              disabled={
-                blocked ||
-                !!prepared ||
-                p.revision !== (conversation.revision ?? 0)
-              }
-              onClick={() => submit(p.action, p.id)}
-            >
-              {m.confirmAction}
-            </Button>
-            <Button
-              disabled={blocked || !!prepared}
-              onClick={() => {
-                const body = {
-                  operation_id: crypto.randomUUID(),
-                  expected_revision: conversation.revision ?? 0,
-                }
-                setDismissal({ proposal_id: p.id, body })
-                dismiss.mutate({
-                  path: { identity, proposal_id: p.id },
-                  body,
-                })
-              }}
-            >
-              {m.dismissAction}
-            </Button>
+            <div className="actions">
+              <Button
+                disabled={blocked || p.revision !== conversation.revision}
+                onClick={() => queue(p.action, p.id)}
+              >
+                {m.queueAction}
+              </Button>
+              <Button
+                disabled={blocked}
+                onClick={() => {
+                  const body = {
+                    operation_id: crypto.randomUUID(),
+                    expected_revision: conversation.revision ?? 0,
+                  }
+                  setDismissal({ proposal_id: p.id, body })
+                  dismiss.mutate({
+                    path: { identity, proposal_id: p.id },
+                    body,
+                  })
+                }}
+              >
+                {m.dismissAction}
+              </Button>
+            </div>
           </article>
         ))}
       <form
@@ -253,16 +203,16 @@ export function PlayerActions({
                             )
                           : value,
                     }
-          submit(selected)
+          queue(selected)
         }}
       >
-        <fieldset disabled={blocked || !!prepared}>
+        <fieldset disabled={blocked}>
           <label>
             {m.chooseAction}
             <select
               value={kind}
-              onChange={(event) => {
-                setKind(event.target.value as PlayerAction['kind'])
+              onChange={(e) => {
+                setKind(e.target.value as PlayerAction['kind'])
                 setValue('')
                 draftRevisionRef.current = null
               }}
@@ -278,13 +228,13 @@ export function PlayerActions({
               {m.choosePreparation}
               <select
                 value={prepareField}
-                onChange={(event) => {
-                  setPrepareField(event.target.value as typeof prepareField)
+                onChange={(e) => {
+                  setPrepareField(e.target.value as typeof prepareField)
                   setValue('')
                   draftRevisionRef.current = null
                 }}
               >
-                <option value="clothing">{m.clothing}</option>
+                <option value="clothing">{m.playerClothing}</option>
                 <option value="pose">{m.pose}</option>
                 <option value="expression">{m.expression}</option>
                 <option value="held_objects">{m.heldObjects}</option>
@@ -299,94 +249,38 @@ export function PlayerActions({
                 : kind === 'prepare'
                   ? m.preparationValue
                   : m.currentIntention}
-            {kind === 'prepare' && prepareField === 'held_objects' ? (
-              <textarea
-                value={value}
-                rows={3}
-                onChange={(event) => {
-                  draftRevisionRef.current ??= conversation.revision ?? 0
-                  setValue(event.target.value)
-                }}
-              />
-            ) : (
-              <input
-                required={kind === 'move' || kind === 'wait'}
-                type={kind === 'wait' ? 'number' : 'text'}
-                min={kind === 'wait' ? 1 : undefined}
-                value={value}
-                onChange={(event) => {
-                  draftRevisionRef.current ??= conversation.revision ?? 0
-                  setValue(event.target.value)
-                }}
-              />
-            )}
+            <input
+              required={kind === 'move' || kind === 'wait'}
+              type={kind === 'wait' ? 'number' : 'text'}
+              min={kind === 'wait' ? 1 : undefined}
+              value={value}
+              onChange={(e) => {
+                draftRevisionRef.current ??= conversation.revision ?? 0
+                setValue(e.target.value)
+              }}
+            />
           </label>
-          <Button type="submit">{m.confirmAction}</Button>
+          <Button type="submit">{m.queueAction}</Button>
         </fieldset>
       </form>
-      {action.error && (
-        <p className="error" role="alert">
-          {failure(action.error)}
-        </p>
-      )}
-      {action.isError && !prepared && (
-        <Button
-          onClick={async () => {
-            const current = await cache.fetchQuery(
-              q.getConversationOptions({ path: { identity } }),
-            )
-            draftRevisionRef.current = current.revision ?? 0
-            action.reset()
-          }}
-        >
-          {m.reviewAction}
-        </Button>
+      {queued && queued.revision !== conversation.revision && (
+        <div role="alert">
+          <p>{m.reviewAction}</p>
+          <Button
+            disabled={blocked}
+            onClick={() => {
+              draftRevisionRef.current = conversation.revision ?? 0
+              setQueued({ ...queued, revision: conversation.revision ?? 0 })
+            }}
+          >
+            {m.confirmCurrentAction}
+          </Button>
+        </div>
       )}
       {dismiss.error && (
         <p className="error" role="alert">
           {failure(dismiss.error)}
         </p>
-      )}
-      {prepared && action.isError && (
-        <Button
-          onClick={() => action.mutate({ path: { identity }, body: prepared })}
-        >
-          {m.retryRequest}
-        </Button>
-      )}
-      {prepared && action.isError && (
-        <Button
-          onClick={async () => {
-            const records = await cache.fetchQuery(
-              q.getActionsOptions({ path: { identity } }),
-            )
-            const record = records.find(
-              (r) => r.request.operation_id === prepared.operation_id,
-            )
-            if (record) {
-              setPrepared(null)
-              draftRevisionRef.current = null
-              setValue('')
-              action.reset()
-              onReaction(record.reaction_id)
-              await refresh()
-            }
-          }}
-        >
-          {m.checkAction}
-        </Button>
-      )}
-      {dismissal && dismiss.isError && (
-        <Button
-          onClick={() =>
-            dismiss.mutate({
-              path: { identity, proposal_id: dismissal.proposal_id },
-              body: dismissal.body,
-            })
-          }
-        >
-          {m.retryRequest}
-        </Button>
       )}
       {dismissal && dismiss.isError && (
         <Button

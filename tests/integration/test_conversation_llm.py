@@ -5,11 +5,13 @@ from uuid import uuid4
 
 import pytest
 from komaquill.api import Client
-from komaquill.conversations.models import ConversationInput, SendInput
+from komaquill.conversations.models import ConversationInput, SendInput, TurnRequest
 from komaquill.domain.roleplay import ConversationState
 from komaquill.library.models import CreationRequest
 
 from tests.support.conversations import set_state, wire_reply
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def wire_state(value):
@@ -104,7 +106,13 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
         )
     )
     api.conversations.send(
-        conversation.id, SendInput(operation_id=uuid4(), text="Sit in the garden")
+        conversation.id,
+        SendInput(
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Sit in the garden",
+        ),
     )
     current = api.conversations.get(conversation.id)
     set_state(
@@ -128,10 +136,15 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     )
     original.reply(
         api.conversations.get(current.id),
-        SendInput(
-            operation_id=uuid4(),
-            text="Continue",
-            allow_real_llm=True,
+        TurnRequest.model_validate_json(
+            (
+                SendInput(
+                    expected_revision=0,
+                    operation_id=uuid4(),
+                    text="Continue",
+                    allow_real_llm=True,
+                )
+            ).model_dump_json()
         ),
     )
     context = json.loads(
@@ -237,11 +250,16 @@ def test_operation_conditions_replace_frozen_prompt_defaults(tmp_path, monkeypat
     )
     api.conversations.responder.reply(
         conversation,
-        SendInput(
-            operation_id=uuid4(),
-            text="Show the scene.",
-            locale="en",
-            allow_real_llm=True,
+        TurnRequest.model_validate_json(
+            (
+                SendInput(
+                    expected_revision=0,
+                    operation_id=uuid4(),
+                    text="Show the scene.",
+                    locale="en",
+                    allow_real_llm=True,
+                )
+            ).model_dump_json()
         ),
     )
     context = json.loads(
@@ -415,7 +433,9 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
             llm_profile="lmstudio-4b",
         )
     )
-    request = SendInput(operation_id=uuid4(), text="A private prompt", allow_real_llm=True)
+    request = SendInput(
+        expected_revision=0, operation_id=uuid4(), text="A private prompt", allow_real_llm=True
+    )
     result = client.conversations.send(conversation.id, request)
     assert len(calls) == (2 if case in {"repair", "invalid"} else 1)
     assert options[0]["max_retries"] == 0 and options[0]["cache"] is False
@@ -504,7 +524,12 @@ def test_context_limit_preserves_fixed_data_and_bounds_history(tmp_path, monkeyp
             api.conversations.repository._store(connection, value)
     result = api.conversations.send(
         conversation.id,
-        SendInput(operation_id=uuid4(), text="Current message", allow_real_llm=True),
+        SendInput(
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Current message",
+            allow_real_llm=True,
+        ),
     )
     assert result.error == "context_limit_exceeded" and calls == []
 
@@ -628,11 +653,25 @@ def test_language_switch_schema_and_repair_target_narration(
     api.conversations.responder = SimpleNamespace(
         reply=lambda *_: Reply(text=prior, narration=prior, state_patch={})
     )
-    api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Previous"))
+    api.conversations.send(
+        conversation.id,
+        SendInput(
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Previous",
+        ),
+    )
     api.conversations.responder = responder
     operation = api.conversations.send(
         conversation.id,
-        SendInput(operation_id=uuid4(), text="Continue", locale=locale, allow_real_llm=True),
+        SendInput(
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            locale=locale,
+            allow_real_llm=True,
+        ),
     )
     assert operation.state == "complete" and len(calls) == 2
     assert language in calls[0][0].content

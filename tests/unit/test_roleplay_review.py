@@ -12,6 +12,8 @@ from komaquill.domain.status import SessionStatus
 
 from scripts import review_roleplay as review
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 @pytest.mark.parametrize("failed", [False, True])
 def test_turn_collection_saves_the_actual_operation_and_snapshot_without_retry(tmp_path, failed):
@@ -26,7 +28,9 @@ def test_turn_collection_saves_the_actual_operation_and_snapshot_without_retry(t
     sent = []
     api = SimpleNamespace(
         conversations=SimpleNamespace(
-            send=lambda *args: sent.append(args) or operation, get=lambda _: conversation
+            send=lambda *args: sent.append(args) or operation,
+            get=lambda _: conversation,
+            overview=lambda _: conversation,
         )
     )
     report = {"turns": []}
@@ -158,7 +162,9 @@ def test_preexisting_runtime_is_never_started_or_stopped(tmp_path, monkeypatch):
 def test_failed_image_acceptance_is_reported_without_waiting_for_a_missing_run(tmp_path):
     from komaquill.library.models import CreationJob, CreationRequest
 
-    request = CreationRequest(operation_id=uuid4(), kind="portrait", target_id=uuid4())
+    request = CreationRequest(
+        llm_profile="fake", operation_id=uuid4(), kind="portrait", target_id=uuid4()
+    )
     job = CreationJob(
         id=request.operation_id,
         request=request,

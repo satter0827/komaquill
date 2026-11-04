@@ -33,14 +33,21 @@ def send_step(
     from komaquill.api import SendInput
 
     operation = client.conversations.send(
-        identity, SendInput(operation_id=uuid4(), text=text, locale=locale, allow_real_llm=True)
+        identity,
+        SendInput(
+            expected_revision=client.conversations.overview(identity).revision,
+            operation_id=uuid4(),
+            text=text,
+            locale=locale,
+            allow_real_llm=True,
+        ),
     )
     events.append({"kind": "dialogue", "operation": operation.model_dump(mode="json")})
     return client.conversations.get(identity)
 
 
 def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
-    from komaquill.api import ActionRequest, ConversationInput, MoveAction, PrepareAction
+    from komaquill.api import ConversationInput, MoveAction, PrepareAction, SendInput
 
     results: list[dict[str, Any]] = []
     locales: tuple[Literal["ja", "en"], ...] = ("ja", "en")
@@ -91,9 +98,10 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
         before_place = current.state.place
         proposed = proposals[0] if proposals else None
         move = proposed.action if proposed else MoveAction(destination="海辺" if ja else "Beach")
-        record = client.conversations.act(
+        movement_operation = client.conversations.send(
             conversation.id,
-            ActionRequest(
+            SendInput(
+                text="Continue.",
                 operation_id=uuid4(),
                 expected_revision=current.revision,
                 action=move,
@@ -101,6 +109,11 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                 locale=locale,
                 allow_real_llm=True,
             ),
+        )
+        record = next(
+            a
+            for a in client.conversations.actions(conversation.id)
+            if a.reaction_id == movement_operation.id
         )
         events.append(
             {
@@ -110,9 +123,10 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
             }
         )
         current = client.conversations.get(conversation.id)
-        prepared = client.conversations.act(
+        preparation_operation = client.conversations.send(
             conversation.id,
-            ActionRequest(
+            SendInput(
+                text="Continue.",
                 operation_id=uuid4(),
                 expected_revision=current.revision,
                 action=PrepareAction(
@@ -122,6 +136,11 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                 locale=locale,
                 allow_real_llm=True,
             ),
+        )
+        prepared = next(
+            a
+            for a in client.conversations.actions(conversation.id)
+            if a.reaction_id == preparation_operation.id
         )
         events.append({"kind": "confirmed_preparation", "record": prepared.model_dump(mode="json")})
         send(

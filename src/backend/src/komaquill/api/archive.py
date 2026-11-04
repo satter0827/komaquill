@@ -13,7 +13,6 @@ from komaquill.adapters.database import database
 from komaquill.adapters.locations import Locations
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
-from komaquill.domain.content import visible
 from komaquill.domain.errors import KomaquillError, OperationStage
 from komaquill.domain.models import JsonObject
 
@@ -25,14 +24,9 @@ class ArchiveService:
 
     def conversations(self) -> list[ArchivedConversation]:
         storage = database(self.project.data / "komaquill.sqlite3")
-        return [
-            item
-            for item in list_conversations(storage)
-            if visible(storage.content.rating("archive", item.id), storage.content.enabled())
-        ]
+        return [item for item in list_conversations(storage)]
 
     def conversation(self, identity: UUID) -> ArchivedConversation:
-        database(self.project.data / "komaquill.sqlite3").content.require("archive", identity)
         return get_conversation(database(self.project.data / "komaquill.sqlite3"), identity)
 
     def list(self) -> JsonObject:
@@ -53,23 +47,13 @@ class ArchiveService:
                     unreadable.append(str(identity))
             invalid: list[UUID | str] = []
             images = load_archived_runs(self.project, unreadable=invalid)
-            policy = database(self.project.data / "komaquill.sqlite3").content
             return {
-                "works": [
-                    value
-                    for value in works
-                    if visible(policy.rating("archive", str(value["id"])), policy.enabled())
-                ],
-                "images": [
-                    value.model_dump(mode="json")
-                    for value in images
-                    if visible(policy.rating("archive", value.run_id), policy.enabled())
-                ],
+                "works": [value for value in works],
+                "images": [value.model_dump(mode="json") for value in images],
                 "unreadable_ids": [*unreadable, *map(str, invalid)],
             }
 
     def get(self, identity: UUID) -> JsonObject:
-        database(self.project.data / "komaquill.sqlite3").content.require("archive", identity)
         with api_operation(OperationStage.STORAGE):
             if identity not in self.repository.ids():
                 for run in load_archived_runs(self.project):

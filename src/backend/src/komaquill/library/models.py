@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from pydantic import ConfigDict, Field
 
 from komaquill.conversations.models import now
+from komaquill.domain.errors import OperationStage
 from komaquill.domain.roleplay import CharacterDefinition, PersonDefinition, Record, StoryDefinition
 
 Locale = Literal["ja", "en"]
@@ -33,6 +34,7 @@ class SavedPreset(Record):
     revision: int = Field(default=0, ge=0)
     image_id: UUID | None = None
     image_job_id: UUID | None = None
+    image_stale: bool = False
     sample: bool = False
     sample_locale: Locale | None = None
 
@@ -54,7 +56,6 @@ PresetInput = PlayerInput | CharacterInput | StoryInput
 
 
 class Preferences(Record):
-    nsfw_enabled: bool = False
     revision: int = Field(default=0, ge=0)
     locale: Locale = "ja"
     font_size: Literal["normal", "large"] = "normal"
@@ -104,6 +105,7 @@ class CreationJob(Record):
     image_id: UUID | None = None
     turn_id: UUID | None = None
     error: str | None = None
+    error_stage: OperationStage | None = None
     created_at: str = Field(default_factory=lambda: now().isoformat())
 
 
@@ -123,10 +125,6 @@ class PresetSaveOptions(Record):
     operation_id: UUID
     target_id: UUID | None = None
     expected_revision: int | None = Field(default=None, ge=0)
-    image_policy: Literal["auto", "always", "none"] = "auto"
-    locale: Locale = "ja"
-    llm_profile: str = "lmstudio-4b"
-    allow_real_llm: bool = False
 
 
 class CharacterSaveRequest(PresetSaveOptions):
@@ -139,5 +137,3 @@ class StorySaveRequest(PresetSaveOptions):
 
 class PresetSaveResult(Record):
     preset: CharacterPreset | StoryPreset
-    job: CreationJob | None = None
-    image_error: str | None = None

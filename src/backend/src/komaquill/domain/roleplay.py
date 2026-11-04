@@ -4,6 +4,11 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
+MAX_RELATIONSHIP_LENGTH = 2000
+MAX_SCENERY_LENGTH = 4000
+MAX_CLOTHING_LENGTH = 3000
+MAX_EXPRESSION_POSE_LENGTH = 1000
+
 
 class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -43,7 +48,7 @@ class PersonDefinition(Record):
     address: str = Field(default="", max_length=120)
     age: str = Field(default="", max_length=120)
     gender: str = Field(default="", max_length=120)
-    initial_clothing: str | None = Field(default=None, max_length=3000)
+    initial_clothing: str | None = Field(default=None, max_length=MAX_CLOTHING_LENGTH)
     initial_held_objects: PhysicalObjects = Field(default_factory=list)
     visual_review_required: bool = False
 
@@ -52,7 +57,7 @@ class CharacterDefinition(PersonDefinition):
     personality: str = Field(default="", max_length=3000)
     speech: str = Field(default="", max_length=2000)
     background: str = Field(default="", max_length=4000)
-    relationship: str = Field(default="", max_length=2000)
+    relationship: str = Field(default="", max_length=MAX_RELATIONSHIP_LENGTH)
 
 
 class StoryDefinition(Record):
@@ -66,9 +71,9 @@ class StoryDefinition(Record):
 
 class PersonState(Record):
     appearance: str | None = Field(default=None, max_length=3000)
-    clothing: str | None = Field(default=None, max_length=3000)
-    expression: str | None = Field(default=None, max_length=1000)
-    pose: str | None = Field(default=None, max_length=1000)
+    clothing: str | None = Field(default=None, max_length=MAX_CLOTHING_LENGTH)
+    expression: str | None = Field(default=None, max_length=MAX_EXPRESSION_POSE_LENGTH)
+    pose: str | None = Field(default=None, max_length=MAX_EXPRESSION_POSE_LENGTH)
     held_objects: PhysicalObjects | None = Field(
         default=None,
         max_length=30,
@@ -83,9 +88,9 @@ class ConversationState(Record):
     place: str = Field(default="", max_length=1000)
     time: str = Field(default="", max_length=1000)
     goal: str = Field(default="", max_length=2000)
-    relationship: str = Field(default="", max_length=2000)
+    relationship: str = Field(default="", max_length=MAX_RELATIONSHIP_LENGTH)
     character_place: str = Field(default="", max_length=1000)
-    scenery: str = Field(default="", max_length=4000)
+    scenery: str = Field(default="", max_length=MAX_SCENERY_LENGTH)
     intention: str = Field(default="", max_length=2000)
     elapsed_minutes: int = Field(default=0, ge=0)
     player: PersonState = Field(default_factory=PersonState)
@@ -94,9 +99,9 @@ class ConversationState(Record):
 
 class PersonStatePatch(Record):
     appearance: str | None = Field(default=None, max_length=3000)
-    clothing: str | None = Field(default=None, max_length=3000)
-    expression: str | None = Field(default=None, max_length=1000)
-    pose: str | None = Field(default=None, max_length=1000)
+    clothing: str | None = Field(default=None, max_length=MAX_CLOTHING_LENGTH)
+    expression: str | None = Field(default=None, max_length=MAX_EXPRESSION_POSE_LENGTH)
+    pose: str | None = Field(default=None, max_length=MAX_EXPRESSION_POSE_LENGTH)
     held_objects: PhysicalObjects | None = Field(
         default=None,
         max_length=30,
@@ -113,9 +118,9 @@ class StatePatch(Record):
     place: str | None = Field(default=None, max_length=1000)
     time: str | None = Field(default=None, max_length=1000)
     goal: str | None = Field(default=None, max_length=2000)
-    relationship: str | None = Field(default=None, max_length=2000)
+    relationship: str | None = Field(default=None, max_length=MAX_RELATIONSHIP_LENGTH)
     character_place: str | None = Field(default=None, max_length=1000)
-    scenery: str | None = Field(default=None, max_length=4000)
+    scenery: str | None = Field(default=None, max_length=MAX_SCENERY_LENGTH)
     player: PersonStatePatch | None = None
     character: PersonStatePatch | None = None
 

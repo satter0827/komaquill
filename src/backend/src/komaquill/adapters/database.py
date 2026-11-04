@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 import psutil
 from filelock import FileLock, Timeout
@@ -38,9 +38,9 @@ if TYPE_CHECKING:
 from komaquill.adapters.storage_errors import stored
 from komaquill.conversations.actions import (
     ActionRecord,
-    ActionRequest,
     ProposalDismissal,
     ProposedAction,
+    RecordedActionRequest,
     apply_action,
 )
 from komaquill.conversations.context import require_reviewed
@@ -53,16 +53,16 @@ from komaquill.conversations.models import (
     Reply,
     SendInput,
     Turn,
+    TurnRequest,
 )
 from komaquill.conversations.transitions import apply_reply, published_reply
 from komaquill.conversations.visuals import VisualReview, VisualReviewRecord
-from komaquill.domain.content import visible
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, OperationStage
 from komaquill.domain.models import Run
 from komaquill.domain.roleplay import ConversationMemory
 
 
-class RecordedTurnRequest(SendInput):
+class RecordedTurnRequest(TurnRequest):
     """Validate retained request metadata independently of today's send contract."""
 
     images: bool | None = None
@@ -163,7 +163,7 @@ class Database:
     def content(self) -> ContentPolicy:
         from komaquill.adapters.content import ContentPolicy
 
-        return ContentPolicy(self)
+        return ContentPolicy(self.engine)
 
     @cached_property
     def checkpoints(self) -> Checkpoints:
@@ -317,7 +317,11 @@ class ConversationRepository:
         self,
         identity: UUID,
         kind: str,
-        request: ActionRequest | ProposalDismissal | VisualReview | NotesRequest | SceneRequest,
+        request: RecordedActionRequest
+        | ProposalDismissal
+        | VisualReview
+        | NotesRequest
+        | SceneRequest,
     ) -> str:
         return hashlib.sha256(
             (str(identity) + kind + request.model_dump_json()).encode()
@@ -328,7 +332,11 @@ class ConversationRepository:
         connection: Connection,
         identity: UUID,
         kind: str,
-        request: ActionRequest | ProposalDismissal | VisualReview | NotesRequest | SceneRequest,
+        request: RecordedActionRequest
+        | ProposalDismissal
+        | VisualReview
+        | NotesRequest
+        | SceneRequest,
     ) -> bool:
         operation_id = str(request.operation_id)
         previous = connection.execute(
@@ -349,7 +357,11 @@ class ConversationRepository:
         connection: Connection,
         identity: UUID,
         kind: str,
-        request: ActionRequest | ProposalDismissal | VisualReview | NotesRequest | SceneRequest,
+        request: RecordedActionRequest
+        | ProposalDismissal
+        | VisualReview
+        | NotesRequest
+        | SceneRequest,
     ) -> None:
         connection.execute(
             command_receipts.insert().values(
@@ -370,7 +382,6 @@ class ConversationRepository:
 
     @stored
     def actions(self, identity: UUID) -> builtins.list[ActionRecord]:
-        self.database.content.require("conversation", identity)
         with self.database.engine.connect() as reader:
             self._get(reader, identity, with_turns=False)
             rows = reader.execute(
@@ -392,8 +403,6 @@ class ConversationRepository:
         result = Conversation(definition=definition, state=definition.initial_state)
         with self.database.engine.begin() as connection:
             self._store(connection, result, create=True)
-            if self.database.content.enabled(connection):
-                self.database.content.set_rating("conversation", result.id, "nsfw", connection)
         return result
 
     @stored
@@ -404,10 +413,6 @@ class ConversationRepository:
             (
                 self._conversation(str(value["id"]), str(value["payload"]), with_turns=False)
                 for value in values
-                if visible(
-                    self.database.content.rating("conversation", str(value["id"])),
-                    self.database.content.enabled(),
-                )
             ),
             key=lambda value: value.created_at,
             reverse=True,
@@ -558,13 +563,11 @@ class ConversationRepository:
 
     @stored
     def get(self, identity: UUID) -> Conversation:
-        self.database.content.require("conversation", identity)
         with self.database.engine.connect() as connection:
             return self._get(connection, identity)
 
     @stored
     def overview(self, identity: UUID) -> Conversation:
-        self.database.content.require("conversation", identity)
         with self.database.engine.connect() as connection:
             return self._get(connection, identity, with_turns=False)
 
@@ -572,7 +575,6 @@ class ConversationRepository:
     def turns(
         self, identity: UUID, before: int | None = None, limit: int = DEFAULT_TURN_PAGE_SIZE
     ) -> dict[str, object]:
-        self.database.content.require("conversation", identity)
         if limit < 1 or limit > MAX_TURN_PAGE_SIZE or (before is not None and before < 0):
             raise KomaquillError(code="invalid_request", retryable=False)
         with self.database.engine.connect() as reader:
@@ -607,31 +609,71 @@ class ConversationRepository:
                 .one_or_none()
             )
             if previous is not None:
-                if (
-                    previous["conversation_id"] != str(identity)
-                    or RecordedTurnRequest.model_validate_json(previous["request"]).model_dump(
-                        include=set(SendInput.model_fields)
-                    )
-                    != request.model_dump()
-                ):
+                if previous["conversation_id"] != str(
+                    identity
+                ) or RecordedTurnRequest.model_validate_json(previous["request"]).model_dump(
+                    include=set(SendInput.model_fields), mode="json"
+                ) != request.model_dump(mode="json"):
                     raise conflict()
                 return self._operation(dict(previous)), False
-            self.database.content.require("conversation", identity, connection)
             conversation = self._get(connection, identity, with_turns=False)
-            if request.action_id is not None:
-                raise KomaquillError(code="invalid_request", retryable=False)
+            if conversation.revision != request.expected_revision:
+                raise conflict()
             require_reviewed(conversation)
             if connection.execute(
                 select(operations.c.id).where(operations.c.active_slot == 1)
             ).first():
                 raise KomaquillError(code="operation_busy", stage="operation", retryable=True)
+            if request.action is not None:
+                proposals = list(conversation.proposals)
+                if request.proposal_id is not None:
+                    proposed = next((p for p in proposals if p.id == request.proposal_id), None)
+                    if (
+                        proposed is None
+                        or proposed.state != "pending"
+                        or proposed.revision != conversation.revision
+                        or proposed.action != request.action
+                    ):
+                        raise conflict()
+                    proposals = [
+                        p.model_copy(
+                            update={"state": "applied", "decision_id": request.operation_id}
+                        )
+                        if p.id == proposed.id
+                        else p
+                        for p in proposals
+                    ]
+                state = apply_action(conversation.state, request.action)
+                record = ActionRecord(
+                    request=RecordedActionRequest(
+                        **{
+                            **request.model_dump(exclude={"text"}),
+                            "locale": request.locale or conversation.definition.locale,
+                        }
+                    ),
+                    before=conversation.state,
+                    after=state,
+                    revision=conversation.revision + 1,
+                    reaction_id=request.operation_id,
+                )
+                conversation = conversation.model_copy(
+                    update={
+                        "state": state,
+                        "revision": record.revision,
+                        "actions": [*conversation.actions, record],
+                        "proposals": [
+                            p.model_copy(update={"state": "expired"}) if p.state == "pending" else p
+                            for p in proposals
+                        ],
+                    }
+                )
+                self._store(connection, conversation)
             enabled = self.database.content.capture(request.operation_id, connection)
-            if enabled:
-                self.database.content.set_rating("conversation", identity, "nsfw", connection)
             result = Operation(
                 id=request.operation_id,
                 conversation_id=identity,
                 state="accepted",
+                response_locale=request.locale or conversation.definition.locale,
                 nsfw_enabled=enabled,
             )
             connection.execute(
@@ -651,109 +693,9 @@ class ConversationRepository:
             return result, True
 
     @stored
-    def accept_action(self, identity: UUID, request: ActionRequest) -> tuple[ActionRecord, bool]:
-        self.database.content.require("conversation", identity)
-        with self.database.transaction() as connection:
-            known = self._known_command(connection, identity, "action", request)
-            conversation = self._get(connection, identity, with_turns=False)
-            payload = self._event_payload(connection, identity, "actions", request.operation_id)
-            if payload is not None:
-                previous = ActionRecord.model_validate_json(payload)
-                if previous.request != request:
-                    raise conflict()
-                return previous, False
-            if known:
-                raise KomaquillError(code="storage_failed", retryable=False)
-            require_reviewed(conversation)
-            if (
-                conversation.revision != request.expected_revision
-                or connection.execute(
-                    select(operations.c.id).where(operations.c.active_slot == 1)
-                ).first()
-            ):
-                raise conflict()
-            proposals = list(conversation.proposals)
-            if request.proposal_id is not None:
-                proposed = next((p for p in proposals if p.id == request.proposal_id), None)
-                if (
-                    proposed is None
-                    or proposed.state != "pending"
-                    or proposed.revision != conversation.revision
-                    or proposed.action != request.action
-                ):
-                    raise conflict()
-                proposals = [
-                    p.model_copy(update={"state": "applied", "decision_id": request.operation_id})
-                    if p.id == proposed.id
-                    else p
-                    for p in proposals
-                ]
-            state = apply_action(conversation.state, request.action)
-            reaction_id = uuid5(request.operation_id, "reaction")
-            if (
-                connection.execute(
-                    select(operations.c.id).where(operations.c.id == str(reaction_id))
-                ).first()
-                or connection.execute(
-                    select(command_receipts.c.id).where(command_receipts.c.id == str(reaction_id))
-                ).first()
-            ):
-                raise conflict()
-            record = ActionRecord(
-                request=request,
-                before=conversation.state,
-                after=state,
-                revision=conversation.revision + 1,
-                reaction_id=reaction_id,
-            )
-            updated = conversation.model_copy(
-                update={
-                    "state": state,
-                    "revision": record.revision,
-                    "actions": [*conversation.actions, record],
-                    "proposals": [
-                        p.model_copy(update={"state": "expired"}) if p.state == "pending" else p
-                        for p in proposals
-                    ],
-                }
-            )
-            reaction = SendInput(
-                operation_id=reaction_id,
-                action_id=request.operation_id,
-                locale=request.locale or conversation.definition.locale,
-                allow_real_llm=request.allow_real_llm,
-            )
-            enabled = self.database.content.capture(reaction_id, connection)
-            if enabled:
-                self.database.content.set_rating("conversation", identity, "nsfw", connection)
-            operation = Operation(
-                id=reaction_id, conversation_id=identity, state="accepted", nsfw_enabled=enabled
-            )
-            self._store(connection, updated)
-            connection.execute(
-                operations.insert().values(
-                    id=str(reaction_id),
-                    conversation_id=str(identity),
-                    request=reaction.model_dump_json(),
-                    fingerprint=hashlib.sha256(
-                        (str(identity) + reaction.model_dump_json()).encode()
-                    ).hexdigest(),
-                    payload=operation.model_dump_json(),
-                    active_slot=1,
-                    owner_pid=os.getpid(),
-                    owner_started=str(psutil.Process().create_time()),
-                    base_revision=updated.revision,
-                )
-            )
-            self._register_command(connection, identity, "action", request)
-            connection.commit()
-            return record, True
-
-    @stored
     def dismiss_proposal(
         self, identity: UUID, proposal_id: UUID, request: ProposalDismissal
     ) -> Conversation:
-        self.database.content.require("conversation", identity)
         with self.database.transaction() as connection:
             self._known_command(connection, identity, f"dismiss:{proposal_id}", request)
             conversation = self._get(connection, identity, with_turns=False, with_events=True)
@@ -790,7 +732,6 @@ class ConversationRepository:
 
     @stored
     def review_visuals(self, identity: UUID, review: VisualReview) -> Conversation:
-        self.database.content.require("conversation", identity)
         with self.database.transaction() as connection:
             self._known_command(connection, identity, "visual_review", review)
             conversation = self._get(connection, identity, with_turns=False, with_events=True)
@@ -866,8 +807,6 @@ class ConversationRepository:
                     ],
                 }
             )
-            if self.database.content.enabled(connection):
-                self.database.content.set_rating("conversation", identity, "nsfw", connection)
             self._store(connection, updated)
             self._register_command(connection, identity, "visual_review", review)
             connection.commit()
@@ -904,7 +843,7 @@ class ConversationRepository:
         return value
 
     @stored
-    def request(self, identity: UUID) -> tuple[Conversation, SendInput]:
+    def request(self, identity: UUID) -> tuple[Conversation, TurnRequest]:
         with self.database.engine.connect() as connection:
             row = self._row(connection, identity)
             header = self._get(connection, UUID(str(row["conversation_id"])), with_turns=False)
@@ -913,7 +852,9 @@ class ConversationRepository:
                 if header.memory and header.memory.source_version == 5
                 else 0
             )
-            request = SendInput.model_validate_json(str(row["request"]))
+            request = RecordedTurnRequest.model_validate_json(str(row["request"]))
+            if request.action is not None:
+                request = request.model_copy(update={"action_id": request.operation_id})
             if header.memory and header.memory.source_version == 5:
                 for passage in header.memory.passages:
                     position = connection.execute(
@@ -943,7 +884,15 @@ class ConversationRepository:
                 value = value.model_copy(
                     update={"actions": [ActionRecord.model_validate_json(payload)]}
                 )
-            return value, request
+            return value, TurnRequest.model_validate_json(
+                request.model_copy(
+                    update={
+                        "locale": self._operation(row).response_locale
+                        or request.locale
+                        or header.definition.locale
+                    }
+                ).model_dump_json(include=set(TurnRequest.model_fields))
+            )
 
     @stored
     def operation(self, identity: UUID) -> Operation:
@@ -953,7 +902,6 @@ class ConversationRepository:
 
     @stored
     def operations(self, identity: UUID) -> builtins.list[Operation]:
-        self.database.content.require("conversation", identity)
         with self.database.engine.connect() as connection:
             self._get(connection, identity, with_turns=False)
             rows = builtins.list(
@@ -1018,7 +966,9 @@ class ConversationRepository:
         reply = published_reply(conversation, reply)
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
-        request = SendInput.model_validate_json(str(row["request"]))
+        request = RecordedTurnRequest.model_validate_json(str(row["request"]))
+        if request.action is not None:
+            request = request.model_copy(update={"action_id": request.operation_id})
         state = apply_reply(conversation, reply)
         action_payload = (
             connection.execute(
@@ -1090,7 +1040,9 @@ class ConversationRepository:
             return False
 
     @stored
-    def fail(self, identity: UUID, code: str) -> Operation:
+    def fail(
+        self, identity: UUID, code: str, stage: OperationStage = OperationStage.OPERATION
+    ) -> Operation:
         resumable = code in {"storage_failed", "operation_failed"} and self._received_calls(
             identity
         )
@@ -1101,6 +1053,7 @@ class ConversationRepository:
                     update={
                         "state": "interrupted" if resumable else "failed",
                         "error": code,
+                        "error_stage": stage,
                         "can_resume": resumable,
                     }
                 )
@@ -1145,13 +1098,11 @@ class ConversationRepository:
                 select(operations.c.id).where(operations.c.active_slot == 1)
             ).scalars()
             for identity in identities:
-                from komaquill.adapters.checkpoints import CONVERSATION_WORKFLOW_VERSION
-
                 try:
                     saved = self.database.checkpoints.load(f"reply:{identity}")
                     if saved is None:
-                        saved = self.database.checkpoints.workflow_result(
-                            f"conversation:{identity}", CONVERSATION_WORKFLOW_VERSION
+                        saved = self.database.checkpoints.conversation_result(
+                            f"conversation:{identity}"
                         )
                     retained[identity] = Reply.model_validate(saved) if saved is not None else None
                 except KomaquillError as error:
@@ -1247,7 +1198,6 @@ class ConversationRepository:
 
     @stored
     def save_notes(self, identity: UUID, request: NotesRequest) -> Conversation:
-        self.database.content.require("conversation", identity)
         with self.database.transaction() as connection:
             known = self._known_command(connection, identity, "notes", request)
             value = self._get(connection, identity, with_turns=False)
@@ -1260,8 +1210,6 @@ class ConversationRepository:
                 ).first()
             ):
                 raise conflict()
-            if request.notes != value.notes and self.database.content.enabled(connection):
-                self.database.content.set_rating("conversation", identity, "nsfw", connection)
             value = value.model_copy(
                 update={
                     "notes": request.notes,
@@ -1282,7 +1230,6 @@ class ConversationRepository:
         with self.database.transaction() as connection:
             row = self._row(connection, identity)
             result = self._operation(row)
-            self.database.content.require("conversation", result.conversation_id, connection)
             if result.state == "complete":
                 return result
             if not result.can_resume or result.state != "interrupted":
@@ -1295,7 +1242,7 @@ class ConversationRepository:
                 ).first()
             ):
                 raise conflict()
-            request = SendInput.model_validate_json(str(row["request"]))
+            request = RecordedTurnRequest.model_validate_json(str(row["request"]))
             if request.allow_real_llm and not allow_real_llm:
                 raise KomaquillError(code="real_llm_not_allowed", retryable=False)
             result = result.model_copy(
@@ -1312,7 +1259,6 @@ class ConversationRepository:
 
     @stored
     def bookmarks(self, identity: UUID) -> builtins.list[Bookmark]:
-        self.database.content.require("conversation", identity)
         with self.database.engine.connect() as reader:
             return [
                 Bookmark.model_validate_json(str(row[0]))
@@ -1325,7 +1271,6 @@ class ConversationRepository:
 
     @stored
     def bookmark(self, identity: UUID, request: SceneRequest) -> Bookmark:
-        self.database.content.require("conversation", identity)
         with self.database.transaction() as connection:
             known = self._known_command(connection, identity, "bookmark", request)
             if known:
@@ -1369,7 +1314,6 @@ class ConversationRepository:
 
     @stored
     def fork(self, identity: UUID, request: SceneRequest) -> Conversation:
-        self.database.content.require("conversation", identity)
         with self.database.transaction() as connection:
             known = self._known_command(connection, identity, "fork", request)
             if known:
@@ -1398,14 +1342,6 @@ class ConversationRepository:
                 source_turn_id=turn.operation_id,
             )
             self._store(connection, result, create=True)
-            self.database.content.set_rating(
-                "conversation",
-                result.id,
-                "nsfw"
-                if self.database.content.enabled(connection)
-                else self.database.content.rating("conversation", identity, connection),
-                connection,
-            )
             self._register_command(connection, identity, "fork", request)
             connection.commit()
             return result

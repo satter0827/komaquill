@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -15,6 +16,9 @@ client.setConfig({ baseUrl: base, throwOnError: true })
 const requests: ImageInput[] = []
 const preferences = { ...defaultPreferences, llm_profile: 'local' }
 const server = setupServer(
+  http.post(`${base}/api/v1/availability`, () =>
+    HttpResponse.json({ ready: true, connections: [] }),
+  ),
   http.get(`${base}/api/v1/preferences`, () => HttpResponse.json(preferences)),
   http.get(`${base}/api/v1/images`, () => HttpResponse.json([])),
   http.post(`${base}/api/v1/images`, async ({ request }) => {
@@ -45,9 +49,11 @@ function images() {
         })
       }
     >
-      <PreferencesProvider>
-        <ImagesPage />
-      </PreferencesProvider>
+      <MemoryRouter>
+        <PreferencesProvider>
+          <ImagesPage />
+        </PreferencesProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }

@@ -3,6 +3,30 @@
 from typing import Any
 
 
+def mock_llm_availability(monkeypatch):
+    """Pair an explicitly substituted model with its read-only availability probe."""
+    from komaquill.api.availability import AvailabilityService
+
+    monkeypatch.setattr(AvailabilityService, "_llm", lambda *_: None)
+
+
+def send_action(service, identity, request):
+    """Send a message with an action and inspect its durable action event."""
+    service.send(identity, request)
+    return next(
+        a for a in service.actions(identity) if a.request.operation_id == request.operation_id
+    )
+
+
+def accept_action(service, identity, request):
+    """Inspect action persistence before executing the one accepted response."""
+    _, created = service.accept(identity, request)
+    record = next(
+        a for a in service.actions(identity) if a.request.operation_id == request.operation_id
+    )
+    return record, created
+
+
 def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
     """Compile a paired fixture's declared scene into the response contract."""
     if "current_state" not in value:

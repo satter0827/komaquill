@@ -15,10 +15,14 @@ from komaquill.adapters.llm.execution import StructuredExecution, response_schem
 from komaquill.adapters.llm.language import ResponseLanguageError, check_language
 from komaquill.conversations.actions import IntentionAction, MoveAction, PrepareAction, WaitAction
 from komaquill.conversations.context import scene_context
-from komaquill.conversations.models import ConnectionProfile, Conversation, Reply, SendInput
+from komaquill.conversations.models import ConnectionProfile, Conversation, Reply, TurnRequest
 from komaquill.conversations.transitions import published_reply
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import (
+    MAX_CLOTHING_LENGTH,
+    MAX_EXPRESSION_POSE_LENGTH,
+    MAX_RELATIONSHIP_LENGTH,
+    MAX_SCENERY_LENGTH,
     ConversationMemory,
     ConversationState,
     PhysicalObjects,
@@ -58,19 +62,45 @@ GeneratedAction = Annotated[
 ]
 
 
-class SceneChange(Record):
-    field: Literal[
-        "relationship", "movement", "scenery", "clothing", "expression", "pose", "held_objects"
-    ]
-    value: str | PhysicalObjects
+class RelationshipChange(Record):
+    field: Literal["relationship"]
+    value: str = Field(max_length=MAX_RELATIONSHIP_LENGTH)
 
-    @model_validator(mode="after")
-    def matching_value(self) -> Self:
-        if (self.field == "held_objects") != isinstance(self.value, list):
-            raise ValueError("The scene field and value type must match.")
-        if self.field == "movement" and self.value not in ("stay", "join_player"):
-            raise ValueError("Movement must retain the companion's place or join the player.")
-        return self
+
+class SceneryChange(Record):
+    field: Literal["scenery"]
+    value: str = Field(max_length=MAX_SCENERY_LENGTH)
+
+
+class ClothingChange(Record):
+    field: Literal["clothing"]
+    value: str = Field(max_length=MAX_CLOTHING_LENGTH)
+
+
+class ExpressionPoseChange(Record):
+    field: Literal["expression", "pose"]
+    value: str = Field(max_length=MAX_EXPRESSION_POSE_LENGTH)
+
+
+class MovementChange(Record):
+    field: Literal["movement"]
+    value: Literal["stay", "join_player"]
+
+
+class ObjectsChange(Record):
+    field: Literal["held_objects"]
+    value: PhysicalObjects
+
+
+SceneChange = Annotated[
+    RelationshipChange
+    | SceneryChange
+    | ClothingChange
+    | ExpressionPoseChange
+    | MovementChange
+    | ObjectsChange,
+    Field(discriminator="field"),
+]
 
 
 class DialogueResult(Record):
@@ -140,7 +170,7 @@ class ConversationResponder:
             for name, p in self.execution.settings.llm_profiles.items()
         ]
 
-    def reply(self, conversation: Conversation, request: SendInput) -> Reply:
+    def reply(self, conversation: Conversation, request: TurnRequest) -> Reply:
         try:
             with self.execution.lock:
                 from komaquill.adapters.llm.workflow import run_conversation
@@ -151,7 +181,7 @@ class ConversationResponder:
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
 
-    def _reply(self, conversation: Conversation, request: SendInput) -> Reply:
+    def _reply(self, conversation: Conversation, request: TurnRequest) -> Reply:
         profile = self.execution.settings.llm_profiles.get(conversation.definition.llm_profile)
         if profile is None:
             raise KomaquillError(code="invalid_configuration", retryable=False)
@@ -163,6 +193,8 @@ class ConversationResponder:
             "The human player has completed this action. React as the companion; "
             "keep the companion's own clothing and possessions: "
             + action.request.action.model_dump_json()
+            + "\nThe player also says: "
+            + request.text
             if action is not None
             else request.text
         )
@@ -317,26 +349,30 @@ class ConversationResponder:
         )
         reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
-        try:
-            from komaquill.adapters.llm.memory import history_messages
+        retained_response = self.execution.has_response(request.operation_id)
+        messages: list[tuple[str, str]] = []
+        active_memory = conversation.memory
+        if not retained_response:
+            try:
+                from komaquill.adapters.llm.memory import history_messages
 
-            messages, memory = history_messages(
-                self.execution,
-                conversation,
-                request,
-                system,
-                latest,
-                json.dumps(response_schema(reply_schema, field_language), ensure_ascii=False),
-                lambda through: self.read_history_hash(conversation.id, through),
-            )
-        except ImportError:
-            raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
-        if memory is not None:
-            if self.save_memory is None:
-                raise KomaquillError(code="storage_failed", retryable=False)
-            self.save_memory(conversation.id, memory)
-        active_memory = memory or conversation.memory
-        messages.append(("user", latest))
+                messages, memory = history_messages(
+                    self.execution,
+                    conversation,
+                    request,
+                    system,
+                    latest,
+                    json.dumps(response_schema(reply_schema, field_language), ensure_ascii=False),
+                    lambda through: self.read_history_hash(conversation.id, through),
+                )
+            except ImportError:
+                raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
+            if memory is not None:
+                if self.save_memory is None:
+                    raise KomaquillError(code="storage_failed", retryable=False)
+                self.save_memory(conversation.id, memory)
+            active_memory = memory or conversation.memory
+            messages.append(("user", latest))
         names = [
             value
             for person in (conversation.definition.user, conversation.definition.character)
@@ -380,18 +416,28 @@ class ConversationResponder:
             ):
                 raise ResponseConstraintError("object_ownership")
 
-        generated = self.execution.invoke(
-            reply_schema,
-            request.operation_id,
-            conversation.definition.llm_profile,
-            request.allow_real_llm,
-            system(active_memory),
-            messages,
-            validate=validate,
-            correction=language_contract,
-            field_language=field_language,
-            trim=False,
-        )
+        if retained_response:
+            generated = self.execution.replay(
+                reply_schema,
+                request.operation_id,
+                conversation.definition.llm_profile,
+                system(active_memory),
+                validate,
+                field_language,
+            )
+        else:
+            generated = self.execution.invoke(
+                reply_schema,
+                request.operation_id,
+                conversation.definition.llm_profile,
+                request.allow_real_llm,
+                system(active_memory),
+                messages,
+                validate=validate,
+                correction=language_contract,
+                field_language=field_language,
+                trim=False,
+            )
         value = generated.response
         if isinstance(value, ProposalResult):
             return Reply(text="", state_patch=StatePatch(), action_proposals=[value.action])

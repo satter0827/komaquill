@@ -8,7 +8,7 @@ export type ClientOptions = {
  * ActionRecord
  */
 export type ActionRecord = {
-    request: ActionRequest;
+    request: RecordedActionRequest;
     before: ConversationState;
     after: ConversationState;
     /**
@@ -23,44 +23,6 @@ export type ActionRecord = {
      * Created At
      */
     created_at?: string;
-};
-
-/**
- * ActionRequest
- */
-export type ActionRequest = {
-    /**
-     * Operation Id
-     */
-    operation_id: string;
-    /**
-     * Expected Revision
-     */
-    expected_revision: number;
-    /**
-     * Action
-     */
-    action: ({
-        kind: 'move';
-    } & MoveAction) | ({
-        kind: 'wait';
-    } & WaitAction) | ({
-        kind: 'prepare';
-    } & PrepareAction) | ({
-        kind: 'intention';
-    } & IntentionAction);
-    /**
-     * Proposal Id
-     */
-    proposal_id?: string | null;
-    /**
-     * Locale
-     */
-    locale?: 'ja' | 'en' | null;
-    /**
-     * Allow Real Llm
-     */
-    allow_real_llm?: boolean;
 };
 
 /**
@@ -101,6 +63,51 @@ export type ArchivedTurn = {
      * Narration
      */
     narration?: string;
+};
+
+/**
+ * Availability
+ */
+export type Availability = {
+    /**
+     * Ready
+     */
+    ready: boolean;
+    /**
+     * Connections
+     */
+    connections?: Array<ConnectionObservation>;
+};
+
+/**
+ * AvailabilityRequest
+ */
+export type AvailabilityRequest = {
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'creation' | 'image' | 'collection' | 'resume';
+    /**
+     * Identity
+     */
+    identity?: string | null;
+    creation?: CreationRequest | null;
+    /**
+     * Prompt
+     */
+    prompt?: string;
+    /**
+     * Subjects
+     */
+    subjects?: Array<string>;
+    /**
+     * Negative
+     */
+    negative?: string | null;
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
 };
 
 /**
@@ -275,6 +282,10 @@ export type CharacterPreset = {
      */
     image_job_id: string | null;
     /**
+     * Image Stale
+     */
+    image_stale: boolean;
+    /**
      * Sample
      */
     sample: boolean;
@@ -356,22 +367,6 @@ export type CharacterSaveRequest = {
      * Expected Revision
      */
     expected_revision?: number | null;
-    /**
-     * Image Policy
-     */
-    image_policy?: 'auto' | 'always' | 'none';
-    /**
-     * Locale
-     */
-    locale?: 'ja' | 'en';
-    /**
-     * Llm Profile
-     */
-    llm_profile?: string;
-    /**
-     * Allow Real Llm
-     */
-    allow_real_llm?: boolean;
     value: CharacterInput;
 };
 
@@ -438,61 +433,30 @@ export type CompiledImageInput = {
 };
 
 /**
- * ContentLabel
+ * ConnectionObservation
  */
-export type ContentLabel = {
-    /**
-     * Readable
-     *
-     * Whether the saved display and classification metadata can be read.
-     */
-    readable?: boolean;
+export type ConnectionObservation = {
     /**
      * Kind
      */
-    kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';
+    kind: 'llm' | 'comfy';
     /**
-     * Id
+     * Target
      */
-    id: string;
+    target: string;
     /**
-     * Rating
+     * State
      */
-    rating: 'general' | 'nsfw' | 'unclassified';
+    state: 'ready' | 'unavailable' | 'unknown';
     /**
-     * Revision
+     * Observed At
      */
-    revision?: number;
+    observed_at: string;
     /**
-     * Title
+     * Expires At
      */
-    title?: string;
-};
-
-/**
- * ContentUpdate
- */
-export type ContentUpdate = {
-    /**
-     * Operation Id
-     */
-    operation_id: string;
-    /**
-     * Kind
-     */
-    kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';
-    /**
-     * Id
-     */
-    id: string;
-    /**
-     * Rating
-     */
-    rating: 'general' | 'nsfw';
-    /**
-     * Expected Revision
-     */
-    expected_revision: number;
+    expires_at: string;
+    reason?: ErrorCode | null;
 };
 
 /**
@@ -793,6 +757,7 @@ export type CreationJob = {
      * Error
      */
     error?: string | null;
+    error_stage?: OperationStage | null;
     /**
      * Created At
      */
@@ -1092,7 +1057,7 @@ export type NotesRequest = {
  *
  * Identify the operation phase independently of displayed text.
  */
-export type OperationStage = 'check' | 'cleanup' | 'colab_control' | 'collection' | 'communication' | 'connection' | 'disconnect' | 'display' | 'finalize' | 'evaluation' | 'generation' | 'gpu_stop' | 'history_validation' | 'image_collection' | 'image_validation' | 'log_cleanup' | 'log_collection' | 'log_download' | 'log_timeout' | 'operation' | 'preparation' | 'release' | 'response_validation' | 'storage' | 'submission' | 'story_planning' | 'story_rendering' | 'summary';
+export type OperationStage = 'model_discovery' | 'prompt_template' | 'tokenization' | 'check' | 'cleanup' | 'colab_control' | 'collection' | 'communication' | 'connection' | 'disconnect' | 'display' | 'finalize' | 'evaluation' | 'generation' | 'gpu_stop' | 'history_validation' | 'image_collection' | 'image_validation' | 'log_cleanup' | 'log_collection' | 'log_download' | 'log_timeout' | 'operation' | 'preparation' | 'release' | 'response_validation' | 'storage' | 'submission' | 'story_planning' | 'story_rendering' | 'summary';
 
 /**
  * OperationView
@@ -1122,6 +1087,11 @@ export type OperationView = {
      * Error
      */
     error?: string | null;
+    error_stage?: OperationStage | null;
+    /**
+     * Response Locale
+     */
+    response_locale?: 'ja' | 'en' | null;
     /**
      * Image State
      */
@@ -1327,6 +1297,10 @@ export type PlayerProfile = {
      */
     image_job_id: string | null;
     /**
+     * Image Stale
+     */
+    image_stale: boolean;
+    /**
      * Sample
      */
     sample: boolean;
@@ -1380,10 +1354,6 @@ export type PlayerProfile = {
  * Preferences
  */
 export type Preferences = {
-    /**
-     * Nsfw Enabled
-     */
-    nsfw_enabled?: boolean;
     /**
      * Revision
      */
@@ -1458,11 +1428,6 @@ export type PresetSaveResult = {
      * Preset
      */
     preset: CharacterPreset | StoryPreset;
-    job?: CreationJob | null;
-    /**
-     * Image Error
-     */
-    image_error?: string | null;
 };
 
 /**
@@ -1579,6 +1544,44 @@ export type ProposedAction = {
      * Decision Id
      */
     decision_id?: string | null;
+};
+
+/**
+ * RecordedActionRequest
+ */
+export type RecordedActionRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Action
+     */
+    action: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction);
+    /**
+     * Proposal Id
+     */
+    proposal_id?: string | null;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en' | null;
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
 };
 
 /**
@@ -1907,13 +1910,29 @@ export type SendInput = {
      */
     operation_id: string;
     /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
      * Text
      */
-    text?: string;
+    text: string;
     /**
-     * Action Id
+     * Action
      */
-    action_id?: string | null;
+    action?: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction) | null;
+    /**
+     * Proposal Id
+     */
+    proposal_id?: string | null;
     /**
      * Allow Real Llm
      */
@@ -2071,6 +2090,10 @@ export type StoryPreset = {
      */
     image_job_id: string | null;
     /**
+     * Image Stale
+     */
+    image_stale: boolean;
+    /**
      * Sample
      */
     sample: boolean;
@@ -2124,22 +2147,6 @@ export type StorySaveRequest = {
      * Expected Revision
      */
     expected_revision?: number | null;
-    /**
-     * Image Policy
-     */
-    image_policy?: 'auto' | 'always' | 'none';
-    /**
-     * Locale
-     */
-    locale?: 'ja' | 'en';
-    /**
-     * Llm Profile
-     */
-    llm_profile?: string;
-    /**
-     * Allow Real Llm
-     */
-    allow_real_llm?: boolean;
     value: StoryInput;
 };
 
@@ -2302,49 +2309,6 @@ export type WaitAction = {
      */
     minutes: number;
 };
-
-export type ListContentData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/content';
-};
-
-export type ListContentResponses = {
-    /**
-     * Response List Content
-     *
-     * Successful Response
-     */
-    200: Array<ContentLabel>;
-};
-
-export type ListContentResponse = ListContentResponses[keyof ListContentResponses];
-
-export type ClassifyContentData = {
-    body: ContentUpdate;
-    path?: never;
-    query?: never;
-    url: '/api/v1/content';
-};
-
-export type ClassifyContentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ClassifyContentError = ClassifyContentErrors[keyof ClassifyContentErrors];
-
-export type ClassifyContentResponses = {
-    /**
-     * Successful Response
-     */
-    200: ContentLabel;
-};
-
-export type ClassifyContentResponse = ClassifyContentResponses[keyof ClassifyContentResponses];
 
 export type ListArchivedConversationsData = {
     body?: never;
@@ -2958,6 +2922,36 @@ export type CreateConversationResponses = {
 
 export type CreateConversationResponse = CreateConversationResponses[keyof CreateConversationResponses];
 
+export type CheckAvailabilityData = {
+    body: AvailabilityRequest;
+    path?: never;
+    query?: {
+        /**
+         * Refresh
+         */
+        refresh?: boolean;
+    };
+    url: '/api/v1/availability';
+};
+
+export type CheckAvailabilityErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type CheckAvailabilityError = CheckAvailabilityErrors[keyof CheckAvailabilityErrors];
+
+export type CheckAvailabilityResponses = {
+    /**
+     * Successful Response
+     */
+    200: Availability;
+};
+
+export type CheckAvailabilityResponse = CheckAvailabilityResponses[keyof CheckAvailabilityResponses];
+
 export type GetConversationData = {
     body?: never;
     path: {
@@ -3279,36 +3273,6 @@ export type GetActionsResponses = {
 };
 
 export type GetActionsResponse = GetActionsResponses[keyof GetActionsResponses];
-
-export type PerformActionData = {
-    body: ActionRequest;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query?: never;
-    url: '/api/v1/conversations/{identity}/actions';
-};
-
-export type PerformActionErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type PerformActionError = PerformActionErrors[keyof PerformActionErrors];
-
-export type PerformActionResponses = {
-    /**
-     * Successful Response
-     */
-    202: ActionRecord;
-};
-
-export type PerformActionResponse = PerformActionResponses[keyof PerformActionResponses];
 
 export type DismissProposalData = {
     body: ProposalDismissal;

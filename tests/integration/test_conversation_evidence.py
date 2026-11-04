@@ -6,6 +6,8 @@ from uuid import uuid4
 import pytest
 from komaquill.api import Client, ConversationInput, SendInput
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 @pytest.mark.parametrize("damage", ["quote", "turn", "field"])
 def test_memory_passage_is_checked_against_immutable_source(tmp_path, monkeypatch, damage):
@@ -13,7 +15,13 @@ def test_memory_passage_is_checked_against_immutable_source(tmp_path, monkeypatc
 
     api, scene, calls = prepare(tmp_path, monkeypatch)
     first = api.conversations.send(
-        scene.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert first.state == "complete"
     saved = api.conversations.get(scene.id)
@@ -38,7 +46,13 @@ def test_memory_passage_is_checked_against_immutable_source(tmp_path, monkeypatc
         )
     count = len(calls)
     operation = api.conversations.send(
-        scene.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert operation.error == "storage_failed" and len(calls) == count
 
@@ -53,7 +67,15 @@ def test_source_memory_migration_preserves_original_header_and_turns(tmp_path):
     scene = api.conversations.create(
         ConversationInput(title="Migration", locale="en", llm_profile="fake")
     )
-    api.conversations.send(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
+    api.conversations.send(
+        scene.id,
+        SendInput(
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     api.conversations.repository.save_memory(
         scene.id,
         ConversationMemory(
@@ -73,11 +95,14 @@ def test_source_memory_migration_preserves_original_header_and_turns(tmp_path):
     with sqlite3.connect(path) as connection:
         original = connection.execute("SELECT payload FROM conversations").fetchone()[0]
         turns = connection.execute("SELECT * FROM conversation_turns").fetchall()
+        connection.execute(
+            "CREATE TABLE content_labels(kind TEXT,id TEXT,rating TEXT,revision INTEGER)"
+        )
         connection.execute("UPDATE alembic_version SET version_num='0009'")
     report = api.migrate()
     assert json.loads(report.read_bytes())["state"] == "complete"
     with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0010"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0011"
         assert (
             connection.execute(
                 "SELECT payload FROM execution_migration_originals WHERE kind='conversation_memory'"
@@ -121,7 +146,13 @@ def test_omitted_historical_defaults_preserve_source_hash_and_memory(tmp_path, m
     assert len(api.conversations.get(scene.id).turns) == len(retained)
     assert repository.history_hash(scene.id, 0) == ""
     operation = api.conversations.send(
-        scene.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert operation.state == "complete"
     saved = api.conversations.get(scene.id)
@@ -151,6 +182,12 @@ def test_omitted_historical_defaults_preserve_source_hash_and_memory(tmp_path, m
         )
     count = len(calls)
     operation = api.conversations.send(
-        scene.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     assert operation.error == "storage_failed" and len(calls) == count

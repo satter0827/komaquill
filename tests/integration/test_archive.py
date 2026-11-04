@@ -12,9 +12,6 @@ from komaquill.domain.workflow import digest
 
 
 def retained(client):
-    client.library.save_preferences(
-        client.library.preferences().model_copy(update={"nsfw_enabled": True})
-    )
     project = find_project(client.workspace)
     from komaquill.archive.models import PlannerProvenance, Scene, StoryInput, StoryPlan
 

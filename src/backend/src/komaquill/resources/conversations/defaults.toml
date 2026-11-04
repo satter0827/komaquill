@@ -1,4 +1,6 @@
 # Conversation processing limits and selectable connection profiles.
+connection_observation_ttl = 15.0
+connection_probe_timeout = 5.0
 request_timeout = 300.0
 max_output_tokens = 4096
 repair_attempts = 1

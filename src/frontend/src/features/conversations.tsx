@@ -13,7 +13,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { Link, useParams } from 'react-router'
-import { POLL_INTERVAL_MS } from '../api/client'
+import { isRejectedRequest, POLL_INTERVAL_MS } from '../api/client'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import type {
   CreationJob,
@@ -30,8 +30,13 @@ import {
 } from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { CreationStatus, useCreation } from './creation'
+import {
+  AvailabilityNotice,
+  recheckAvailability,
+  useAvailability,
+} from './availability'
 import { ConversationNotes, SceneActions } from './conversation-tools'
-import { ImageResult } from './images'
+import { ImageResult, ImageLinks } from './images'
 import {
   ActionDescription,
   PlayerActions,
@@ -102,6 +107,32 @@ function ConversationView({ identity }: { identity: string }) {
   const detail = useQuery({
     ...q.getConversationOptions({ path: { identity } }),
   })
+  const actionControls = usePlayerActions({
+    identity,
+    conversation: detail.data,
+  })
+  const sendAvailability = useAvailability(
+    detail.data ? { kind: 'conversation', identity } : undefined,
+  )
+  const [availabilityId] = useState(() => crypto.randomUUID())
+  const drawAvailability = useAvailability(
+    detail.data
+      ? {
+          kind: 'creation',
+          creation: {
+            operation_id: availabilityId,
+            kind: 'conversation_image',
+            target_id: identity,
+            expected_revision: detail.data.revision,
+            subjects,
+            viewpoint,
+            locale: preferences.value.locale,
+            llm_profile: detail.data.definition.llm_profile,
+            allow_real_llm: true,
+          },
+        }
+      : undefined,
+  )
   const history = useInfiniteQuery({
     ...q.getTurnsInfiniteOptions({ path: { identity } }),
     initialPageParam: { path: { identity } },
@@ -133,6 +164,7 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, operation.data, savedOperations.data])
 
+  const { clear: clearQueuedAction } = actionControls
   const confirmSend = useCallback(
     (result: OperationView, submitted: SendInput) => {
       cache.setQueryData<OperationView>(
@@ -146,6 +178,7 @@ function ConversationView({ identity }: { identity: string }) {
       )
         setText('')
       setPrepared(null)
+      clearQueuedAction()
       void cache.invalidateQueries({
         queryKey: q.getConversationQueryKey({ path: { identity } }),
       })
@@ -153,24 +186,13 @@ function ConversationView({ identity }: { identity: string }) {
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
       })
     },
-    [cache, identity],
+    [cache, identity, clearQueuedAction],
   )
   const send = useMutation({
     ...q.sendTurnMutation(),
     onError: (error, submitted) => {
-      const code =
-        error && typeof error === 'object' && 'code' in error
-          ? error.code
-          : null
-      if (
-        [
-          'invalid_request',
-          'request_not_found',
-          'operation_conflict',
-          'operation_busy',
-          'visual_review_required',
-        ].includes(String(code))
-      ) {
+      void recheckAvailability(cache)
+      if (isRejectedRequest(error)) {
         setPrepared(null)
         void cache.invalidateQueries({
           queryKey: q.getConversationQueryKey({ path: { identity } }),
@@ -221,11 +243,6 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
   const dialog = useRef<HTMLDialogElement>(null)
-  const actionControls = usePlayerActions({
-    identity,
-    conversation: detail.data,
-    onReaction: setOperationId,
-  })
   const reviewControls = useVisualReview({
     identity,
     conversation: detail.data,
@@ -261,6 +278,9 @@ function ConversationView({ identity }: { identity: string }) {
   )
   const canSend =
     !needsReview &&
+    sendAvailability.ready &&
+    (!actionControls.queued ||
+      actionControls.queued.revision === conversation.revision) &&
     !busy &&
     !(send.isError && prepared !== null) &&
     !!text.trim()
@@ -307,6 +327,9 @@ function ConversationView({ identity }: { identity: string }) {
           src={`/api/v1/images/${snapshots.character.image_id}/files/0`}
           alt={snapshots.character.name}
         />
+      )}
+      {snapshots?.character?.image_id && (
+        <ImageLinks identity={snapshots.character.image_id} />
       )}
       <div className="eyebrow">{messages.context}</div>
       <h2>{messages.currentState}</h2>
@@ -435,10 +458,21 @@ function ConversationView({ identity }: { identity: string }) {
         </header>
         {snapshots?.story?.image_id && (
           <div className="conversation-banner">
-            <img
-              src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
-              alt={snapshots.story.name}
-            />
+            <a
+              href={`/api/v1/images/${snapshots.story.image_id}/files/0`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
+                alt={snapshots.story.name}
+              />
+            </a>
+          </div>
+        )}
+        {snapshots?.story?.image_id && (
+          <div className="banner-actions">
+            <ImageLinks identity={snapshots.story.image_id} />
           </div>
         )}
         <div
@@ -581,7 +615,8 @@ function ConversationView({ identity }: { identity: string }) {
           )}
           {latestOperation?.error && (
             <p role="alert" className="error">
-              {failure({ code: latestOperation.error })}
+              <span>{messages.replyFailedAfterAcceptance}</span>{' '}
+              <span>{failure({ code: latestOperation.error })}</span>
             </p>
           )}
           {latestOperation?.can_resume && (
@@ -638,6 +673,19 @@ function ConversationView({ identity }: { identity: string }) {
               </select>
             </label>
           </details>
+          {actionControls.queued && (
+            <div className="queued-action">
+              <strong>{messages.myActions}</strong>
+              <ActionDescription action={actionControls.queued.action} />
+              <Button disabled={!!busy} onClick={actionControls.clear}>
+                {messages.removeQueuedAction}
+              </Button>
+            </div>
+          )}
+          <AvailabilityNotice status={sendAvailability} />
+          {!drawAvailability.ready && (
+            <AvailabilityNotice status={drawAvailability} />
+          )}
           <form
             className="composer"
             onSubmit={(event) => {
@@ -646,6 +694,12 @@ function ConversationView({ identity }: { identity: string }) {
                 const body = {
                   operation_id: crypto.randomUUID(),
                   text,
+                  expected_revision:
+                    actionControls.queued?.revision ??
+                    conversation.revision ??
+                    0,
+                  action: actionControls.queued?.action,
+                  proposal_id: actionControls.queued?.proposal_id,
                   allow_real_llm: true,
                   locale: preferences.value.locale,
                 }
@@ -672,7 +726,13 @@ function ConversationView({ identity }: { identity: string }) {
               className="draw-button"
               aria-label={messages.drawScene}
               title={messages.drawScene}
-              disabled={!!busy || needsReview || drawing.busy || sampleDrawing}
+              disabled={
+                !!busy ||
+                needsReview ||
+                drawing.busy ||
+                sampleDrawing ||
+                !drawAvailability.ready
+              }
               onClick={() =>
                 drawing.start({
                   kind: 'conversation_image',

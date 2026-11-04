@@ -4,6 +4,7 @@ import * as q from '../api/generated/@tanstack/react-query.gen'
 
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { Button } from '../components/ui/button'
+import { recheckAvailability } from './availability'
 
 export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
   const messages = useMessages()
@@ -12,6 +13,7 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
   const cache = useQueryClient()
   const updated = async () => {
     await Promise.all([
+      recheckAvailability(cache),
       cache.invalidateQueries({ queryKey: q.getRuntimeQueryKey() }),
       cache.invalidateQueries({ queryKey: q.getRuntimeViewsQueryKey() }),
     ])

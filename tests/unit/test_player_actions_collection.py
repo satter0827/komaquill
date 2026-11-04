@@ -2,11 +2,14 @@
 
 import json
 
+import pytest
 from komaquill.api import Client
 from langchain_core.messages import AIMessage
 
 from scripts.verify_player_actions import collect
 from tests.support.conversations import wire_reply
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch):

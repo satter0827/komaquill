@@ -2,46 +2,31 @@ import { test, expect } from './fixtures'
 import { randomUUID } from 'node:crypto'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 
-test('hides cached NSFW content in both tabs when switched off', async ({
+test('uses a fixed policy without classification settings or endpoints', async ({
   page,
   request,
-  context,
   evidence,
 }) => {
   await page.goto('/settings')
-  const checkbox = page.getByRole('checkbox', { name: ja.enableNsfw })
-  await expect(checkbox).not.toBeChecked()
-  await checkbox.click()
-  await expect(checkbox).toBeChecked()
-  const title = `Private scene ${randomUUID().slice(0, 8)}`
+  await expect(page.getByRole('checkbox', { name: /NSFW/i })).toHaveCount(0)
+  const preferences = await (await request.get('/api/v1/preferences')).json()
+  expect(preferences).not.toHaveProperty('nsfw_enabled')
+  expect((await request.get('/api/v1/content')).status()).toBe(404)
   const scene = await (
     await request.post('/api/v1/conversations', {
-      data: { title, locale: 'en', llm_profile: 'fake' },
+      data: {
+        title: `Saved scene ${randomUUID().slice(0, 8)}`,
+        locale: 'en',
+        llm_profile: 'fake',
+      },
     })
   ).json()
-  const other = await context.newPage()
-  await other.goto(`/conversations/${scene.id}`)
-  await expect(other.getByRole('heading', { name: title })).toBeVisible()
-  await checkbox.click()
-  await expect(checkbox).not.toBeChecked()
-  await expect(other.getByRole('heading', { name: title })).toHaveCount(0)
-  await expect(other.getByRole('alert')).toContainText(ja.errors.content_hidden)
-  const denied = await request.get(`/api/v1/conversations/${scene.id}`)
-  expect(denied.ok()).toBe(false)
-  await checkbox.click()
-  await page.reload()
-  const label = page.getByLabel(`${ja.contentClassification}: ${title}`)
-  await label.selectOption('general')
-  await expect(label).toHaveValue('general')
-  await page.getByRole('checkbox', { name: ja.enableNsfw }).click()
-  await expect
-    .poll(async () =>
-      (await request.get(`/api/v1/conversations/${scene.id}`)).ok(),
-    )
-    .toBe(true)
-  await other.close()
+  await page.goto(`/conversations/${scene.id}`)
+  await expect(
+    page.getByRole('heading', { name: scene.definition.title }),
+  ).toBeVisible()
   await evidence.capture(
-    'NSFW off with an explicitly classified general conversation',
+    'Saved content remains visible without classification controls',
   )
 })
 
@@ -64,7 +49,16 @@ test('retains drafts when hidden and branches from saved scene notes without gen
   ).toBeEnabled()
   const response = await request.post(
     `/api/v1/conversations/${scene.id}/turns`,
-    { data: { operation_id: randomUUID(), text: 'Hello', locale: 'en' } },
+    {
+      data: {
+        operation_id: randomUUID(),
+        expected_revision: (
+          await (await request.get(`/api/v1/conversations/${scene.id}`)).json()
+        ).revision,
+        text: 'Hello',
+        locale: 'en',
+      },
+    },
   )
   expect(response.ok()).toBe(true)
   await page.reload()

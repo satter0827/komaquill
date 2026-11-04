@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from komaquill.adapters.llm.context import ContextBudget
 from komaquill.adapters.llm_configuration import ConversationSettings
 from komaquill.conversations.history import memory_sources
-from komaquill.conversations.models import Conversation, SendInput
+from komaquill.conversations.models import Conversation, TurnRequest
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import ConversationMemory, MemoryPassage, Record
 
@@ -68,7 +68,7 @@ class MemorySelection(Record):
 def history_messages(
     responder: SummaryResponder,
     conversation: Conversation,
-    request: SendInput,
+    request: TurnRequest,
     system: Callable[[ConversationMemory | None], str],
     latest: str,
     schema: str,

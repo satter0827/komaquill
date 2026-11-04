@@ -3,11 +3,14 @@
 from contextlib import contextmanager
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from komaquill.adapters.atomic import atomic_json
 from komaquill.api import Client, images, runtime
 from komaquill.domain.status import SessionStatus
 from komaquill.interfaces.http.app import create_app
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def test_http_images_and_standard_views_share_the_public_api(project, session, client, monkeypatch):

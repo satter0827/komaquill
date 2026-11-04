@@ -7,7 +7,6 @@ from uuid import uuid4
 
 import pytest
 from komaquill.api import (
-    ActionRequest,
     CharacterInput,
     Client,
     ConversationInput,
@@ -18,6 +17,10 @@ from komaquill.api import (
     WaitAction,
 )
 from komaquill.conversations.models import Reply
+
+from tests.support.conversations import send_action
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def responder(api, function):
@@ -35,8 +38,16 @@ def test_action_inherits_english_and_freezes_effective_locale(tmp_path):
     responder(
         api, lambda _, request: seen.append(request.locale) or Reply(text="Hello", state_patch={})
     )
-    api.conversations.act(
-        c.id, ActionRequest(operation_id=uuid4(), expected_revision=0, action=WaitAction(minutes=1))
+    send_action(
+        api.conversations,
+        c.id,
+        SendInput(
+            allow_real_llm=True,
+            text="Continue.",
+            operation_id=uuid4(),
+            expected_revision=0,
+            action=WaitAction(minutes=1),
+        ),
     )
     assert seen == ["en"]
 
@@ -55,7 +66,9 @@ def test_save_failure_reconciles_without_restarting_live_process(tmp_path, monke
     c = api.conversations.create(ConversationInput(title="Storage", llm_profile="fake"))
     calls = []
     responder(api, lambda *_: calls.append(True) or Reply(text="Saved reply", state_patch={}))
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(
+        allow_real_llm=True, expected_revision=0, operation_id=uuid4(), text="Hello"
+    )
     repository = api.conversations.repository
     original = getattr(repository, phase)
     monkeypatch.setattr(
@@ -84,7 +97,9 @@ def test_live_executor_is_not_reclaimed_or_invoked_twice(tmp_path):
         return Reply(text="One reply", state_patch={})
 
     responder(api, reply)
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(
+        allow_real_llm=True, expected_revision=0, operation_id=uuid4(), text="Hello"
+    )
     with ThreadPoolExecutor(max_workers=1) as pool:
         running = pool.submit(api.conversations.send, c.id, request)
         assert entered.wait(10)
@@ -101,7 +116,7 @@ def test_finished_creator_is_not_kept_running_when_result_save_fails(tmp_path, m
     api = Client.initialize(tmp_path)
     api.library.creator = SimpleNamespace(draft=lambda _: CharacterInput(name="Draft"))
     request = CreationRequest(
-        operation_id=uuid4(), kind="character_draft", prompt="Declared fixture"
+        llm_profile="fake", operation_id=uuid4(), kind="character_draft", prompt="Declared fixture"
     )
     api.library.accept(request)
     original = api.library.store.save_job
@@ -133,7 +148,7 @@ def test_live_creator_is_not_reclaimed_or_invoked_twice(tmp_path):
 
     api.library.creator = SimpleNamespace(draft=draft)
     request = CreationRequest(
-        operation_id=uuid4(), kind="character_draft", prompt="Declared fixture"
+        llm_profile="fake", operation_id=uuid4(), kind="character_draft", prompt="Declared fixture"
     )
     api.library.accept(request)
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -209,7 +224,7 @@ def test_http_reply_commit_recovers_while_server_process_stays_alive(tmp_path, m
     with TestClient(create_app(api), raise_server_exceptions=False) as http:
         receipt = http.post(
             f"/api/v1/conversations/{c.id}/turns",
-            json={"operation_id": str(identity), "text": "Hello"},
+            json={"operation_id": str(identity), "expected_revision": 0, "text": "Hello"},
         )
         assert receipt.status_code == 202
         monkeypatch.setattr(repository, "commit", original)
@@ -231,6 +246,10 @@ def test_drawing_cannot_bypass_an_unreviewed_offscreen_person(tmp_path, role):
     with pytest.raises(KomaquillError, match="visual_review_required"):
         api.library.accept(
             CreationRequest(
-                operation_id=uuid4(), kind="conversation_image", target_id=c.id, expected_revision=0
+                llm_profile="fake",
+                operation_id=uuid4(),
+                kind="conversation_image",
+                target_id=c.id,
+                expected_revision=0,
             )
         )

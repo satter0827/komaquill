@@ -47,6 +47,9 @@ export async function captureJourney(page, evidence, { live = false } = {}) {
     }
     await page.getByRole('button', { name: ja.save, exact: true }).click()
     await page
+      .getByRole('button', { name: ja.createImage, exact: true })
+      .click()
+    await page
       .locator('.cover-preview img')
       .waitFor({ timeout: live ? 660000 : 30000 })
   })
@@ -65,6 +68,9 @@ export async function captureJourney(page, evidence, { live = false } = {}) {
       await page.getByLabel(ja.defaultCharacter).selectOption({ label: actor })
       await page.getByRole('button', { name: ja.save, exact: true }).click()
       await page.getByRole('status').filter({ hasText: ja.saved }).waitFor()
+      await page
+        .getByRole('button', { name: ja.createImage, exact: true })
+        .click()
       await page
         .locator('.cover-preview.wide img')
         .waitFor({ timeout: live ? 660000 : 30000 })

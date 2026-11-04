@@ -1,5 +1,7 @@
 # 検証記録を読む
 
+[会話・描画・画面構成](results/conversation-ui-operations.md)は、同時送信、接続条件、保存の分離、画面全体、固定NSFWへの移行の検証範囲と証跡を扱います。実モデルの品質は[固定評価ケース](conversation-quality.md)で別に判定します。
+
 [会話実行の永続化とコンテンツ設定](results/execution-and-content.md)は、公式チェックポイント、履歴の分離、NSFW、場面保存と共有用コピーの機械検査と未確認事項を扱います。
 
 [行動・外見確認・保存復旧の再レビュー](results/zero-base-player-review.md)は、人物の確認範囲、未指定の保持、行動の言語、サーバー稼働中の保存失敗からの復旧と残る生成品質を扱います。

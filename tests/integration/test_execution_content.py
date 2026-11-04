@@ -9,12 +9,11 @@ from komaquill.adapters.llm.context import ContextBudget
 from komaquill.adapters.llm.graph import compile_request, run_request
 from komaquill.api import Client, ConversationInput, KomaquillError, SendInput
 from komaquill.conversations.editing import NotesRequest, SceneRequest
-from komaquill.domain.content import ContentUpdate
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 from pydantic import BaseModel
 
-from tests.support.conversations import wire_reply
+from tests.support.conversations import accept_action, wire_reply
 
 
 class Result(BaseModel):
@@ -60,45 +59,10 @@ def test_sqlite_checkpoint_restarts_after_response_without_resending(tmp_path):
     assert calls == [0]
 
 
-def switch(api, enabled):
-    return api.library.save_preferences(
-        api.library.preferences().model_copy(update={"nsfw_enabled": enabled})
-    )
-
-
 def create(api):
     return api.conversations.create(
         ConversationInput(title="Scene", llm_profile="fake", locale="en")
     )
-
-
-def test_off_hides_content_and_reclassification_is_explicit(tmp_path):
-    api = Client.initialize(tmp_path)
-    general = create(api)
-    switch(api, True)
-    adult = create(api)
-    request = SendInput(operation_id=uuid4(), text="Hello")
-    operation, _ = api.conversations.accept(adult.id, request)
-    assert operation.nsfw_enabled
-    switch(api, False)
-    assert api.conversations.execute(operation.id).state == "complete"
-    assert [item.id for item in api.conversations.list()] == [general.id]
-    for read in (api.conversations.get, api.conversations.overview, api.conversations.turns):
-        with pytest.raises(KomaquillError, match="content_hidden"):
-            read(adult.id)
-    switch(api, True)
-    label = next(item for item in api.content.list() if item.id == adult.id)
-    update = ContentUpdate(
-        operation_id=uuid4(),
-        id=adult.id,
-        kind="conversation",
-        rating="general",
-        expected_revision=label.revision,
-    )
-    assert api.content.update(update).rating == "general"
-    assert api.content.update(update).rating == "general"
-    switch(api, False)
-    assert api.conversations.get(adult.id).turn_count == 1
 
 
 def test_pinned_notes_bookmarks_and_branches_do_not_generate(tmp_path, monkeypatch):
@@ -108,7 +72,14 @@ def test_pinned_notes_bookmarks_and_branches_do_not_generate(tmp_path, monkeypat
         scene.id,
         NotesRequest(operation_id=uuid4(), expected_revision=0, notes=["Remember the promise."]),
     )
-    api.conversations.send(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
+    api.conversations.send(
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     original = api.conversations.get(scene.id)
     turn = original.turns[0]
     assert turn.notes == original.notes
@@ -151,7 +122,7 @@ def test_completed_parent_recovers_when_final_result_checkpoint_fails(tmp_path, 
     api = Client.initialize(tmp_path)
     scene = create(api)
     repository = api.conversations.repository
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
 
     def fail(*_):
         raise KomaquillError(code="storage_failed")
@@ -171,7 +142,14 @@ def test_completed_parent_recovers_when_final_result_checkpoint_fails(tmp_path, 
 def test_normalized_history_rejects_missing_or_changed_records(tmp_path, damage):
     api = Client.initialize(tmp_path)
     scene = create(api)
-    api.conversations.send(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
+    api.conversations.send(
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
         if damage == "missing":
             connection.execute("DELETE FROM conversation_turns")
@@ -190,45 +168,28 @@ def test_normalized_history_rejects_missing_or_changed_records(tmp_path, damage)
             read(scene.id)
 
 
-def test_content_updates_require_target_revision_and_unique_command(tmp_path):
-    api = Client.initialize(tmp_path)
-    scene = create(api)
-    switch(api, True)
-    request = ContentUpdate(
-        operation_id=uuid4(), kind="conversation", id=scene.id, rating="nsfw", expected_revision=0
-    )
-    assert api.content.update(request).rating == "nsfw"
-    for update in (
-        request.model_copy(update={"rating": "general"}),
-        request.model_copy(update={"operation_id": uuid4(), "expected_revision": 0}),
-    ):
-        with pytest.raises(KomaquillError, match="operation_conflict"):
-            api.content.update(update)
-    with pytest.raises(KomaquillError, match="request_not_found"):
-        api.content.update(request.model_copy(update={"id": uuid4(), "operation_id": uuid4()}))
-    switch(api, False)
-    with pytest.raises(KomaquillError, match="content_hidden"):
-        api.content.update(request)
-
-
 def test_notes_cannot_bypass_revision_busy_or_content_policy(tmp_path):
     api = Client.initialize(tmp_path)
     scene = create(api)
     request = NotesRequest(
         operation_id=uuid4(), expected_revision=0, notes=["Physical facts stay authoritative."]
     )
-    operation, _ = api.conversations.accept(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
+    operation, _ = api.conversations.accept(
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     with pytest.raises(KomaquillError, match="operation_conflict"):
         api.conversations.save_notes(scene.id, request)
     api.conversations.execute(operation.id)
     with pytest.raises(KomaquillError, match="operation_conflict"):
         api.conversations.save_notes(scene.id, request)
-    switch(api, True)
     request = request.model_copy(update={"expected_revision": 1})
     api.conversations.save_notes(scene.id, request)
-    switch(api, False)
-    with pytest.raises(KomaquillError, match="content_hidden"):
-        api.conversations.save_notes(scene.id, request)
+    assert api.conversations.save_notes(scene.id, request).notes == request.notes
 
 
 def test_export_copies_strip_image_metadata_and_preserve_originals(tmp_path):
@@ -241,7 +202,14 @@ def test_export_copies_strip_image_metadata_and_preserve_originals(tmp_path):
 
     api = Client.initialize(tmp_path)
     scene = create(api)
-    api.conversations.send(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
+    api.conversations.send(
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     original = tmp_path / "original.png"
     metadata = PngImagePlugin.PngInfo()
     metadata.add_text("prompt", "Private workflow")
@@ -302,6 +270,9 @@ def test_distinct_physical_objects_may_have_the_same_name():
 
 
 def test_local_execution_reuses_response_and_rejects_changed_configuration(tmp_path, monkeypatch):
+    from tests.support.conversations import mock_llm_availability
+
+    mock_llm_availability(monkeypatch)
     from types import SimpleNamespace
 
     from langchain_core.messages import AIMessage
@@ -336,8 +307,10 @@ def test_local_execution_reuses_response_and_rejects_changed_configuration(tmp_p
 
 
 def test_nsfw_execution_rejects_remote_profile_before_model_creation(tmp_path, monkeypatch):
+    from tests.support.conversations import mock_llm_availability
+
+    mock_llm_availability(monkeypatch)
     api = Client.initialize(tmp_path)
-    switch(api, True)
     execution = api.library.creator.execution
     local = execution.settings.llm_profiles["lmstudio-4b"]
     execution.__dict__["settings"] = execution.settings.model_copy(
@@ -353,6 +326,9 @@ def test_nsfw_execution_rejects_remote_profile_before_model_creation(tmp_path, m
 
 
 def test_explicit_resume_reuses_response_after_validation_storage_failure(tmp_path, monkeypatch):
+    from tests.support.conversations import mock_llm_availability
+
+    mock_llm_availability(monkeypatch)
     from types import SimpleNamespace
 
     from langchain_core.messages import AIMessage
@@ -398,12 +374,35 @@ def test_explicit_resume_reuses_response_after_validation_storage_failure(tmp_pa
         raise KomaquillError(code="storage_failed")
 
     monkeypatch.setattr(responder, "check_language", fail)
-    request = SendInput(operation_id=uuid4(), text="Hello", allow_real_llm=True)
+    request = SendInput(
+        expected_revision=0, operation_id=uuid4(), text="Hello", allow_real_llm=True
+    )
     result = api.conversations.send(scene.id, request)
     assert result.state == "interrupted" and result.can_resume and len(calls) == 1
+    import hashlib
+
+    from komaquill.adapters.database import operations
+    from sqlalchemy import select
+
+    with api.conversations.repository.database.engine.begin() as connection:
+        retained = json.loads(connection.execute(select(operations.c.request)).scalar_one())
+        retained["images"] = False
+        raw = json.dumps(retained)
+        connection.execute(
+            operations.update().values(
+                request=raw,
+                fingerprint=hashlib.sha256((str(scene.id) + raw).encode()).hexdigest(),
+            )
+        )
     with pytest.raises(KomaquillError, match="real_llm_not_allowed"):
         api.conversations.resume_operation(result.id)
     monkeypatch.setattr(responder, "check_language", original)
+    monkeypatch.setattr(
+        execution, "budget", lambda *_: pytest.fail("A retained response must not count tokens")
+    )
+    monkeypatch.setattr(
+        execution, "_model", lambda *_: pytest.fail("A retained response must not create a model")
+    )
     assert api.conversations.resume_operation(result.id, allow_real_llm=True).state == "complete"
     assert len(calls) == 1 and len(api.conversations.get(scene.id).turns) == 1
     assert api.conversations.resume_operation(result.id).state == "complete"
@@ -436,6 +435,7 @@ def test_drawing_pair_requires_presence_and_wai(tmp_path, monkeypatch):
     with pytest.raises(KomaquillError, match="image_composition_unavailable"):
         api.library.accept(request)
     monkeypatch.setattr(api.images, "supports_pair", lambda: True)
+    monkeypatch.setattr(api.library, "preflight", lambda *_: None)
     job, created = api.library.accept(request)
     assert created and set(json.loads(job.original)["subjects"]) == {"player", "character"}
     assert json.loads(job.original)["viewpoint"] == "observer"
@@ -462,7 +462,7 @@ def test_visible_companion_gestures_do_not_require_a_persistent_state_change(tmp
 
 
 def test_operation_polling_and_current_actions_do_not_load_full_history(tmp_path, monkeypatch):
-    from komaquill.conversations.actions import ActionRequest, WaitAction
+    from komaquill.conversations.actions import WaitAction
 
     api = Client.initialize(tmp_path)
     scene = create(api)
@@ -474,38 +474,34 @@ def test_operation_polling_and_current_actions_do_not_load_full_history(tmp_path
         return original(identity, payload, **options)
 
     monkeypatch.setattr(repository, "_conversation", bounded)
-    request = ActionRequest(operation_id=uuid4(), expected_revision=0, action=WaitAction(minutes=1))
-    action, created = api.conversations.accept_action(scene.id, request)
-    assert created and api.conversations.accept_action(scene.id, request) == (action, False)
+    request = SendInput(
+        text="Continue.", operation_id=uuid4(), expected_revision=0, action=WaitAction(minutes=1)
+    )
+    action, created = accept_action(api.conversations, scene.id, request)
+    assert created and accept_action(api.conversations, scene.id, request) == (action, False)
     assert api.conversations.operations(scene.id)[0].id == action.reaction_id
     assert api.conversations.actions(scene.id) == [action]
 
 
 def test_action_index_rejects_a_changed_event_identity(tmp_path):
-    from komaquill.conversations.actions import ActionRequest, WaitAction
+    from komaquill.conversations.actions import WaitAction
 
     api = Client.initialize(tmp_path)
     scene = create(api)
-    api.conversations.accept_action(
+    accept_action(
+        api.conversations,
         scene.id,
-        ActionRequest(operation_id=uuid4(), expected_revision=0, action=WaitAction(minutes=1)),
+        SendInput(
+            text="Continue.",
+            operation_id=uuid4(),
+            expected_revision=0,
+            action=WaitAction(minutes=1),
+        ),
     )
     with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
         connection.execute("UPDATE conversation_events SET id='changed' WHERE kind='actions'")
     with pytest.raises(KomaquillError, match="storage_failed"):
         api.conversations.actions(scene.id)
-
-
-@pytest.mark.parametrize("value", ["false", 1, None])
-def test_corrupt_content_settings_never_enable_visibility(tmp_path, value):
-    api = Client.initialize(tmp_path)
-    _ = api.library.preferences()
-    with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
-        payload = json.loads(connection.execute("SELECT payload FROM preferences").fetchone()[0])
-        payload["nsfw_enabled"] = value
-        connection.execute("UPDATE preferences SET payload=?", (json.dumps(payload),))
-    with pytest.raises(KomaquillError, match="storage_failed"):
-        api.content.enabled()
 
 
 def test_optional_graph_dependency_failure_is_reported_explicitly(tmp_path, monkeypatch):
@@ -514,83 +510,12 @@ def test_optional_graph_dependency_failure_is_reported_explicitly(tmp_path, monk
     api = Client.initialize(tmp_path)
     scene = create(api)
     monkeypatch.setitem(sys.modules, "komaquill.adapters.llm.workflow", None)
-    operation = api.conversations.send(scene.id, SendInput(operation_id=uuid4(), text="Hello"))
-    assert operation.state == "failed" and operation.error == "llm_dependencies_missing"
-
-
-@pytest.mark.parametrize(
-    "kind,extra",
-    [
-        ("archive", ",reason"),
-        ("conversation", ""),
-        ("preset", ",kind,deleted"),
-        ("image", ""),
-        ("job", ",owner_pid,owner_started"),
-    ],
-)
-@pytest.mark.parametrize("payload", ["invalid", "[]", '{"definition":null}'])
-def test_classification_isolates_unreadable_records_and_updates_only_target(
-    tmp_path, monkeypatch, kind, extra, payload
-):
-    from komaquill.adapters.content import CONTENT_TABLES
-
-    api = Client.initialize(tmp_path)
-    healthy = create(api)
-    switch(api, True)
-    unreadable = uuid4()
-    extra_values = {"archive": ",'legacy_state'", "preset": ",'character',0", "job": ",1,'0'"}.get(
-        kind, ""
-    )
-    with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
-        connection.execute(
-            f"INSERT INTO {CONTENT_TABLES[kind]}(id,payload{extra}) VALUES(?,?{extra_values})",
-            (str(unreadable), payload),
-        )
-    labels = api.content.list()
-    broken = next(label for label in labels if label.id == unreadable)
-    assert not broken.readable
-    assert next(label for label in labels if label.id == healthy.id).readable
-    monkeypatch.setattr(
-        api.content, "list", lambda: pytest.fail("Single-item updates must not read the collection")
-    )
-    changed = api.content.update(
-        ContentUpdate(
+    operation = api.conversations.send(
+        scene.id,
+        SendInput(
+            expected_revision=api.conversations.overview(scene.id).revision,
             operation_id=uuid4(),
-            kind="conversation",
-            id=healthy.id,
-            rating="nsfw",
-            expected_revision=0,
-        )
+            text="Hello",
+        ),
     )
-    assert changed.rating == "nsfw" and changed.readable
-    assert (
-        api.content.update(
-            ContentUpdate(
-                operation_id=uuid4(),
-                kind="conversation",
-                id=healthy.id,
-                rating="general",
-                expected_revision=changed.revision,
-            )
-        ).rating
-        == "general"
-    )
-    with pytest.raises(KomaquillError, match="storage_failed"):
-        api.content.update(
-            ContentUpdate(
-                operation_id=uuid4(),
-                kind=kind,
-                id=unreadable,
-                rating="general",
-                expected_revision=0,
-            )
-        )
-    with sqlite3.connect(tmp_path / ".artifacts/data/komaquill.sqlite3") as connection:
-        assert (
-            connection.execute(
-                f"SELECT payload FROM {CONTENT_TABLES[kind]} WHERE id=?", (str(unreadable),)
-            ).fetchone()[0]
-            == payload
-        )
-    switch(api, False)
-    assert api.conversations.get(healthy.id).id == healthy.id
+    assert operation.state == "failed" and operation.error == "llm_dependencies_missing"

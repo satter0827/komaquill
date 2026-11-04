@@ -57,17 +57,17 @@ def test_absent_companion_uses_only_the_resolved_environment():
     assert result == "place: Beach. time: Evening."
 
 
-def test_portrait_keeps_explicit_empty_clothing_and_detects_its_change(tmp_path):
+def test_portrait_keeps_explicit_empty_clothing_and_detects_its_change(
+    tmp_path, substituted_services
+):
     from komaquill.api import CharacterInput, CreationRequest
-    from komaquill.library.models import PresetSaveOptions
     from komaquill.library.rendering import preset_changes, preset_image_input
 
     api = Client.initialize(tmp_path)
     original = api.characters.create(CharacterInput(name="Portrait", initial_clothing=None))
     assert "initial_clothing" not in preset_image_input("character", original)
     value = CharacterInput(name="Portrait", initial_clothing="")
-    options = PresetSaveOptions(operation_id=uuid4())
-    assert preset_changes("character", value, original, options).image_changed
+    assert preset_changes("character", value, original).image_changed
     saved = api.characters.update(original.id, original.revision, value)
     job, _ = api.library.accept(
         CreationRequest(
@@ -84,7 +84,7 @@ def test_portrait_keeps_explicit_empty_clothing_and_detects_its_change(tmp_path)
     )
     assert "initial clothing: No clothing." in english
     assert "initial held objects: Empty hands." in english
-    assert not preset_changes("character", value, saved, options).image_changed
+    assert not preset_changes("character", value, saved).image_changed
 
 
 @pytest.mark.parametrize("failure", [None, "missing", "japanese"])

@@ -57,7 +57,6 @@ for (const locale of ['ja', 'en'] as const) {
       await request.post('/api/v1/characters/save', {
         data: {
           operation_id: randomUUID(),
-          image_policy: 'none',
           value: { name: `Audit ${locale}` },
         },
       })

@@ -107,6 +107,7 @@ def test_terminal_response_keeps_raw_and_classification_without_repair(
 
 
 def test_strict_validation_rejects_coercion_and_records_the_repair(tmp_path, monkeypatch):
+
     class Quantity(BaseModel):
         count: int
 

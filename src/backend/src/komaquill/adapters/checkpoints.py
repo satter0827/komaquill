@@ -11,7 +11,8 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from komaquill.domain.errors import KomaquillError
 
 RESULT_VERSION = 1
-CONVERSATION_WORKFLOW_VERSION = 1
+CONVERSATION_WORKFLOW_VERSION = 2
+HISTORICAL_CONVERSATION_WORKFLOW_VERSION = 1
 
 
 class Checkpoints:
@@ -52,15 +53,17 @@ class Checkpoints:
             raise KomaquillError(code="storage_failed", retryable=False)
         return dict(values["result"])
 
-    def workflow_result(self, key: str, version: int) -> dict[str, Any] | None:
+    def conversation_result(self, key: str) -> dict[str, Any] | None:
         with SqliteSaver.from_conn_string(str(self.path)) as saver:
             saved = saver.get_tuple({"configurable": {"thread_id": key}})
         if saved is None:
             return None
         values = saved.checkpoint["channel_values"]
-        if values.get("version") != version:
-            raise KomaquillError(code="operation_conflict", retryable=False)
         result = values.get("result")
+        if values.get("version") != CONVERSATION_WORKFLOW_VERSION and not (
+            values.get("version") == HISTORICAL_CONVERSATION_WORKFLOW_VERSION and result is not None
+        ):
+            raise KomaquillError(code="operation_conflict", retryable=False)
         if result is not None and not isinstance(result, dict):
             raise KomaquillError(code="storage_failed", retryable=False)
         return dict(result) if result is not None else None

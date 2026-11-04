@@ -35,6 +35,7 @@ test('automatically collects a portrait and preserves it after duplication', asy
     .getByLabel(ja.initial_clothing, { exact: true })
     .fill('A green coat')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
+  await page.getByRole('button', { name: ja.createImage, exact: true }).click()
   await expect(page.locator('.cover-preview img')).toHaveJSProperty(
     'naturalWidth',
     8,
@@ -116,6 +117,7 @@ test('saves a banner and starts with the recommended character', async ({
     .fill('A visitor waits at the clocktower.')
   await page.getByLabel(ja.defaultCharacter).selectOption({ label: '栞' })
   await page.getByRole('button', { name: ja.save, exact: true }).click()
+  await page.getByRole('button', { name: ja.createImage, exact: true }).click()
   await expect(page.locator('.cover-preview.wide img')).toHaveJSProperty(
     'naturalWidth',
     8,
@@ -265,7 +267,6 @@ test('regenerates the current age and gender and displays one preview', async ({
     await request.post('/api/v1/characters/save', {
       data: {
         operation_id: randomUUID(),
-        image_policy: 'none',
         value: {
           name: 'Older companion',
           age: '32',
@@ -278,15 +279,28 @@ test('regenerates the current age and gender and displays one preview', async ({
   await page.goto(`/characters/${created.preset.id}`)
   await page.getByLabel(ja.age, { exact: true }).fill('60')
   await page.getByLabel(ja.gender, { exact: true }).fill('man')
+  await expect(
+    page.getByRole('button', { name: ja.createImage, exact: true }),
+  ).toBeDisabled()
   const received = page.waitForRequest(
     (req) =>
       new URL(req.url()).pathname === '/api/v1/characters/save' &&
       req.method() === 'POST',
   )
-  await page.getByRole('button', { name: ja.createImage, exact: true }).click()
+  await page.getByRole('button', { name: ja.save, exact: true }).click()
   expect((await received).postDataJSON()).toMatchObject({
     value: { age: '60', gender: 'man' },
-    image_policy: 'always',
+  })
+  const generated = page.waitForRequest(
+    (req) =>
+      new URL(req.url()).pathname === '/api/v1/creation-jobs' &&
+      req.method() === 'POST',
+  )
+  await page.getByRole('button', { name: ja.createImage, exact: true }).click()
+  expect((await generated).postDataJSON()).toMatchObject({
+    kind: 'portrait',
+    target_id: created.preset.id,
+    expected_revision: 1,
   })
   await expect(page.locator('.cover-preview img')).toHaveJSProperty(
     'naturalWidth',

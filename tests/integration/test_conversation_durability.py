@@ -8,9 +8,11 @@ from uuid import uuid4
 
 import pytest
 from komaquill.adapters.database import Database, conversations, operations
-from komaquill.api import ActionRequest, Client, KomaquillError, MoveAction
-from komaquill.conversations.models import ConversationInput, Reply, SendInput
+from komaquill.api import Client, KomaquillError, MoveAction, SendInput
+from komaquill.conversations.models import ConversationInput, Reply
 from sqlalchemy import select
+
+from tests.support.conversations import accept_action
 
 
 def test_validated_reply_survives_restart_without_another_model_call(tmp_path, monkeypatch):
@@ -18,7 +20,7 @@ def test_validated_reply_survives_restart_without_another_model_call(tmp_path, m
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Recovery")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
     assert repository.running(request.operation_id)
@@ -41,12 +43,85 @@ def test_validated_reply_survives_restart_without_another_model_call(tmp_path, m
     assert len(api.conversations.resume(conversation.id).turns) == 1
 
 
+@pytest.mark.parametrize("finished", [True, False])
+def test_historical_workflow_only_recovers_its_saved_result(tmp_path, monkeypatch, finished):
+    import hashlib
+
+    from langgraph.checkpoint.base import empty_checkpoint
+
+    api = Client.initialize(tmp_path)
+    scene = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Retained action")
+    )
+    request = SendInput(
+        operation_id=uuid4(),
+        expected_revision=0,
+        text="Continue.",
+        action=MoveAction(destination="Garden"),
+    )
+    api.conversations.accept(scene.id, request)
+    repository = api.conversations.repository
+    assert repository.running(request.operation_id)
+    retained = {
+        "operation_id": str(request.operation_id),
+        "action_id": str(request.operation_id),
+        "images": False,
+        "text": "",
+    }
+    raw = json.dumps(retained)
+    with repository.database.engine.begin() as connection:
+        connection.execute(
+            operations.update().values(
+                request=raw,
+                fingerprint=hashlib.sha256((str(scene.id) + raw).encode()).hexdigest(),
+                owner_started="0",
+            )
+        )
+    checkpoint = empty_checkpoint()
+    checkpoint["channel_values"] = {
+        "version": 1,
+        "result": Reply(text="A retained reply", state_patch={}).model_dump(
+            mode="json", exclude_unset=True
+        )
+        if finished
+        else None,
+    }
+    checkpoint["channel_versions"] = {"result": 1}
+    repository.database.checkpoints.saver.put(
+        {
+            "configurable": {
+                "thread_id": f"conversation:{request.operation_id}",
+                "checkpoint_ns": "",
+            }
+        },
+        checkpoint,
+        {"source": "update", "step": 0, "parents": {}},
+        {"result": 1},
+    )
+    monkeypatch.setattr(
+        api.conversations.responder, "reply", lambda *_: pytest.fail("Never resend old input")
+    )
+    restored = api.conversations.resume(scene.id)
+    operation = api.operations.get(request.operation_id)
+    assert restored.state.place == "Garden" and len(restored.actions) == 1
+    if finished:
+        assert operation.state == "complete" and restored.turn_count == 1
+        assert restored.turns[0].user == "" and restored.turns[0].action == request.action
+    else:
+        assert operation.state == "interrupted" and not operation.can_resume
+        assert operation.error == "operation_conflict" and restored.turn_count == 0
+        with pytest.raises(KomaquillError, match="submission_unknown"):
+            api.conversations.resume_operation(request.operation_id)
+    with repository.database.engine.connect() as connection:
+        assert connection.execute(select(operations.c.request)).scalar_one() == raw
+
+
 def test_commit_failure_retains_reply_checkpoint_for_recovery(tmp_path, monkeypatch):
     api = Client.initialize(tmp_path)
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Storage failure")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     original = repository.commit
     monkeypatch.setattr(
@@ -70,7 +145,7 @@ def test_saved_identity_mismatch_is_not_used_or_repaired(tmp_path, record):
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Identity")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     api.conversations.accept(conversation.id, request)
     repository = api.conversations.repository
     with repository.database.engine.begin() as connection:
@@ -103,7 +178,14 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
     conversation = original.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Backup")
     )
-    original.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+    original.conversations.send(
+        conversation.id,
+        SendInput(
+            expected_revision=original.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     restored = Client.initialize(tmp_path / "restored")
     source = original.workspace / ".artifacts/data/komaquill.sqlite3"
     target = restored.workspace / ".artifacts/data/komaquill.sqlite3"
@@ -123,7 +205,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
         with storage.engine.connect() as connection:
             assert (
                 connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar_one()
-                == "0010"
+                == "0011"
             )
         storage.engine.dispose()
 
@@ -133,16 +215,20 @@ def test_state_command_reconciles_a_dead_owner_before_applying(tmp_path):
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Dead owner")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     api.conversations.accept(conversation.id, request)
     repository = api.conversations.repository
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))
     assert not repository.running(request.operation_id)
-    changed, _ = api.conversations.accept_action(
+    changed, _ = accept_action(
+        api.conversations,
         conversation.id,
-        ActionRequest(
-            operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="home")
+        SendInput(
+            text="Continue.",
+            operation_id=uuid4(),
+            expected_revision=0,
+            action=MoveAction(destination="home"),
         ),
     )
     assert changed.revision == 1
@@ -166,13 +252,20 @@ def test_unknown_process_ownership_does_not_release_the_slot(tmp_path, monkeypat
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Unknown owner")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     api.conversations.accept(conversation.id, request)
     monkeypatch.setattr(
         storage.psutil, "Process", lambda *_: (_ for _ in ()).throw(psutil.AccessDenied())
     )
     with pytest.raises(KomaquillError, match="operation_busy"):
-        api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+        api.conversations.send(
+            conversation.id,
+            SendInput(
+                expected_revision=api.conversations.overview(conversation.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
+        )
     assert api.operations.get(request.operation_id).state == "accepted"
 
 
@@ -181,7 +274,7 @@ def test_corrupt_inactive_operation_does_not_block_another_conversation(tmp_path
     first = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Corrupt history")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     api.conversations.send(first.id, request)
     with api.conversations.repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(payload="invalid"))
@@ -189,7 +282,14 @@ def test_corrupt_inactive_operation_does_not_block_another_conversation(tmp_path
         ConversationInput(locale="en", llm_profile="fake", title="Healthy")
     )
     assert (
-        api.conversations.send(second.id, SendInput(operation_id=uuid4(), text="Hello")).state
+        api.conversations.send(
+            second.id,
+            SendInput(
+                expected_revision=api.conversations.overview(second.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
+        ).state
         == "complete"
     )
     with pytest.raises(KomaquillError, match="storage_failed"):
@@ -205,7 +305,7 @@ def test_unreadable_received_call_does_not_block_healthy_conversations(
     first = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Unreadable response")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     api.conversations.accept(first.id, request)
     repository = api.conversations.repository
     assert repository.running(request.operation_id)
@@ -227,7 +327,14 @@ def test_unreadable_received_call_does_not_block_healthy_conversations(
         ConversationInput(locale="en", llm_profile="fake", title="Healthy")
     )
     assert (
-        api.conversations.send(second.id, SendInput(operation_id=uuid4(), text="Hello")).state
+        api.conversations.send(
+            second.id,
+            SendInput(
+                expected_revision=api.conversations.overview(second.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
+        ).state
         == "complete"
     )
     assert api.conversations.get(first.id).turns == []
@@ -238,7 +345,7 @@ def test_unreadable_checkpoint_isolated_without_committing_or_resending(tmp_path
     first = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Unreadable checkpoint")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     api.conversations.accept(first.id, request)
     repository = api.conversations.repository
     assert repository.running(request.operation_id)
@@ -249,7 +356,14 @@ def test_unreadable_checkpoint_isolated_without_committing_or_resending(tmp_path
         ConversationInput(locale="en", llm_profile="fake", title="Healthy")
     )
     assert (
-        api.conversations.send(second.id, SendInput(operation_id=uuid4(), text="Hello")).state
+        api.conversations.send(
+            second.id,
+            SendInput(
+                expected_revision=api.conversations.overview(second.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
+        ).state
         == "complete"
     )
     result = api.operations.get(request.operation_id)
@@ -292,7 +406,7 @@ def test_pending_image_recovers_from_its_durable_receipt_while_owner_is_alive(
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Image receipt")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     repository = api.conversations.repository
     api.conversations.accept(conversation.id, request)
     assert repository.running(request.operation_id)
@@ -328,7 +442,14 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
     conversation = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Upgrade")
     )
-    api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+    api.conversations.send(
+        conversation.id,
+        SendInput(
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     engine = api.conversations.repository.database.engine
     config = Config()
     config.set_main_option("script_location", str(Path(storage.__file__).with_name("migrations")))
@@ -349,7 +470,6 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
         )
         connection.exec_driver_sql("ALTER TABLE operations ADD COLUMN reply TEXT")
         for table in (
-            "content_labels",
             "operation_policies",
             "conversation_turns",
             "conversation_events",
@@ -365,11 +485,16 @@ def test_previous_database_upgrade_retains_turns_and_accepts_a_new_operation(tmp
         command.stamp(config, "0005")
         command.downgrade(config, "0003")
     Database(tmp_path / ".artifacts/data/komaquill.sqlite3", migrate=True).engine.dispose()
-    preferences = api.library.preferences()
-    api.library.save_preferences(preferences.model_copy(update={"nsfw_enabled": True}))
     assert len(api.conversations.get(conversation.id).turns) == 1
     assert (
-        api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello")).state
+        api.conversations.send(
+            conversation.id,
+            SendInput(
+                expected_revision=api.conversations.overview(conversation.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
+        ).state
         == "complete"
     )
     assert len(api.conversations.get(conversation.id).turns) == 2

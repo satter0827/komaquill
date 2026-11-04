@@ -10,7 +10,7 @@ from komaquill.api import Client, ConversationInput, SendInput
 
 client = Client.initialize("./my-work")
 conversation = client.conversations.create(ConversationInput(title="My conversation", llm_profile="fake"))
-operation = client.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+operation = client.conversations.send(conversation.id, SendInput(operation_id=uuid4(), expected_revision=conversation.revision, text="Hello"))
 saved = client.conversations.get(conversation.id)
 ```
 
@@ -30,9 +30,9 @@ saved = client.conversations.get(conversation.id)
 
 下書き・代表画像・バナーは `CreationRequest` を `Client.library.accept()` へ渡し、新規受付の場合だけ `execute()` します。`job()` は保存済みの進捗を取得し、同じIDの再確認で生成を送り直しません。単発画像の日本語入力には `llm_profile` と `allow_real_llm=True` を指定します。既存DBを更新する場合は停止後に `Client.migrate()` を明示実行し、返された検証記録を確認します。
 
-## 保存と画像を一緒に受け付ける
+## 本文の保存と画像の生成
 
-画像も作る場合はlibrary.save_presetを使う。画像生成先の起動・接続は別に行う。
+library.save_presetは本文だけを保存する。画像生成は保存済みの版に対して別の操作で行う。
 
 ```python
 from komaquill.api import CharacterInput, PresetSaveOptions
@@ -40,11 +40,13 @@ from komaquill.api import CharacterInput, PresetSaveOptions
 result = client.library.save_preset(
     "character",
     CharacterInput(name="Mira", age="60", gender="man", appearance="Short silver hair", initial_clothing="Black apron"),
-    PresetSaveOptions(operation_id=uuid4(), allow_real_llm=True),
+    PresetSaveOptions(operation_id=uuid4()),
 )
 ```
 
-result.presetは保存済み本文、result.jobは画像の操作、result.image_errorは画像受付の失敗を表す。更新ではtarget_idとexpected_revisionを渡す。再確認は同じ操作IDと同じ入力を使い、明示的な再生成はimage_policyのalwaysを指定する。本文だけを保存するときはnoneを使う。HTTPはcharacters/saveとstories/saveで同じ処理を呼ぶ。
+result.presetは保存済み本文を表す。更新にはtarget_idとexpected_revisionを渡す。同じ操作IDと入力の再確認は保存結果を返す。画像を生成する場合は、result.presetのIDと版を指定したCreationRequestをlibrary.accept/executeへ渡す。HTTPはcharacters/saveとstories/saveで本文だけを保存する。
+
+Client.availability.check(AvailabilityRequest(...))は必要な接続の観測を返す。kindはconversation、creation、image、collection、resumeから選び、対象IDまたは生成要求を渡す。確認は推論・モデル読み込み・GPU確保を行わない。
 
 ConversationInputのuser・character・scenarioは、公開するPersonDefinition・CharacterDefinition・StoryDefinitionを使う。initial_stateはConversationStateを使い、自分と相手の服装・持ち物を別に保持する。文脈予算を超える場合だけ古い履歴の原文を引用して記憶を保存し、元の本文と現在状態は維持する。
 

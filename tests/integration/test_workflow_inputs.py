@@ -11,6 +11,8 @@ from komaquill.api import images as services
 from komaquill.images.generation import collect, submit_generation
 from PIL import Image
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 def configure(project, session, client, monkeypatch):
     active = session.model_copy(update={"settings": project.settings()})

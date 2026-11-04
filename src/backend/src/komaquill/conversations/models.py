@@ -8,6 +8,7 @@ from pydantic import Field, model_validator
 
 from komaquill.conversations.actions import ActionRecord, PlayerAction, ProposedAction
 from komaquill.conversations.visuals import VisualReviewRecord
+from komaquill.domain.errors import OperationStage
 from komaquill.domain.roleplay import (
     CharacterDefinition,
     ConversationMemory,
@@ -87,17 +88,32 @@ class Conversation(Record):
     visual_reviews: list[VisualReviewRecord] = Field(default_factory=list)
 
 
-class SendInput(Record):
+class TurnRequest(Record):
+    """Read immutable accepted requests independently of the public input contract."""
+
     operation_id: UUID
     text: str = Field(default="", max_length=20000)
     action_id: UUID | None = None
+    expected_revision: int | None = None
+    action: PlayerAction | None = None
+    proposal_id: UUID | None = None
+    allow_real_llm: bool = False
+    locale: Literal["ja", "en"] | None = None
+
+
+class SendInput(Record):
+    operation_id: UUID
+    expected_revision: int = Field(ge=0)
+    text: str = Field(min_length=1, max_length=20000, pattern=r"\S")
+    action: PlayerAction | None = None
+    proposal_id: UUID | None = None
     allow_real_llm: bool = False
     locale: Literal["ja", "en"] | None = None
 
     @model_validator(mode="after")
     def content_required(self) -> "SendInput":
-        if not self.text.strip() and self.action_id is None:
-            raise ValueError("A message or a confirmed action is required.")
+        if self.proposal_id is not None and self.action is None:
+            raise ValueError("A proposal requires its matching action.")
         return self
 
 
@@ -119,6 +135,11 @@ class Reply(Record):
     action_proposals: list[PlayerAction] = Field(default_factory=list, max_length=4)
 
 
+class AcceptedInput(Record):
+    text: str = Field(max_length=20000)
+    action: PlayerAction | None = None
+
+
 class Operation(Record):
     can_resume: bool = False
     nsfw_enabled: bool = False
@@ -126,6 +147,8 @@ class Operation(Record):
     conversation_id: UUID
     state: Literal["accepted", "running", "complete", "failed", "interrupted"]
     error: str | None = None
+    error_stage: OperationStage | None = None
+    response_locale: Literal["ja", "en"] | None = None
     image_state: Literal["disabled", "pending", "submitted", "failed"] = "disabled"
     image_id: UUID | None = None
     image_error: str | None = None

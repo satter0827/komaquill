@@ -32,7 +32,7 @@ tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 [requirements.REQ-CHARACTER-PRESETS]
 summary = "キャラクターを作成・保存して代表画像とともに再利用する"
 status = "implemented"
-acceptance = ["名前・年齢・性別・外見・性格・話し方・背景・関係を保存・一覧・編集・複製・削除できる", "保存済みキャラクターを会話で選択できる", "手動保存と明示した4Bによる下書き作成を区別する", "保存時に許可済みの接続先で代表画像を生成し画面に表示する", "画像の用途・生成操作・設定の版を関連付ける", "接続なしや画像失敗でも設定を保存し未生成と次の操作を示す", "再生成中に以前の画像を失わない", "代表画像の表示と別画像での人物同一性の確認を区別する"]
+acceptance = ["名前・年齢・性別・外見・性格・話し方・背景・関係を保存・一覧・編集・複製・削除できる", "保存済みキャラクターを会話で選択できる", "手動保存と明示した4Bによる下書き作成を区別する", "本文保存と分けた明示操作で保存済みの版から代表画像を生成し画面に表示する", "画像の用途・生成操作・設定の版を関連付ける", "接続なしや画像失敗でも設定を保存し未生成と次の操作を示す", "再生成中に以前の画像を失わない", "代表画像の表示と別画像での人物同一性の確認を区別する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/komaquill/adapters/library_repository.py", "src/frontend/src/features/library.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 
@@ -189,10 +189,10 @@ tests = ["tests/integration/test_colab_provider.py", "tests/unit/test_lifecycle.
 
 [requirements.REQ-QUALITY]
 summary = "GPUなしで検査し、全工程が成功した場合だけ成功を確定する"
-status = "in_progress"
-acceptance = ["変更の影響を受けるプロジェクトと関連テストを選択する", "中断・不足環境・入力変更と局所成功を区別する", "行90%以上・分岐80%以上を独立判定する"]
-sources = ["scripts/check.py", "scripts/checks/coverage.py"]
-tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py"]
+status = "implemented"
+acceptance = ["変更の影響を受けるプロジェクトと関連テストを選択する", "中断・不足環境・入力変更と局所成功を区別する", "行90%以上・分岐80%以上を独立判定する", "配布検証は実行ごとに対象のSHA256と成否を保存しビルドのキャッシュ復元で上書きしない"]
+sources = ["scripts/check.py", "scripts/checks/coverage.py", "scripts/checks/installed_wheel.py", "src/backend/project.json"]
+tests = ["tests/unit/test_quality.py", "tests/unit/test_verification_contracts.py", "tests/integration/test_acceptance.py", "tests/structure/test_boundaries.py"]
 
 [requirements.REQ-BUNDLES]
 summary = "利用者が生成セットをフォルダー単位で追加・置換できる"
@@ -383,7 +383,7 @@ implementation_note = "引用とターンID・項目・範囲・内容ハッシ�
 [requirements.REQ-LLM-EFFICIENCY]
 summary = "会話の精度と自然さを維持しながらLLMのトークン量と不要な呼び出しを減らす"
 status = "in_progress"
-implementation_note = "共通予算、公式SDKによる読込済みモデルの計数、予算超過時の原文選択、状態の差分回答、回数と境界を保持する履歴投影、公式チェックポイントを実装した。実LLM比較では意味の誤りが残り、専用の事実回答と候補モデルへの切替は不採用とした。全呼び出しと失敗した生成物を保持し、品質維持と総量削減の受入は未完了とする。"
+implementation_note = "共通予算、公式SDKによる読込済みモデルの計数、予算超過時の原文選択、状態の差分回答、回数と境界を保持する履歴投影、公式チェックポイントを実装した。人物情報と現在状態を役割別にまとめ、入れ子のSchemaの言語指定と部分履歴のNative計数を修正した。実4B・9Bには意味の誤りが残り、9Bへの既定変更は不採用とした。全呼び出しと失敗した生成物を保持し、品質維持と総量削減の受入は未完了とする。"
 acceptance = [
     "人物の役割・現在状態・所有関係・生成言語・重要事項の参照と文章の自然さを削減前後で確認する",
     "指示・状態・履歴・スキーマの不要な重複を減らし、必要情報の削除や不自然な短文化を強制しない",
@@ -400,7 +400,7 @@ acceptance = [
     "比較証跡は版・操作・用途・呼び出し順・モデル・指示・出力参照・使用量・評価者を関連付け、元の生成物と評価を変更しない",
 ]
 sources = ["src/backend/src/komaquill/adapters/llm/context.py", "src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
-tests = ["tests/unit/test_llm_graph.py", "tests/unit/test_llm_execution.py", "tests/integration/test_conversation_memory.py", "tests/unit/test_llm_comparison.py"]
+tests = ["tests/unit/test_llm_graph.py", "tests/unit/test_llm_execution.py", "tests/unit/test_llm_tokenization.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_memory.py", "tests/unit/test_llm_comparison.py"]
 
 [requirements.REQ-LLM-BOUNDARIES]
 summary = "共通のLLM実行と会話・下書き・英訳・記憶作成の責務を分け、標準機能へ委譲する"
@@ -497,23 +497,23 @@ tests = ["tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/fixtures.ts"]
 [requirements.REQ-PLAYER-ACTIONS]
 summary = "自分の行動を確認して確定し会話と画像へ同じ状態を反映する"
 status = "implemented"
-acceptance = ["自分の行動案は確認前に適用しない", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
+acceptance = ["自分の行動案は発言と同時に送信するまで適用しない", "行動には発言を必須とし一件の応答操作で受け付ける", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
 sources = ["src/backend/src/komaquill/conversations/actions.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/database.py", "src/frontend/src/features/player-actions.tsx"]
 tests = ["tests/integration/test_player_actions.py", "tests/integration/test_player_review_regressions.py", "src/frontend/tests/conversations.test.tsx", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]
 
 [requirements.REQ-CHAT-CHECKPOINT]
 summary = "公式チェックポイントで受信済み応答を再利用し、保存と実行の正本を分ける"
 status = "implemented"
-acceptance = ["同じSQLite内の公式SqliteSaverで会話入力と要求・検証・有限修正を保存する", "原応答、使用量、設定の照合を保持し、受付不明の送信を再送しない", "保存直前の失敗から追加生成なしで復旧し、条件が変わった再開を停止する", "本文とイベントを分離し、概要とページ取得を全文の取得から分ける", "停止・バックアップ・内容照合を伴う明示移行で旧JSONと応答を保持する"]
+acceptance = ["同じSQLite内の公式SqliteSaverで会話入力と要求・検証・有限修正を保存する", "原応答、使用量、設定の照合を保持し、受付不明の送信を再送しない", "保存直前の失敗から追加生成なしで復旧し、条件が変わった再開を停止する", "HTTPの受付後の既知の保存失敗を送信済み応答へ再送出しない", "本文とイベントを分離し、概要とページ取得を全文の取得から分ける", "停止・バックアップ・内容照合を伴う明示移行で旧JSONと応答を保持する"]
 sources = ["src/backend/src/komaquill/adapters/checkpoints.py", "src/backend/src/komaquill/adapters/llm/workflow.py", "src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/database.py"]
-tests = ["tests/integration/test_execution_content.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_conversation_memory.py"]
+tests = ["tests/integration/test_execution_content.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_conversation_memory.py", "tests/integration/test_operation_review.py", "tests/live/operation_recovery.py"]
 
 [requirements.REQ-CONTENT-MODE]
-summary = "NSFWを明示設定で切り替え、既存作品と処理中の保存を保全する"
+summary = "すべての保存物を固定NSFWとして扱い実行条件と原本を保全する"
 status = "implemented"
-acceptance = ["作業フォルダー単位のNSFWチェックボックスを既定OFFで保存し、現在の設定を表示する", "OFFでNSFWと未分類を一覧・詳細・画像・出力から隠す", "ONの実LLM送信はローカル接続に限定し、操作の設定を受付時に固定する", "設定変更でも受付済み処理の保存と回収を妨げない", "既存記録は未分類とし、分類変更には版と操作IDを必要とする", "画面の非表示は入力を保持し、表示切替では作品のキャッシュを破棄する"]
-sources = ["src/backend/src/komaquill/adapters/content.py", "src/backend/src/komaquill/domain/content.py", "src/frontend/src/features/content.tsx", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/shell.tsx"]
-tests = ["tests/integration/test_execution_content.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/content.spec.ts"]
+acceptance = ["現役・過去・archiveを固定NSFWとして閲覧できる", "切替・個別分類・区分フィルターを提供しない", "新規の実LLM送信はローカル接続と明示許可を必要とする", "明示移行で旧設定と実行記録・画像・履歴のハッシュを保全する", "画面を隠しても入力とスクロールを保持し復帰できる"]
+sources = ["src/backend/src/komaquill/adapters/content.py", "src/backend/src/komaquill/domain/content.py", "src/backend/src/komaquill/adapters/migrations/versions/0011_fixed_content.py", "src/frontend/src/app/preferences.tsx", "src/frontend/src/app/shell.tsx"]
+tests = ["tests/integration/test_execution_content.py", "tests/integration/test_operation_availability.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/content.spec.ts"]
 
 [requirements.REQ-SCENE-TOOLS]
 summary = "メモと確定場面を保存し、分岐・描画・共有用コピーへ反映する"
@@ -521,3 +521,10 @@ status = "implemented"
 acceptance = ["固定メモ、文体、話題と避けたい内容を生成文脈へ渡す", "環境、相手の動作、台詞を分け、物理的な持ち物を識別子で区別する", "確定場面の状態とメモを保存し、元作品を変更せず指定ターンから分岐する", "相手、自分と相手、風景の対象と視点を固定し、二人はWAIで扱う", "共有用ZIPの画像と生成条件を個別選択し、原本を変更せず画像コピーのメタデータを除く"]
 sources = ["src/backend/src/komaquill/conversations/editing.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/conversation_export.py", "src/frontend/src/features/conversation-tools.tsx"]
 tests = ["tests/integration/test_execution_content.py", "tests/unit/test_conversation_context.py", "tests/e2e/web/content.spec.ts"]
+
+[requirements.REQ-OPERATION-AVAILABILITY]
+summary = "操作の入力から必要接続を求め接続確認後に生成を受け付ける"
+status = "implemented"
+acceptance = ["設定の存在と対象モデル・実行先の観測を区別する", "翻訳不要の描画にLLMを要求しない", "未確認・確認中・期限切れ・利用不可では依存する実行操作を止める", "受付前に共通判定を行い通信中はDBロックを保持しない", "本文保存・履歴閲覧・ダウンロード・保存済み結果の確定に不要な接続を要求しない", "接続確認で推論・モデル読み込み・GPU確保を行わない"]
+sources = ["src/backend/src/komaquill/availability.py", "src/backend/src/komaquill/api/availability.py", "src/frontend/src/features/availability.tsx"]
+tests = ["tests/integration/test_operation_availability.py", "tests/integration/test_operation_review.py", "src/frontend/tests/content.test.tsx", "src/frontend/tests/conversations.test.tsx", "src/frontend/tests/images.test.tsx", "src/frontend/tests/operations.test.ts", "tests/e2e/web/layout-availability.spec.ts"]

@@ -94,22 +94,21 @@ for (const locale of ['ja', 'en'] as const) {
     const receipt = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
-        response.url().endsWith(`/api/v1/conversations/${identity}/actions`),
+        response.url().endsWith(`/api/v1/conversations/${identity}/turns`),
     )
+    await page.getByRole('button', { name: m.queueAction, exact: true }).click()
     await page
-      .getByRole('button', { name: m.confirmAction, exact: true })
-      .click()
+      .getByRole('textbox', { name: m.messageLabel })
+      .fill(locale === 'ja' ? '海へ行きます。' : 'I am leaving for the beach.')
+    await page.getByRole('button', { name: m.send, exact: true }).click()
     const accepted = await receipt
     expect(accepted.status()).toBe(202)
     const action = await accepted.json()
     await expect
       .poll(
         async () =>
-          (
-            await (
-              await request.get(`/api/v1/operations/${action.reaction_id}`)
-            ).json()
-          ).state,
+          (await (await request.get(`/api/v1/operations/${action.id}`)).json())
+            .state,
         { timeout: REACTION_COMPLETION_TIMEOUT_MS },
       )
       .toBe('complete')
@@ -171,22 +170,23 @@ test('a chat action remains a proposal until the player confirms it', async ({
   const receipt = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
-      response.url().endsWith(`/api/v1/conversations/${identity}/actions`),
+      response.url().endsWith(`/api/v1/conversations/${identity}/turns`),
   )
   await proposal
-    .getByRole('button', { name: ja.confirmAction, exact: true })
+    .getByRole('button', { name: ja.queueAction, exact: true })
     .click()
+  await page
+    .getByRole('textbox', { name: ja.messageLabel })
+    .fill('海へ行きます。')
+  await page.getByRole('button', { name: ja.send, exact: true }).click()
   const accepted = await receipt
   expect(accepted.status()).toBe(202)
   const action = await accepted.json()
   await expect
     .poll(
       async () =>
-        (
-          await (
-            await request.get(`/api/v1/operations/${action.reaction_id}`)
-          ).json()
-        ).state,
+        (await (await request.get(`/api/v1/operations/${action.id}`)).json())
+          .state,
       { timeout: REACTION_COMPLETION_TIMEOUT_MS },
     )
     .toBe('complete')

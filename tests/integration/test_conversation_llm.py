@@ -5,11 +5,13 @@ from uuid import uuid4
 
 import pytest
 from komaquill.api import Client
-from komaquill.conversations.models import ConversationInput, SendInput
+from komaquill.conversations.models import ConversationInput, SendInput, TurnRequest
 from komaquill.domain.roleplay import ConversationState
 from komaquill.library.models import CreationRequest
 
 from tests.support.conversations import set_state, wire_reply
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def wire_state(value):
@@ -104,7 +106,13 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
         )
     )
     api.conversations.send(
-        conversation.id, SendInput(operation_id=uuid4(), text="Sit in the garden")
+        conversation.id,
+        SendInput(
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Sit in the garden",
+        ),
     )
     current = api.conversations.get(conversation.id)
     set_state(
@@ -128,22 +136,85 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     )
     original.reply(
         api.conversations.get(current.id),
-        SendInput(
-            operation_id=uuid4(),
-            text="Continue",
-            allow_real_llm=True,
+        TurnRequest.model_validate_json(
+            (
+                SendInput(
+                    expected_revision=0,
+                    operation_id=uuid4(),
+                    text="Continue",
+                    allow_real_llm=True,
+                )
+            ).model_dump_json()
         ),
     )
     context = json.loads(
         next(line for line in reversed(calls[0][4].splitlines()) if line.startswith("{"))
     )
-    assert context["people"]["player"]["age"] == "28"
-    assert context["people"]["character"]["age"] == "32"
+    assert context["people"]["human_player"]["name"] == "灯"
+    assert context["people"]["human_player"]["age"] == "28"
+    assert context["people"]["assistant_character"]["name"] == "Mira"
+    assert context["people"]["assistant_character"]["age"] == "32"
     assert context["story"]["description"] == "A quiet bookshop"
     assert context["current_state"]["place"] == "tower"
-    assert context["people"]["character"]["clothing"] == "blue shirt"
+    assert context["people"]["assistant_character"]["clothing"] == "blue shirt"
     assert context["current_state"]["goal"] == "find a book"
     assert api.conversations.get(current.id).turns == current.turns
+
+
+def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(tmp_path):
+    from komaquill.adapters.llm.conversation import NarrativeReply
+    from komaquill.api import PrepareAction
+
+    api = Client.initialize(tmp_path)
+    scene = api.conversations.create(
+        ConversationInput(
+            title="Separate people",
+            locale="en",
+            user={"name": "Akari", "age": "28", "initial_clothing": "Red coat"},
+            character={"name": "Mira", "age": "60", "initial_clothing": "Black apron"},
+            scenario={"place": "Bookshop"},
+        )
+    )
+    calls = []
+
+    def invoke(*args, **_kwargs):
+        calls.append(args)
+        return NarrativeReply.model_validate(
+            {
+                "response": {
+                    "kind": "companion",
+                    "changes": [],
+                    "action_narration": "",
+                    "text": "Understood.",
+                }
+            }
+        )
+
+    api._execution.invoke = invoke
+    text = "I took off my coat and put it beside me."
+    operation = api.conversations.send(
+        scene.id,
+        SendInput(
+            operation_id=uuid4(),
+            expected_revision=0,
+            text=text,
+            action=PrepareAction(clothing=""),
+            allow_real_llm=True,
+        ),
+    )
+    context = json.loads(next(line for line in calls[0][4].splitlines() if line.startswith("{")))
+    assert context["people"]["human_player"]["clothing"] == ""
+    assert context["people"]["assistant_character"]["clothing"] == "Black apron"
+    assert context["people"]["assistant_character"]["name"] == "Mira"
+    latest = json.loads(calls[0][5][-1][1])
+    assert latest == {
+        "speaker": "human_player",
+        "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
+        "text": text,
+    }
+    assert operation.state == "complete"
+    saved = api.conversations.get(scene.id)
+    assert saved.turns[0].user == text and saved.state.character.clothing == "Black apron"
 
 
 def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkeypatch):
@@ -237,11 +308,16 @@ def test_operation_conditions_replace_frozen_prompt_defaults(tmp_path, monkeypat
     )
     api.conversations.responder.reply(
         conversation,
-        SendInput(
-            operation_id=uuid4(),
-            text="Show the scene.",
-            locale="en",
-            allow_real_llm=True,
+        TurnRequest.model_validate_json(
+            (
+                SendInput(
+                    expected_revision=0,
+                    operation_id=uuid4(),
+                    text="Show the scene.",
+                    locale="en",
+                    allow_real_llm=True,
+                )
+            ).model_dump_json()
         ),
     )
     context = json.loads(
@@ -415,7 +491,9 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
             llm_profile="lmstudio-4b",
         )
     )
-    request = SendInput(operation_id=uuid4(), text="A private prompt", allow_real_llm=True)
+    request = SendInput(
+        expected_revision=0, operation_id=uuid4(), text="A private prompt", allow_real_llm=True
+    )
     result = client.conversations.send(conversation.id, request)
     assert len(calls) == (2 if case in {"repair", "invalid"} else 1)
     assert options[0]["max_retries"] == 0 and options[0]["cache"] is False
@@ -504,7 +582,12 @@ def test_context_limit_preserves_fixed_data_and_bounds_history(tmp_path, monkeyp
             api.conversations.repository._store(connection, value)
     result = api.conversations.send(
         conversation.id,
-        SendInput(operation_id=uuid4(), text="Current message", allow_real_llm=True),
+        SendInput(
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Current message",
+            allow_real_llm=True,
+        ),
     )
     assert result.error == "context_limit_exceeded" and calls == []
 
@@ -591,6 +674,18 @@ def test_language_switch_schema_and_repair_target_narration(
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
                 assert set(wire["properties"]) == {"response"}
+                for field in ("text", "action_narration"):
+                    assert (
+                        language
+                        in wire["$defs"]["DialogueResult"]["properties"][field]["description"]
+                    )
+                assert (
+                    language in wire["$defs"]["SceneryChange"]["properties"]["value"]["description"]
+                )
+                assert (
+                    language
+                    not in wire["$defs"]["ClothingChange"]["properties"]["value"]["description"]
+                )
             return self
 
         def invoke(self, messages, config):
@@ -628,13 +723,92 @@ def test_language_switch_schema_and_repair_target_narration(
     api.conversations.responder = SimpleNamespace(
         reply=lambda *_: Reply(text=prior, narration=prior, state_patch={})
     )
-    api.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Previous"))
+    api.conversations.send(
+        conversation.id,
+        SendInput(
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Previous",
+        ),
+    )
     api.conversations.responder = responder
     operation = api.conversations.send(
         conversation.id,
-        SendInput(operation_id=uuid4(), text="Continue", locale=locale, allow_real_llm=True),
+        SendInput(
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            locale=locale,
+            allow_real_llm=True,
+        ),
     )
     assert operation.state == "complete" and len(calls) == 2
     assert language in calls[0][0].content
     assert "scenery" in calls[-1][-1].content
     assert sum(message.type == "system" for message in calls[-1]) == 1
+
+
+def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_path, monkeypatch):
+    import langchain_openai
+    from langchain_core.messages import AIMessage
+
+    calls = []
+    object_id = "retained-private-object"
+
+    class Model:
+        def __init__(self, **options):
+            self.model = options["model"]
+
+        def bind(self, **_):
+            return self
+
+        def invoke(self, messages, config):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "response": {
+                            "kind": "companion",
+                            "changes": [
+                                {
+                                    "field": "held_objects",
+                                    "value": [{"id": object_id, "name": "Parcel"}],
+                                }
+                            ]
+                            if len(calls) == 1
+                            else [],
+                            "action_narration": "",
+                            "text": "Hello, Akari.",
+                        }
+                    }
+                ),
+                response_metadata={"model_name": self.model},
+            )
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    api = Client.initialize(tmp_path)
+    scene = api.conversations.create(
+        ConversationInput(
+            title="Ownership",
+            locale="en",
+            user={"name": "Akari", "initial_held_objects": [{"id": object_id, "name": "Parcel"}]},
+            character={"name": "Mira"},
+        )
+    )
+    result = api.conversations.send(
+        scene.id,
+        SendInput(
+            operation_id=uuid4(),
+            expected_revision=0,
+            text="I keep my parcel. Hello.",
+            allow_real_llm=True,
+        ),
+    )
+    assert result.state == "complete" and len(calls) == 2
+    correction = calls[-1][-1].content
+    assert '"path": ["response", "changes", 0, "value", 0, "id"]' in correction
+    assert "object_ownership" in correction and object_id not in correction
+    saved = api.conversations.get(scene.id)
+    assert saved.state.player.held_objects[0].id == object_id
+    assert not saved.state.character.held_objects

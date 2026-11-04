@@ -1,25 +1,28 @@
-"""Commit validated turns before dispatching independent image work."""
+"""Accept messages and player actions atomically before generating a reply."""
 
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Protocol
 from uuid import UUID
 
-from komaquill.conversations.actions import ActionRecord, ActionRequest, ProposalDismissal
+from komaquill.conversations.actions import ActionRecord, ProposalDismissal
 from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.conversations.models import (
+    AcceptedInput,
     ConnectionProfile,
     Conversation,
     ConversationInput,
     Operation,
     Reply,
     SendInput,
+    TurnRequest,
 )
 from komaquill.conversations.transitions import apply_reply, published_reply
 from komaquill.conversations.visuals import VisualReview
-from komaquill.domain.errors import KomaquillError
+from komaquill.domain.errors import KomaquillError, OperationStage
 
 
 class Repository(Protocol):
@@ -36,17 +39,18 @@ class Repository(Protocol):
     def bookmarks(self, identity: UUID) -> builtins.list[Bookmark]: ...
     def fork(self, identity: UUID, request: SceneRequest) -> Conversation: ...
     def accept(self, identity: UUID, request: SendInput) -> tuple[Operation, bool]: ...
-    def request(self, identity: UUID) -> tuple[Conversation, SendInput]: ...
+    def request(self, identity: UUID) -> tuple[Conversation, TurnRequest]: ...
     def operation(self, identity: UUID) -> Operation: ...
+    def operation_snapshot(self, identity: UUID) -> Operation: ...
+    def accepted_input(self, identity: UUID) -> AcceptedInput: ...
     def execution(self, identity: UUID) -> AbstractContextManager[bool]: ...
     def commit(self, identity: UUID, reply: Reply) -> Operation: ...
     def checkpoint(self, identity: UUID, reply: Reply) -> None: ...
-    def fail(self, identity: UUID, code: str) -> Operation: ...
+    def fail(
+        self, identity: UUID, code: str, stage: OperationStage = OperationStage.OPERATION
+    ) -> Operation: ...
     def image(self, identity: UUID, image_id: UUID | None, error: str | None = None) -> None: ...
     def reconcile(self) -> None: ...
-    def accept_action(
-        self, identity: UUID, request: ActionRequest
-    ) -> tuple[ActionRecord, bool]: ...
     def dismiss_proposal(
         self, identity: UUID, proposal_id: UUID, request: ProposalDismissal
     ) -> Conversation: ...
@@ -56,7 +60,7 @@ class Repository(Protocol):
 
 
 class Responder(Protocol):
-    def reply(self, conversation: Conversation, request: SendInput) -> Reply: ...
+    def reply(self, conversation: Conversation, request: TurnRequest) -> Reply: ...
     def profiles(self) -> list[ConnectionProfile]: ...
 
 
@@ -87,7 +91,10 @@ class ConversationService:
     def fork(self, identity: UUID, request: SceneRequest) -> Conversation:
         return self.repository.fork(identity, request)
 
-    def __init__(self, repository: Repository, responder: Responder) -> None:
+    def __init__(
+        self, repository: Repository, responder: Responder, preflight: Callable[[UUID, bool], None]
+    ) -> None:
+        self.preflight = preflight
         self.repository = repository
         self.responder = responder
 
@@ -150,6 +157,12 @@ class ConversationService:
 
     def accept(self, identity: UUID, request: SendInput) -> tuple[Operation, bool]:
         self.repository.reconcile()
+        try:
+            self.repository.operation(request.operation_id)
+        except KomaquillError as error:
+            if error.code != "request_not_found":
+                raise
+            self.preflight(identity, request.allow_real_llm)
         return self.repository.accept(identity, request)
 
     def execute(self, identity: UUID) -> Operation:
@@ -161,7 +174,7 @@ class ConversationService:
                 reply = published_reply(conversation, self.responder.reply(conversation, request))
                 apply_reply(conversation, reply)
             except KomaquillError as error:
-                return self.repository.fail(identity, error.code.value)
+                return self.repository.fail(identity, error.code.value, error.stage)
             except Exception:
                 return self.repository.fail(identity, "operation_failed")
             self.repository.checkpoint(identity, reply)
@@ -171,16 +184,6 @@ class ConversationService:
     def send(self, identity: UUID, request: SendInput) -> Operation:
         operation, created = self.accept(identity, request)
         return self.execute(operation.id) if created else operation
-
-    def accept_action(self, identity: UUID, request: ActionRequest) -> tuple[ActionRecord, bool]:
-        self.repository.reconcile()
-        return self.repository.accept_action(identity, request)
-
-    def act(self, identity: UUID, request: ActionRequest) -> ActionRecord:
-        record, created = self.accept_action(identity, request)
-        if created:
-            self.execute(record.reaction_id)
-        return record
 
     def actions(self, identity: UUID) -> builtins.list[ActionRecord]:
         return self.repository.actions(identity)

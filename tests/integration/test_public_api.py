@@ -4,10 +4,13 @@ import json
 from contextlib import contextmanager
 from uuid import uuid4
 
+import pytest
 from komaquill.adapters.diagnostics import operation_scope, record_event
 from komaquill.api import Client, Evaluation
 from komaquill.api import images as services
 from komaquill.api import runtime as runtime_services
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def test_python_image_and_evaluation_services_use_common_records(

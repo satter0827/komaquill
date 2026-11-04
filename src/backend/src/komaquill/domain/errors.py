@@ -63,6 +63,9 @@ class ErrorCode(StrEnum):
 class OperationStage(StrEnum):
     """Identify the operation phase independently of displayed text."""
 
+    MODEL_DISCOVERY = "model_discovery"
+    PROMPT_TEMPLATE = "prompt_template"
+    TOKENIZATION = "tokenization"
     CHECK = "check"
     CLEANUP = "cleanup"
     COLAB_CONTROL = "colab_control"

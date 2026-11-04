@@ -13,6 +13,8 @@ from komaquill.interfaces.http.app import create_app
 
 from tests.support.conversations import set_state
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 def start(api):
     from komaquill.library.models import ConversationStart, PresetRef
@@ -54,7 +56,9 @@ def test_dialogue_persists_narration_without_submitting_an_image(tmp_path):
             state_patch={"character": {"clothing": "blue coat"}, "scenery": "Rain on the windows."},
         )
     )
-    request = SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+    request = SendInput(
+        expected_revision=0, operation_id=uuid4(), text="Continue", allow_real_llm=True
+    )
     assert api.conversations.send(conversation.id, request).state == "complete"
     saved = Client(tmp_path).conversations.get(conversation.id)
     assert saved.turns[0].narration == "Rain on the windows."
@@ -144,6 +148,7 @@ def test_absent_companion_uses_environment_conditions_before_submission(tmp_path
         get=lambda identity: (_ for _ in ()).throw(KomaquillError(code="request_not_found")),
     )
     request = CreationRequest(
+        llm_profile="fake",
         operation_id=uuid4(),
         kind="conversation_image",
         target_id=conversation.id,
@@ -169,7 +174,15 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
     conversation = start(api)
     profile = api.player.get()
     if choice == "busy":
-        api.conversations.accept(conversation.id, SendInput(operation_id=uuid4(), text="Pending"))
+        api.conversations.accept(
+            conversation.id,
+            SendInput(
+                allow_real_llm=True,
+                expected_revision=api.conversations.overview(conversation.id).revision,
+                operation_id=uuid4(),
+                text="Pending",
+            ),
+        )
     source = tmp_path / ".artifacts/data/komaquill.sqlite3"
     from tests.support.migrations import legacy_execution
 
@@ -210,9 +223,6 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
     record = json.loads(report.read_bytes())
     assert record["state"] == "complete"
     reopened = Client(tmp_path)
-    reopened.library.save_preferences(
-        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
-    )
     assert reopened.player.get().name == profile.name
     assert reopened.player.get().visual_review_required == bool(profile.appearance)
     assert reopened.conversations.get(conversation.id).turns == conversation.turns
@@ -252,7 +262,12 @@ def test_retained_turn_requests_are_read_without_rewriting_original_metadata(tmp
     conversation = api.conversations.create(
         ConversationInput(title="Kept", llm_profile="fake", locale="en")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello" if state == "complete" else "Unknown")
+    request = SendInput(
+        allow_real_llm=True,
+        expected_revision=0,
+        operation_id=uuid4(),
+        text="Hello" if state == "complete" else "Unknown",
+    )
     operation = api.conversations.send(conversation.id, request)
     source = tmp_path / ".artifacts/data/komaquill.sqlite3"
     raw = json.dumps(
@@ -287,7 +302,13 @@ def test_drawing_uses_canonical_state_instead_of_conflicting_narration(tmp_path)
         )
     )
     api.conversations.send(
-        conversation.id, SendInput(operation_id=uuid4(), text="Continue", allow_real_llm=True)
+        conversation.id,
+        SendInput(
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Continue",
+            allow_real_llm=True,
+        ),
     )
     current = api.conversations.get(conversation.id)
     request = CreationRequest(

@@ -10,6 +10,45 @@ from komaquill.adapters.llm.execution import StructuredExecution
 from komaquill.adapters.llm.language import JAPANESE_TEXT, check_language
 
 
+def visual_facts(text: str) -> dict[str, str]:
+    source = json.loads(text)
+    persons = source.get("subjects", {"": source.get("character", source) or {}})
+    setting = source.get("setting", {})
+    facts: dict[str, str] = {}
+    for role, person in persons.items():
+        for key in (
+            "age",
+            "gender",
+            "physical_features",
+            "appearance",
+            "clothing",
+            "initial_clothing",
+            "expression",
+            "pose",
+            "held_objects",
+            "initial_held_objects",
+        ):
+            value = person.get(key)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                value = ", ".join(item["name"] for item in value) if value else "Empty hands"
+            elif key in {"clothing", "initial_clothing"} and value == "":
+                value = "No clothing"
+            if value:
+                facts[f"{role}_{key}" if role else key] = str(value)
+    for key in ("place", "time", "scenery"):
+        if setting.get(key):
+            facts[key] = setting[key]
+    return facts
+
+
+def needs_image_llm(text: str, *, compose: bool = False, purpose: str = "image") -> bool:
+    if not compose:
+        return bool(JAPANESE_TEXT.search(text))
+    return purpose == "banner" or any(JAPANESE_TEXT.search(v) for v in visual_facts(text).values())
+
+
 class EnvironmentDescription(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     location: str = Field(
@@ -93,35 +132,7 @@ class ImageDescriber:
 
     def _visual_facts(self, text: str, operation: UUID, profile: str, allow_real_llm: bool) -> str:
         """Translate only Japanese values, retaining every resolved field and numeric age."""
-        source = json.loads(text)
-        persons = source.get("subjects", {"": source.get("character", source) or {}})
-        setting = source.get("setting", {})
-        facts: dict[str, str] = {}
-        for role, person in persons.items():
-            for key in (
-                "age",
-                "gender",
-                "physical_features",
-                "appearance",
-                "clothing",
-                "initial_clothing",
-                "expression",
-                "pose",
-                "held_objects",
-                "initial_held_objects",
-            ):
-                value = person.get(key)
-                if value is None:
-                    continue
-                if isinstance(value, list):
-                    value = ", ".join(item["name"] for item in value) if value else "Empty hands"
-                elif key in {"clothing", "initial_clothing"} and value == "":
-                    value = "No clothing"
-                if value:
-                    facts[f"{role}_{key}" if role else key] = str(value)
-        for key in ("place", "time", "scenery"):
-            if setting.get(key):
-                facts[key] = setting[key]
+        facts = visual_facts(text)
         japanese = {key: value for key, value in facts.items() if JAPANESE_TEXT.search(value)}
         if japanese:
             fields: dict[str, Any] = {

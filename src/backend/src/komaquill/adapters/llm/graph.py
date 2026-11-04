@@ -57,7 +57,7 @@ def route(state: RequestState, runtime: Runtime[RequestContext]) -> Literal["com
     if state["value"] is not None:
         return "complete"
     if state["attempt"] >= runtime.context.repair_attempts:
-        raise KomaquillError(code="invalid_response", retryable=False)
+        raise KomaquillError(code="invalid_response", stage="response_validation", retryable=False)
     return "repair"
 
 

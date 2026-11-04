@@ -27,13 +27,19 @@ class NativeTokens:
                 None,
             )
             if self.model is None:
-                raise KomaquillError(code="llm_unavailable", retryable=False)
+                raise KomaquillError(
+                    code="llm_unavailable", stage="model_discovery", retryable=False
+                )
             self.window_tokens = self.model.get_context_length()
         except Exception:
             self.client.close()
-            raise KomaquillError(code="llm_unavailable", retryable=False) from None
+            raise KomaquillError(
+                code="llm_unavailable", stage="model_discovery", retryable=False
+            ) from None
 
     def __call__(self, messages: Sequence[BaseMessage]) -> int:
+        if not messages:
+            return 0
         if self.model is None:
             raise KomaquillError(code="llm_unavailable", retryable=False)
         roles = {"human": "user", "ai": "assistant", "system": "system"}
@@ -45,11 +51,22 @@ class NativeTokens:
         history: Any = {
             "messages": [{"role": roles[m.type], "content": m.content} for m in messages]
         }
+        if all(message.type == "system" for message in messages):
+            # Trimming counts the system prefix alone; templates require a user turn.
+            # The empty turn only adds conservative overhead to that partial count.
+            history["messages"].append({"role": "user", "content": ""})
         try:
             rendered = self.model.apply_prompt_template(history)
+        except Exception:
+            raise KomaquillError(
+                code="llm_unavailable", stage="prompt_template", retryable=False
+            ) from None
+        try:
             return self.model.count_tokens(rendered)
         except Exception:
-            raise KomaquillError(code="llm_unavailable", retryable=False) from None
+            raise KomaquillError(
+                code="llm_unavailable", stage="tokenization", retryable=False
+            ) from None
 
     def close(self) -> None:
         self.client.close()

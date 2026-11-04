@@ -1,5 +1,6 @@
+import { MemoryRouter } from 'react-router'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -8,6 +9,7 @@ import { ImagesPage } from '../src/features/images'
 import { PreferencesProvider, defaultPreferences } from '../src/app/preferences'
 import { client } from '../src/api/generated/client.gen'
 import type { ImageInput } from '../src/api/generated/types.gen'
+import { getImageQueryKey } from '../src/api/generated/@tanstack/react-query.gen'
 import m from '../src/app/locales/ja.json'
 
 const base = 'http://localhost'
@@ -15,6 +17,9 @@ client.setConfig({ baseUrl: base, throwOnError: true })
 const requests: ImageInput[] = []
 const preferences = { ...defaultPreferences, llm_profile: 'local' }
 const server = setupServer(
+  http.post(`${base}/api/v1/availability`, () =>
+    HttpResponse.json({ ready: true, connections: [] }),
+  ),
   http.get(`${base}/api/v1/preferences`, () => HttpResponse.json(preferences)),
   http.get(`${base}/api/v1/images`, () => HttpResponse.json([])),
   http.post(`${base}/api/v1/images`, async ({ request }) => {
@@ -34,23 +39,80 @@ afterEach(() => {
 })
 
 function images() {
+  const cache = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({
-          defaultOptions: {
-            queries: { retry: false },
-            mutations: { retry: false },
-          },
-        })
-      }
-    >
-      <PreferencesProvider>
-        <ImagesPage />
-      </PreferencesProvider>
+    <QueryClientProvider client={cache}>
+      <MemoryRouter>
+        <PreferencesProvider>
+          <ImagesPage />
+        </PreferencesProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   )
+  return cache
 }
+
+it('retries a failed file display locally without collecting or generating again', async () => {
+  const saved = { run_id: 'kept', state: 'saved', images: ['scene.png'] }
+  server.use(
+    http.get(`${base}/api/v1/images`, () => HttpResponse.json([saved])),
+    http.get(`${base}/api/v1/images/kept`, () => HttpResponse.json(saved)),
+  )
+  const cache = images()
+  const original = await screen.findByRole('img')
+  fireEvent.error(original)
+  expect(await screen.findByRole('alert')).toBeVisible()
+  await userEvent.click(screen.getByRole('button', { name: m.retryCollection }))
+  const retried = screen.getByRole('img')
+  expect(retried).not.toBe(original)
+  expect(retried).toHaveAttribute('src', '/api/v1/images/kept/files/0')
+  fireEvent.load(retried)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(requests).toHaveLength(0)
+  cache.clear()
+})
+
+it('can retry a saved image lookup without a generation connection', async () => {
+  let broken = false
+  let collections = 0
+  const saved = { run_id: 'kept', state: 'saved', images: ['scene.png'] }
+  server.use(
+    http.get(`${base}/api/v1/images`, () => HttpResponse.json([saved])),
+    http.get(`${base}/api/v1/images/kept`, () =>
+      broken
+        ? HttpResponse.json({ code: 'connection_failed' }, { status: 503 })
+        : HttpResponse.json(saved),
+    ),
+    http.post(`${base}/api/v1/images/kept/collect`, () => {
+      collections += 1
+      return HttpResponse.json(saved)
+    }),
+  )
+  const cache = images()
+  await screen.findByRole('img')
+  broken = true
+  await act(async () => {
+    await cache.invalidateQueries({
+      queryKey: getImageQueryKey({ path: { identity: 'kept' } }),
+    })
+  })
+  await screen.findByRole('alert')
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: m.retryCollection }),
+    ).toBeEnabled(),
+  )
+  broken = false
+  await userEvent.click(screen.getByRole('button', { name: m.retryCollection }))
+  await waitFor(() =>
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument(),
+  )
+  expect(collections).toBe(1)
+  expect(requests).toHaveLength(0)
+  cache.clear()
+})
 
 it('authorizes each explicit image operation without a permission checkbox', async () => {
   images()

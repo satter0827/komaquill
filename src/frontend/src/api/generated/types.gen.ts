@@ -5,10 +5,32 @@ export type ClientOptions = {
 };
 
 /**
+ * AcceptedInput
+ */
+export type AcceptedInput = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Action
+     */
+    action?: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction) | null;
+};
+
+/**
  * ActionRecord
  */
 export type ActionRecord = {
-    request: ActionRequest;
+    request: RecordedActionRequest;
     before: ConversationState;
     after: ConversationState;
     /**
@@ -23,44 +45,6 @@ export type ActionRecord = {
      * Created At
      */
     created_at?: string;
-};
-
-/**
- * ActionRequest
- */
-export type ActionRequest = {
-    /**
-     * Operation Id
-     */
-    operation_id: string;
-    /**
-     * Expected Revision
-     */
-    expected_revision: number;
-    /**
-     * Action
-     */
-    action: ({
-        kind: 'move';
-    } & MoveAction) | ({
-        kind: 'wait';
-    } & WaitAction) | ({
-        kind: 'prepare';
-    } & PrepareAction) | ({
-        kind: 'intention';
-    } & IntentionAction);
-    /**
-     * Proposal Id
-     */
-    proposal_id?: string | null;
-    /**
-     * Locale
-     */
-    locale?: 'ja' | 'en' | null;
-    /**
-     * Allow Real Llm
-     */
-    allow_real_llm?: boolean;
 };
 
 /**
@@ -101,6 +85,51 @@ export type ArchivedTurn = {
      * Narration
      */
     narration?: string;
+};
+
+/**
+ * Availability
+ */
+export type Availability = {
+    /**
+     * Ready
+     */
+    ready: boolean;
+    /**
+     * Connections
+     */
+    connections?: Array<ConnectionObservation>;
+};
+
+/**
+ * AvailabilityRequest
+ */
+export type AvailabilityRequest = {
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'creation' | 'image' | 'collection' | 'resume';
+    /**
+     * Identity
+     */
+    identity?: string | null;
+    creation?: CreationRequest | null;
+    /**
+     * Prompt
+     */
+    prompt?: string;
+    /**
+     * Subjects
+     */
+    subjects?: Array<string>;
+    /**
+     * Negative
+     */
+    negative?: string | null;
+    /**
+     * Llm Profile
+     */
+    llm_profile?: string;
 };
 
 /**
@@ -275,6 +304,10 @@ export type CharacterPreset = {
      */
     image_job_id: string | null;
     /**
+     * Image Stale
+     */
+    image_stale: boolean;
+    /**
      * Sample
      */
     sample: boolean;
@@ -356,22 +389,6 @@ export type CharacterSaveRequest = {
      * Expected Revision
      */
     expected_revision?: number | null;
-    /**
-     * Image Policy
-     */
-    image_policy?: 'auto' | 'always' | 'none';
-    /**
-     * Locale
-     */
-    locale?: 'ja' | 'en';
-    /**
-     * Llm Profile
-     */
-    llm_profile?: string;
-    /**
-     * Allow Real Llm
-     */
-    allow_real_llm?: boolean;
     value: CharacterInput;
 };
 
@@ -438,61 +455,30 @@ export type CompiledImageInput = {
 };
 
 /**
- * ContentLabel
+ * ConnectionObservation
  */
-export type ContentLabel = {
-    /**
-     * Readable
-     *
-     * Whether the saved display and classification metadata can be read.
-     */
-    readable?: boolean;
+export type ConnectionObservation = {
     /**
      * Kind
      */
-    kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';
+    kind: 'llm' | 'comfy';
     /**
-     * Id
+     * Target
      */
-    id: string;
+    target: string;
     /**
-     * Rating
+     * State
      */
-    rating: 'general' | 'nsfw' | 'unclassified';
+    state: 'ready' | 'unavailable' | 'unknown';
     /**
-     * Revision
+     * Observed At
      */
-    revision?: number;
+    observed_at: string;
     /**
-     * Title
+     * Expires At
      */
-    title?: string;
-};
-
-/**
- * ContentUpdate
- */
-export type ContentUpdate = {
-    /**
-     * Operation Id
-     */
-    operation_id: string;
-    /**
-     * Kind
-     */
-    kind: 'conversation' | 'preset' | 'image' | 'archive' | 'job';
-    /**
-     * Id
-     */
-    id: string;
-    /**
-     * Rating
-     */
-    rating: 'general' | 'nsfw';
-    /**
-     * Expected Revision
-     */
-    expected_revision: number;
+    expires_at: string;
+    reason?: ErrorCode | null;
 };
 
 /**
@@ -793,6 +779,7 @@ export type CreationJob = {
      * Error
      */
     error?: string | null;
+    error_stage?: OperationStage | null;
     /**
      * Created At
      */
@@ -853,6 +840,21 @@ export type CreationRequest = {
 export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
+ * ErrorView
+ */
+export type ErrorView = {
+    /**
+     * Code
+     */
+    code: string;
+    stage: OperationStage;
+    /**
+     * Message
+     */
+    message: string;
+};
+
+/**
  * FailureInfo
  *
  * Describe a failure without copying exception messages or response bodies.
@@ -872,16 +874,6 @@ export type FailureInfo = {
      * Retryable
      */
     retryable?: boolean;
-};
-
-/**
- * HTTPValidationError
- */
-export type HttpValidationError = {
-    /**
-     * Detail
-     */
-    detail?: Array<ValidationError>;
 };
 
 /**
@@ -1092,7 +1084,7 @@ export type NotesRequest = {
  *
  * Identify the operation phase independently of displayed text.
  */
-export type OperationStage = 'check' | 'cleanup' | 'colab_control' | 'collection' | 'communication' | 'connection' | 'disconnect' | 'display' | 'finalize' | 'evaluation' | 'generation' | 'gpu_stop' | 'history_validation' | 'image_collection' | 'image_validation' | 'log_cleanup' | 'log_collection' | 'log_download' | 'log_timeout' | 'operation' | 'preparation' | 'release' | 'response_validation' | 'storage' | 'submission' | 'story_planning' | 'story_rendering' | 'summary';
+export type OperationStage = 'model_discovery' | 'prompt_template' | 'tokenization' | 'check' | 'cleanup' | 'colab_control' | 'collection' | 'communication' | 'connection' | 'disconnect' | 'display' | 'finalize' | 'evaluation' | 'generation' | 'gpu_stop' | 'history_validation' | 'image_collection' | 'image_validation' | 'log_cleanup' | 'log_collection' | 'log_download' | 'log_timeout' | 'operation' | 'preparation' | 'release' | 'response_validation' | 'storage' | 'submission' | 'story_planning' | 'story_rendering' | 'summary';
 
 /**
  * OperationView
@@ -1122,6 +1114,11 @@ export type OperationView = {
      * Error
      */
     error?: string | null;
+    error_stage?: OperationStage | null;
+    /**
+     * Response Locale
+     */
+    response_locale?: 'ja' | 'en' | null;
     /**
      * Image State
      */
@@ -1138,6 +1135,7 @@ export type OperationView = {
      * Created At
      */
     created_at?: string;
+    input?: AcceptedInput | null;
     /**
      * Error Message
      */
@@ -1327,6 +1325,10 @@ export type PlayerProfile = {
      */
     image_job_id: string | null;
     /**
+     * Image Stale
+     */
+    image_stale: boolean;
+    /**
      * Sample
      */
     sample: boolean;
@@ -1380,10 +1382,6 @@ export type PlayerProfile = {
  * Preferences
  */
 export type Preferences = {
-    /**
-     * Nsfw Enabled
-     */
-    nsfw_enabled?: boolean;
     /**
      * Revision
      */
@@ -1458,11 +1456,6 @@ export type PresetSaveResult = {
      * Preset
      */
     preset: CharacterPreset | StoryPreset;
-    job?: CreationJob | null;
-    /**
-     * Image Error
-     */
-    image_error?: string | null;
 };
 
 /**
@@ -1579,6 +1572,44 @@ export type ProposedAction = {
      * Decision Id
      */
     decision_id?: string | null;
+};
+
+/**
+ * RecordedActionRequest
+ */
+export type RecordedActionRequest = {
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Action
+     */
+    action: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction);
+    /**
+     * Proposal Id
+     */
+    proposal_id?: string | null;
+    /**
+     * Locale
+     */
+    locale?: 'ja' | 'en' | null;
+    /**
+     * Allow Real Llm
+     */
+    allow_real_llm?: boolean;
 };
 
 /**
@@ -1907,13 +1938,29 @@ export type SendInput = {
      */
     operation_id: string;
     /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
      * Text
      */
-    text?: string;
+    text: string;
     /**
-     * Action Id
+     * Action
      */
-    action_id?: string | null;
+    action?: ({
+        kind: 'move';
+    } & MoveAction) | ({
+        kind: 'wait';
+    } & WaitAction) | ({
+        kind: 'prepare';
+    } & PrepareAction) | ({
+        kind: 'intention';
+    } & IntentionAction) | null;
+    /**
+     * Proposal Id
+     */
+    proposal_id?: string | null;
     /**
      * Allow Real Llm
      */
@@ -2071,6 +2118,10 @@ export type StoryPreset = {
      */
     image_job_id: string | null;
     /**
+     * Image Stale
+     */
+    image_stale: boolean;
+    /**
      * Sample
      */
     sample: boolean;
@@ -2124,22 +2175,6 @@ export type StorySaveRequest = {
      * Expected Revision
      */
     expected_revision?: number | null;
-    /**
-     * Image Policy
-     */
-    image_policy?: 'auto' | 'always' | 'none';
-    /**
-     * Locale
-     */
-    locale?: 'ja' | 'en';
-    /**
-     * Llm Profile
-     */
-    llm_profile?: string;
-    /**
-     * Allow Real Llm
-     */
-    allow_real_llm?: boolean;
     value: StoryInput;
 };
 
@@ -2213,34 +2248,6 @@ export type TurnPage = {
 };
 
 /**
- * ValidationError
- */
-export type ValidationError = {
-    /**
-     * Location
-     */
-    loc: Array<string | number>;
-    /**
-     * Message
-     */
-    msg: string;
-    /**
-     * Error Type
-     */
-    type: string;
-    /**
-     * Input
-     */
-    input?: unknown;
-    /**
-     * Context
-     */
-    ctx?: {
-        [key: string]: unknown;
-    };
-};
-
-/**
  * VisualPerson
  */
 export type VisualPerson = {
@@ -2303,55 +2310,41 @@ export type WaitAction = {
     minutes: number;
 };
 
-export type ListContentData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/content';
-};
-
-export type ListContentResponses = {
-    /**
-     * Response List Content
-     *
-     * Successful Response
-     */
-    200: Array<ContentLabel>;
-};
-
-export type ListContentResponse = ListContentResponses[keyof ListContentResponses];
-
-export type ClassifyContentData = {
-    body: ContentUpdate;
-    path?: never;
-    query?: never;
-    url: '/api/v1/content';
-};
-
-export type ClassifyContentErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type ClassifyContentError = ClassifyContentErrors[keyof ClassifyContentErrors];
-
-export type ClassifyContentResponses = {
-    /**
-     * Successful Response
-     */
-    200: ContentLabel;
-};
-
-export type ClassifyContentResponse = ClassifyContentResponses[keyof ClassifyContentResponses];
-
 export type ListArchivedConversationsData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/v1/archive/conversations';
 };
+
+export type ListArchivedConversationsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListArchivedConversationsError = ListArchivedConversationsErrors[keyof ListArchivedConversationsErrors];
 
 export type ListArchivedConversationsResponses = {
     /**
@@ -2378,9 +2371,29 @@ export type GetArchivedConversationData = {
 
 export type GetArchivedConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetArchivedConversationError = GetArchivedConversationErrors[keyof GetArchivedConversationErrors];
@@ -2408,9 +2421,29 @@ export type ListConversationImagesData = {
 
 export type ListConversationImagesErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ListConversationImagesError = ListConversationImagesErrors[keyof ListConversationImagesErrors];
@@ -2440,9 +2473,29 @@ export type DrawConversationData = {
 
 export type DrawConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type DrawConversationError = DrawConversationErrors[keyof DrawConversationErrors];
@@ -2463,6 +2516,35 @@ export type GetPreferencesData = {
     url: '/api/v1/preferences';
 };
 
+export type GetPreferencesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetPreferencesError = GetPreferencesErrors[keyof GetPreferencesErrors];
+
 export type GetPreferencesResponses = {
     /**
      * Successful Response
@@ -2481,9 +2563,29 @@ export type SavePreferencesData = {
 
 export type SavePreferencesErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SavePreferencesError = SavePreferencesErrors[keyof SavePreferencesErrors];
@@ -2503,6 +2605,35 @@ export type GetPlayerData = {
     query?: never;
     url: '/api/v1/player';
 };
+
+export type GetPlayerErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetPlayerError = GetPlayerErrors[keyof GetPlayerErrors];
 
 export type GetPlayerResponses = {
     /**
@@ -2527,9 +2658,29 @@ export type UpdatePlayerData = {
 
 export type UpdatePlayerErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type UpdatePlayerError = UpdatePlayerErrors[keyof UpdatePlayerErrors];
@@ -2549,6 +2700,35 @@ export type ListCharactersData = {
     query?: never;
     url: '/api/v1/characters';
 };
+
+export type ListCharactersErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListCharactersError = ListCharactersErrors[keyof ListCharactersErrors];
 
 export type ListCharactersResponses = {
     /**
@@ -2570,9 +2750,29 @@ export type SaveCharacterData = {
 
 export type SaveCharacterErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SaveCharacterError = SaveCharacterErrors[keyof SaveCharacterErrors];
@@ -2605,9 +2805,29 @@ export type DeleteCharacterData = {
 
 export type DeleteCharacterErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type DeleteCharacterError = DeleteCharacterErrors[keyof DeleteCharacterErrors];
@@ -2635,9 +2855,29 @@ export type GetCharacterData = {
 
 export type GetCharacterErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetCharacterError = GetCharacterErrors[keyof GetCharacterErrors];
@@ -2665,9 +2905,29 @@ export type DuplicateCharacterData = {
 
 export type DuplicateCharacterErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type DuplicateCharacterError = DuplicateCharacterErrors[keyof DuplicateCharacterErrors];
@@ -2687,6 +2947,35 @@ export type ListStoriesData = {
     query?: never;
     url: '/api/v1/stories';
 };
+
+export type ListStoriesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListStoriesError = ListStoriesErrors[keyof ListStoriesErrors];
 
 export type ListStoriesResponses = {
     /**
@@ -2708,9 +2997,29 @@ export type SaveStoryData = {
 
 export type SaveStoryErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SaveStoryError = SaveStoryErrors[keyof SaveStoryErrors];
@@ -2743,9 +3052,29 @@ export type DeleteStoryData = {
 
 export type DeleteStoryErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type DeleteStoryError = DeleteStoryErrors[keyof DeleteStoryErrors];
@@ -2773,9 +3102,29 @@ export type GetStoryData = {
 
 export type GetStoryErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetStoryError = GetStoryErrors[keyof GetStoryErrors];
@@ -2803,9 +3152,29 @@ export type DuplicateStoryData = {
 
 export type DuplicateStoryErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type DuplicateStoryError = DuplicateStoryErrors[keyof DuplicateStoryErrors];
@@ -2828,9 +3197,29 @@ export type StartConversationData = {
 
 export type StartConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type StartConversationError = StartConversationErrors[keyof StartConversationErrors];
@@ -2853,9 +3242,29 @@ export type CreateJobData = {
 
 export type CreateJobErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type CreateJobError = CreateJobErrors[keyof CreateJobErrors];
@@ -2883,9 +3292,29 @@ export type GetJobData = {
 
 export type GetJobErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetJobError = GetJobErrors[keyof GetJobErrors];
@@ -2906,6 +3335,35 @@ export type GetSettingsData = {
     url: '/api/v1/settings';
 };
 
+export type GetSettingsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetSettingsError = GetSettingsErrors[keyof GetSettingsErrors];
+
 export type GetSettingsResponses = {
     /**
      * Successful Response
@@ -2921,6 +3379,35 @@ export type ListConversationsData = {
     query?: never;
     url: '/api/v1/conversations';
 };
+
+export type ListConversationsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListConversationsError = ListConversationsErrors[keyof ListConversationsErrors];
 
 export type ListConversationsResponses = {
     /**
@@ -2942,9 +3429,29 @@ export type CreateConversationData = {
 
 export type CreateConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type CreateConversationError = CreateConversationErrors[keyof CreateConversationErrors];
@@ -2957,6 +3464,56 @@ export type CreateConversationResponses = {
 };
 
 export type CreateConversationResponse = CreateConversationResponses[keyof CreateConversationResponses];
+
+export type CheckAvailabilityData = {
+    body: AvailabilityRequest;
+    path?: never;
+    query?: {
+        /**
+         * Refresh
+         */
+        refresh?: boolean;
+    };
+    url: '/api/v1/availability';
+};
+
+export type CheckAvailabilityErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type CheckAvailabilityError = CheckAvailabilityErrors[keyof CheckAvailabilityErrors];
+
+export type CheckAvailabilityResponses = {
+    /**
+     * Successful Response
+     */
+    200: Availability;
+};
+
+export type CheckAvailabilityResponse = CheckAvailabilityResponses[keyof CheckAvailabilityResponses];
 
 export type GetConversationData = {
     body?: never;
@@ -2972,9 +3529,29 @@ export type GetConversationData = {
 
 export type GetConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetConversationError = GetConversationErrors[keyof GetConversationErrors];
@@ -3011,9 +3588,29 @@ export type GetTurnsData = {
 
 export type GetTurnsErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetTurnsError = GetTurnsErrors[keyof GetTurnsErrors];
@@ -3041,9 +3638,29 @@ export type SendTurnData = {
 
 export type SendTurnErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SendTurnError = SendTurnErrors[keyof SendTurnErrors];
@@ -3071,9 +3688,29 @@ export type SaveNotesData = {
 
 export type SaveNotesErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SaveNotesError = SaveNotesErrors[keyof SaveNotesErrors];
@@ -3101,9 +3738,29 @@ export type GetBookmarksData = {
 
 export type GetBookmarksErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetBookmarksError = GetBookmarksErrors[keyof GetBookmarksErrors];
@@ -3133,9 +3790,29 @@ export type SaveBookmarkData = {
 
 export type SaveBookmarkErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SaveBookmarkError = SaveBookmarkErrors[keyof SaveBookmarkErrors];
@@ -3163,9 +3840,29 @@ export type ForkConversationData = {
 
 export type ForkConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ForkConversationError = ForkConversationErrors[keyof ForkConversationErrors];
@@ -3202,9 +3899,29 @@ export type ExportConversationData = {
 
 export type ExportConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ExportConversationError = ExportConversationErrors[keyof ExportConversationErrors];
@@ -3230,9 +3947,29 @@ export type GetConversationOperationsData = {
 
 export type GetConversationOperationsErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetConversationOperationsError = GetConversationOperationsErrors[keyof GetConversationOperationsErrors];
@@ -3262,9 +3999,29 @@ export type GetActionsData = {
 
 export type GetActionsErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetActionsError = GetActionsErrors[keyof GetActionsErrors];
@@ -3279,36 +4036,6 @@ export type GetActionsResponses = {
 };
 
 export type GetActionsResponse = GetActionsResponses[keyof GetActionsResponses];
-
-export type PerformActionData = {
-    body: ActionRequest;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query?: never;
-    url: '/api/v1/conversations/{identity}/actions';
-};
-
-export type PerformActionErrors = {
-    /**
-     * Validation Error
-     */
-    422: HttpValidationError;
-};
-
-export type PerformActionError = PerformActionErrors[keyof PerformActionErrors];
-
-export type PerformActionResponses = {
-    /**
-     * Successful Response
-     */
-    202: ActionRecord;
-};
-
-export type PerformActionResponse = PerformActionResponses[keyof PerformActionResponses];
 
 export type DismissProposalData = {
     body: ProposalDismissal;
@@ -3328,9 +4055,29 @@ export type DismissProposalData = {
 
 export type DismissProposalErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type DismissProposalError = DismissProposalErrors[keyof DismissProposalErrors];
@@ -3358,9 +4105,29 @@ export type ReviewVisualsData = {
 
 export type ReviewVisualsErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ReviewVisualsError = ReviewVisualsErrors[keyof ReviewVisualsErrors];
@@ -3388,9 +4155,29 @@ export type ResumeConversationData = {
 
 export type ResumeConversationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ResumeConversationError = ResumeConversationErrors[keyof ResumeConversationErrors];
@@ -3418,9 +4205,29 @@ export type GetOperationData = {
 
 export type GetOperationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetOperationError = GetOperationErrors[keyof GetOperationErrors];
@@ -3453,9 +4260,29 @@ export type ResumeOperationData = {
 
 export type ResumeOperationErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ResumeOperationError = ResumeOperationErrors[keyof ResumeOperationErrors];
@@ -3475,6 +4302,35 @@ export type ListImagesData = {
     query?: never;
     url: '/api/v1/images';
 };
+
+export type ListImagesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListImagesError = ListImagesErrors[keyof ListImagesErrors];
 
 export type ListImagesResponses = {
     /**
@@ -3496,9 +4352,29 @@ export type SubmitImageData = {
 
 export type SubmitImageErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type SubmitImageError = SubmitImageErrors[keyof SubmitImageErrors];
@@ -3533,9 +4409,29 @@ export type ImportInputData = {
 
 export type ImportInputErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type ImportInputError = ImportInputErrors[keyof ImportInputErrors];
@@ -3563,9 +4459,29 @@ export type GetImageData = {
 
 export type GetImageErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetImageError = GetImageErrors[keyof GetImageErrors];
@@ -3593,9 +4509,29 @@ export type CollectImageData = {
 
 export type CollectImageErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type CollectImageError = CollectImageErrors[keyof CollectImageErrors];
@@ -3627,9 +4563,29 @@ export type GetImageFileData = {
 
 export type GetImageFileErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetImageFileError = GetImageFileErrors[keyof GetImageFileErrors];
@@ -3648,6 +4604,35 @@ export type GetRuntimeData = {
     url: '/api/v1/runtime';
 };
 
+export type GetRuntimeErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetRuntimeError = GetRuntimeErrors[keyof GetRuntimeErrors];
+
 export type GetRuntimeResponses = {
     /**
      * Successful Response
@@ -3664,6 +4649,35 @@ export type RefreshRuntimeData = {
     url: '/api/v1/runtime/refresh';
 };
 
+export type RefreshRuntimeErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type RefreshRuntimeError = RefreshRuntimeErrors[keyof RefreshRuntimeErrors];
+
 export type RefreshRuntimeResponses = {
     /**
      * Successful Response
@@ -3679,6 +4693,35 @@ export type GetRuntimeViewsData = {
     query?: never;
     url: '/api/v1/runtime/views';
 };
+
+export type GetRuntimeViewsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetRuntimeViewsError = GetRuntimeViewsErrors[keyof GetRuntimeViewsErrors];
 
 export type GetRuntimeViewsResponses = {
     /**
@@ -3711,9 +4754,29 @@ export type GetRuntimeWorkflowData = {
 
 export type GetRuntimeWorkflowErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type GetRuntimeWorkflowError = GetRuntimeWorkflowErrors[keyof GetRuntimeWorkflowErrors];
@@ -3734,9 +4797,29 @@ export type StartRuntimeData = {
 
 export type StartRuntimeErrors = {
     /**
-     * Validation Error
+     * Bad Request
      */
-    422: HttpValidationError;
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
 };
 
 export type StartRuntimeError = StartRuntimeErrors[keyof StartRuntimeErrors];
@@ -3756,6 +4839,35 @@ export type StopRuntimeData = {
     query?: never;
     url: '/api/v1/runtime/stop';
 };
+
+export type StopRuntimeErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type StopRuntimeError = StopRuntimeErrors[keyof StopRuntimeErrors];
 
 export type StopRuntimeResponses = {
     /**

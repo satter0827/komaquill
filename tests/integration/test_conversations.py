@@ -4,9 +4,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from komaquill.api import ActionRequest, Client, KomaquillError, MoveAction
-from komaquill.conversations.models import ConversationInput, SendInput
+from komaquill.api import Client, KomaquillError, MoveAction, SendInput
+from komaquill.conversations.models import ConversationInput
 from komaquill.interfaces.http.app import create_app
+
+from tests.support.conversations import accept_action
 
 
 @pytest.fixture
@@ -18,7 +20,7 @@ def test_turn_is_committed_once_and_reopened(chat):
     conversation = chat.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="日本語の会話")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     result = chat.conversations.send(conversation.id, request)
     assert result.state == "complete"
     assert chat.conversations.send(conversation.id, request) == result
@@ -34,17 +36,29 @@ def test_busy_applies_across_clients_but_not_reads(chat):
     conversation = chat.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="First")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     operation, created = chat.conversations.accept(conversation.id, request)
     assert created and operation.state == "accepted"
     other = Client(chat.workspace)
     assert other.conversations.get(conversation.id).turns == []
     with pytest.raises(KomaquillError, match="operation_busy"):
-        other.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+        other.conversations.send(
+            conversation.id,
+            SendInput(
+                expected_revision=other.conversations.overview(conversation.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
+        )
     assert chat.conversations.execute(operation.id).state == "complete"
     assert (
         other.conversations.send(
-            conversation.id, SendInput(operation_id=uuid4(), text="Hello")
+            conversation.id,
+            SendInput(
+                expected_revision=other.conversations.overview(conversation.id).revision,
+                operation_id=uuid4(),
+                text="Hello",
+            ),
         ).state
         == "complete"
     )
@@ -55,7 +69,12 @@ def test_fake_unknown_input_never_becomes_arbitrary_success(chat):
         ConversationInput(locale="en", llm_profile="fake", title="Fixture")
     )
     result = chat.conversations.send(
-        conversation.id, SendInput(operation_id=uuid4(), text="Unknown")
+        conversation.id,
+        SendInput(
+            expected_revision=chat.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Unknown",
+        ),
     )
     assert result.state == "failed" and result.error == "fake_input_mismatch"
     assert chat.conversations.get(conversation.id).turns == []
@@ -65,8 +84,11 @@ def test_real_model_requires_per_operation_permission(chat):
     conversation = chat.conversations.create(
         ConversationInput(locale="en", title="Real", llm_profile="lmstudio-4b")
     )
-    result = chat.conversations.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
-    assert result.error == "real_llm_not_allowed"
+    with pytest.raises(KomaquillError, match="real_llm_not_allowed"):
+        chat.conversations.send(
+            conversation.id, SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
+        )
+    assert chat.conversations.operations(conversation.id) == []
 
 
 def test_command_revision_and_reset(chat):
@@ -75,18 +97,26 @@ def test_command_revision_and_reset(chat):
             locale="en", llm_profile="fake", title="State", initial_state={"place": "home"}
         )
     )
-    changed, _ = chat.conversations.accept_action(
+    changed, _ = accept_action(
+        chat.conversations,
         conversation.id,
-        ActionRequest(
-            operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="garden")
+        SendInput(
+            text="Continue.",
+            operation_id=uuid4(),
+            expected_revision=0,
+            action=MoveAction(destination="garden"),
         ),
     )
     assert changed.after.place == "garden"
     with pytest.raises(KomaquillError):
-        chat.conversations.accept_action(
+        accept_action(
+            chat.conversations,
             conversation.id,
-            ActionRequest(
-                operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="home")
+            SendInput(
+                text="Continue.",
+                operation_id=uuid4(),
+                expected_revision=0,
+                action=MoveAction(destination="home"),
             ),
         )
 
@@ -98,6 +128,7 @@ def test_direct_definitions_resolve_story_defaults_and_preserve_explicit_state(
 ):
     body = {
         "title": "Story defaults",
+        "llm_profile": "fake",
         "scenario": {"place": "Lighthouse", "goal": "Find the missing letter"},
     }
     if initial is not None:
@@ -114,10 +145,14 @@ def test_direct_definitions_resolve_story_defaults_and_preserve_explicit_state(
     assert saved.state.goal == supplied.get("goal", "Find the missing letter")
     assert saved.state.time == supplied.get("time", "")
     assert saved.definition.initial_state == saved.state
-    changed, _ = chat.conversations.accept_action(
+    changed, _ = accept_action(
+        chat.conversations,
         saved.id,
-        ActionRequest(
-            operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="Pier")
+        SendInput(
+            text="Continue.",
+            operation_id=uuid4(),
+            expected_revision=0,
+            action=MoveAction(destination="Pier"),
         ),
     )
     resumed = Client(chat.workspace).conversations.get(saved.id)
@@ -132,7 +167,7 @@ def test_restart_marks_unknown_without_resending(chat):
     conversation = chat.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Restart")
     )
-    request = SendInput(operation_id=uuid4(), text="Hello")
+    request = SendInput(expected_revision=0, operation_id=uuid4(), text="Hello")
     chat.conversations.accept(conversation.id, request)
     repository = chat.conversations.repository
     with repository.database.engine.begin() as connection:
@@ -151,7 +186,7 @@ def test_http_roundtrip_and_origin_validation(chat):
         )
         assert created.status_code == 201
         identity = created.json()["id"]
-        request = {"operation_id": str(uuid4()), "text": "Hello"}
+        request = {"operation_id": str(uuid4()), "expected_revision": 0, "text": "Hello"}
         sent = http.post(f"/api/v1/conversations/{identity}/turns", json=request)
         assert sent.status_code == 202
         assert (
@@ -186,7 +221,7 @@ def test_saved_failure_has_an_actionable_http_description(chat):
         operation_id = str(uuid4())
         http.post(
             f"/api/v1/conversations/{identity}/turns",
-            json={"operation_id": operation_id, "text": "Unknown sample"},
+            json={"operation_id": operation_id, "expected_revision": 0, "text": "Unknown sample"},
         )
         result = http.get(f"/api/v1/operations/{operation_id}").json()
         assert result["error"] == "fake_input_mismatch"

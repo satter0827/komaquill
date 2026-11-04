@@ -20,9 +20,7 @@
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "inputs": [
-        "python"
-      ],
+      "inputs": ["python"],
       "options": {
         "command": "node scripts/python.mjs -m mypy src/backend/src"
       }
@@ -56,9 +54,7 @@
       "cache": true,
       "dependsOn": [
         {
-          "projects": [
-            "frontend"
-          ],
+          "projects": ["frontend"],
           "target": "build"
         }
       ],
@@ -83,8 +79,7 @@
       ],
       "outputs": [
         "{workspaceRoot}/.artifacts/dist/*.whl",
-        "{workspaceRoot}/.artifacts/dist/*.tar.gz",
-        "{workspaceRoot}/.artifacts/records/reports/distribution"
+        "{workspaceRoot}/.artifacts/dist/*.tar.gz"
       ],
       "configurations": {
         "ci": {
@@ -100,9 +95,7 @@
     "package": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "options": {
         "command": "node -e \"process.stdout.write('.artifacts/dist\\n')\""
       }

@@ -13,9 +13,9 @@ import psutil
 from sqlalchemy import Boolean, Column, Integer, String, Table, Text, case, func, select
 from sqlalchemy.engine import Connection
 
-from komaquill.adapters.database import Database, conflict, metadata, missing
+from komaquill.adapters.database import Database, conflict, conversations, metadata, missing
 from komaquill.adapters.storage_errors import stored
-from komaquill.domain.content import visible
+from komaquill.conversations.models import Conversation
 from komaquill.domain.errors import KomaquillError
 from komaquill.library.models import (
     CharacterPreset,
@@ -87,19 +87,9 @@ class LibraryRepository:
                 )
             )
             return sorted(
-                (
-                    self._decode_job(row.id, row.payload)
-                    for row in rows
-                    if visible(
-                        self.database.content.rating("job", row.id, connection),
-                        self.database.content.enabled(connection),
-                    )
-                ),
+                (self._decode_job(row.id, row.payload) for row in rows),
                 key=lambda job: job.created_at,
             )
-
-    def require_job(self, identity: UUID) -> None:
-        self.database.content.require("job", identity)
 
     @stored
     def initialize(self, values: list[tuple[PresetKind, Preset]]) -> None:
@@ -132,14 +122,7 @@ class LibraryRepository:
                     presets.c.deleted == False,  # noqa: E712
                 )
             ).mappings()
-            return [
-                self._decode(kind, row["id"], row["payload"])
-                for row in rows
-                if visible(
-                    self.database.content.rating("preset", row["id"], connection),
-                    self.database.content.enabled(connection),
-                )
-            ]
+            return [self._decode(kind, row["id"], row["payload"]) for row in rows]
 
     def _decode(self, kind: PresetKind, identity: str, payload: str) -> Preset:
         value = MODELS[kind].model_validate_json(payload)
@@ -149,7 +132,6 @@ class LibraryRepository:
 
     @stored
     def get(self, kind: PresetKind, identity: UUID) -> Preset:
-        self.database.content.require("preset", identity)
         with self.database.engine.connect() as connection:
             row = (
                 connection.execute(
@@ -171,7 +153,6 @@ class LibraryRepository:
         with self.database.transaction() as connection:
             result: dict[PresetKind, Preset] = {}
             for kind, (identity, revision) in references.items():
-                self.database.content.require("preset", identity, connection)
                 payload = connection.execute(
                     select(presets.c.payload).where(
                         presets.c.id == str(identity),
@@ -189,22 +170,26 @@ class LibraryRepository:
 
     @stored
     def create(
-        self, kind: PresetKind, value: PresetInput, *, image_id: UUID | None = None
+        self,
+        kind: PresetKind,
+        value: PresetInput,
+        *,
+        image_id: UUID | None = None,
+        image_stale: bool = False,
     ) -> Preset:
-        result = MODELS[kind].model_validate({**value.model_dump(), "image_id": image_id})
+        result = MODELS[kind].model_validate(
+            {**value.model_dump(), "image_id": image_id, "image_stale": image_stale}
+        )
         with self.database.engine.begin() as connection:
             connection.execute(
                 presets.insert().values(
                     id=str(result.id), kind=kind, payload=result.model_dump_json(), deleted=False
                 )
             )
-            if self.database.content.enabled(connection):
-                self.database.content.set_rating("preset", result.id, "nsfw", connection)
         return result
 
     @stored
     def update(self, kind: PresetKind, identity: UUID, revision: int, value: PresetInput) -> Preset:
-        self.database.content.require("preset", identity)
         with self.database.transaction() as connection:
             row = (
                 connection.execute(
@@ -220,11 +205,6 @@ class LibraryRepository:
             if row is None:
                 raise missing()
             previous = self._decode(kind, str(identity), row["payload"])
-            fields = set(type(value).model_fields) - {"name"}
-            if self.database.content.enabled(connection) and value.model_dump(
-                include=fields
-            ) != previous.model_dump(include=fields):
-                self.database.content.set_rating("preset", identity, "nsfw", connection)
             if previous.revision != revision:
                 raise conflict()
             result = MODELS[kind].model_validate(
@@ -234,6 +214,9 @@ class LibraryRepository:
                     "revision": revision + 1,
                     "sample": False,
                     "sample_locale": None,
+                    "image_stale": bool(previous.image_id)
+                    if preset_image_input(kind, previous) != preset_image_input(kind, value)
+                    else previous.image_stale,
                     "image_job_id": None
                     if preset_image_input(kind, previous) != preset_image_input(kind, value)
                     else previous.image_job_id,
@@ -319,6 +302,7 @@ class LibraryRepository:
                 update={
                     "image_job_id": job,
                     "image_id": image or value.image_id,
+                    "image_stale": False if image else value.image_stale,
                 }
             )
             connection.execute(
@@ -373,7 +357,6 @@ class LibraryRepository:
             select(creation_jobs.c.payload).where(creation_jobs.c.id == str(request.operation_id))
         ).scalar_one_or_none()
         if row is not None:
-            self.database.content.require("job", request.operation_id, connection)
             job = self._decode_job(str(request.operation_id), row)
             if job.request != request:
                 raise conflict()
@@ -420,6 +403,15 @@ class LibraryRepository:
         ):
             raise KomaquillError(code="operation_busy", retryable=True)
         value = None
+        if request.kind == "conversation_image":
+            payload = connection.execute(
+                select(conversations.c.payload).where(conversations.c.id == str(request.target_id))
+            ).scalar_one_or_none()
+            if payload is None:
+                raise missing()
+            scene = Conversation.model_validate_json(payload)
+            if scene.revision != request.expected_revision:
+                raise conflict()
         if request.kind in {"portrait", "banner"}:
             kind: PresetKind = "character" if request.kind == "portrait" else "story"
             payload = connection.execute(
@@ -443,15 +435,6 @@ class LibraryRepository:
         )
         enabled = self.database.content.capture(request.operation_id, connection)
         job = job.model_copy(update={"nsfw_enabled": enabled})
-        if enabled:
-            self.database.content.set_rating("job", job.id, "nsfw", connection)
-            if request.target_id is not None:
-                self.database.content.set_rating(
-                    "conversation" if request.kind == "conversation_image" else "preset",
-                    request.target_id,
-                    "nsfw",
-                    connection,
-                )
         connection.execute(
             creation_jobs.insert().values(
                 id=str(job.id),
@@ -484,7 +467,6 @@ class LibraryRepository:
         kind: PresetKind,
         value: PresetInput,
         options: PresetSaveOptions,
-        image_error: str | None,
     ) -> PresetSaveResult:
         fingerprint = hashlib.sha256(
             json.dumps(
@@ -519,7 +501,6 @@ class LibraryRepository:
                 ).scalar_one_or_none()
                 if payload is None:
                     raise missing()
-                self.database.content.require("preset", options.target_id, connection)
                 previous = self._decode(kind, str(options.target_id), payload)
                 if previous.revision != options.expected_revision:
                     raise conflict()
@@ -539,9 +520,7 @@ class LibraryRepository:
                 is None
             ):
                 raise missing()
-            if isinstance(value, StoryInput) and value.character_id is not None:
-                self.database.content.require("preset", value.character_id, connection)
-            changes = preset_changes(kind, value, previous, options)
+            changes = preset_changes(kind, value, previous)
             record = MODELS[kind].model_validate(
                 {
                     **(previous.model_dump() if previous else {}),
@@ -554,6 +533,9 @@ class LibraryRepository:
                             "image_job_id": None
                             if changes.image_changed
                             else previous.image_job_id,
+                            "image_stale": bool(previous.image_id)
+                            if changes.image_changed
+                            else previous.image_stale,
                         }
                         if previous and changes.content_changed
                         else {}
@@ -575,39 +557,7 @@ class LibraryRepository:
                     .where(presets.c.id == str(record.id))
                     .values(payload=record.model_dump_json())
                 )
-            fields = set(type(value).model_fields) - {"name"}
-            if self.database.content.enabled(connection) and (
-                previous is None
-                or value.model_dump(include=fields) != previous.model_dump(include=fields)
-            ):
-                self.database.content.set_rating("preset", record.id, "nsfw", connection)
-            job = None
-            if not changes.generate_image:
-                image_error = None
-            elif image_error is None:
-                request = CreationRequest(
-                    operation_id=options.operation_id,
-                    kind="portrait" if kind == "character" else "banner",
-                    target_id=record.id,
-                    expected_revision=record.revision,
-                    locale=options.locale,
-                    llm_profile=options.llm_profile,
-                    allow_real_llm=options.allow_real_llm,
-                )
-                try:
-                    job, _ = self._accept(
-                        connection,
-                        request,
-                        json.dumps(preset_image_input(kind, value), ensure_ascii=False),
-                    )
-                    record = record.model_copy(update={"image_job_id": job.id})
-                except KomaquillError as error:
-                    if error.code != "operation_busy":
-                        raise
-                    image_error = error.code.value
-            result = PresetSaveResult(
-                preset=cast(CharacterPreset | StoryPreset, record), job=job, image_error=image_error
-            )
+            result = PresetSaveResult(preset=cast(CharacterPreset | StoryPreset, record))
             connection.execute(
                 preset_saves.insert().values(
                     id=str(options.operation_id),
@@ -746,7 +696,9 @@ class LibraryRepository:
                         target.revision == request.expected_revision
                         or preset_image_input(kind, target) == json.loads(value.original)
                     ) and target.image_job_id == value.id:
-                        target = target.model_copy(update={"image_id": value.image_id})
+                        target = target.model_copy(
+                            update={"image_id": value.image_id, "image_stale": False}
+                        )
                         connection.execute(
                             presets.update()
                             .where(presets.c.id == str(target.id))

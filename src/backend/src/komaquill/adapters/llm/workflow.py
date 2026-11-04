@@ -10,7 +10,7 @@ from langgraph.runtime import Runtime
 from langsmith import tracing_context
 
 from komaquill.adapters.checkpoints import CONVERSATION_WORKFLOW_VERSION, Checkpoints
-from komaquill.conversations.models import Conversation, Reply, SendInput
+from komaquill.conversations.models import Conversation, Reply, TurnRequest
 from komaquill.domain.errors import KomaquillError
 
 
@@ -23,14 +23,14 @@ class ConversationState(TypedDict):
 
 @dataclass
 class ConversationContext:
-    reply: Callable[[Conversation, SendInput], Reply]
+    reply: Callable[[Conversation, TurnRequest], Reply]
 
 
 def reply(state: ConversationState, runtime: Runtime[ConversationContext]) -> dict[str, object]:
     if state["version"] != CONVERSATION_WORKFLOW_VERSION:
         raise KomaquillError(code="operation_conflict", retryable=False)
     conversation = Conversation.model_validate_json(json.dumps(state["conversation"]))
-    request = SendInput.model_validate_json(json.dumps(state["request"]))
+    request = TurnRequest.model_validate_json(json.dumps(state["request"]))
     result = runtime.context.reply(conversation, request)
     return {"result": result.model_dump(mode="json", exclude_unset=True)}
 
@@ -46,8 +46,8 @@ def compile_conversation(checkpoints: Checkpoints) -> Any:
 def run_conversation(
     graph: Any,
     conversation: Conversation,
-    request: SendInput,
-    respond: Callable[[Conversation, SendInput], Reply],
+    request: TurnRequest,
+    respond: Callable[[Conversation, TurnRequest], Reply],
 ) -> Reply:
     config = {
         "configurable": {"thread_id": f"conversation:{request.operation_id}", "checkpoint_ns": ""},

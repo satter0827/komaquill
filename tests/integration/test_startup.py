@@ -17,6 +17,8 @@ from typer.testing import CliRunner
 from tests.support.provider import stopped as confirmed_stop
 from tests.support.session_controls import patch_session
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 @pytest.mark.parametrize(
     "case",

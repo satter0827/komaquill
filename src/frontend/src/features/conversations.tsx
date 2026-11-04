@@ -13,7 +13,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { Link, useParams } from 'react-router'
-import { POLL_INTERVAL_MS } from '../api/client'
+import { isRejectedRequest, POLL_INTERVAL_MS } from '../api/client'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import type {
   CreationJob,
@@ -21,6 +21,7 @@ import type {
   PersonDefinition,
   SendInput,
   StoryDefinition,
+  Turn,
 } from '../api/generated/types.gen'
 import {
   useFailure,
@@ -30,8 +31,14 @@ import {
 } from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { CreationStatus, useCreation } from './creation'
+import {
+  AvailabilityNotice,
+  recheckAvailability,
+  useAvailability,
+  useAvailabilityRecovery,
+} from './availability'
 import { ConversationNotes, SceneActions } from './conversation-tools'
-import { ImageResult } from './images'
+import { ImageResult, ImageLinks } from './images'
 import {
   ActionDescription,
   PlayerActions,
@@ -64,6 +71,35 @@ function Drawing({ job }: { job: CreationJob }) {
     <p className="subtle">
       {job.error ? failure({ code: job.error }) : messages.imagePreparing}
     </p>
+  )
+}
+
+function AcceptedTurn({ operation }: { operation: OperationView }) {
+  const messages = useMessages()
+  const failure = useFailure()
+  const accepted = operation.input
+  if (!accepted) return null
+  return (
+    <article className="turn" data-operation-id={operation.id}>
+      {accepted.text && (
+        <div className="user-message">
+          <span className="message-label">{messages.you}</span>
+          <p>{accepted.text}</p>
+        </div>
+      )}
+      {accepted.action && (
+        <div className="user-message">
+          <span className="message-label">{messages.myActions}</span>
+          <ActionDescription action={accepted.action} />
+        </div>
+      )}
+      {operation.error && (
+        <p role="alert" className="error">
+          {messages.replyFailedAfterAcceptance}{' '}
+          {failure({ code: operation.error })}
+        </p>
+      )}
+    </article>
   )
 }
 
@@ -102,6 +138,32 @@ function ConversationView({ identity }: { identity: string }) {
   const detail = useQuery({
     ...q.getConversationOptions({ path: { identity } }),
   })
+  const actionControls = usePlayerActions({
+    identity,
+    conversation: detail.data,
+  })
+  const sendAvailability = useAvailability(
+    detail.data ? { kind: 'conversation', identity } : undefined,
+  )
+  const [availabilityId] = useState(() => crypto.randomUUID())
+  const drawAvailability = useAvailability(
+    detail.data
+      ? {
+          kind: 'creation',
+          creation: {
+            operation_id: availabilityId,
+            kind: 'conversation_image',
+            target_id: identity,
+            expected_revision: detail.data.revision,
+            subjects,
+            viewpoint,
+            locale: preferences.value.locale,
+            llm_profile: detail.data.definition.llm_profile,
+            allow_real_llm: true,
+          },
+        }
+      : undefined,
+  )
   const history = useInfiniteQuery({
     ...q.getTurnsInfiniteOptions({ path: { identity } }),
     initialPageParam: { path: { identity } },
@@ -126,6 +188,9 @@ function ConversationView({ identity }: { identity: string }) {
     ...operationOptions(operationId ?? ''),
     enabled: !!operationId,
   })
+  useAvailabilityRecovery(
+    operation.error ?? (operation.data ?? savedOperations.data?.[0])?.error,
+  )
   useEffect(() => {
     if (operation.data || savedOperations.data)
       void cache.invalidateQueries({
@@ -133,6 +198,7 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, operation.data, savedOperations.data])
 
+  const { clear: clearQueuedAction } = actionControls
   const confirmSend = useCallback(
     (result: OperationView, submitted: SendInput) => {
       cache.setQueryData<OperationView>(
@@ -146,6 +212,7 @@ function ConversationView({ identity }: { identity: string }) {
       )
         setText('')
       setPrepared(null)
+      clearQueuedAction()
       void cache.invalidateQueries({
         queryKey: q.getConversationQueryKey({ path: { identity } }),
       })
@@ -153,24 +220,13 @@ function ConversationView({ identity }: { identity: string }) {
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
       })
     },
-    [cache, identity],
+    [cache, identity, clearQueuedAction],
   )
   const send = useMutation({
     ...q.sendTurnMutation(),
     onError: (error, submitted) => {
-      const code =
-        error && typeof error === 'object' && 'code' in error
-          ? error.code
-          : null
-      if (
-        [
-          'invalid_request',
-          'request_not_found',
-          'operation_conflict',
-          'operation_busy',
-          'visual_review_required',
-        ].includes(String(code))
-      ) {
+      void recheckAvailability(cache)
+      if (isRejectedRequest(error)) {
         setPrepared(null)
         void cache.invalidateQueries({
           queryKey: q.getConversationQueryKey({ path: { identity } }),
@@ -196,7 +252,11 @@ function ConversationView({ identity }: { identity: string }) {
   }, [cache, send.isError, prepared, confirmSend, resetSend])
   const resume = useMutation({
     ...q.resumeOperationMutation(),
-    onSuccess: (value) => {
+    onSuccess: async (value) => {
+      await cache.resetQueries({
+        queryKey: q.getOperationQueryKey({ path: { identity: value.id } }),
+        exact: true,
+      })
       setOperationId(value.id)
       void cache.invalidateQueries({
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
@@ -221,11 +281,6 @@ function ConversationView({ identity }: { identity: string }) {
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
   const dialog = useRef<HTMLDialogElement>(null)
-  const actionControls = usePlayerActions({
-    identity,
-    conversation: detail.data,
-    onReaction: setOperationId,
-  })
   const reviewControls = useVisualReview({
     identity,
     conversation: detail.data,
@@ -251,6 +306,7 @@ function ConversationView({ identity }: { identity: string }) {
     actionControls.unresolved ||
     !!reviewControls.prepared ||
     send.isPending ||
+    (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
     savedOperations.data?.some((value) =>
       ['accepted', 'running'].includes(value.state),
@@ -261,10 +317,41 @@ function ConversationView({ identity }: { identity: string }) {
   )
   const canSend =
     !needsReview &&
+    sendAvailability.ready &&
+    (!actionControls.queued ||
+      actionControls.queued.revision === conversation.revision) &&
     !busy &&
-    !(send.isError && prepared !== null) &&
     !!text.trim()
   const latestOperation = operation.data ?? savedOperations.data?.[0]
+  const retainedOperations = new Map(
+    (savedOperations.data ?? []).map((value) => [value.id, value]),
+  )
+  if (operation.data)
+    retainedOperations.set(
+      operation.data.id,
+      keepTerminal(retainedOperations.get(operation.data.id), operation.data),
+    )
+  const completedIds = new Set(
+    (conversation.turns ?? []).map((turn) => turn.operation_id),
+  )
+  const acceptedOperations = [...retainedOperations.values()].filter(
+    (value) =>
+      value.input && value.state !== 'complete' && !completedIds.has(value.id),
+  )
+  const timeline: (
+    { kind: 'turn'; value: Turn } | { kind: 'input'; value: OperationView }
+  )[] = [
+    ...(conversation.turns ?? []).map((value) => ({
+      kind: 'turn' as const,
+      value,
+    })),
+    ...acceptedOperations.map((value) => ({ kind: 'input' as const, value })),
+  ]
+  timeline.sort(
+    (a, b) =>
+      Date.parse(a.value.created_at ?? '') -
+      Date.parse(b.value.created_at ?? ''),
+  )
   const snapshots = conversation.definition.presets
   const stateLabels = {
     place: messages.currentPlace,
@@ -307,6 +394,9 @@ function ConversationView({ identity }: { identity: string }) {
           src={`/api/v1/images/${snapshots.character.image_id}/files/0`}
           alt={snapshots.character.name}
         />
+      )}
+      {snapshots?.character?.image_id && (
+        <ImageLinks identity={snapshots.character.image_id} />
       )}
       <div className="eyebrow">{messages.context}</div>
       <h2>{messages.currentState}</h2>
@@ -435,10 +525,21 @@ function ConversationView({ identity }: { identity: string }) {
         </header>
         {snapshots?.story?.image_id && (
           <div className="conversation-banner">
-            <img
-              src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
-              alt={snapshots.story.name}
-            />
+            <a
+              href={`/api/v1/images/${snapshots.story.image_id}/files/0`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
+                alt={snapshots.story.name}
+              />
+            </a>
+          </div>
+        )}
+        {snapshots?.story?.image_id && (
+          <div className="banner-actions">
+            <ImageLinks identity={snapshots.story.image_id} />
           </div>
         )}
         <div
@@ -454,7 +555,7 @@ function ConversationView({ identity }: { identity: string }) {
                 <Drawing job={job} />
               </div>
             ))}
-          {(conversation.turns ?? []).length === 0 && (
+          {timeline.length === 0 && (
             <div className="conversation-empty">
               <Sparkles size={30} />
               <h2>{messages.newChapter}</h2>
@@ -473,89 +574,98 @@ function ConversationView({ identity }: { identity: string }) {
             </Button>
           )}
           {history.error && <p role="alert">{failure(history.error)}</p>}
-          {(conversation.turns ?? []).map((turn) => (
-            <article className="turn" key={turn.operation_id}>
-              {turn.user && (
-                <div className="user-message">
-                  <span className="message-label">{messages.you}</span>
-                  <p>{turn.user}</p>
-                </div>
-              )}
-              {(conversation.proposals ?? [])
-                .filter((proposal) => proposal.turn_id === turn.operation_id)
-                .map((proposal) => (
-                  <div className="action-preview" key={proposal.id}>
-                    <ActionDescription action={proposal.action} />
-                    {proposal.state === 'pending' ? (
-                      <Button onClick={() => setShowState(true)}>
-                        {messages.reviewAction}
-                      </Button>
-                    ) : (
-                      <p className="subtle">
-                        {proposal.state === 'applied'
-                          ? messages.actionApplied
-                          : proposal.state === 'dismissed'
-                            ? messages.actionDismissed
-                            : messages.actionExpired}
-                      </p>
-                    )}
+          {timeline.map((entry) => {
+            if (entry.kind === 'input')
+              return (
+                <AcceptedTurn key={entry.value.id} operation={entry.value} />
+              )
+            const turn = entry.value
+            return (
+              <article className="turn" key={turn.operation_id}>
+                {turn.user && (
+                  <div className="user-message">
+                    <span className="message-label">{messages.you}</span>
+                    <p>{turn.user}</p>
                   </div>
-                ))}
-              {turn.action && (
-                <div className="user-message">
-                  <span className="message-label">{messages.myActions}</span>
-                  <ActionDescription action={turn.action} />
-                </div>
-              )}
-              {!turn.action &&
-                turn.action_id &&
-                conversation.actions?.find(
-                  (record) => record.request.operation_id === turn.action_id,
-                ) && (
+                )}
+                {(conversation.proposals ?? [])
+                  .filter((proposal) => proposal.turn_id === turn.operation_id)
+                  .map((proposal) => (
+                    <div className="action-preview" key={proposal.id}>
+                      <ActionDescription action={proposal.action} />
+                      {proposal.state === 'pending' ? (
+                        <Button onClick={() => setShowState(true)}>
+                          {messages.reviewAction}
+                        </Button>
+                      ) : (
+                        <p className="subtle">
+                          {proposal.state === 'applied'
+                            ? messages.actionApplied
+                            : proposal.state === 'dismissed'
+                              ? messages.actionDismissed
+                              : messages.actionExpired}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                {turn.action && (
                   <div className="user-message">
                     <span className="message-label">{messages.myActions}</span>
-                    <ActionDescription
-                      action={
-                        conversation.actions.find(
-                          (record) =>
-                            record.request.operation_id === turn.action_id,
-                        )!.request.action
-                      }
-                    />
+                    <ActionDescription action={turn.action} />
                   </div>
                 )}
-              <div className="assistant-message">
-                {turn.assistant && (
-                  <span className="message-label">
-                    <Sparkles size={14} />
-                    {snapshots?.character?.name ?? messages.character}
-                  </span>
-                )}
-                {turn.narration && (
-                  <p className="scene-narration">{turn.narration}</p>
-                )}
-                {turn.action_narration && (
-                  <p className="action-narration">{turn.action_narration}</p>
-                )}
-                <p>{turn.assistant}</p>
-                <SceneActions
-                  conversation={conversation}
-                  turnId={turn.operation_id}
-                />
-                {turn.image_id && (
-                  <ImageResult
-                    identity={turn.image_id}
-                    operationId={turn.operation_id}
+                {!turn.action &&
+                  turn.action_id &&
+                  conversation.actions?.find(
+                    (record) => record.request.operation_id === turn.action_id,
+                  ) && (
+                    <div className="user-message">
+                      <span className="message-label">
+                        {messages.myActions}
+                      </span>
+                      <ActionDescription
+                        action={
+                          conversation.actions.find(
+                            (record) =>
+                              record.request.operation_id === turn.action_id,
+                          )!.request.action
+                        }
+                      />
+                    </div>
+                  )}
+                <div className="assistant-message">
+                  {turn.assistant && (
+                    <span className="message-label">
+                      <Sparkles size={14} />
+                      {snapshots?.character?.name ?? messages.character}
+                    </span>
+                  )}
+                  {turn.narration && (
+                    <p className="scene-narration">{turn.narration}</p>
+                  )}
+                  {turn.action_narration && (
+                    <p className="action-narration">{turn.action_narration}</p>
+                  )}
+                  <p>{turn.assistant}</p>
+                  <SceneActions
+                    conversation={conversation}
+                    turnId={turn.operation_id}
                   />
-                )}
-                {(drawings.data ?? [])
-                  .filter((job) => job.turn_id === turn.operation_id)
-                  .map((job) => (
-                    <Drawing key={job.id} job={job} />
-                  ))}
-              </div>
-            </article>
-          ))}
+                  {turn.image_id && (
+                    <ImageResult
+                      identity={turn.image_id}
+                      operationId={turn.operation_id}
+                    />
+                  )}
+                  {(drawings.data ?? [])
+                    .filter((job) => job.turn_id === turn.operation_id)
+                    .map((job) => (
+                      <Drawing key={job.id} job={job} />
+                    ))}
+                </div>
+              </article>
+            )
+          })}
           {busy && (
             <p className="pending" role="status">
               {messages.pending}
@@ -579,9 +689,10 @@ function ConversationView({ identity }: { identity: string }) {
               )}
             </p>
           )}
-          {latestOperation?.error && (
+          {latestOperation?.error && !latestOperation.input && (
             <p role="alert" className="error">
-              {failure({ code: latestOperation.error })}
+              <span>{messages.replyFailedAfterAcceptance}</span>{' '}
+              <span>{failure({ code: latestOperation.error })}</span>
             </p>
           )}
           {latestOperation?.can_resume && (
@@ -638,6 +749,19 @@ function ConversationView({ identity }: { identity: string }) {
               </select>
             </label>
           </details>
+          {actionControls.queued && (
+            <div className="queued-action">
+              <strong>{messages.myActions}</strong>
+              <ActionDescription action={actionControls.queued.action} />
+              <Button disabled={!!busy} onClick={actionControls.clear}>
+                {messages.removeQueuedAction}
+              </Button>
+            </div>
+          )}
+          <AvailabilityNotice status={sendAvailability} />
+          {!drawAvailability.ready && (
+            <AvailabilityNotice status={drawAvailability} />
+          )}
           <form
             className="composer"
             onSubmit={(event) => {
@@ -646,6 +770,12 @@ function ConversationView({ identity }: { identity: string }) {
                 const body = {
                   operation_id: crypto.randomUUID(),
                   text,
+                  expected_revision:
+                    actionControls.queued?.revision ??
+                    conversation.revision ??
+                    0,
+                  action: actionControls.queued?.action,
+                  proposal_id: actionControls.queued?.proposal_id,
                   allow_real_llm: true,
                   locale: preferences.value.locale,
                 }
@@ -672,7 +802,13 @@ function ConversationView({ identity }: { identity: string }) {
               className="draw-button"
               aria-label={messages.drawScene}
               title={messages.drawScene}
-              disabled={!!busy || needsReview || drawing.busy || sampleDrawing}
+              disabled={
+                !!busy ||
+                needsReview ||
+                drawing.busy ||
+                sampleDrawing ||
+                !drawAvailability.ready
+              }
               onClick={() =>
                 drawing.start({
                   kind: 'conversation_image',

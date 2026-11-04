@@ -2,7 +2,6 @@ import type { Preferences } from '../api/generated/types.gen'
 import type { MessageKey } from '../app/messages'
 import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { RuntimePage } from './runtime'
-import { ContentSettings } from './content'
 
 export function PreferencesPage() {
   const m = useMessages()
@@ -23,7 +22,6 @@ export function PreferencesPage() {
       <div className="eyebrow">{m.preferencesEyebrow}</div>
       <h1>{m.preferences}</h1>
       <p className="subtle">{m.settingsDescription}</p>
-      <ContentSettings />
       <div className="settings-grid">
         <label>
           {m.language}

@@ -16,6 +16,8 @@ from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api import Client, KomaquillError
 from komaquill.conversations.models import ConversationInput, SendInput
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 def downgrade(api, revision="0004"):
     engine = api.conversations.repository.database.engine
@@ -64,7 +66,15 @@ def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(
     saved = api.conversations.create(
         ConversationInput(locale="en", llm_profile="fake", title="Before migration")
     )
-    api.conversations.send(saved.id, SendInput(operation_id=uuid4(), text="Hello"))
+    api.conversations.send(
+        saved.id,
+        SendInput(
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(saved.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     before = api.conversations.get(saved.id)
     downgrade(api)
     with pytest.raises(KomaquillError, match="migration_required"):
@@ -91,9 +101,6 @@ def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(
             >= 1
         )
     reopened = Client(tmp_path)
-    reopened.library.save_preferences(
-        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
-    )
     assert reopened.conversations.get(saved.id) == before
     assert Client(tmp_path).library.preferences().locale == "ja"
 

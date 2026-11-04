@@ -1,3 +1,6 @@
+import { isRejectedRequest } from '../api/client'
+import { ImageLinks } from './images'
+import { AvailabilityNotice, useAvailability } from './availability'
 import { objectLines, parseObjects } from './physical-objects'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Plus, UserRound } from 'lucide-react'
@@ -79,9 +82,7 @@ async function save(
   value: Fields,
   previous: Preset | undefined,
   options: PresetSaveOptions,
-): Promise<
-  PresetSaveResult | { preset: PlayerProfile; job: null; image_error: null }
-> {
+): Promise<PresetSaveResult | { preset: PlayerProfile }> {
   const query = { expected_revision: previous?.revision ?? 0 }
   const player: PlayerInput = {
     name: value.name,
@@ -98,8 +99,6 @@ async function save(
   if (kind === 'player')
     return {
       preset: (await api.updatePlayer({ query, body: player })).data!,
-      job: null,
-      image_error: null,
     }
   if (kind === 'character') {
     const body = {
@@ -212,6 +211,7 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
         <h2>
           <Link to={`${paths[kind]}/${preset.id}`}>{preset.name}</Link>
         </h2>
+        {preset.image_id && <ImageLinks identity={preset.image_id} />}
         {'role' in preset && preset.role && (
           <p className="preset-role">{preset.role}</p>
         )}
@@ -380,46 +380,67 @@ function PresetEditor({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const draft = useCreation()
   const [pendingSave, setPendingSave] = useState<SaveSubmission | null>(null)
-  const [imageError, setImageError] = useState<string | null>(null)
+  const imageCreation = useCreation()
+  const [availabilityId] = useState(() => crypto.randomUUID())
+  const imageRequest =
+    current && kind !== 'player'
+      ? {
+          operation_id: availabilityId,
+          kind:
+            kind === 'character' ? ('portrait' as const) : ('banner' as const),
+          target_id: current.id,
+          expected_revision: current.revision,
+          locale: preferences.value.locale,
+          llm_profile: generationProfile,
+          allow_real_llm: true,
+        }
+      : undefined
+  const imageAvailability = useAvailability(
+    imageRequest ? { kind: 'creation', creation: imageRequest } : undefined,
+  )
+  const draftAvailability = useAvailability(
+    kind !== 'player' && idea.trim()
+      ? {
+          kind: 'creation',
+          creation: {
+            operation_id: availabilityId,
+            kind: kind === 'character' ? 'character_draft' : 'story_draft',
+            prompt: idea,
+            locale: preferences.value.locale,
+            llm_profile: generationProfile,
+            allow_real_llm: true,
+          },
+        }
+      : undefined,
+  )
+  const dirty =
+    !current ||
+    fields[kind].some((field) =>
+      field === 'initial_held_objects'
+        ? heldObjects !==
+          objectLines(
+            'initial_held_objects' in current
+              ? (current.initial_held_objects ?? [])
+              : [],
+          )
+        : (value[field] ?? '') !==
+          (current[field as keyof typeof current] ?? ''),
+    )
   const characters = useQuery({
     ...q.listCharactersOptions(),
     enabled: kind === 'story',
   })
-  const connectionQuery = {
-    queryKey: q.getRuntimeQueryKey(),
-    queryFn: async () => (await api.refreshRuntime()).data!,
-  }
-  const runtime = useQuery({ ...connectionQuery, enabled: kind !== 'player' })
-  const connected = !runtime.isError && runtime.data?.connection === 'connected'
   const mutation = useMutation({
     mutationFn: (submission: SaveSubmission) =>
       save(kind, submission.value, submission.previous, submission.options),
     onError: (error) => {
-      const code =
-        error && typeof error === 'object' && 'code' in error
-          ? error.code
-          : null
-      if (
-        [
-          'invalid_request',
-          'request_not_found',
-          'operation_conflict',
-          'operation_busy',
-        ].includes(String(code))
-      )
-        setPendingSave(null)
+      if (isRejectedRequest(error)) setPendingSave(null)
     },
     onSuccess: async (result) => {
       const record = result.preset
       setCurrent(record)
       setPendingSave(null)
-      setImageError(result.image_error ?? null)
       setNotice(m.saved)
-      if (result.job)
-        cache.setQueryData(
-          q.getJobQueryKey({ path: { identity: result.job.id ?? '' } }),
-          result.job,
-        )
       await cache.invalidateQueries({
         queryKey: presetKey(kind),
       })
@@ -435,7 +456,7 @@ function PresetEditor({
         navigate(`${paths[kind]}/${record.id}`, { replace: true })
     },
   })
-  const saveCurrent = (policy: 'auto' | 'always') => {
+  const saveCurrent = () => {
     const submission = pendingSave ?? {
       value: {
         ...value,
@@ -451,10 +472,6 @@ function PresetEditor({
         operation_id: crypto.randomUUID(),
         target_id: current?.id ?? null,
         expected_revision: current?.revision ?? null,
-        image_policy: policy,
-        locale: preferences.value.locale,
-        llm_profile: generationProfile,
-        allow_real_llm: true,
       },
     }
     setPendingSave(submission)
@@ -498,11 +515,13 @@ function PresetEditor({
             : m.playersEyebrow}
       </div>
       <h1>{current ? current.name : m.new}</h1>
-      <div className="editor-layout">
+      <div
+        className={`editor-layout ${kind === 'player' ? 'profile-layout' : ''}`}
+      >
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            saveCurrent('auto')
+            saveCurrent()
           }}
         >
           <fieldset
@@ -640,42 +659,41 @@ function PresetEditor({
                   <UserRound size={52} strokeWidth={1} />
                 )}
               </div>
+              {imageRecord?.image_id && (
+                <ImageLinks identity={imageRecord.image_id} />
+              )}
               {!imageRecord?.image_job_id && (
                 <p className="subtle">
-                  {imageRecord?.image_id
-                    ? m.imageReady
-                    : connected
-                      ? m.noImage
-                      : m.imageNotConnected}
+                  {imageRecord?.image_id ? m.imageReady : m.noImage}
                 </p>
               )}
               {current && (
                 <Button
                   onClick={() => {
-                    saveCurrent('always')
+                    if (imageRequest && imageAvailability.ready && !dirty)
+                      imageCreation.start(imageRequest)
                   }}
                   disabled={
-                    mutation.isPending || !!pendingSave || !value.name?.trim()
+                    mutation.isPending ||
+                    !!pendingSave ||
+                    dirty ||
+                    !imageAvailability.ready
                   }
                 >
                   {m.createImage}
                 </Button>
               )}
-              {runtime.error && (
-                <p className="error" role="alert">
-                  {failure(runtime.error)}
-                </p>
+              {dirty && <p className="subtle">{m.saveBeforeImage}</p>}
+              {imageRecord?.image_stale && (
+                <p className="subtle">{m.imageNeedsUpdate}</p>
               )}
+              {current && <AvailabilityNotice status={imageAvailability} />}
+              <CreationStatus creation={imageCreation} />
               {imageRecord?.image_job_id && (
                 <JobMonitor
                   identity={imageRecord.image_job_id}
                   displayComplete
                 />
-              )}
-              {imageError && (
-                <p role="alert" className="error">
-                  {failure({ code: imageError })}
-                </p>
               )}
               <details className="draft-panel">
                 <summary>{m.createDraft}</summary>
@@ -701,10 +719,15 @@ function PresetEditor({
                       allow_real_llm: true,
                     })
                   }}
-                  disabled={draft.busy || !idea.trim()}
+                  disabled={
+                    draft.busy || !idea.trim() || !draftAvailability.ready
+                  }
                 >
                   {m.createDraft}
                 </Button>
+                {idea.trim() && (
+                  <AvailabilityNotice status={draftAvailability} />
+                )}
                 <CreationStatus creation={draft} />
                 {draft.job.data?.result && (
                   <div className="draft-result">

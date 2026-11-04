@@ -8,6 +8,8 @@ from pydantic import Field, model_validator
 
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import (
+    MAX_CLOTHING_LENGTH,
+    MAX_EXPRESSION_POSE_LENGTH,
     ConversationState,
     PersonStatePatch,
     PhysicalObjects,
@@ -30,9 +32,9 @@ class WaitAction(Record):
 
 class PrepareAction(Record):
     kind: Literal["prepare"] = "prepare"
-    clothing: str | None = Field(default=None, max_length=3000)
-    pose: str | None = Field(default=None, max_length=1000)
-    expression: str | None = Field(default=None, max_length=1000)
+    clothing: str | None = Field(default=None, max_length=MAX_CLOTHING_LENGTH)
+    pose: str | None = Field(default=None, max_length=MAX_EXPRESSION_POSE_LENGTH)
+    expression: str | None = Field(default=None, max_length=MAX_EXPRESSION_POSE_LENGTH)
     held_objects: PhysicalObjects | None = Field(default=None, max_length=30)
 
     @model_validator(mode="after")
@@ -61,7 +63,7 @@ class ProposedAction(Record):
     decision_id: UUID | None = None
 
 
-class ActionRequest(Record):
+class RecordedActionRequest(Record):
     operation_id: UUID
     expected_revision: int = Field(ge=0)
     action: PlayerAction
@@ -71,7 +73,7 @@ class ActionRequest(Record):
 
 
 class ActionRecord(Record):
-    request: ActionRequest
+    request: RecordedActionRequest
     before: ConversationState
     after: ConversationState
     revision: int

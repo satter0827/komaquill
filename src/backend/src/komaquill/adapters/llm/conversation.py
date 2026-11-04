@@ -15,10 +15,14 @@ from komaquill.adapters.llm.execution import StructuredExecution, response_schem
 from komaquill.adapters.llm.language import ResponseLanguageError, check_language
 from komaquill.conversations.actions import IntentionAction, MoveAction, PrepareAction, WaitAction
 from komaquill.conversations.context import scene_context
-from komaquill.conversations.models import ConnectionProfile, Conversation, Reply, SendInput
+from komaquill.conversations.models import ConnectionProfile, Conversation, Reply, TurnRequest
 from komaquill.conversations.transitions import published_reply
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import (
+    MAX_CLOTHING_LENGTH,
+    MAX_EXPRESSION_POSE_LENGTH,
+    MAX_RELATIONSHIP_LENGTH,
+    MAX_SCENERY_LENGTH,
     ConversationMemory,
     ConversationState,
     PhysicalObjects,
@@ -58,25 +62,76 @@ GeneratedAction = Annotated[
 ]
 
 
-class SceneChange(Record):
-    field: Literal[
-        "relationship", "movement", "scenery", "clothing", "expression", "pose", "held_objects"
-    ]
-    value: str | PhysicalObjects
+class RelationshipChange(Record):
+    field: Literal["relationship"]
+    value: str = Field(max_length=MAX_RELATIONSHIP_LENGTH)
 
-    @model_validator(mode="after")
-    def matching_value(self) -> Self:
-        if (self.field == "held_objects") != isinstance(self.value, list):
-            raise ValueError("The scene field and value type must match.")
-        if self.field == "movement" and self.value not in ("stay", "join_player"):
-            raise ValueError("Movement must retain the companion's place or join the player.")
-        return self
+
+class SceneryChange(Record):
+    field: Literal["scenery"]
+    value: str = Field(max_length=MAX_SCENERY_LENGTH)
+
+
+class ClothingChange(Record):
+    field: Literal["clothing"]
+    value: str = Field(
+        max_length=MAX_CLOTHING_LENGTH,
+        description=(
+            "Only assistant_character's new clothing. Never copy human_player's clothing change. "
+            "An empty string removes the companion's own clothing."
+        ),
+    )
+
+
+class ExpressionPoseChange(Record):
+    field: Literal["expression", "pose"]
+    value: str = Field(max_length=MAX_EXPRESSION_POSE_LENGTH)
+
+
+class MovementChange(Record):
+    field: Literal["movement"]
+    value: Literal["stay", "join_player"]
+
+
+class ObjectsChange(Record):
+    field: Literal["held_objects"]
+    value: PhysicalObjects = Field(
+        description=(
+            "The complete physical objects held by assistant_character after their own action. "
+            "Human_player's objects remain with human_player unless explicitly handed over."
+        )
+    )
+
+
+SceneChange = Annotated[
+    RelationshipChange
+    | SceneryChange
+    | ClothingChange
+    | ExpressionPoseChange
+    | MovementChange
+    | ObjectsChange,
+    Field(discriminator="field"),
+]
 
 
 class DialogueResult(Record):
     kind: Literal["companion"]
-    changes: list[SceneChange] = Field(max_length=7)
-    action_narration: str = Field(max_length=6000)
+    changes: list[SceneChange] = Field(
+        max_length=7,
+        description=(
+            "Only actual new changes to assistant_character or the environment. "
+            "A completed human_player action does not change the companion's clothing, "
+            "objects or location. Return [] when unchanged."
+        ),
+    )
+    action_narration: str = Field(
+        max_length=6000,
+        description=(
+            "Visible actions performed by assistant_character, consistent with their own clothing "
+            "and held objects. Do not repeat human_player's completed action or assign their "
+            "possessions to the companion."
+        ),
+    )
     text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
 
     @model_validator(mode="after")
@@ -140,7 +195,7 @@ class ConversationResponder:
             for name, p in self.execution.settings.llm_profiles.items()
         ]
 
-    def reply(self, conversation: Conversation, request: SendInput) -> Reply:
+    def reply(self, conversation: Conversation, request: TurnRequest) -> Reply:
         try:
             with self.execution.lock:
                 from komaquill.adapters.llm.workflow import run_conversation
@@ -151,7 +206,7 @@ class ConversationResponder:
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
 
-    def _reply(self, conversation: Conversation, request: SendInput) -> Reply:
+    def _reply(self, conversation: Conversation, request: TurnRequest) -> Reply:
         profile = self.execution.settings.llm_profiles.get(conversation.definition.llm_profile)
         if profile is None:
             raise KomaquillError(code="invalid_configuration", retryable=False)
@@ -159,13 +214,19 @@ class ConversationResponder:
         action = next(
             (a for a in conversation.actions if a.request.operation_id == request.action_id), None
         )
-        latest = (
-            "The human player has completed this action. React as the companion; "
-            "keep the companion's own clothing and possessions: "
-            + action.request.action.model_dump_json()
-            if action is not None
-            else request.text
-        )
+        latest = request.text
+        if action is not None:
+            latest = json.dumps(
+                {
+                    "speaker": "human_player",
+                    "completed_action": {
+                        "actor": "human_player",
+                        **action.request.action.model_dump(mode="json", exclude_none=True),
+                    },
+                    "text": request.text,
+                },
+                ensure_ascii=False,
+            )
         if profile.provider == "fake":
             fixture = json.loads(
                 files("komaquill").joinpath("resources/conversations/fixture.json").read_bytes()
@@ -241,39 +302,37 @@ class ConversationResponder:
         scene["current_state"] = {
             key: value for key, value in scene["current_state"].items() if value != ""
         }
-        scene["people"] = {
-            role: {
-                key: value
-                for key, value in person.items()
-                if value is not None and (value != "" or key == "clothing")
+        people = {}
+        for role, state_role, person in (
+            ("human_player", "player", definition.user),
+            ("assistant_character", "character", definition.character),
+        ):
+            facts = scene["people"][state_role]
+            people[role] = {
+                **person.model_dump(
+                    exclude_defaults=True,
+                    exclude={
+                        "age",
+                        "gender",
+                        "appearance",
+                        "initial_clothing",
+                        "initial_held_objects",
+                        "visual_review_required",
+                    },
+                ),
+                **{
+                    key: value
+                    for key, value in facts.items()
+                    if value is not None and (value != "" or key == "clothing")
+                },
+                "place": conversation.state.place
+                if state_role == "player"
+                else conversation.state.character_place,
             }
-            for role, person in scene["people"].items()
-        }
         context = {
-            "assistant_character": definition.character.model_dump(
-                exclude_defaults=True,
-                exclude={
-                    "appearance",
-                    "age",
-                    "gender",
-                    "initial_clothing",
-                    "initial_held_objects",
-                    "visual_review_required",
-                },
-            ),
-            "human_player": definition.user.model_dump(
-                exclude_defaults=True,
-                exclude={
-                    "appearance",
-                    "age",
-                    "gender",
-                    "initial_clothing",
-                    "initial_held_objects",
-                    "visual_review_required",
-                },
-            ),
             "story": story,
-            **scene,
+            "current_state": scene["current_state"],
+            "people": people,
             **({"pinned_notes": conversation.notes} if conversation.notes else {}),
             **(
                 {
@@ -317,26 +376,30 @@ class ConversationResponder:
         )
         reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
-        try:
-            from komaquill.adapters.llm.memory import history_messages
+        retained_response = self.execution.has_response(request.operation_id)
+        messages: list[tuple[str, str]] = []
+        active_memory = conversation.memory
+        if not retained_response:
+            try:
+                from komaquill.adapters.llm.memory import history_messages
 
-            messages, memory = history_messages(
-                self.execution,
-                conversation,
-                request,
-                system,
-                latest,
-                json.dumps(response_schema(reply_schema, field_language), ensure_ascii=False),
-                lambda through: self.read_history_hash(conversation.id, through),
-            )
-        except ImportError:
-            raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
-        if memory is not None:
-            if self.save_memory is None:
-                raise KomaquillError(code="storage_failed", retryable=False)
-            self.save_memory(conversation.id, memory)
-        active_memory = memory or conversation.memory
-        messages.append(("user", latest))
+                messages, memory = history_messages(
+                    self.execution,
+                    conversation,
+                    request,
+                    system,
+                    latest,
+                    json.dumps(response_schema(reply_schema, field_language), ensure_ascii=False),
+                    lambda through: self.read_history_hash(conversation.id, through),
+                )
+            except ImportError:
+                raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
+            if memory is not None:
+                if self.save_memory is None:
+                    raise KomaquillError(code="storage_failed", retryable=False)
+                self.save_memory(conversation.id, memory)
+            active_memory = memory or conversation.memory
+            messages.append(("user", latest))
         names = [
             value
             for person in (conversation.definition.user, conversation.definition.character)
@@ -375,23 +438,38 @@ class ConversationResponder:
                 or proposed.place != conversation.state.place
             ):
                 raise ValueError("Player changes require confirmation.")
-            if {item.id for item in proposed.character.held_objects or []}.intersection(
-                item.id for item in proposed.player.held_objects or []
-            ):
-                raise ResponseConstraintError("object_ownership")
+            player_objects = {item.id for item in proposed.player.held_objects or []}
+            for index, change in enumerate(value.changes):
+                if isinstance(change, ObjectsChange):
+                    for item_index, item in enumerate(change.value):
+                        if item.id in player_objects:
+                            raise ResponseConstraintError(
+                                "object_ownership",
+                                ("response", "changes", index, "value", item_index, "id"),
+                            )
 
-        generated = self.execution.invoke(
-            reply_schema,
-            request.operation_id,
-            conversation.definition.llm_profile,
-            request.allow_real_llm,
-            system(active_memory),
-            messages,
-            validate=validate,
-            correction=language_contract,
-            field_language=field_language,
-            trim=False,
-        )
+        if retained_response:
+            generated = self.execution.replay(
+                reply_schema,
+                request.operation_id,
+                conversation.definition.llm_profile,
+                system(active_memory),
+                validate,
+                field_language,
+            )
+        else:
+            generated = self.execution.invoke(
+                reply_schema,
+                request.operation_id,
+                conversation.definition.llm_profile,
+                request.allow_real_llm,
+                system(active_memory),
+                messages,
+                validate=validate,
+                correction=language_contract,
+                field_language=field_language,
+                trim=False,
+            )
         value = generated.response
         if isinstance(value, ProposalResult):
             return Reply(text="", state_patch=StatePatch(), action_proposals=[value.action])

@@ -228,6 +228,7 @@ def child(source: Path, output: Path, variant: str) -> None:
             operation = api.conversations.send(
                 conversation.id,
                 SendInput(
+                    expected_revision=api.conversations.overview(conversation.id).revision,
                     operation_id=uuid5(conversation.id, str(index)),
                     text=text,
                     locale=locale,

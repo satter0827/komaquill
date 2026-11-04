@@ -1,12 +1,11 @@
 """Exercise confirmed actions and recovery against the real SQLite repository."""
 
 from types import SimpleNamespace
-from uuid import uuid4, uuid5
+from uuid import uuid4
 
 import pytest
 from komaquill.api import Client, ConversationInput, KomaquillError, SendInput
 from komaquill.conversations.actions import (
-    ActionRequest,
     MoveAction,
     PrepareAction,
     ProposalDismissal,
@@ -14,6 +13,8 @@ from komaquill.conversations.actions import (
 )
 from komaquill.conversations.models import Reply
 from komaquill.domain.roleplay import StatePatch
+
+from tests.support.conversations import send_action
 
 
 @pytest.fixture
@@ -35,20 +36,25 @@ def test_action_survives_failed_reaction_and_is_not_reapplied(story):
     service.responder.reply = lambda *_: (_ for _ in ()).throw(
         KomaquillError(code="llm_unavailable")
     )
-    request = ActionRequest(
-        operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="Beach")
+    request = SendInput(
+        text="Continue.",
+        operation_id=uuid4(),
+        expected_revision=0,
+        action=MoveAction(destination="Beach"),
     )
-    record = service.act(conversation.id, request)
+    record = send_action(service, conversation.id, request)
     assert client.operations.get(record.reaction_id).error == "llm_unavailable"
     resumed = Client(client.workspace).conversations.get(conversation.id)
     assert resumed.state.place == "Beach"
     assert resumed.state.character_place == "Shop"
     assert resumed.revision == 1
-    assert service.act(conversation.id, request) == record
+    assert send_action(service, conversation.id, request) == record
     assert len(service.actions(conversation.id)) == 1
     with pytest.raises(KomaquillError, match="operation_conflict"):
-        service.act(
-            conversation.id, request.model_copy(update={"action": MoveAction(destination="Forest")})
+        send_action(
+            service,
+            conversation.id,
+            request.model_copy(update={"action": MoveAction(destination="Forest")}),
         )
 
 
@@ -60,16 +66,25 @@ def test_chat_proposes_then_player_confirms(story):
         state_patch=StatePatch(),
         action_proposals=[MoveAction(destination="Beach")],
     )
-    service.send(conversation.id, SendInput(operation_id=uuid4(), text="I head to the beach."))
+    service.send(
+        conversation.id,
+        SendInput(
+            expected_revision=service.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="I head to the beach.",
+        ),
+    )
     pending = service.get(conversation.id)
     assert pending.state.place == "Shop"
     proposal = pending.proposals[0]
     service.responder.reply = lambda *_: Reply(
         text="", narration="The sea is quiet.", state_patch=StatePatch()
     )
-    service.act(
+    send_action(
+        service,
         conversation.id,
-        ActionRequest(
+        SendInput(
+            text="Continue.",
             operation_id=uuid4(),
             expected_revision=pending.revision,
             proposal_id=proposal.id,
@@ -87,7 +102,14 @@ def test_reply_cannot_apply_player_changes(story):
     service.responder.reply = lambda *_: Reply(
         text="Here.", state_patch=StatePatch(player={"clothing": "coat"})
     )
-    operation = service.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+    operation = service.send(
+        conversation.id,
+        SendInput(
+            expected_revision=service.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     assert operation.state == "failed"
     assert operation.error == "invalid_response"
     assert client.conversations.get(conversation.id).revision == 0
@@ -102,7 +124,14 @@ def test_published_background_uses_the_same_facts_as_drawing(story):
         narration="You walk away wearing someone else's coat.",
         state_patch=StatePatch(scenery="Rain outside the shop."),
     )
-    service.send(conversation.id, SendInput(operation_id=uuid4(), text="Hello"))
+    service.send(
+        conversation.id,
+        SendInput(
+            expected_revision=service.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+        ),
+    )
     result = service.get(conversation.id)
     assert result.turns[-1].narration == drawing_context(result)["setting"]["scenery"]
     assert result.turns[-1].narration == "Rain outside the shop."
@@ -132,7 +161,14 @@ def test_stale_proposal_and_dismissal(story):
     service.responder.reply = lambda *_: Reply(
         text="Hello", state_patch=StatePatch(), action_proposals=[WaitAction(minutes=5)]
     )
-    service.send(conversation.id, SendInput(operation_id=uuid4(), text="Wait"))
+    service.send(
+        conversation.id,
+        SendInput(
+            expected_revision=service.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Wait",
+        ),
+    )
     current = service.get(conversation.id)
     proposal = current.proposals[0]
     dismissal = ProposalDismissal(operation_id=uuid4(), expected_revision=current.revision)
@@ -142,9 +178,11 @@ def test_stale_proposal_and_dismissal(story):
         == "dismissed"
     )
     with pytest.raises(KomaquillError):
-        service.act(
+        send_action(
+            service,
             conversation.id,
-            ActionRequest(
+            SendInput(
+                text="Continue.",
                 operation_id=uuid4(),
                 expected_revision=current.revision,
                 proposal_id=proposal.id,
@@ -155,9 +193,11 @@ def test_stale_proposal_and_dismissal(story):
 
 def test_explicit_removal_and_wait_keep_fixed_identity(story):
     _, service, conversation = story
-    record = service.act(
+    record = send_action(
+        service,
         conversation.id,
-        ActionRequest(
+        SendInput(
+            text="Continue.",
             operation_id=uuid4(),
             expected_revision=0,
             action=PrepareAction(clothing="", held_objects=[]),
@@ -166,10 +206,14 @@ def test_explicit_removal_and_wait_keep_fixed_identity(story):
     assert record.after.player.clothing == ""
     assert record.after.player.held_objects == []
     current = service.get(conversation.id)
-    service.act(
+    send_action(
+        service,
         conversation.id,
-        ActionRequest(
-            operation_id=uuid4(), expected_revision=current.revision, action=WaitAction(minutes=15)
+        SendInput(
+            text="Continue.",
+            operation_id=uuid4(),
+            expected_revision=current.revision,
+            action=WaitAction(minutes=15),
         ),
     )
     assert service.get(conversation.id).state.elapsed_minutes == 15
@@ -177,40 +221,22 @@ def test_explicit_removal_and_wait_keep_fixed_identity(story):
 
 def test_operation_ids_cannot_be_reused_in_another_conversation(story):
     _, service, conversation = story
-    request = ActionRequest(operation_id=uuid4(), expected_revision=0, action=WaitAction(minutes=1))
-    service.act(conversation.id, request)
+    request = SendInput(
+        text="Continue.", operation_id=uuid4(), expected_revision=0, action=WaitAction(minutes=1)
+    )
+    send_action(service, conversation.id, request)
     other = service.create(ConversationInput(title="Other", llm_profile="fake"))
     with pytest.raises(KomaquillError, match="operation_conflict"):
-        service.act(other.id, request)
+        send_action(service, other.id, request)
     with pytest.raises(KomaquillError, match="operation_conflict"):
-        service.send(other.id, SendInput(operation_id=request.operation_id, text="Hello"))
-
-
-def test_derived_reaction_id_cannot_reuse_a_saved_decision_id(story):
-    _, service, conversation = story
-    service.responder.reply = lambda *_: Reply(
-        text="", state_patch=StatePatch(), action_proposals=[WaitAction(minutes=5)]
-    )
-    service.send(conversation.id, SendInput(operation_id=uuid4(), text="I wait"))
-    pending = service.get(conversation.id)
-    action_id = uuid4()
-    service.dismiss_proposal(
-        conversation.id,
-        pending.proposals[0].id,
-        ProposalDismissal(
-            operation_id=uuid5(action_id, "reaction"), expected_revision=pending.revision
-        ),
-    )
-    with pytest.raises(KomaquillError, match="operation_conflict"):
-        service.act(
-            conversation.id,
-            ActionRequest(
-                operation_id=action_id,
-                expected_revision=pending.revision,
-                action=WaitAction(minutes=1),
+        service.send(
+            other.id,
+            SendInput(
+                expected_revision=service.overview(other.id).revision,
+                operation_id=request.operation_id,
+                text="Hello",
             ),
         )
-    assert service.get(conversation.id).actions == []
 
 
 def test_visual_review_is_explicit_idempotent_and_used_by_drawing(story):
@@ -270,4 +296,4 @@ def test_visual_review_is_explicit_idempotent_and_used_by_drawing(story):
 )
 def test_invalid_actions_are_rejected_before_persistence(data):
     with pytest.raises(ValueError):
-        ActionRequest(operation_id=uuid4(), expected_revision=0, action=data)
+        SendInput(text="Continue.", operation_id=uuid4(), expected_revision=0, action=data)

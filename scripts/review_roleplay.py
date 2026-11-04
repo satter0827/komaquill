@@ -70,6 +70,7 @@ def collect_turn(
     operation = api.conversations.send(
         identity,
         SendInput(
+            expected_revision=api.conversations.overview(identity).revision,
             operation_id=uuid4(),
             text=text,
             locale=cast(Literal["ja", "en"], locale),
@@ -181,6 +182,23 @@ def save_image(api: Any, identity: UUID, kind: str, report: dict[str, Any], reco
         raise KomaquillError(code="generation_failed")
 
 
+def render_preset(api: Any, preset: Any, kind: str, locale: str) -> UUID:
+    request = CreationRequest(
+        operation_id=uuid4(),
+        kind="portrait" if kind == "character" else "banner",
+        target_id=preset.id,
+        expected_revision=preset.revision,
+        locale=cast(Literal["ja", "en"], locale),
+        allow_real_llm=True,
+    )
+    job, created = api.library.accept(request)
+    if created:
+        job = api.library.execute(job.id)
+    if job.image_id is None:
+        raise KomaquillError(code=job.error or "operation_failed")
+    return UUID(str(job.id))
+
+
 def images(api: Any, report: dict[str, Any], record: Path) -> None:
     for selection in report["selections"]:
         if selection["locale"] == "ja":
@@ -196,13 +214,15 @@ def images(api: Any, report: dict[str, Any], record: Path) -> None:
                         operation_id=uuid4(),
                         target_id=saved.id,
                         expected_revision=saved.revision,
-                        image_policy="always",
-                        allow_real_llm=True,
                     ),
                 )
-                if result.job is None:
-                    raise KomaquillError(code=result.image_error or "operation_failed")
-                save_image(api, result.job.id, kind, report, record)
+                save_image(
+                    api,
+                    render_preset(api, result.preset, kind, selection["locale"]),
+                    kind,
+                    report,
+                    record,
+                )
         conversation = api.conversations.get(UUID(selection["conversation"]))
         request = CreationRequest(
             operation_id=uuid4(),
@@ -225,11 +245,13 @@ def images(api: Any, report: dict[str, Any], record: Path) -> None:
             gender="woman",
             appearance="A 32-year-old woman with short red hair, wearing a green coat.",
         ),
-        PresetSaveOptions(operation_id=uuid4(), allow_real_llm=True),
+        PresetSaveOptions(
+            operation_id=uuid4(),
+        ),
     )
-    if female.job is None:
-        raise KomaquillError(code=female.image_error or "operation_failed")
-    save_image(api, female.job.id, "portrait", report, record)
+    save_image(
+        api, render_preset(api, female.preset, "character", "ja"), "portrait", report, record
+    )
     run = api.images.submit(
         "静かな海辺。青い空と白い波。人物はいない。", llm_profile="lmstudio-4b", allow_real_llm=True
     )

@@ -98,23 +98,31 @@ def test_generated_snapshot_retains_unknown_values_and_applies_known_changes():
 def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     from komaquill.adapters.llm.conversation import (
         DialogueResult,
+        ExpressionPoseChange,
+        MovementChange,
         NarrativeReply,
-        SceneChange,
+        ObjectsChange,
         resolve_scene,
     )
 
-    for model in (DialogueResult, SceneChange, NarrativeReply):
+    for model in (
+        DialogueResult,
+        ExpressionPoseChange,
+        MovementChange,
+        ObjectsChange,
+        NarrativeReply,
+    ):
         schema = model.model_json_schema()
         assert set(schema["required"]) == set(schema["properties"])
     assert set(NarrativeReply.model_fields) == {"response"}
     with pytest.raises(ValueError):
-        SceneChange(field="place", value="Another place")
+        ExpressionPoseChange(field="place", value="Another place")
     with pytest.raises(ValueError):
         resolve_scene(
             Conversation(definition=ConversationInput(title="Limits")),
             DialogueResult(
                 kind="companion",
-                changes=[SceneChange(field="pose", value="x" * 1001)],
+                changes=[ExpressionPoseChange(field="pose", value="x" * 1001)],
                 action_narration="",
                 text="Hello",
             ),
@@ -158,7 +166,7 @@ def test_history_projection_preserves_repetitions_and_distinct_state_boundaries(
     messages, memory = history_messages(
         responder,
         conversation,
-        SendInput(operation_id=uuid4(), text="Continue"),
+        SendInput(expected_revision=0, operation_id=uuid4(), text="Continue"),
         lambda _: "Instructions",
         "Continue",
         "{}",

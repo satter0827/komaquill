@@ -8,9 +8,9 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     from komaquill.adapters.configuration import WorkspaceConfiguration
-    from komaquill.adapters.content import ContentPolicy
     from komaquill.adapters.llm.execution import StructuredExecution
     from komaquill.api.archive import ArchiveService
+    from komaquill.api.availability import AvailabilityService
     from komaquill.conversations.service import ConversationService
     from komaquill.library.models import (
         CharacterInput,
@@ -27,6 +27,7 @@ from komaquill.api.evaluations import EvaluationService
 from komaquill.api.images import ImageService, InputService
 from komaquill.api.operations import OperationService
 from komaquill.api.runtime import RuntimeService
+from komaquill.domain.content import CONTENT_RATING
 from komaquill.domain.errors import ErrorCode, OperationStage
 
 
@@ -82,16 +83,43 @@ class Client:
             return StructuredExecution(self.workspace, lambda: self._configuration)
 
     @cached_property
+    def availability(self) -> "AvailabilityService":
+        from komaquill.api.availability import AvailabilityService
+
+        return AvailabilityService(
+            self._project,
+            self._execution,
+            lambda identity: self.conversations.overview(identity),
+            lambda request: self._library.source(request),
+            lambda identity: self.images.read(identity),
+            lambda identity: self.conversations.repository.operation_snapshot(identity),
+        )
+
+    @cached_property
     def conversations(self) -> "ConversationService":
         from komaquill.composition import conversations
 
-        return conversations(self.workspace, self._execution)
+        return conversations(
+            self.workspace, self._execution, self.availability.require_conversation
+        )
 
     @cached_property
     def library(self) -> "LibraryService":
+        service = self._library
+        service.initialize()
+        return service
+
+    @cached_property
+    def _library(self) -> "LibraryService":
         from komaquill.composition import library
 
-        return library(self.workspace, self.conversations, self.images, self._execution)
+        return library(
+            self.workspace,
+            self.conversations,
+            self.images,
+            self._execution,
+            self.availability.require_creation,
+        )
 
     @property
     def player(self) -> "PlayerService":
@@ -108,12 +136,6 @@ class Client:
     @cached_property
     def operations(self) -> OperationService:
         return OperationService(self.conversations.repository)
-
-    @cached_property
-    def content(self) -> "ContentPolicy":
-        from komaquill.adapters.database import database
-
-        return database(self.workspace / ".artifacts/data/komaquill.sqlite3").content
 
     def close(self) -> None:
         if "_execution" in self.__dict__:
@@ -140,7 +162,7 @@ class Client:
             return export_conversation(
                 self.workspace,
                 conversation,
-                self.content.rating("conversation", identity),
+                CONTENT_RATING,
                 assets,
                 include_images=include_images,
                 include_conditions=include_conditions,
@@ -159,8 +181,21 @@ class Client:
     @cached_property
     def images(self) -> ImageService:
         from komaquill.adapters.llm.images import ImageDescriber
+        from komaquill.availability import AvailabilityRequest
 
-        return ImageService(self._project, ImageDescriber(self._execution))
+        return ImageService(
+            self._project,
+            ImageDescriber(self._execution),
+            lambda prompt, subjects, negative, profile: self.availability.require(
+                AvailabilityRequest(
+                    kind="image",
+                    prompt=prompt,
+                    subjects=subjects,
+                    negative=negative,
+                    llm_profile=profile,
+                )
+            ),
+        )
 
     def configure(self) -> "Client":
         """Freeze model and image settings for a long-lived local application."""

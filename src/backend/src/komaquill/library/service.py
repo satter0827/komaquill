@@ -57,7 +57,12 @@ class Store(CreationStore, Protocol):
         self, references: dict[PresetKind, tuple[UUID, int]]
     ) -> dict[PresetKind, Preset]: ...
     def create(
-        self, kind: PresetKind, value: PresetInput, *, image_id: UUID | None = None
+        self,
+        kind: PresetKind,
+        value: PresetInput,
+        *,
+        image_id: UUID | None = None,
+        image_stale: bool = False,
     ) -> Preset: ...
     def update(
         self, kind: PresetKind, identity: UUID, revision: int, value: PresetInput
@@ -69,7 +74,6 @@ class Store(CreationStore, Protocol):
     def preferences(self) -> Preferences: ...
     def save_preferences(self, value: Preferences) -> Preferences: ...
     def retain_job(self, value: CreationJob) -> None: ...
-    def require_job(self, identity: UUID) -> None: ...
     def accept(
         self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
     ) -> tuple[CreationJob, bool]: ...
@@ -78,7 +82,6 @@ class Store(CreationStore, Protocol):
         kind: PresetKind,
         value: PresetInput,
         options: PresetSaveOptions,
-        image_error: str | None,
     ) -> PresetSaveResult: ...
     def execution(self, identity: UUID) -> AbstractContextManager[CreationJob | None]: ...
     def conversation_images(self, identity: UUID) -> builtins.list[CreationJob]: ...
@@ -104,7 +107,6 @@ class ImageDescriber(Protocol):
 class Images(Protocol):
     def supports_pair(self) -> bool: ...
     def read(self, run_id: UUID) -> Run: ...
-    def available(self) -> bool: ...
     def submit(
         self,
         prompt: str,
@@ -148,7 +150,10 @@ class PresetService[Input: BaseModel, Output: BaseModel]:
         self._validate(content)
         return self.output_type.model_validate(
             self.store.create(
-                self.kind, cast(PresetInput, content), image_id=cast(Preset, value).image_id
+                self.kind,
+                cast(PresetInput, content),
+                image_id=cast(Preset, value).image_id,
+                image_stale=cast(Preset, value).image_stale,
             )
         )
 
@@ -190,6 +195,7 @@ class LibraryService:
         images: Images,
         samples: dict[str, dict[str, dict[str, object]]],
         image_parameters: dict[str, dict[str, bool | int | float | str]],
+        preflight: Callable[[CreationRequest, str], None],
         image_lookup: Callable[[UUID], Run] | None = None,
     ) -> None:
         self.store, self.conversations, self.creator, self.images = (
@@ -198,6 +204,7 @@ class LibraryService:
             creator,
             images,
         )
+        self.preflight = preflight
         self.image_parameters = image_parameters
         self.image_lookup = image_lookup or images.get
         self.image_describer = image_describer
@@ -223,7 +230,10 @@ class LibraryService:
                     {**data, "id": sample_id(locale, kind), "sample": True, "sample_locale": locale}
                 )
                 values.append((kind, value))
-        store.initialize(values)
+        self._initial_presets = values
+
+    def initialize(self) -> None:
+        self.store.initialize(self._initial_presets)
 
     def preferences(self) -> Preferences:
         return self.store.preferences()
@@ -295,27 +305,12 @@ class LibraryService:
         kind: PresetKind,
         value: PresetInput,
         options: PresetSaveOptions,
-        *,
-        execute: bool = True,
     ) -> PresetSaveResult:
         if kind not in {"character", "story"} or not isinstance(
             value, CharacterInput if kind == "character" else StoryInput
         ):
             raise KomaquillError(code="invalid_request", retryable=False)
-        image_error = None
-        if options.image_policy != "none":
-            if not options.allow_real_llm:
-                image_error = "real_llm_not_allowed"
-            else:
-                try:
-                    if not self.images.available():
-                        image_error = "image_backend_unavailable"
-                except KomaquillError as error:
-                    image_error = error.code.value
-        result = self.store.save_preset(kind, value, options, image_error)
-        if execute and result.job is not None:
-            result = result.model_copy(update={"job": self.execute(result.job.id)})
-        return result
+        return self.store.save_preset(kind, value, options)
 
     def reconcile(self) -> list[UUID]:
         return reconcile_jobs(self.store, self.image_lookup)
@@ -330,6 +325,12 @@ class LibraryService:
             if previous.request != request:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             return self.job(previous.id), False
+        original, turn_id = self.source(request)
+        self.preflight(request, original)
+        job, created = self.store.accept(request, original, turn_id=turn_id)
+        return job, created
+
+    def source(self, request: CreationRequest) -> tuple[str, UUID | None]:
         original = request.prompt
         turn_id = None
         if request.kind == "conversation_image":
@@ -368,8 +369,7 @@ class LibraryService:
             or request.expected_revision is not None
         ):
             raise KomaquillError(code="invalid_request", retryable=False)
-        job, created = self.store.accept(request, original, turn_id=turn_id)
-        return job, created
+        return original, turn_id
 
     def execute(self, identity: UUID) -> CreationJob:
         with self.store.execution(identity) as job:
@@ -443,7 +443,13 @@ class LibraryService:
                     update={"state": "submitted", "image_id": job.id, "error": error.code.value}
                 )
             else:
-                job = job.model_copy(update={"state": "failed", "error": error.code.value})
+                job = job.model_copy(
+                    update={
+                        "state": "failed",
+                        "error": error.code.value,
+                        "error_stage": error.stage,
+                    }
+                )
         except Exception:
             job = job.model_copy(update={"state": "failed", "error": "operation_failed"})
         if job.state == "complete" and job.request.kind.endswith("_draft"):
@@ -453,5 +459,4 @@ class LibraryService:
 
     def job(self, identity: UUID) -> CreationJob:
         job = reconcile_job(self.store, self.image_lookup, identity)
-        self.store.require_job(identity)
         return job

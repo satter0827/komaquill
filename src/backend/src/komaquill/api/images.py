@@ -1,6 +1,7 @@
 """Compose image, session and evaluation use cases for Python and terminal callers."""
 
 import secrets
+from collections.abc import Callable
 from contextlib import suppress
 from functools import cached_property
 from pathlib import Path
@@ -26,7 +27,13 @@ from komaquill.runtime.connection import connected
 
 
 class ImageService:
-    def __init__(self, project: RuntimeWorkspace, describer: ImageDescriber) -> None:
+    def __init__(
+        self,
+        project: RuntimeWorkspace,
+        describer: ImageDescriber,
+        preflight: Callable[[str, tuple[str, ...], str | None, str], None],
+    ) -> None:
+        self._preflight = preflight
         self._project = project
         self._describer = describer
 
@@ -47,11 +54,6 @@ class ImageService:
                 self.__dict__["_generation_workspace"] = self._project.configured(settings)
             self._project = self._generation_workspace
 
-    def available(self) -> bool:
-        from komaquill.api.runtime import RuntimeService
-
-        return RuntimeService(self._project).status().connection == "connected"
-
     def supports_pair(self) -> bool:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
             settings = self._generation_workspace.settings()
@@ -60,23 +62,12 @@ class ImageService:
             return settings.presets[settings.profile_for(None)].model_id == "wai-illustrious"
 
     def list(self) -> list[Run]:
-        from komaquill.adapters.database import database
-        from komaquill.domain.content import visible
 
         with api_operation(OperationStage.STORAGE):
-            policy = database(self._project.root / ".artifacts/data/komaquill.sqlite3").content
-            return [
-                run
-                for run in self._project.repository.load()
-                if visible(policy.rating("image", run.run_id), policy.enabled())
-            ]
+            return [run for run in self._project.repository.load()]
 
     def get(self, run_id: UUID) -> Run:
-        from komaquill.adapters.database import database
 
-        database(self._project.root / ".artifacts/data/komaquill.sqlite3").content.require(
-            "image", run_id
-        )
         return self.read(run_id)
 
     def read(self, run_id: UUID) -> Run:
@@ -109,11 +100,7 @@ class ImageService:
         from komaquill.domain.workflow import digest
 
         identity = run_id or uuid4()
-        from komaquill.adapters.database import database
 
-        policy = database(self._project.root / ".artifacts/data/komaquill.sqlite3").content
-        if policy.capture(identity):
-            policy.set_rating("image", identity, "nsfw")
         self._generation_workspace.state.mkdir(parents=True, exist_ok=True)
         fingerprint = digest(
             {
@@ -144,6 +131,7 @@ class ImageService:
                         ) from None
                     raise
             try:
+                self._preflight(prompt, subjects, negative, llm_profile)
                 descriptions = self._text_preparation.prepare(
                     identity, prompt, subjects, negative, llm_profile, allow_real_llm
                 )
@@ -261,6 +249,8 @@ class ImageService:
 
     def collect(self, run_id: UUID | None = None) -> Collection:
         with operation_scope(), api_operation(OperationStage.COLLECTION):
+            if run_id is not None and self.read(run_id).state == "saved":
+                return Collection(saved=1, pending=0, failed=0)
             with connected(self._project) as (backend, session):
                 result = collect(self._project, backend, session, run_id)
                 if capabilities(backend):

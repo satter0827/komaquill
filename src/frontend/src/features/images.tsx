@@ -1,3 +1,4 @@
+import { isRejectedRequest } from '../api/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Image } from 'lucide-react'
 import { useState } from 'react'
@@ -11,6 +12,87 @@ import {
 } from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { imageOptions, operationOptions } from './operations'
+import {
+  AvailabilityNotice,
+  recheckAvailability,
+  useAvailability,
+  useAvailabilityRecovery,
+} from './availability'
+
+export function ImageLinks({
+  identity,
+  index = 0,
+  filename,
+}: {
+  identity: string
+  index?: number
+  filename?: string
+}) {
+  const m = useMessages()
+  const url = `/api/v1/images/${identity}/files/${index}`
+  return (
+    <div className="image-actions">
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        {m.openOriginal}
+      </a>
+      <a
+        href={url}
+        download={filename?.split('/').at(-1) ?? `${identity}-${index + 1}.png`}
+      >
+        {m.downloadImage}
+      </a>
+    </div>
+  )
+}
+
+function ImageFile({
+  identity,
+  index,
+  filename,
+}: {
+  identity: string
+  index: number
+  filename: string
+}) {
+  const messages = useMessages()
+  const formatMessage = useFormatMessage()
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const url = `/api/v1/images/${identity}/files/${index}`
+  return (
+    <div className="image-file">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={formatMessage('openImageLabel', { index: index + 1 })}
+      >
+        <img
+          key={attempt}
+          src={url}
+          alt={formatMessage('imageAlt', { index: index + 1 })}
+          onError={() => setFailed(true)}
+        />
+      </a>
+      <ImageLinks identity={identity} index={index} filename={filename} />
+      {failed && (
+        <>
+          <p role="alert" className="error">
+            {messages.imageDisplayFailed}
+          </p>
+          <Button
+            onClick={() => {
+              setFailed(false)
+              setAttempt(attempt + 1)
+            }}
+          >
+            {messages.retryCollection}
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function ImageResult({
   identity,
@@ -21,7 +103,6 @@ export function ImageResult({
 }) {
   const messages = useMessages()
   const failure = useFailure()
-  const formatMessage = useFormatMessage()
   const cache = useQueryClient()
   const operation = useQuery({
     ...operationOptions(operationId ?? ''),
@@ -34,34 +115,53 @@ export function ImageResult({
   })
   const collect = useMutation({
     ...q.collectImageMutation(),
+    onError: () => {
+      void recheckAvailability(cache)
+    },
     onSuccess: () =>
       cache.invalidateQueries({
         queryKey: q.getImageQueryKey({ path: { identity: identity ?? '' } }),
       }),
   })
+  useAvailabilityRecovery(
+    image.error ?? image.data?.collection_failure ?? image.data?.failure,
+  )
+  const collectionAvailability = useAvailability(
+    image.error || collect.error || image.data?.collection_failure
+      ? { kind: 'collection', identity }
+      : undefined,
+  )
   return (
     <div className="image-result">
-      {image.data?.images?.map((_, index) => (
-        <img
+      {image.data?.images?.map((filename, index) => (
+        <ImageFile
           key={index}
-          src={`/api/v1/images/${identity}/files/${index}`}
-          alt={formatMessage('imageAlt', { index: index + 1 })}
+          identity={identity}
+          index={index}
+          filename={filename}
         />
       ))}
       <p className="subtle">
         {operation.data?.image_state === 'failed'
           ? failure({ code: operation.data.image_error })
-          : image.data?.state === 'saved'
-            ? messages.imageReady
-            : messages.imagePreparing}
+          : image.data?.collection_failure
+            ? failure(image.data.collection_failure)
+            : image.data?.state === 'saved'
+              ? messages.imageReady
+              : image.data?.state === 'failed'
+                ? failure({ code: image.data.error ?? 'generation_failed' })
+                : messages.imagePreparing}
       </p>
-      {(image.error || (image.data && image.data.state !== 'saved')) && (
+      {(image.error || collect.error || image.data?.collection_failure) && (
         <Button
           onClick={() => collect.mutate({ path: { identity } })}
-          disabled={collect.isPending}
+          disabled={collect.isPending || !collectionAvailability.ready}
         >
           {messages.retryCollection}
         </Button>
+      )}
+      {(image.error || collect.error || image.data?.collection_failure) && (
+        <AvailabilityNotice status={collectionAvailability} />
       )}
       {image.error && (
         <p role="alert" className="error">
@@ -90,14 +190,16 @@ export function ImagesPage() {
   const images = useQuery({
     ...q.listImagesOptions(),
   })
+  const availability = useAvailability({
+    kind: 'image',
+    prompt,
+    llm_profile: preferences.value.llm_profile,
+  })
   const submit = useMutation({
     ...q.submitImageMutation(),
     onError: (error) => {
-      const code =
-        error && typeof error === 'object' && 'code' in error
-          ? error.code
-          : null
-      if (code === 'real_llm_not_allowed' || code === 'fake_input_mismatch') {
+      void recheckAvailability(cache)
+      if (isRejectedRequest(error)) {
         setPrepared(null)
       }
     },
@@ -115,6 +217,7 @@ export function ImagesPage() {
         className="image-form"
         onSubmit={(event) => {
           event.preventDefault()
+          if (!availability.ready) return
           const body = prepared ?? {
             request_id: crypto.randomUUID(),
             prompt,
@@ -138,7 +241,7 @@ export function ImagesPage() {
         <Button
           className="primary"
           type="submit"
-          disabled={submit.isPending || !prompt.trim()}
+          disabled={submit.isPending || !prompt.trim() || !availability.ready}
         >
           <Image size={17} />
           {submit.isError && prepared
@@ -146,6 +249,7 @@ export function ImagesPage() {
             : messages.generate}
         </Button>
       </form>
+      <AvailabilityNotice status={availability} />
       {submit.error && (
         <p role="alert" className="error">
           {failure(submit.error)}

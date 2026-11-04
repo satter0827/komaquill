@@ -1,4 +1,7 @@
 {
+  "recovery.description": "Verify retained real-model results without resending accepted operations.",
+  "recovery.budget": "Existing shared real-model call budget.",
+  "recovery.output": "Keep live evidence and its call budget in .artifacts.",
   "web.evidence_saved": "Browser evidence saved: {path}",
   "web.invalid_evidence_path": "Evidence paths must remain inside the run directory.",
   "web.use_runner": "Run browser verification through scripts/playwright.mjs.",

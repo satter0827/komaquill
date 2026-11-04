@@ -1,3 +1,4 @@
+import { ImageLinks } from './images'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useState } from 'react'
@@ -95,6 +96,7 @@ export function NewConversation() {
                     alt={record.name}
                   />
                 )}
+                {record?.image_id && <ImageLinks identity={record.image_id} />}
                 <label>
                   {kind === 'story' ? m.chooseStory : m.chooseCharacter}
                   <select

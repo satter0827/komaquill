@@ -24,6 +24,8 @@ from komaquill.library.service import sample_id
 
 from tests.support.conversations import set_state
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 def selection(locale="ja", profile="fake"):
     return ConversationStart(
@@ -78,7 +80,9 @@ def test_play_uses_locale_samples_and_keeps_deleted_settings(tmp_path, locale, g
     character = api.characters.get(sample_id(locale, "character"))
     api.characters.update(character.id, 0, CharacterInput(name="Changed"))
     api.characters.delete(character.id, 1)
-    request = SendInput(operation_id=uuid4(), text=greeting)
+    request = SendInput(
+        allow_real_llm=True, expected_revision=0, operation_id=uuid4(), text=greeting
+    )
     assert api.conversations.send(conversation.id, request).state == "complete"
     reopened = Client(tmp_path).conversations.get(conversation.id)
     assert character.name == reopened.definition.character.name and reopened.definition.sample
@@ -145,6 +149,7 @@ def test_corrupt_creation_identity_stops_before_inference_and_listing(tmp_path, 
     library = api.library
     conversation = library.start(selection())
     request = CreationRequest(
+        llm_profile="fake",
         operation_id=uuid4(),
         kind="conversation_image",
         target_id=conversation.id,
@@ -175,7 +180,7 @@ def test_corrupt_creation_identity_stops_before_inference_and_listing(tmp_path, 
 def test_creation_checkpoints_preserve_the_scene_and_applied_prompt(tmp_path, field):
     library = Client.initialize(tmp_path).library
     job, _ = library.accept(
-        CreationRequest(operation_id=uuid4(), kind="story_draft", prompt="Idea")
+        CreationRequest(llm_profile="fake", operation_id=uuid4(), kind="story_draft", prompt="Idea")
     )
     job = library.store.save_job(job.model_copy(update={"prompt_en": "Frozen English prompt"}))
     change = uuid4() if field == "turn_id" else "Changed"
@@ -189,6 +194,7 @@ def test_image_execution_reuses_saved_english_without_retranslation(tmp_path):
     character = library.characters.create(CharacterInput(name="Portrait"))
     job, _ = library.accept(
         CreationRequest(
+            llm_profile="fake",
             operation_id=uuid4(),
             kind="portrait",
             target_id=character.id,
@@ -258,7 +264,11 @@ def test_fixed_samples_do_not_claim_to_understand_arbitrary_settings(tmp_path, c
     result = api.conversations.send(
         conversation.id,
         SendInput(
-            operation_id=uuid4(), text="Hello", locale="en" if case == "wrong_locale" else None
+            allow_real_llm=True,
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            operation_id=uuid4(),
+            text="Hello",
+            locale="en" if case == "wrong_locale" else None,
         ),
     )
     assert (
@@ -273,7 +283,7 @@ def test_draft_is_saved_once_and_recovery_does_not_resend(tmp_path, kind):
     calls = []
     result = CharacterInput(name="Draft") if kind == "character_draft" else StoryInput(name="Draft")
     library.creator = SimpleNamespace(draft=lambda value: calls.append(value) or result)
-    request = CreationRequest(operation_id=uuid4(), kind=kind, prompt="Idea")
+    request = CreationRequest(llm_profile="fake", operation_id=uuid4(), kind=kind, prompt="Idea")
     accepted, created = library.accept(request)
     assert created and accepted.state == "accepted"
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -325,7 +335,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
         )
     )
     request = CreationRequest(
-        operation_id=uuid4(), kind=kind, target_id=value.id, expected_revision=0
+        llm_profile="fake", operation_id=uuid4(), kind=kind, target_id=value.id, expected_revision=0
     )
     job, _ = library.accept(request)
     assert library.execute(job.id).state == "submitted"
@@ -353,7 +363,11 @@ def test_failure_preserves_presets_and_does_not_retry(tmp_path, failure):
     library = api.library
     value = api.characters.create(CharacterInput(name="Kept"))
     request = CreationRequest(
-        operation_id=uuid4(), kind="portrait", target_id=value.id, expected_revision=0
+        llm_profile="fake",
+        operation_id=uuid4(),
+        kind="portrait",
+        target_id=value.id,
+        expected_revision=0,
     )
     job, _ = library.accept(request)
     if failure == "dead":
@@ -396,6 +410,7 @@ def test_unknown_image_submission_recovers_after_restart_without_resending(
         model = CharacterInput if kind == "portrait" else StoryInput
         target = service.create(model(name="Retained"))
     request = CreationRequest(
+        llm_profile="fake",
         operation_id=uuid4(),
         kind=kind,
         target_id=target.id,
@@ -432,8 +447,8 @@ def test_invalid_media_and_corrupt_records_fail_safely(tmp_path):
     api = Client.initialize(tmp_path)
     library = api.library
     for request in [
-        CreationRequest(operation_id=uuid4(), kind="portrait"),
-        CreationRequest(operation_id=uuid4(), kind="story_draft"),
+        CreationRequest(llm_profile="fake", operation_id=uuid4(), kind="portrait"),
+        CreationRequest(llm_profile="fake", operation_id=uuid4(), kind="story_draft"),
     ]:
         with pytest.raises(KomaquillError, match="invalid_request"):
             library.accept(request)
@@ -441,7 +456,11 @@ def test_invalid_media_and_corrupt_records_fail_safely(tmp_path):
     with pytest.raises(KomaquillError, match="operation_conflict"):
         library.accept(
             CreationRequest(
-                operation_id=uuid4(), kind="portrait", target_id=value.id, expected_revision=5
+                llm_profile="fake",
+                operation_id=uuid4(),
+                kind="portrait",
+                target_id=value.id,
+                expected_revision=5,
             )
         )
     with library.store.database.engine.begin() as connection:
@@ -467,7 +486,6 @@ def test_http_crud_and_start_share_the_python_services(tmp_path, collection):
             base + "/save",
             json={
                 "operation_id": str(uuid4()),
-                "image_policy": "none",
                 "value": {"name": "Created"},
             },
         ).json()["preset"]
@@ -480,7 +498,6 @@ def test_http_crud_and_start_share_the_python_services(tmp_path, collection):
                     "operation_id": str(uuid4()),
                     "target_id": value["id"],
                     "expected_revision": 0,
-                    "image_policy": "none",
                     "value": {"name": "Updated"},
                 },
             ).status_code
@@ -495,7 +512,9 @@ def test_http_crud_and_start_share_the_python_services(tmp_path, collection):
             ).status_code
             == 201
         )
-        request = CreationRequest(operation_id=uuid4(), kind="story_draft", prompt="Idea")
+        request = CreationRequest(
+            llm_profile="fake", operation_id=uuid4(), kind="story_draft", prompt="Idea"
+        )
         assert (
             http.post("/api/v1/creation-jobs", json=request.model_dump(mode="json")).status_code
             == 202

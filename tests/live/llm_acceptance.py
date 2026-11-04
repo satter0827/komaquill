@@ -9,8 +9,11 @@ from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from komaquill.api import SendInput
+
 from scripts._support import atomic_json, message
 from scripts.compare_llm import finish, reserve, source_hashes
+from tests.support.conversations import send_action
 
 
 def instrument(budget: Path, label: str) -> None:
@@ -53,7 +56,7 @@ def instrument(budget: Path, label: str) -> None:
 
 def diagnose(source: Path, output: Path, *, model: str | None = None) -> None:
     sys.path.insert(0, str(source))
-    from komaquill.api import Client, ConversationInput, SendInput
+    from komaquill.api import Client, ConversationInput
     from komaquill.conversations.history import advance_history
     from komaquill.conversations.models import Turn
     from komaquill.domain.roleplay import ConversationMemory
@@ -154,7 +157,10 @@ def diagnose(source: Path, output: Path, *, model: str | None = None) -> None:
                 api.migrate()
                 api = Client(workspace)
             request = SendInput(
-                operation_id=uuid5(scene.id, context), text=question, allow_real_llm=True
+                expected_revision=0,
+                operation_id=uuid5(scene.id, context),
+                text=question,
+                allow_real_llm=True,
             )
             started = time.monotonic()
             try:
@@ -189,7 +195,7 @@ def diagnose(source: Path, output: Path, *, model: str | None = None) -> None:
 
 def scenarios(source: Path, output: Path, model: str, *, include_memory: bool = True) -> None:
     sys.path.insert(0, str(source))
-    from komaquill.api import ActionRequest, Client, ConversationInput, PrepareAction, SendInput
+    from komaquill.api import Client, ConversationInput, PrepareAction
     from komaquill.conversations.models import Turn
 
     output.mkdir(exist_ok=False)
@@ -269,7 +275,12 @@ def scenarios(source: Path, output: Path, model: str, *, include_memory: bool = 
             client: Any, label: str, text: str, identity: Any = scene.id, locale: str = locale
         ) -> Any:
             started = time.monotonic()
-            request = SendInput(operation_id=uuid5(identity, label), text=text, allow_real_llm=True)
+            request = SendInput(
+                expected_revision=0,
+                operation_id=uuid5(identity, label),
+                text=text,
+                allow_real_llm=True,
+            )
             operation = client.conversations.send(identity, request)
             value = client.conversations.get(identity)
             results.append(
@@ -339,9 +350,11 @@ def scenarios(source: Path, output: Path, model: str, *, include_memory: bool = 
         )
         pending = [p for p in value.proposals if p.state == "pending"]
         if pending:
-            action = api.conversations.act(
+            action = send_action(
+                api.conversations,
                 action_scene.id,
-                ActionRequest(
+                SendInput(
+                    text="Continue.",
                     operation_id=uuid5(action_scene.id, "confirm-move"),
                     expected_revision=value.revision,
                     action=pending[0].action,
@@ -360,9 +373,11 @@ def scenarios(source: Path, output: Path, model: str, *, include_memory: bool = 
                 }
             )
         value = api.conversations.get(action_scene.id)
-        prepared = api.conversations.act(
+        prepared = send_action(
+            api.conversations,
             action_scene.id,
-            ActionRequest(
+            SendInput(
+                text="Continue.",
                 operation_id=uuid5(action_scene.id, "prepare"),
                 expected_revision=value.revision,
                 action=PrepareAction(clothing="青いシャツ" if japanese else "blue shirt"),
@@ -417,7 +432,7 @@ def scenarios(source: Path, output: Path, model: str, *, include_memory: bool = 
 def benchmark(source: Path, output: Path, model: str) -> None:
     """Include confirmation reactions, memory, repairs and translation in paired totals."""
     sys.path.insert(0, str(source))
-    from komaquill.api import ActionRequest, Client, ConversationInput, SendInput
+    from komaquill.api import Client, ConversationInput
     from komaquill.conversations.models import Turn
 
     from scripts.compare_llm import fixture
@@ -476,6 +491,7 @@ def benchmark(source: Path, output: Path, model: str) -> None:
             operation = api.conversations.send(
                 scene.id,
                 SendInput(
+                    expected_revision=0,
                     operation_id=uuid5(scene.id, str(index)),
                     text=text,
                     locale=locale,
@@ -486,9 +502,11 @@ def benchmark(source: Path, output: Path, model: str) -> None:
             reactions = []
             pending = [p for p in saved.proposals if p.state == "pending"]
             for proposal in pending:
-                action = api.conversations.act(
+                action = send_action(
+                    api.conversations,
                     scene.id,
-                    ActionRequest(
+                    SendInput(
+                        text="Continue.",
                         operation_id=uuid5(proposal.id, "confirm"),
                         expected_revision=saved.revision,
                         action=proposal.action,

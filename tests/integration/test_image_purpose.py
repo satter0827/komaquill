@@ -10,6 +10,8 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import preset_fingerprint
 from komaquill.domain.workflow import digest
 
+pytestmark = pytest.mark.usefixtures("substituted_services")
+
 
 @pytest.mark.parametrize("negative", [None, "", "blur"])
 def test_banner_conditions_are_recorded_and_reconfirmation_never_resubmits(

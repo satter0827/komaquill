@@ -67,9 +67,6 @@ def test_structured_old_fields_are_mapped_without_using_prose_and_original_is_re
     record = json.loads(report.read_bytes())
     assert record["state"] == "complete" and report.with_name("before.sqlite3").is_file()
     reopened = Client(tmp_path)
-    reopened.library.save_preferences(
-        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
-    )
     saved = reopened.conversations.get(identity)
     assert saved.state.place == "sea" and saved.state.character.clothing == "black apron"
     assert saved.state.player.clothing == "red coat" and saved.definition.character.age == "60"
@@ -95,9 +92,6 @@ def test_ambiguous_or_unreadable_state_is_preserved_as_read_only_instead_of_gues
     api.migrate()
     assert Client(tmp_path).conversations.list() == []
     reopened = Client(tmp_path)
-    reopened.library.save_preferences(
-        reopened.library.preferences().model_copy(update={"nsfw_enabled": True})
-    )
     archived = reopened.archive.conversations()
     assert len(archived) == 1 and archived[0].id == identity
     assert archived[0].readable is not corrupt

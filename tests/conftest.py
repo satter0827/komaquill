@@ -17,6 +17,15 @@ from tests.support.comfy import ComfyStub
 from tests.support.presets import asset
 
 
+@pytest.fixture
+def substituted_services(monkeypatch):
+    """Pair substituted inference and rendering services with read-only observations."""
+    from komaquill.api.availability import AvailabilityService
+
+    monkeypatch.setattr(AvailabilityService, "_llm", lambda *_: None)
+    monkeypatch.setattr(AvailabilityService, "_comfy", lambda *_: None)
+
+
 @pytest.fixture(autouse=True)
 def offline_network(monkeypatch):
     """Keep accidental real network access outside the daily test suite."""

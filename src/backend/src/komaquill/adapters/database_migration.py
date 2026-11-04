@@ -29,6 +29,21 @@ def inventory(connection: sqlite3.Connection) -> dict[str, str]:
     return result
 
 
+def artifact_inventory(folder: Path) -> dict[str, str]:
+    result = {}
+    for path in sorted(folder.rglob("*")):
+        if (
+            path.is_file()
+            and not path.name.startswith("komaquill.sqlite3")
+            and not path.name.endswith(".lock")
+        ):
+            with path.open("rb") as handle:
+                result[path.relative_to(folder).as_posix()] = hashlib.file_digest(
+                    handle, "sha256"
+                ).hexdigest()
+    return result
+
+
 def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
     tables = {row[0] for row in before.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "preferences" not in tables:
@@ -48,13 +63,24 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
         "0008",
         "0009",
         "0010",
+        "0011",
     }:
         current = {
             row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
         }
-        return before.execute("SELECT * FROM preferences ORDER BY id").fetchall() == after.execute(
-            "SELECT * FROM preferences ORDER BY id"
-        ).fetchall() and all(
+        prior_preferences = [
+            (identity, json.loads(payload))
+            for identity, payload in before.execute(
+                "SELECT id,payload FROM preferences ORDER BY id"
+            )
+        ]
+        for _, value in prior_preferences:
+            value.pop("nsfw_enabled", None)
+        current_preferences = [
+            (identity, json.loads(payload))
+            for identity, payload in after.execute("SELECT id,payload FROM preferences ORDER BY id")
+        ]
+        return prior_preferences == current_preferences and all(
             identity in current
             and kind == current[identity][0]
             and deleted == current[identity][2]
@@ -73,6 +99,7 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
     configured = json.loads(previous[0])
     chosen = configured.pop("player_id", None)
     configured.pop("image_frequency", None)
+    configured.pop("nsfw_enabled", None)
     if configured.get("llm_profile") == "fake":
         configured["llm_profile"] = "lmstudio-4b"
     current = after.execute("SELECT payload FROM preferences WHERE id=1").fetchone()
@@ -174,6 +201,7 @@ def migrate(workspace: Path) -> Path:
     source = project.data / "komaquill.sqlite3"
     if not source.is_file():
         raise KomaquillError(code="request_not_found", stage="storage", retryable=False)
+    files_before = artifact_inventory(project.data)
     destination = project.records / "migrations" / str(uuid4())
     destination.mkdir(parents=True)
     backup = destination / "before.sqlite3"
@@ -194,6 +222,8 @@ def migrate(workspace: Path) -> Path:
         "created_at": datetime.now(UTC).isoformat(),
         "backup_sha256": hashlib.sha256(backup.read_bytes()).hexdigest(),
         "before": before,
+        "files_before": files_before,
+        "changes": ["remove_nsfw_preference", "retire_content_labels"],
         "state": "backed_up",
     }
     report = destination / "migration.json"
@@ -220,9 +250,13 @@ def migrate(workspace: Path) -> Path:
             "conversations",
             "operations",
             "execution_migration_originals",
+            "content_labels",
         }
     ):
         raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
-    atomic_json(report, {**record, "after": after, "state": "complete"})
+    files_after = artifact_inventory(project.data)
+    if files_after != files_before:
+        raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+    atomic_json(report, {**record, "after": after, "files_after": files_after, "state": "complete"})
     database.cache_clear()
     return report

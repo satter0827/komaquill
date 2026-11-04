@@ -229,7 +229,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
             workspace = root / "work"
             workspace.mkdir()
 
-            def command(*args):
+            def command(*args, expected=0):
                 result = subprocess.run(
                     [str(python), "-B", "-m", "komaquill", *args],
                     cwd=workspace,
@@ -239,7 +239,7 @@ def run_acceptance(wheel: Path | None = None) -> None:
                     capture_output=True,
                     timeout=60,
                 )
-                assert result.returncode == 0, (
+                assert result.returncode == expected, (
                     result.stdout + result.stderr + json.dumps(failure_snapshot(workspace))
                 )
                 return result.stdout
@@ -288,11 +288,14 @@ def run_acceptance(wheel: Path | None = None) -> None:
             assert json.loads(command("chat", "status", conversation["id"]))["revision"] == 2
             command(
                 "chat",
-                "act",
+                "send",
                 conversation["id"],
+                "Hello",
                 "--expected-revision",
                 "2",
+                "--action",
                 '{"kind":"move","destination":"garden"}',
+                expected=1,
             )
             assert (
                 json.loads(command("chat", "resume", conversation["id"]))["state"]["place"]
@@ -318,14 +321,14 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 for collection in ('characters', 'stories'):
                                     url = '/api/v1/' + collection
                                     saved = http.post(url + '/save', json={
-                                        'operation_id': str(uuid4()), 'image_policy': 'none',
+                                        'operation_id': str(uuid4()),
                                         'value': {'name': 'Created'}}).json()['preset']
                                     item = url + '/' + saved['id']
                                     assert http.get(item).json()['name'] == 'Created'
                                     updated = http.post(url + '/save', json={
                                         'operation_id': str(uuid4()),
                                         'target_id': saved['id'], 'expected_revision': 0,
-                                        'image_policy': 'none', 'value': {'name': 'Updated'}})
+                                         'value': {'name': 'Updated'}})
                                     assert updated.status_code == 200
                                     assert http.post(item + '/duplicate').status_code == 201
                                     deleted = http.delete(item + '?expected_revision=1')
@@ -352,7 +355,8 @@ def run_acceptance(wheel: Path | None = None) -> None:
                                 identity = result['id']
                                 turn_url = '/api/v1/conversations/' + identity + '/turns'
                                 operation = http.post(turn_url,
-                                    json={'operation_id': str(uuid4()), 'text': 'Hello'}).json()
+                                    json={'operation_id': str(uuid4()),
+                                        'expected_revision': 0, 'text': 'Hello'}).json()
                                 saved = http.get('/api/v1/operations/' + operation['id']).json()
                                 assert saved['state'] == 'complete'
                                 restored = http.get('/api/v1/conversations/' + identity).json()

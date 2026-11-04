@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import os
 import time
 from collections.abc import Callable
 from copy import deepcopy
@@ -13,9 +12,8 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 from uuid import UUID
 
-import keyring
 from filelock import FileLock, Timeout
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, SecretStr, ValidationError
 
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.configuration import WorkspaceConfiguration
@@ -29,19 +27,27 @@ if TYPE_CHECKING:
     from komaquill.adapters.llm.tokenization import NativeTokens
 
 
+MAX_REPAIR_ISSUES = 8
+
+
 def response_schema(schema: type[BaseModel], field_language: str | None) -> dict[str, Any]:
     """Use the same wire schema for context budgeting and the SDK request."""
     result = deepcopy(schema.model_json_schema())
     if field_language:
-        for field in ("narration", "action_narration", "text"):
-            if field not in result["properties"]:
-                continue
-            meaning = result["properties"][field].get("description", "")
-            result["properties"][field]["description"] = (
-                meaning + " " + f"Write this entire {field} field only in {field_language}, "
-                "including after a language switch. "
-                "Do not copy a different language from history."
-            )
+        for definition in (result, *result.get("$defs", {}).values()):
+            properties = definition.get("properties", {})
+            fields = [
+                field for field in ("narration", "action_narration", "text") if field in properties
+            ]
+            if properties.get("field", {}).get("const") == "scenery":
+                fields.append("value")
+            for field in fields:
+                meaning = properties[field].get("description", "")
+                properties[field]["description"] = (
+                    meaning + " " + f"Write this entire {field} field only in {field_language}, "
+                    "including after a language switch. Keep supplied names unchanged. "
+                    "Do not copy a different language from history."
+                )
     return result
 
 
@@ -167,17 +173,9 @@ class StructuredExecution:
             from langchain_openai import ChatOpenAI
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing") from None
-        key = os.environ.get(profile.key_env) if profile.key_env else None
-        if key is None and profile.credential_ref:
-            key = keyring.get_password("komaquill.llm", profile.credential_ref)
-        if key is None and urlsplit(profile.base_url or "").hostname in {
-            "127.0.0.1",
-            "localhost",
-            "::1",
-        }:
-            key = "local"
-        if not key:
-            raise KomaquillError(code="authentication_failed", retryable=False)
+        from komaquill.adapters.llm_credentials import api_key
+
+        key = api_key(profile)
         return ChatOpenAI(
             model=profile.model,
             base_url=profile.base_url,
@@ -191,6 +189,62 @@ class StructuredExecution:
             stream_usage=False,
             cache=False,
         )
+
+    def _settings_hash(self, profile_id: str) -> str:
+        profile = self.settings.llm_profiles[profile_id]
+        return hashlib.sha256(
+            json.dumps(
+                {
+                    "profile_id": profile_id,
+                    "profile": profile.model_dump(exclude={"credential_ref", "key_env"}),
+                    "limits": self.settings.model_dump(exclude={"llm_profiles"}),
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+
+    def has_response(self, operation: UUID) -> bool:
+        directory = self.workspace / ".artifacts/data/conversation-calls" / str(operation)
+        return any(path.stem.isdecimal() for path in directory.glob("*.json"))
+
+    def replay[T: BaseModel](
+        self,
+        schema: type[T],
+        operation: UUID,
+        profile_id: str,
+        system: str,
+        validate: Callable[[T], None],
+        field_language: str,
+    ) -> T:
+        directory = self.workspace / ".artifacts/data/conversation-calls" / str(operation)
+        paths = sorted(
+            (p for p in directory.glob("*.json") if p.stem.isdecimal()), key=lambda p: int(p.stem)
+        )
+        if not paths:
+            raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+        path = paths[-1]
+        record = json.loads(path.read_bytes())
+        effective_system = self.system_text(operation, system)
+        if (
+            self.checkpoints.load(f"settings:{operation}")
+            != {"sha256": self._settings_hash(profile_id)}
+            or record.get("schema") != response_schema(schema, field_language)
+            or record.get("instructions_sha256")
+            != hashlib.sha256(effective_system.encode()).hexdigest()
+            or record.get("profile") != profile_id
+            or record.get("model") != self.settings.llm_profiles[profile_id].model
+            or record.get("status") != "response_received"
+        ):
+            raise KomaquillError(code="operation_conflict", retryable=False)
+        try:
+            result = schema.model_validate_json(record["response"], strict=True)
+            validate(result)
+        except ValueError:
+            raise KomaquillError(
+                code="invalid_response", stage="response_validation", retryable=False
+            ) from None
+        self.record(operation, int(path.stem), {**record, "validation": "accepted"})
+        return result
 
     def invoke[T: BaseModel](
         self,
@@ -218,10 +272,8 @@ class StructuredExecution:
             raise KomaquillError(code="real_llm_not_allowed", retryable=False)
         from komaquill.adapters.database import database
 
-        enabled = database(self.workspace / ".artifacts/data/komaquill.sqlite3").content.capture(
-            operation
-        )
-        if enabled and urlsplit(profile.base_url or "").hostname not in {
+        database(self.workspace / ".artifacts/data/komaquill.sqlite3").content.capture(operation)
+        if urlsplit(profile.base_url or "").hostname not in {
             "127.0.0.1",
             "localhost",
             "::1",
@@ -398,6 +450,7 @@ class StructuredExecution:
                     {
                         **record,
                         "validation": "rejected",
+                        "failure_stage": "response_validation",
                         "failure_kind": "language"
                         if isinstance(error, ResponseLanguageError)
                         else "constraint"
@@ -411,6 +464,14 @@ class StructuredExecution:
             return value
 
         def repair_prompt(invalid: ValueError) -> str:
+            issues: list[dict[str, object]] = []
+            if isinstance(invalid, ResponseConstraintError):
+                issues.append({"path": list(invalid.path), "constraint": invalid.rule})
+            if isinstance(invalid, ValidationError):
+                for issue in invalid.errors(
+                    include_input=False, include_url=False, include_context=False
+                )[:MAX_REPAIR_ISSUES]:
+                    issues.append({"path": list(issue["loc"]), "constraint": issue["type"]})
             detail = (
                 " The response uses the wrong language. "
                 "Use the requested language for all visible fields."
@@ -426,21 +487,13 @@ class StructuredExecution:
                 "the supplied schema. Preserve the facts. "
                 + correction
                 + detail
+                + (" Validation issues: " + json.dumps(issues) if issues else "")
                 + (" " + invalid.correction if isinstance(invalid, ResponseConstraintError) else "")
             )
 
         try:
             with self.lock:
-                settings_hash = hashlib.sha256(
-                    json.dumps(
-                        {
-                            "profile_id": profile_id,
-                            "profile": profile.model_dump(exclude={"credential_ref", "key_env"}),
-                            "limits": self.settings.model_dump(exclude={"llm_profiles"}),
-                        },
-                        sort_keys=True,
-                    ).encode()
-                ).hexdigest()
+                settings_hash = self._settings_hash(profile_id)
                 settings_key = f"settings:{operation}"
                 saved_settings = self.checkpoints.load(settings_key)
                 if saved_settings is None:

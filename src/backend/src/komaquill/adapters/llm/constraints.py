@@ -4,8 +4,13 @@ from typing import Literal
 
 
 class ResponseConstraintError(ValueError):
-    def __init__(self, rule: Literal["object_ownership", "empty_response"]) -> None:
+    def __init__(
+        self,
+        rule: Literal["object_ownership", "empty_response"],
+        path: tuple[str | int, ...] = (),
+    ) -> None:
         self.rule = rule
+        self.path = path
         super().__init__()
 
     @property
@@ -15,4 +20,9 @@ class ResponseConstraintError(ValueError):
                 "The companion is present. Answer the latest message using the retained facts, "
                 "or describe an observable companion action. Do not return an empty reply."
             )
-        return "Do not assign objects held by the player to the companion. Preserve ownership."
+        return (
+            "The held_objects change assigns a human_player object to assistant_character. "
+            "Remove that item from the companion's change. If the companion's possessions "
+            "did not change, omit the entire held_objects change. Keep narration consistent "
+            "with the separate owners."
+        )

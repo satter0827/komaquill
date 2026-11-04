@@ -12,6 +12,9 @@ import m from '../src/app/locales/ja.json'
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.post(`${base}/api/v1/availability`, () =>
+    HttpResponse.json({ ready: true, connections: [] }),
+  ),
   http.get(`${base}/api/v1/archive/conversations`, () => HttpResponse.json([])),
   http.get(`${base}/api/v1/conversations`, () => HttpResponse.json([])),
   http.get(`${base}/api/v1/stories`, () =>

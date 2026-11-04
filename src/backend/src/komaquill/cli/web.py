@@ -131,13 +131,25 @@ def bind(
         locale: Annotated[
             Literal["ja", "en"] | None, typer.Option(help=message("chat.locale"))
         ] = None,
+        action: Annotated[str | None, typer.Option(help=message("chat.action_json"))] = None,
+        proposal_id: Annotated[UUID | None, typer.Option(help=message("chat.proposal_id"))] = None,
+        expected_revision: Annotated[
+            int | None, typer.Option(help=message("chat.revision"), min=0)
+        ] = None,
     ) -> None:
+        import json
+
         client = Client(ctx.obj or Path.cwd())
         result = client.conversations.send(
             identity,
             SendInput(
                 operation_id=operation_id or uuid4(),
                 text=text,
+                expected_revision=expected_revision
+                if expected_revision is not None
+                else client.conversations.overview(identity).revision,
+                action=json.loads(action) if action is not None else None,
+                proposal_id=proposal_id,
                 allow_real_llm=allow_real_llm,
                 locale=locale,
             ),
@@ -177,30 +189,6 @@ def bind(
     ) -> None:
         typer.echo(Client(ctx.obj or Path.cwd()).conversations.resume(identity).model_dump_json())
 
-    @chat.command("act", help=message("chat.act"))
-    @guarded
-    def act(
-        ctx: typer.Context,
-        identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
-        action: Annotated[str, typer.Argument(help=message("chat.action_json"))],
-        expected_revision: Annotated[int, typer.Option(help=message("chat.revision"), min=0)],
-        operation_id: Annotated[UUID | None, typer.Option(help=message("chat.action_id"))] = None,
-        allow_real_llm: Annotated[bool, typer.Option(help=message("chat.allow_real"))] = False,
-    ) -> None:
-        import json
-
-        from komaquill.conversations.actions import ActionRequest
-
-        request = ActionRequest(
-            operation_id=operation_id or uuid4(),
-            expected_revision=expected_revision,
-            action=json.loads(action),
-            allow_real_llm=allow_real_llm,
-        )
-        typer.echo(
-            Client(ctx.obj or Path.cwd()).conversations.act(identity, request).model_dump_json()
-        )
-
     @chat.command("actions", help=message("chat.actions"))
     @guarded
     def actions(
@@ -208,20 +196,6 @@ def bind(
     ) -> None:
         for record in Client(ctx.obj or Path.cwd()).conversations.actions(identity):
             typer.echo(record.model_dump_json())
-
-    @chat.command("nsfw", help=message("chat.nsfw"))
-    @guarded
-    def nsfw(
-        ctx: typer.Context,
-        enabled: Annotated[
-            bool, typer.Option("--enabled/--disabled", help=message("chat.nsfw"))
-        ] = False,
-    ) -> None:
-        client = Client(ctx.obj or Path.cwd())
-        result = client.library.save_preferences(
-            client.library.preferences().model_copy(update={"nsfw_enabled": enabled})
-        )
-        typer.echo(result.model_dump_json())
 
     @chat.command("notes", help=message("chat.notes"))
     @guarded

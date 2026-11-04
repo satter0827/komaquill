@@ -10,7 +10,7 @@ import {
   UserRound,
   Users,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, NavLink, Route, Routes } from 'react-router'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import { Button } from '../components/ui/button'
@@ -30,23 +30,25 @@ export function App() {
   const m = useMessages()
   const [navigation, setNavigation] = useState(false)
   const [privateScreen, setPrivateScreen] = useState(false)
-  const preferences = usePreferences()
+  const hiddenFocus = useRef<HTMLElement | null>(null)
   const conversations = useQuery({
     ...q.listConversationsOptions(),
   })
   return (
     <div className="application">
-      <div className="privacy-controls">
-        <Link to="/settings">
-          {preferences.value.nsfw_enabled ? m.nsfwOn : m.nsfwOff}
-        </Link>
-        <Button
-          aria-pressed={privateScreen}
-          onClick={() => setPrivateScreen(!privateScreen)}
-        >
-          {privateScreen ? m.showScreen : m.hideScreen}
-        </Button>
-      </div>
+      {privateScreen && (
+        <div className="privacy-overlay">
+          <Button
+            autoFocus
+            onClick={() => {
+              setPrivateScreen(false)
+              requestAnimationFrame(() => hiddenFocus.current?.focus())
+            }}
+          >
+            {m.showScreen}
+          </Button>
+        </div>
+      )}
       <div
         className="workspace"
         style={privateScreen ? { display: 'none' } : undefined}
@@ -110,6 +112,17 @@ export function App() {
               <Settings2 size={17} />
               {m.preferences}
             </NavLink>
+            <Button
+              className="privacy-button"
+              onClick={(event) => {
+                event.stopPropagation()
+                hiddenFocus.current =
+                  document.activeElement as HTMLElement | null
+                setPrivateScreen(true)
+              }}
+            >
+              {m.hideScreen}
+            </Button>
           </nav>
         </aside>
         <main className="main-area">

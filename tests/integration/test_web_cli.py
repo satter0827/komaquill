@@ -2,8 +2,11 @@
 
 import json
 
+import pytest
 from komaquill.cli.main import app
 from typer.testing import CliRunner
+
+pytestmark = pytest.mark.usefixtures("substituted_services")
 
 
 def test_cli_chat_create_send_read_and_failure_are_safe(project):
@@ -25,15 +28,20 @@ def test_cli_chat_create_send_read_and_failure_are_safe(project):
         app,
         [
             *prefix,
-            "act",
+            "send",
             identity,
+            "Hello",
             "--expected-revision",
             "1",
+            "--action",
             '{"kind":"move","destination":"garden"}',
         ],
     )
-    assert changed.exit_code == 0, changed.output
-    assert json.loads(changed.output)["after"]["place"] == "garden"
+    assert changed.exit_code == 1, changed.output
+    assert (
+        json.loads(runner.invoke(app, [*prefix, "get", identity]).output)["state"]["place"]
+        == "garden"
+    )
     assert runner.invoke(app, [*prefix, "resume", identity]).exit_code == 0
     failed = runner.invoke(app, [*prefix, "send", identity, "Unknown"])
     assert failed.exit_code == 1 and "Traceback" not in failed.output

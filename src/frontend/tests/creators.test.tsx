@@ -16,6 +16,9 @@ import m from '../src/app/locales/ja.json'
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.post(`${base}/api/v1/availability`, () =>
+    HttpResponse.json({ ready: true, connections: [] }),
+  ),
   http.get(`${base}/api/v1/characters`, () => HttpResponse.json([])),
   http.get(`${base}/api/v1/settings`, () =>
     HttpResponse.json({
@@ -230,7 +233,7 @@ it('applies draft text without changing the selected counterpart or claiming it 
     ),
   )
   const button = await draftEditor('/stories/original', 'story')
-  expect(screen.getByRole('status')).toHaveTextContent(m.saved)
+  expect(screen.getByText(m.saved)).toBeVisible()
   await userEvent.click(button)
   await userEvent.click(await screen.findByRole('button', { name: m.useDraft }))
   expect(screen.getByLabelText(m.name)).toHaveValue('New story')
@@ -343,7 +346,7 @@ it('keeps an accepted creation busy before the first status response', async () 
   expect(await screen.findByRole('button', { name: m.useDraft })).toBeVisible()
 })
 
-it('saves current input and image intent in one request without a second creation request', async () => {
+it('saves text without requesting generation or authorizing an LLM', async () => {
   const identity = crypto.randomUUID()
   let saved: Record<string, unknown> | null = null
   const requests: Record<string, unknown>[] = []
@@ -376,18 +379,13 @@ it('saves current input and image intent in one request without a second creatio
   await userEvent.type(screen.getByLabelText(m.age), '60')
   await userEvent.type(screen.getByLabelText(m.gender), 'man')
   await userEvent.click(screen.getByRole('button', { name: m.save }))
-  await waitFor(() =>
-    expect(screen.getByRole('status')).toHaveTextContent(m.saved),
-  )
+  await waitFor(() => expect(screen.getByText(m.saved)).toBeVisible())
   expect(requests).toHaveLength(1)
   expect(requests[0]).toMatchObject({
     value: { name: 'Casey', age: '60', gender: 'man' },
-    image_policy: 'auto',
-    allow_real_llm: true,
   })
   expect(requests[0].operation_id).toBeTruthy()
   expect(screen.getByLabelText(m.name)).toHaveValue('Casey')
-  await waitFor(() =>
-    expect(screen.getByText(m.imageNotConnected)).toBeVisible(),
-  )
+  expect(requests[0]).not.toHaveProperty('image_policy')
+  expect(requests[0]).not.toHaveProperty('allow_real_llm')
 })

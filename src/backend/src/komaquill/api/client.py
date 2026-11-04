@@ -90,9 +90,9 @@ class Client:
             self._project,
             self._execution,
             lambda identity: self.conversations.overview(identity),
-            lambda request: self.library.source(request),
+            lambda request: self._library.source(request),
             lambda identity: self.images.read(identity),
-            lambda identity: self.conversations.repository.operation(identity),
+            lambda identity: self.conversations.repository.operation_snapshot(identity),
         )
 
     @cached_property
@@ -105,6 +105,12 @@ class Client:
 
     @cached_property
     def library(self) -> "LibraryService":
+        service = self._library
+        service.initialize()
+        return service
+
+    @cached_property
+    def _library(self) -> "LibraryService":
         from komaquill.composition import library
 
         return library(

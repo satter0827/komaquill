@@ -135,6 +135,11 @@ class Reply(Record):
     action_proposals: list[PlayerAction] = Field(default_factory=list, max_length=4)
 
 
+class AcceptedInput(Record):
+    text: str = Field(max_length=20000)
+    action: PlayerAction | None = None
+
+
 class Operation(Record):
     can_resume: bool = False
     nsfw_enabled: bool = False

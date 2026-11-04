@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
+import { useState } from 'react'
 import {
   AvailabilityNotice,
   recheckAvailability,
@@ -24,6 +25,89 @@ afterAll(() => server.close())
 
 it('uses fixed content policy without a mutable viewing preference', () => {
   expect(defaultPreferences).not.toHaveProperty('nsfw_enabled')
+})
+
+it('keeps a delayed refresh attached to the input it checked', async () => {
+  let release: () => void = () => {}
+  let checkingOldInput = false
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  server.use(
+    http.post(`${base}/api/v1/availability`, async ({ request }) => {
+      const body = (await request.json()) as { prompt: string }
+      if (
+        body.prompt === 'A coast' &&
+        new URL(request.url).searchParams.get('refresh') === 'true'
+      ) {
+        checkingOldInput = true
+        await pending
+      }
+      const ready = body.prompt === 'A coast'
+      const now = new Date()
+      return HttpResponse.json({
+        ready,
+        connections: ready
+          ? []
+          : [
+              {
+                kind: 'llm',
+                target: 'local',
+                state: 'unavailable',
+                reason: 'llm_unavailable',
+                observed_at: now.toISOString(),
+                expires_at: new Date(now.getTime() + 15000).toISOString(),
+              },
+            ],
+      })
+    }),
+  )
+  function Control() {
+    const [prompt, setPrompt] = useState('A coast')
+    const status = useAvailability({ kind: 'image', prompt })
+    return (
+      <>
+        <input
+          aria-label="Prompt"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+        <Button disabled={!status.ready}>{m.generate}</Button>
+        <AvailabilityNotice status={status} />
+      </>
+    )
+  }
+  const cache = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={cache}>
+      <MemoryRouter>
+        <Control />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  try {
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: m.generate })).toBeEnabled(),
+    )
+    act(() => window.dispatchEvent(new Event('focus')))
+    await waitFor(() => expect(checkingOldInput).toBe(true))
+    await userEvent.clear(screen.getByLabelText('Prompt'))
+    await userEvent.type(screen.getByLabelText('Prompt'), '海辺')
+    await act(async () => {
+      release()
+      await pending
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: m.refresh })).toBeEnabled(),
+    )
+    expect(screen.getByRole('button', { name: m.generate })).toBeDisabled()
+    expect(screen.getByText(m.errors.llm_unavailable)).toBeVisible()
+  } finally {
+    release()
+    cache.clear()
+  }
 })
 
 it('keeps execution disabled until a required connection is confirmed and refreshes explicitly', async () => {

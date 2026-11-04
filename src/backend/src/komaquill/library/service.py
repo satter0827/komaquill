@@ -230,7 +230,10 @@ class LibraryService:
                     {**data, "id": sample_id(locale, kind), "sample": True, "sample_locale": locale}
                 )
                 values.append((kind, value))
-        store.initialize(values)
+        self._initial_presets = values
+
+    def initialize(self) -> None:
+        self.store.initialize(self._initial_presets)
 
     def preferences(self) -> Preferences:
         return self.store.preferences()

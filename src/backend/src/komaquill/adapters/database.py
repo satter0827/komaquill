@@ -47,6 +47,7 @@ from komaquill.conversations.context import require_reviewed
 from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.conversations.history import advance_history, memory_sources
 from komaquill.conversations.models import (
+    AcceptedInput,
     Conversation,
     ConversationInput,
     Operation,
@@ -897,8 +898,29 @@ class ConversationRepository:
     @stored
     def operation(self, identity: UUID) -> Operation:
         self.reconcile()
+        return self.operation_snapshot(identity)
+
+    @stored
+    def operation_snapshot(self, identity: UUID) -> Operation:
         with self.database.engine.connect() as connection:
             return Operation.model_validate_json(str(self._row(connection, identity)["payload"]))
+
+    @stored
+    def accepted_input(self, identity: UUID) -> AcceptedInput:
+        with self.database.engine.connect() as connection:
+            row = self._row(connection, identity)
+            request = RecordedTurnRequest.model_validate_json(str(row["request"]))
+            action = request.action
+            if action is None and request.action_id is not None:
+                payload: str = connection.execute(
+                    select(conversation_events.c.payload).where(
+                        conversation_events.c.conversation_id == str(row["conversation_id"]),
+                        conversation_events.c.kind == "actions",
+                        conversation_events.c.id == str(request.action_id),
+                    )
+                ).scalar_one()
+                action = ActionRecord.model_validate_json(payload).request.action
+            return AcceptedInput(text=request.text, action=action)
 
     @stored
     def operations(self, identity: UUID) -> builtins.list[Operation]:

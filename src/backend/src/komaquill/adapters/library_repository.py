@@ -13,8 +13,9 @@ import psutil
 from sqlalchemy import Boolean, Column, Integer, String, Table, Text, case, func, select
 from sqlalchemy.engine import Connection
 
-from komaquill.adapters.database import Database, conflict, metadata, missing
+from komaquill.adapters.database import Database, conflict, conversations, metadata, missing
 from komaquill.adapters.storage_errors import stored
+from komaquill.conversations.models import Conversation
 from komaquill.domain.errors import KomaquillError
 from komaquill.library.models import (
     CharacterPreset,
@@ -402,6 +403,15 @@ class LibraryRepository:
         ):
             raise KomaquillError(code="operation_busy", retryable=True)
         value = None
+        if request.kind == "conversation_image":
+            payload = connection.execute(
+                select(conversations.c.payload).where(conversations.c.id == str(request.target_id))
+            ).scalar_one_or_none()
+            if payload is None:
+                raise missing()
+            scene = Conversation.model_validate_json(payload)
+            if scene.revision != request.expected_revision:
+                raise conflict()
         if request.kind in {"portrait", "banner"}:
             kind: PresetKind = "character" if request.kind == "portrait" else "story"
             payload = connection.execute(

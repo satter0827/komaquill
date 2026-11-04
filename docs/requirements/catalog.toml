@@ -32,7 +32,7 @@ tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 [requirements.REQ-CHARACTER-PRESETS]
 summary = "キャラクターを作成・保存して代表画像とともに再利用する"
 status = "implemented"
-acceptance = ["名前・年齢・性別・外見・性格・話し方・背景・関係を保存・一覧・編集・複製・削除できる", "保存済みキャラクターを会話で選択できる", "手動保存と明示した4Bによる下書き作成を区別する", "保存時に許可済みの接続先で代表画像を生成し画面に表示する", "画像の用途・生成操作・設定の版を関連付ける", "接続なしや画像失敗でも設定を保存し未生成と次の操作を示す", "再生成中に以前の画像を失わない", "代表画像の表示と別画像での人物同一性の確認を区別する"]
+acceptance = ["名前・年齢・性別・外見・性格・話し方・背景・関係を保存・一覧・編集・複製・削除できる", "保存済みキャラクターを会話で選択できる", "手動保存と明示した4Bによる下書き作成を区別する", "本文保存と分けた明示操作で保存済みの版から代表画像を生成し画面に表示する", "画像の用途・生成操作・設定の版を関連付ける", "接続なしや画像失敗でも設定を保存し未生成と次の操作を示す", "再生成中に以前の画像を失わない", "代表画像の表示と別画像での人物同一性の確認を区別する"]
 sources = ["src/backend/src/komaquill/library/service.py", "src/backend/src/komaquill/adapters/library_repository.py", "src/frontend/src/features/library.tsx"]
 tests = ["tests/integration/test_library.py", "tests/e2e/web/workflow.spec.ts"]
 
@@ -527,4 +527,4 @@ summary = "操作の入力から必要接続を求め接続確認後に生成を
 status = "implemented"
 acceptance = ["設定の存在と対象モデル・実行先の観測を区別する", "翻訳不要の描画にLLMを要求しない", "未確認・確認中・期限切れ・利用不可では依存する実行操作を止める", "受付前に共通判定を行い通信中はDBロックを保持しない", "本文保存・履歴閲覧・ダウンロード・保存済み結果の確定に不要な接続を要求しない", "接続確認で推論・モデル読み込み・GPU確保を行わない"]
 sources = ["src/backend/src/komaquill/availability.py", "src/backend/src/komaquill/api/availability.py", "src/frontend/src/features/availability.tsx"]
-tests = ["tests/integration/test_operation_availability.py", "src/frontend/tests/content.test.tsx", "tests/e2e/web/layout-availability.spec.ts"]
+tests = ["tests/integration/test_operation_availability.py", "tests/integration/test_operation_review.py", "src/frontend/tests/content.test.tsx", "src/frontend/tests/conversations.test.tsx", "src/frontend/tests/images.test.tsx", "src/frontend/tests/operations.test.ts", "tests/e2e/web/layout-availability.spec.ts"]

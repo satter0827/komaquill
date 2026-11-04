@@ -4,6 +4,8 @@
 
 確認範囲と未確認事項は[会話・描画・画面構成の検証](verification/results/conversation-ui-operations.md)に記録しています。
 
+受付・接続確認・失敗後の表示を再検査した結果は[会話・描画・画面構成の再レビュー](verification/results/zero-base-ui-operations-review.md)を参照してください。
+
 ## 読み始める場所
 
 | 作業                                            | 最初に読む文書                                                          | 次に確認するもの                                                                                                                                                                                                                |

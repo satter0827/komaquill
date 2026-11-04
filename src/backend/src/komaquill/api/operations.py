@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from komaquill.conversations.models import Operation
+from komaquill.conversations.models import AcceptedInput, Operation
 from komaquill.conversations.service import Repository
 
 
@@ -12,6 +12,9 @@ class OperationService:
 
     def get(self, identity: UUID) -> Operation:
         return self.repository.operation(identity)
+
+    def input(self, identity: UUID) -> AcceptedInput:
+        return self.repository.accepted_input(identity)
 
     def reconcile(self) -> None:
         self.repository.reconcile()

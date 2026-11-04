@@ -510,6 +510,9 @@ textarea {
   color: var(--muted);
 }
 .state-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-group);
   border-left: 1px solid var(--line);
   background: #f7f9f4;
   padding: var(--space-page) var(--space-section);
@@ -518,7 +521,7 @@ textarea {
 .state-panel h2 {
   font-size: 17px;
   font-weight: 500;
-  margin: var(--space-field) 0 var(--space-section);
+  margin: 0;
 }
 .state-items {
   display: grid;
@@ -650,7 +653,7 @@ dd {
   background: #14282066;
 }
 .state-dialog .state-panel {
-  display: block;
+  display: grid;
   position: static;
   overflow-y: auto;
   max-height: 85dvh;
@@ -667,20 +670,8 @@ dd {
   }
 }
 @media (max-width: 850px) {
-  .state-panel {
-    display: none;
-    position: fixed;
-    right: 0;
-    top: 60px;
-    bottom: 0;
-    box-shadow: -12px 0 40px #24372515;
-    z-index: 15;
-  }
   .conversation-layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .conversation-layout:not(.state-hidden) .state-panel {
-    display: block;
   }
   .navigation {
     position: absolute;
@@ -797,7 +788,7 @@ fieldset .checkbox {
   max-width: 650px;
 }
 .home-intro h1 {
-  margin-top: 14px;
+  margin: 0;
 }
 .home-intro p {
   color: var(--muted);
@@ -840,7 +831,7 @@ fieldset .checkbox {
   padding: var(--space-section);
 }
 .preset-card-body h2 {
-  margin-bottom: 10px;
+  margin: 0;
 }
 .preset-card-body p {
   color: var(--muted);
@@ -1135,4 +1126,22 @@ details[open] {
 .banner-actions {
   padding-inline: var(--space-group);
   flex-shrink: 0;
+}
+
+.home-intro,
+.preset-card-body,
+.empty-card,
+.player-actions {
+  display: grid;
+  gap: var(--space-group);
+}
+.home-intro {
+  justify-items: start;
+}
+.home-intro > *,
+.preset-card-body > *,
+.empty-card > *,
+.player-actions > *,
+.state-panel > * {
+  margin-block: 0;
 }

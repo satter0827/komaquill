@@ -12,6 +12,33 @@ import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
 
 const MIN_REFRESH_INTERVAL_MS = 1000
+const CONNECTION_FAILURE_CODES = new Set([
+  'connection_failed',
+  'authentication_failed',
+  'identity_mismatch',
+  'llm_unavailable',
+  'llm_dependencies_missing',
+  'image_backend_unavailable',
+  'invalid_configuration',
+  'http_failed',
+  'stopping',
+])
+
+export function useAvailabilityRecovery(error: unknown) {
+  const cache = useQueryClient()
+  const code =
+    typeof error === 'string'
+      ? error
+      : error && typeof error === 'object' && 'code' in error
+        ? String(error.code)
+        : error instanceof Error
+          ? 'connection_failed'
+          : undefined
+  useEffect(() => {
+    if (code && CONNECTION_FAILURE_CODES.has(code))
+      void recheckAvailability(cache)
+  }, [cache, code])
+}
 
 export async function recheckAvailability(cache: QueryClient) {
   const queries = cache
@@ -38,19 +65,20 @@ export async function recheckAvailability(cache: QueryClient) {
 export function useAvailability(request?: AvailabilityRequest) {
   const cache = useQueryClient()
   const refresh = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (checked: AvailabilityRequest) => {
       await cache.cancelQueries({
-        queryKey: ['availability', request],
+        queryKey: ['availability', checked],
         exact: true,
       })
       return (
-        await checkAvailability({ body: request!, query: { refresh: true } })
+        await checkAvailability({ body: checked, query: { refresh: true } })
       ).data!
     },
-    onSuccess: (data) => cache.setQueryData(['availability', request], data),
-    onError: () =>
+    onSuccess: (data, checked) =>
+      cache.setQueryData(['availability', checked], data),
+    onError: (_, checked) =>
       cache.invalidateQueries({
-        queryKey: ['availability', request],
+        queryKey: ['availability', checked],
         exact: true,
         refetchType: 'none',
       }),
@@ -58,7 +86,7 @@ export function useAvailability(request?: AvailabilityRequest) {
   const refreshNow = refresh.mutate
   useEffect(() => {
     if (!request) return
-    const focused = () => refreshNow()
+    const focused = () => refreshNow(request)
     window.addEventListener('focus', focused)
     return () => window.removeEventListener('focus', focused)
   }, [request, refreshNow])
@@ -88,7 +116,7 @@ export function useAvailability(request?: AvailabilityRequest) {
   return {
     ...query,
     error: query.error ?? refresh.error,
-    refresh: () => refresh.mutate(),
+    refresh: () => request && refresh.mutate(request),
     isFetching: query.isFetching || refresh.isPending,
     ready:
       !!request &&

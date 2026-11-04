@@ -19,6 +19,27 @@ for (const locale of ['ja', 'en'] as const) {
       test.setTimeout(LAYOUT_TIMEOUT_MS)
       await page.setViewportSize(size)
       const m = locale === 'ja' ? ja : en
+      const title = 'Conversation layout review'
+      const retainedMessage =
+        'Keep this accepted message after the reply fails.'
+      const scene = await (
+        await request.post('/api/v1/conversations', {
+          data: { title, llm_profile: 'fake', locale },
+        })
+      ).json()
+      const conversationRoute = `/conversations/${scene.id}`
+      const accepted = await request.post(
+        `/api/v1/conversations/${scene.id}/turns`,
+        {
+          data: {
+            operation_id: randomUUID(),
+            expected_revision: 0,
+            text: retainedMessage,
+            action: { kind: 'move', destination: 'Coast' },
+          },
+        },
+      )
+      expect(accepted.status()).toBe(202)
       for (const density of ['comfortable', 'compact']) {
         for (const font_size of ['normal', 'large']) {
           const preferences = await (
@@ -37,10 +58,15 @@ for (const locale of ['ja', 'en'] as const) {
             '/new',
             '/images',
             '/settings',
+            conversationRoute,
           ]) {
             await page.goto(route)
             await expect(page.locator('main')).toBeVisible()
-            await expect(page.locator('main h1')).toBeVisible()
+            await expect(
+              route === conversationRoute
+                ? page.getByRole('heading', { name: title, exact: true })
+                : page.locator('main h1'),
+            ).toBeVisible()
             expect(
               await page.evaluate(
                 () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -60,6 +86,48 @@ for (const locale of ['ja', 'en'] as const) {
                 .getByLabel(m.name, { exact: true })
                 .boundingBox()
               expect(input!.width).toBeGreaterThan(size.width < 600 ? 250 : 400)
+            }
+            if (route === conversationRoute) {
+              await expect(
+                page.getByText(retainedMessage, { exact: true }),
+              ).toBeVisible()
+              await expect(
+                page.getByText(m.newChapter, { exact: true }),
+              ).not.toBeVisible()
+              if (viewport === 'mobile')
+                await page
+                  .getByRole('button', { name: m.showState, exact: true })
+                  .click()
+              const destination = page.getByRole('textbox', {
+                name: m.destination,
+                exact: true,
+              })
+              await destination.fill('Review destination')
+              const inputBox = await destination.boundingBox()
+              const actionButton = page.getByRole('button', {
+                name: m.queueAction,
+                exact: true,
+              })
+              const buttonBox = await actionButton.boundingBox()
+              expect(buttonBox!.width).toBeCloseTo(inputBox!.width, 0)
+              expect(buttonBox!.height).toBeGreaterThanOrEqual(44)
+              await evidence.capture(
+                `${locale} ${viewport} ${density} ${font_size} action controls`,
+              )
+              await actionButton.click()
+              if (viewport === 'mobile') await page.keyboard.press('Escape')
+              await expect(
+                page.getByRole('button', {
+                  name: m.removeQueuedAction,
+                  exact: true,
+                }),
+              ).toBeVisible()
+              await expect(
+                page.getByRole('button', { name: m.send, exact: true }),
+              ).toBeDisabled()
+              await page
+                .getByRole('textbox', { name: m.messageLabel, exact: true })
+                .fill('A new unsent draft')
             }
             await evidence.capture(
               `${locale} ${viewport} ${density} ${font_size} ${route}`,

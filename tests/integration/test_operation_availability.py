@@ -226,7 +226,12 @@ def test_probe_failure_is_safe_and_expired_observations_are_not_reused(tmp_path,
     assert first.state == "unavailable" and first.reason == "llm_unavailable"
     assert "private" not in first.model_dump_json()
     expired = first.model_copy(update={"expires_at": datetime.now(UTC) - timedelta(seconds=1)})
-    client.availability._observations[("llm", "lmstudio-4b")] = expired
+    from dataclasses import replace
+
+    key = ("llm", "lmstudio-4b")
+    client.availability._observations[key] = replace(
+        client.availability._observations[key], result=expired
+    )
     client.availability.observe("llm", "lmstudio-4b")
     assert len(checks) == 2
 
@@ -249,7 +254,9 @@ def test_saved_collection_and_local_resume_have_no_connection_dependency(tmp_pat
     )
     assert client.images.collect(uuid4()).saved == 1
     monkeypatch.setattr(
-        client.conversations.repository, "operation", lambda _: SimpleNamespace(can_resume=True)
+        client.conversations.repository,
+        "operation_snapshot",
+        lambda _: SimpleNamespace(can_resume=True),
     )
     assert client.availability.check(AvailabilityRequest(kind="resume", identity=uuid4())).ready
 

@@ -16,6 +16,7 @@ import {
   AvailabilityNotice,
   recheckAvailability,
   useAvailability,
+  useAvailabilityRecovery,
 } from './availability'
 
 export function ImageLinks({
@@ -44,6 +45,55 @@ export function ImageLinks({
   )
 }
 
+function ImageFile({
+  identity,
+  index,
+  filename,
+}: {
+  identity: string
+  index: number
+  filename: string
+}) {
+  const messages = useMessages()
+  const formatMessage = useFormatMessage()
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const url = `/api/v1/images/${identity}/files/${index}`
+  return (
+    <div className="image-file">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={formatMessage('openImageLabel', { index: index + 1 })}
+      >
+        <img
+          key={attempt}
+          src={url}
+          alt={formatMessage('imageAlt', { index: index + 1 })}
+          onError={() => setFailed(true)}
+        />
+      </a>
+      <ImageLinks identity={identity} index={index} filename={filename} />
+      {failed && (
+        <>
+          <p role="alert" className="error">
+            {messages.imageDisplayFailed}
+          </p>
+          <Button
+            onClick={() => {
+              setFailed(false)
+              setAttempt(attempt + 1)
+            }}
+          >
+            {messages.retryCollection}
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
+
 export function ImageResult({
   identity,
   operationId,
@@ -53,7 +103,6 @@ export function ImageResult({
 }) {
   const messages = useMessages()
   const failure = useFailure()
-  const formatMessage = useFormatMessage()
   const cache = useQueryClient()
   const operation = useQuery({
     ...operationOptions(operationId ?? ''),
@@ -64,11 +113,6 @@ export function ImageResult({
     enabled: !operationId || operation.data?.image_state === 'submitted',
     ...imageOptions(identity),
   })
-  const collectionAvailability = useAvailability(
-    image.data?.state !== 'saved' && (image.data || image.error)
-      ? { kind: 'collection', identity }
-      : undefined,
-  )
   const collect = useMutation({
     ...q.collectImageMutation(),
     onError: () => {
@@ -79,23 +123,23 @@ export function ImageResult({
         queryKey: q.getImageQueryKey({ path: { identity: identity ?? '' } }),
       }),
   })
+  useAvailabilityRecovery(
+    image.error ?? image.data?.collection_failure ?? image.data?.failure,
+  )
+  const collectionAvailability = useAvailability(
+    image.error || collect.error || image.data?.collection_failure
+      ? { kind: 'collection', identity }
+      : undefined,
+  )
   return (
     <div className="image-result">
       {image.data?.images?.map((filename, index) => (
-        <div className="image-file" key={index}>
-          <a
-            href={`/api/v1/images/${identity}/files/${index}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={formatMessage('openImageLabel', { index: index + 1 })}
-          >
-            <img
-              src={`/api/v1/images/${identity}/files/${index}`}
-              alt={formatMessage('imageAlt', { index: index + 1 })}
-            />
-          </a>
-          <ImageLinks identity={identity} index={index} filename={filename} />
-        </div>
+        <ImageFile
+          key={index}
+          identity={identity}
+          index={index}
+          filename={filename}
+        />
       ))}
       <p className="subtle">
         {operation.data?.image_state === 'failed'

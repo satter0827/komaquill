@@ -16,6 +16,7 @@ describe('late operation observations', () => {
     )
     const unsubscribe = watchReceipt(cache, key, 'turn', confirm)
     const saved: OperationView = {
+      input: { text: 'Saved input' },
       id: 'turn',
       conversation_id: 'conversation',
       state: 'complete',
@@ -46,6 +47,7 @@ describe('late operation observations', () => {
     const observer = new QueryObserver(cache, {
       ...operationOptions('turn'),
       queryFn: async (): Promise<OperationView> => ({
+        input: { text: 'Saved input' },
         id: 'turn',
         conversation_id: 'conversation',
         state: 'complete',
@@ -97,6 +99,7 @@ describe('late operation observations', () => {
     })
     const pending = cache.fetchQuery({ ...options, queryFn: () => request })
     const saved: OperationView = {
+      input: { text: 'Saved input' },
       id: 'turn',
       conversation_id: 'conversation',
       state: 'complete',
@@ -110,6 +113,30 @@ describe('late operation observations', () => {
       image_state: 'submitted',
       image_id: 'image',
     })
+    cache.clear()
+  })
+
+  it('does not replace committed success with a delayed failed observation', async () => {
+    const cache = new QueryClient()
+    const options = operationOptions('turn')
+    let resolve!: (operation: OperationView) => void
+    const pending = cache.fetchQuery({
+      ...options,
+      queryFn: () =>
+        new Promise<OperationView>((done) => {
+          resolve = done
+        }),
+    })
+    const completed: OperationView = {
+      id: 'turn',
+      conversation_id: 'conversation',
+      state: 'complete',
+      input: null,
+    }
+    cache.setQueryData(options.queryKey, completed)
+    resolve({ ...completed, state: 'failed', error: 'connection_failed' })
+    await pending
+    expect(cache.getQueryData(options.queryKey)).toEqual(completed)
     cache.clear()
   })
 })

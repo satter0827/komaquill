@@ -5,7 +5,7 @@ import * as q from '../api/generated/@tanstack/react-query.gen'
 import type { CreationJob, CreationRequest } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
-import { recheckAvailability } from './availability'
+import { recheckAvailability, useAvailabilityRecovery } from './availability'
 import {
   creationOptions,
   keepTerminal,
@@ -40,6 +40,7 @@ export function useCreation() {
     enabled: !!identity || (!!prepared && mutation.isError),
   })
   const reset = mutation.reset
+  useAvailabilityRecovery(job.error ?? job.data?.error)
   useEffect(() => {
     if (!mutation.isError || !prepared) return
     return watchReceipt(

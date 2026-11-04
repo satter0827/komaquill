@@ -18,6 +18,7 @@ from komaquill.availability import Availability, AvailabilityRequest
 from komaquill.conversations.actions import ActionRecord, ProposalDismissal
 from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.conversations.models import (
+    AcceptedInput,
     Conversation,
     ConversationInput,
     Operation,
@@ -25,6 +26,7 @@ from komaquill.conversations.models import (
     Turn,
 )
 from komaquill.conversations.visuals import VisualReview
+from komaquill.domain.errors import OperationStage
 from komaquill.domain.materials import InputArtifact
 from komaquill.messages import error_message, message
 
@@ -64,11 +66,18 @@ class SettingsView(BaseModel):
 
 
 class OperationView(Operation):
+    input: AcceptedInput | None = None
     error_message: str | None = None
     image_error_message: str | None = None
 
 
-def describe_operation(value: Operation) -> OperationView:
+class ErrorView(BaseModel):
+    code: str
+    stage: OperationStage
+    message: str
+
+
+def describe_operation(value: Operation, accepted: AcceptedInput | None) -> OperationView:
     def describe(code: str | None) -> str | None:
         if code is None:
             return None
@@ -80,6 +89,7 @@ def describe_operation(value: Operation) -> OperationView:
 
     return OperationView(
         **value.model_dump(),
+        input=accepted,
         error_message=describe(value.error),
         image_error_message=describe(value.image_error),
     )
@@ -96,13 +106,22 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         if client is not None:
             client.close()
 
-    app = FastAPI(title="Komaquill API", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Komaquill API",
+        version="1.0.0",
+        lifespan=lifespan,
+        responses={status: {"model": ErrorView} for status in (400, 403, 404, 409, 422, 500)},
+    )
     ui = ui_directory or Path(str(files("komaquill").joinpath("resources/web")))
 
     def selected() -> Client:
         if client is None:
             raise KomaquillError(code="invalid_configuration")
         return client
+
+    def operation_view(value: Operation) -> OperationView:
+        accepted = selected().operations.input(value.id) if value.state != "complete" else None
+        return describe_operation(value, accepted)
 
     from komaquill.interfaces.http.library import bind_library
 
@@ -118,17 +137,23 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         allowed = origin is None or origin == str(request.base_url).rstrip("/")
         if host not in {"127.0.0.1", "localhost", "::1", "testserver"} or not allowed or cross_site:
             return JSONResponse(
-                {
-                    "code": "origin_not_allowed",
-                    "message": message("http.origin"),
-                },
+                ErrorView(
+                    code="origin_not_allowed",
+                    stage=OperationStage.CHECK,
+                    message=message("http.origin"),
+                ).model_dump(mode="json"),
                 status_code=403,
             )
         try:
             return await call_next(request)
         except Exception:
             return JSONResponse(
-                {"code": "operation_failed", "message": message("http.failed")}, status_code=500
+                ErrorView(
+                    code="operation_failed",
+                    stage=OperationStage.OPERATION,
+                    message=message("http.failed"),
+                ).model_dump(mode="json"),
+                status_code=500,
             )
 
     @app.exception_handler(KomaquillError)
@@ -141,23 +166,29 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
             else 400
         )
         return JSONResponse(
-            {"code": error.code, "message": error_message(error)}, status_code=status
+            ErrorView(code=error.code, stage=error.stage, message=error_message(error)).model_dump(
+                mode="json"
+            ),
+            status_code=status,
         )
 
     @app.exception_handler(RequestValidationError)
     async def invalid(_: Request, __: RequestValidationError) -> JSONResponse:
         return JSONResponse(
-            {"code": "invalid_request", "message": message("http.invalid")},
+            ErrorView(
+                code="invalid_request", stage=OperationStage.CHECK, message=message("http.invalid")
+            ).model_dump(mode="json"),
             status_code=422,
         )
 
     @app.exception_handler(Exception)
     async def unexpected(_: Request, __: Exception) -> JSONResponse:
         return JSONResponse(
-            {
-                "code": "operation_failed",
-                "message": message("http.failed"),
-            },
+            ErrorView(
+                code="operation_failed",
+                stage=OperationStage.OPERATION,
+                message=message("http.failed"),
+            ).model_dump(mode="json"),
             status_code=500,
         )
 
@@ -257,9 +288,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         operation_id="get_conversation_operations",
     )
     def conversation_operations(identity: UUID) -> list[OperationView]:
-        return [
-            describe_operation(value) for value in selected().conversations.operations(identity)
-        ]
+        return [operation_view(value) for value in selected().conversations.operations(identity)]
 
     @app.post(
         "/api/v1/conversations/{identity}/turns",
@@ -272,7 +301,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         operation, created = service.accept(identity, body)
         if created:
             tasks.add_task(service.execute, operation.id)
-        return describe_operation(operation)
+        return operation_view(operation)
 
     @app.get(
         "/api/v1/conversations/{identity}/actions",
@@ -312,7 +341,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         "/api/v1/operations/{identity}", response_model=OperationView, operation_id="get_operation"
     )
     def operation(identity: UUID) -> OperationView:
-        return describe_operation(selected().operations.get(identity))
+        return operation_view(selected().operations.get(identity))
 
     @app.post(
         "/api/v1/operations/{identity}/resume",
@@ -326,7 +355,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         result = service.resume_operation(identity, allow_real_llm=allow_real_llm, execute=False)
         if result.state == "accepted":
             tasks.add_task(service.execute, identity)
-        return describe_operation(result)
+        return operation_view(result)
 
     @app.get("/api/v1/images", response_model=list[Run], operation_id="list_images")
     def images() -> list[Run]:

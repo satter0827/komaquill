@@ -1,6 +1,7 @@
 """Observe only the connections required by the selected operation."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 from urllib.parse import urlsplit
@@ -20,6 +21,12 @@ from komaquill.domain.models import Run
 from komaquill.library.models import CreationRequest
 
 
+@dataclass(frozen=True)
+class _ObservedProbe:
+    sequence: int
+    result: ConnectionObservation
+
+
 class AvailabilityService:
     def __init__(
         self,
@@ -33,7 +40,8 @@ class AvailabilityService:
         self.project, self.execution = project, execution
         self.conversation, self.creation_source = conversation, creation_source
         self.image, self.operation = image, operation
-        self._observations: dict[tuple[str, str], ConnectionObservation] = {}
+        self._observations: dict[tuple[str, str], _ObservedProbe] = {}
+        self._sequence = 0
         self._lock = Lock()
 
     def check(self, request: AvailabilityRequest, *, refresh: bool = False) -> Availability:
@@ -123,8 +131,10 @@ class AvailabilityService:
         key = (kind, cache_target)
         with self._lock:
             known = self._observations.get(key)
-            if not refresh and known and known.expires_at > now:
-                return known
+            if not refresh and known and known.result.expires_at > now:
+                return known.result
+            self._sequence += 1
+            sequence = self._sequence
         reason = None
         try:
             if kind == "llm":
@@ -153,7 +163,10 @@ class AvailabilityService:
             expires_at=observed + timedelta(seconds=settings.connection_observation_ttl),
         )
         with self._lock:
-            self._observations[key] = result
+            newer = self._observations.get(key)
+            if newer is not None and newer.sequence > sequence:
+                return newer.result
+            self._observations[key] = _ObservedProbe(sequence, result)
         return result
 
     def _llm(self, identity: str, timeout: float) -> None:

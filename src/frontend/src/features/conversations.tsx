@@ -21,6 +21,7 @@ import type {
   PersonDefinition,
   SendInput,
   StoryDefinition,
+  Turn,
 } from '../api/generated/types.gen'
 import {
   useFailure,
@@ -34,6 +35,7 @@ import {
   AvailabilityNotice,
   recheckAvailability,
   useAvailability,
+  useAvailabilityRecovery,
 } from './availability'
 import { ConversationNotes, SceneActions } from './conversation-tools'
 import { ImageResult, ImageLinks } from './images'
@@ -69,6 +71,35 @@ function Drawing({ job }: { job: CreationJob }) {
     <p className="subtle">
       {job.error ? failure({ code: job.error }) : messages.imagePreparing}
     </p>
+  )
+}
+
+function AcceptedTurn({ operation }: { operation: OperationView }) {
+  const messages = useMessages()
+  const failure = useFailure()
+  const accepted = operation.input
+  if (!accepted) return null
+  return (
+    <article className="turn" data-operation-id={operation.id}>
+      {accepted.text && (
+        <div className="user-message">
+          <span className="message-label">{messages.you}</span>
+          <p>{accepted.text}</p>
+        </div>
+      )}
+      {accepted.action && (
+        <div className="user-message">
+          <span className="message-label">{messages.myActions}</span>
+          <ActionDescription action={accepted.action} />
+        </div>
+      )}
+      {operation.error && (
+        <p role="alert" className="error">
+          {messages.replyFailedAfterAcceptance}{' '}
+          {failure({ code: operation.error })}
+        </p>
+      )}
+    </article>
   )
 }
 
@@ -157,6 +188,9 @@ function ConversationView({ identity }: { identity: string }) {
     ...operationOptions(operationId ?? ''),
     enabled: !!operationId,
   })
+  useAvailabilityRecovery(
+    operation.error ?? (operation.data ?? savedOperations.data?.[0])?.error,
+  )
   useEffect(() => {
     if (operation.data || savedOperations.data)
       void cache.invalidateQueries({
@@ -218,7 +252,11 @@ function ConversationView({ identity }: { identity: string }) {
   }, [cache, send.isError, prepared, confirmSend, resetSend])
   const resume = useMutation({
     ...q.resumeOperationMutation(),
-    onSuccess: (value) => {
+    onSuccess: async (value) => {
+      await cache.resetQueries({
+        queryKey: q.getOperationQueryKey({ path: { identity: value.id } }),
+        exact: true,
+      })
       setOperationId(value.id)
       void cache.invalidateQueries({
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
@@ -268,6 +306,7 @@ function ConversationView({ identity }: { identity: string }) {
     actionControls.unresolved ||
     !!reviewControls.prepared ||
     send.isPending ||
+    (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
     savedOperations.data?.some((value) =>
       ['accepted', 'running'].includes(value.state),
@@ -282,9 +321,37 @@ function ConversationView({ identity }: { identity: string }) {
     (!actionControls.queued ||
       actionControls.queued.revision === conversation.revision) &&
     !busy &&
-    !(send.isError && prepared !== null) &&
     !!text.trim()
   const latestOperation = operation.data ?? savedOperations.data?.[0]
+  const retainedOperations = new Map(
+    (savedOperations.data ?? []).map((value) => [value.id, value]),
+  )
+  if (operation.data)
+    retainedOperations.set(
+      operation.data.id,
+      keepTerminal(retainedOperations.get(operation.data.id), operation.data),
+    )
+  const completedIds = new Set(
+    (conversation.turns ?? []).map((turn) => turn.operation_id),
+  )
+  const acceptedOperations = [...retainedOperations.values()].filter(
+    (value) =>
+      value.input && value.state !== 'complete' && !completedIds.has(value.id),
+  )
+  const timeline: (
+    { kind: 'turn'; value: Turn } | { kind: 'input'; value: OperationView }
+  )[] = [
+    ...(conversation.turns ?? []).map((value) => ({
+      kind: 'turn' as const,
+      value,
+    })),
+    ...acceptedOperations.map((value) => ({ kind: 'input' as const, value })),
+  ]
+  timeline.sort(
+    (a, b) =>
+      Date.parse(a.value.created_at ?? '') -
+      Date.parse(b.value.created_at ?? ''),
+  )
   const snapshots = conversation.definition.presets
   const stateLabels = {
     place: messages.currentPlace,
@@ -488,7 +555,7 @@ function ConversationView({ identity }: { identity: string }) {
                 <Drawing job={job} />
               </div>
             ))}
-          {(conversation.turns ?? []).length === 0 && (
+          {timeline.length === 0 && (
             <div className="conversation-empty">
               <Sparkles size={30} />
               <h2>{messages.newChapter}</h2>
@@ -507,89 +574,98 @@ function ConversationView({ identity }: { identity: string }) {
             </Button>
           )}
           {history.error && <p role="alert">{failure(history.error)}</p>}
-          {(conversation.turns ?? []).map((turn) => (
-            <article className="turn" key={turn.operation_id}>
-              {turn.user && (
-                <div className="user-message">
-                  <span className="message-label">{messages.you}</span>
-                  <p>{turn.user}</p>
-                </div>
-              )}
-              {(conversation.proposals ?? [])
-                .filter((proposal) => proposal.turn_id === turn.operation_id)
-                .map((proposal) => (
-                  <div className="action-preview" key={proposal.id}>
-                    <ActionDescription action={proposal.action} />
-                    {proposal.state === 'pending' ? (
-                      <Button onClick={() => setShowState(true)}>
-                        {messages.reviewAction}
-                      </Button>
-                    ) : (
-                      <p className="subtle">
-                        {proposal.state === 'applied'
-                          ? messages.actionApplied
-                          : proposal.state === 'dismissed'
-                            ? messages.actionDismissed
-                            : messages.actionExpired}
-                      </p>
-                    )}
+          {timeline.map((entry) => {
+            if (entry.kind === 'input')
+              return (
+                <AcceptedTurn key={entry.value.id} operation={entry.value} />
+              )
+            const turn = entry.value
+            return (
+              <article className="turn" key={turn.operation_id}>
+                {turn.user && (
+                  <div className="user-message">
+                    <span className="message-label">{messages.you}</span>
+                    <p>{turn.user}</p>
                   </div>
-                ))}
-              {turn.action && (
-                <div className="user-message">
-                  <span className="message-label">{messages.myActions}</span>
-                  <ActionDescription action={turn.action} />
-                </div>
-              )}
-              {!turn.action &&
-                turn.action_id &&
-                conversation.actions?.find(
-                  (record) => record.request.operation_id === turn.action_id,
-                ) && (
+                )}
+                {(conversation.proposals ?? [])
+                  .filter((proposal) => proposal.turn_id === turn.operation_id)
+                  .map((proposal) => (
+                    <div className="action-preview" key={proposal.id}>
+                      <ActionDescription action={proposal.action} />
+                      {proposal.state === 'pending' ? (
+                        <Button onClick={() => setShowState(true)}>
+                          {messages.reviewAction}
+                        </Button>
+                      ) : (
+                        <p className="subtle">
+                          {proposal.state === 'applied'
+                            ? messages.actionApplied
+                            : proposal.state === 'dismissed'
+                              ? messages.actionDismissed
+                              : messages.actionExpired}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                {turn.action && (
                   <div className="user-message">
                     <span className="message-label">{messages.myActions}</span>
-                    <ActionDescription
-                      action={
-                        conversation.actions.find(
-                          (record) =>
-                            record.request.operation_id === turn.action_id,
-                        )!.request.action
-                      }
-                    />
+                    <ActionDescription action={turn.action} />
                   </div>
                 )}
-              <div className="assistant-message">
-                {turn.assistant && (
-                  <span className="message-label">
-                    <Sparkles size={14} />
-                    {snapshots?.character?.name ?? messages.character}
-                  </span>
-                )}
-                {turn.narration && (
-                  <p className="scene-narration">{turn.narration}</p>
-                )}
-                {turn.action_narration && (
-                  <p className="action-narration">{turn.action_narration}</p>
-                )}
-                <p>{turn.assistant}</p>
-                <SceneActions
-                  conversation={conversation}
-                  turnId={turn.operation_id}
-                />
-                {turn.image_id && (
-                  <ImageResult
-                    identity={turn.image_id}
-                    operationId={turn.operation_id}
+                {!turn.action &&
+                  turn.action_id &&
+                  conversation.actions?.find(
+                    (record) => record.request.operation_id === turn.action_id,
+                  ) && (
+                    <div className="user-message">
+                      <span className="message-label">
+                        {messages.myActions}
+                      </span>
+                      <ActionDescription
+                        action={
+                          conversation.actions.find(
+                            (record) =>
+                              record.request.operation_id === turn.action_id,
+                          )!.request.action
+                        }
+                      />
+                    </div>
+                  )}
+                <div className="assistant-message">
+                  {turn.assistant && (
+                    <span className="message-label">
+                      <Sparkles size={14} />
+                      {snapshots?.character?.name ?? messages.character}
+                    </span>
+                  )}
+                  {turn.narration && (
+                    <p className="scene-narration">{turn.narration}</p>
+                  )}
+                  {turn.action_narration && (
+                    <p className="action-narration">{turn.action_narration}</p>
+                  )}
+                  <p>{turn.assistant}</p>
+                  <SceneActions
+                    conversation={conversation}
+                    turnId={turn.operation_id}
                   />
-                )}
-                {(drawings.data ?? [])
-                  .filter((job) => job.turn_id === turn.operation_id)
-                  .map((job) => (
-                    <Drawing key={job.id} job={job} />
-                  ))}
-              </div>
-            </article>
-          ))}
+                  {turn.image_id && (
+                    <ImageResult
+                      identity={turn.image_id}
+                      operationId={turn.operation_id}
+                    />
+                  )}
+                  {(drawings.data ?? [])
+                    .filter((job) => job.turn_id === turn.operation_id)
+                    .map((job) => (
+                      <Drawing key={job.id} job={job} />
+                    ))}
+                </div>
+              </article>
+            )
+          })}
           {busy && (
             <p className="pending" role="status">
               {messages.pending}
@@ -613,7 +689,7 @@ function ConversationView({ identity }: { identity: string }) {
               )}
             </p>
           )}
-          {latestOperation?.error && (
+          {latestOperation?.error && !latestOperation.input && (
             <p role="alert" className="error">
               <span>{messages.replyFailedAfterAcceptance}</span>{' '}
               <span>{failure({ code: latestOperation.error })}</span>

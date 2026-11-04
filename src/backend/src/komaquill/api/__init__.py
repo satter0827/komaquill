@@ -3,6 +3,7 @@
 from komaquill.api.client import Client as Client
 from komaquill.availability import Availability as Availability
 from komaquill.availability import AvailabilityRequest as AvailabilityRequest
+from komaquill.conversations.models import AcceptedInput as AcceptedInput
 from komaquill.conversations.models import ConversationInput as ConversationInput
 from komaquill.conversations.models import SendInput as SendInput
 from komaquill.domain.errors import (
@@ -37,6 +38,7 @@ from komaquill.library.recovery import ImageLinkInspection as ImageLinkInspectio
 from komaquill.library.recovery import ImageLinkRepairResult as ImageLinkRepairResult
 
 __all__ = [
+    "AcceptedInput",
     "AvailabilityRequest",
     "Availability",
     "Bookmark",

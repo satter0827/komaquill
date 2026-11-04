@@ -26,7 +26,10 @@ export function keepTerminal<T extends { state?: string }>(
   current: T | undefined,
   next: T,
 ): T {
-  return current && isTerminal(current.state) && !isTerminal(next.state)
+  return current &&
+    ((isTerminal(current.state) && !isTerminal(next.state)) ||
+      (['complete', 'saved'].includes(current.state ?? '') &&
+        current.state !== next.state))
     ? current
     : next
 }

@@ -318,9 +318,78 @@ describe('conversation workflow', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(m.pending)
     expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
   })
+  it('restores saved input after a failed reply and rechecks the failed connection', async () => {
+    let freshChecks = 0
+    const failed = {
+      id: 'failed',
+      conversation_id: 'one',
+      state: 'failed',
+      error: 'llm_unavailable',
+      created_at: '2026-11-04T00:00:00Z',
+      input: {
+        text: 'A saved message',
+        action: { kind: 'move', destination: 'Garden' },
+      },
+    }
+    server.use(
+      http.get(`${base}/api/v1/conversations/one`, () =>
+        HttpResponse.json({
+          id: 'one',
+          definition: { title: 'Scene', llm_profile: 'local' },
+          state: {},
+          turns: [],
+          revision: 1,
+        }),
+      ),
+      http.get(`${base}/api/v1/conversations/one/operations`, () =>
+        HttpResponse.json([failed]),
+      ),
+      http.post(`${base}/api/v1/availability`, ({ request }) => {
+        const refreshed =
+          new URL(request.url).searchParams.get('refresh') === 'true'
+        if (refreshed) freshChecks += 1
+        const now = new Date()
+        return HttpResponse.json({
+          ready: !refreshed,
+          connections: refreshed
+            ? [
+                {
+                  kind: 'llm',
+                  target: 'local',
+                  state: 'unavailable',
+                  reason: 'llm_unavailable',
+                  observed_at: now.toISOString(),
+                  expires_at: new Date(now.getTime() + 15000).toISOString(),
+                },
+              ]
+            : [],
+        })
+      }),
+    )
+    app('/conversations/one')
+    await waitFor(() => expect(freshChecks).toBeGreaterThan(0))
+    expect(await screen.findByText('A saved message')).toBeVisible()
+    expect(screen.getByText('Gardenへ向かう')).toBeVisible()
+    expect(screen.queryByText(m.newChapter)).not.toBeInTheDocument()
+    await userEvent.type(
+      screen.getByRole('textbox', { name: m.messageLabel }),
+      'Next draft',
+    )
+    expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
+    expect(screen.getByRole('button', { name: m.drawScene })).toBeDisabled()
+  })
   it('reuses the request ID and body after a lost response', async () => {
     const requests: unknown[] = []
     server.use(
+      http.get(`${base}/api/v1/conversations/one`, () =>
+        HttpResponse.json({
+          id: 'one',
+          definition: { title: 'Scene', llm_profile: 'local' },
+          state: {},
+          turns: [],
+          revision: 0,
+        }),
+      ),
       http.post(
         `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
@@ -347,11 +416,68 @@ describe('conversation workflow', () => {
       'Hello',
     )
     await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await screen.findByRole('button', { name: m.retryRequest })
+    expect(screen.getByRole('button', { name: m.drawScene })).toBeDisabled()
+    expect(screen.getByLabelText(m.destination)).toBeDisabled()
     await userEvent.click(
       await screen.findByRole('button', { name: m.retryRequest }),
     )
     expect(requests).toHaveLength(2)
     expect(requests[0]).toEqual(requests[1])
+  })
+  it('clears an interrupted receipt when an explicit resume completes the same operation', async () => {
+    const cache = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    let resumed = false
+    const interrupted = {
+      id: 'retained',
+      conversation_id: 'one',
+      state: 'interrupted',
+      error: 'operation_interrupted',
+      can_resume: true,
+      input: { text: 'Accepted before interruption' },
+    }
+    const receipt = () =>
+      resumed
+        ? {
+            ...interrupted,
+            state: 'complete',
+            error: null,
+            can_resume: false,
+            input: null,
+          }
+        : interrupted
+    cache.setQueryData(
+      getOperationQueryKey({ path: { identity: 'retained' } }),
+      interrupted,
+    )
+    server.use(
+      http.get(`${base}/api/v1/conversations/one/operations`, () =>
+        HttpResponse.json([receipt()]),
+      ),
+      http.get(`${base}/api/v1/operations/retained`, () =>
+        HttpResponse.json(receipt()),
+      ),
+      http.post(`${base}/api/v1/operations/retained/resume`, () => {
+        resumed = true
+        return HttpResponse.json(receipt())
+      }),
+    )
+    app('/conversations/one', cache)
+    await userEvent.click(
+      await screen.findByRole('button', { name: m.resumeOperation }),
+    )
+    await waitFor(() =>
+      expect(
+        cache.getQueryData(
+          getOperationQueryKey({ path: { identity: 'retained' } }),
+        ),
+      ).toMatchObject({ state: 'complete' }),
+    )
+    expect(
+      screen.queryByRole('button', { name: m.resumeOperation }),
+    ).not.toBeInTheDocument()
   })
   it('requires confirmation of a stale action draft and sends it with the message', async () => {
     const cache = new QueryClient({

@@ -150,13 +150,71 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     context = json.loads(
         next(line for line in reversed(calls[0][4].splitlines()) if line.startswith("{"))
     )
-    assert context["people"]["player"]["age"] == "28"
-    assert context["people"]["character"]["age"] == "32"
+    assert context["people"]["human_player"]["name"] == "灯"
+    assert context["people"]["human_player"]["age"] == "28"
+    assert context["people"]["assistant_character"]["name"] == "Mira"
+    assert context["people"]["assistant_character"]["age"] == "32"
     assert context["story"]["description"] == "A quiet bookshop"
     assert context["current_state"]["place"] == "tower"
-    assert context["people"]["character"]["clothing"] == "blue shirt"
+    assert context["people"]["assistant_character"]["clothing"] == "blue shirt"
     assert context["current_state"]["goal"] == "find a book"
     assert api.conversations.get(current.id).turns == current.turns
+
+
+def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(tmp_path):
+    from komaquill.adapters.llm.conversation import NarrativeReply
+    from komaquill.api import PrepareAction
+
+    api = Client.initialize(tmp_path)
+    scene = api.conversations.create(
+        ConversationInput(
+            title="Separate people",
+            locale="en",
+            user={"name": "Akari", "age": "28", "initial_clothing": "Red coat"},
+            character={"name": "Mira", "age": "60", "initial_clothing": "Black apron"},
+            scenario={"place": "Bookshop"},
+        )
+    )
+    calls = []
+
+    def invoke(*args, **_kwargs):
+        calls.append(args)
+        return NarrativeReply.model_validate(
+            {
+                "response": {
+                    "kind": "companion",
+                    "changes": [],
+                    "action_narration": "",
+                    "text": "Understood.",
+                }
+            }
+        )
+
+    api._execution.invoke = invoke
+    text = "I took off my coat and put it beside me."
+    operation = api.conversations.send(
+        scene.id,
+        SendInput(
+            operation_id=uuid4(),
+            expected_revision=0,
+            text=text,
+            action=PrepareAction(clothing=""),
+            allow_real_llm=True,
+        ),
+    )
+    context = json.loads(next(line for line in calls[0][4].splitlines() if line.startswith("{")))
+    assert context["people"]["human_player"]["clothing"] == ""
+    assert context["people"]["assistant_character"]["clothing"] == "Black apron"
+    assert context["people"]["assistant_character"]["name"] == "Mira"
+    latest = json.loads(calls[0][5][-1][1])
+    assert latest == {
+        "speaker": "human_player",
+        "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
+        "text": text,
+    }
+    assert operation.state == "complete"
+    saved = api.conversations.get(scene.id)
+    assert saved.turns[0].user == text and saved.state.character.clothing == "Black apron"
 
 
 def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkeypatch):
@@ -616,6 +674,18 @@ def test_language_switch_schema_and_repair_target_narration(
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
                 assert set(wire["properties"]) == {"response"}
+                for field in ("text", "action_narration"):
+                    assert (
+                        language
+                        in wire["$defs"]["DialogueResult"]["properties"][field]["description"]
+                    )
+                assert (
+                    language in wire["$defs"]["SceneryChange"]["properties"]["value"]["description"]
+                )
+                assert (
+                    language
+                    not in wire["$defs"]["ClothingChange"]["properties"]["value"]["description"]
+                )
             return self
 
         def invoke(self, messages, config):
@@ -677,3 +747,68 @@ def test_language_switch_schema_and_repair_target_narration(
     assert language in calls[0][0].content
     assert "scenery" in calls[-1][-1].content
     assert sum(message.type == "system" for message in calls[-1]) == 1
+
+
+def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_path, monkeypatch):
+    import langchain_openai
+    from langchain_core.messages import AIMessage
+
+    calls = []
+    object_id = "retained-private-object"
+
+    class Model:
+        def __init__(self, **options):
+            self.model = options["model"]
+
+        def bind(self, **_):
+            return self
+
+        def invoke(self, messages, config):
+            calls.append(messages)
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "response": {
+                            "kind": "companion",
+                            "changes": [
+                                {
+                                    "field": "held_objects",
+                                    "value": [{"id": object_id, "name": "Parcel"}],
+                                }
+                            ]
+                            if len(calls) == 1
+                            else [],
+                            "action_narration": "",
+                            "text": "Hello, Akari.",
+                        }
+                    }
+                ),
+                response_metadata={"model_name": self.model},
+            )
+
+    monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
+    api = Client.initialize(tmp_path)
+    scene = api.conversations.create(
+        ConversationInput(
+            title="Ownership",
+            locale="en",
+            user={"name": "Akari", "initial_held_objects": [{"id": object_id, "name": "Parcel"}]},
+            character={"name": "Mira"},
+        )
+    )
+    result = api.conversations.send(
+        scene.id,
+        SendInput(
+            operation_id=uuid4(),
+            expected_revision=0,
+            text="I keep my parcel. Hello.",
+            allow_real_llm=True,
+        ),
+    )
+    assert result.state == "complete" and len(calls) == 2
+    correction = calls[-1][-1].content
+    assert '"path": ["response", "changes", 0, "value", 0, "id"]' in correction
+    assert "object_ownership" in correction and object_id not in correction
+    saved = api.conversations.get(scene.id)
+    assert saved.state.player.held_objects[0].id == object_id
+    assert not saved.state.character.held_objects

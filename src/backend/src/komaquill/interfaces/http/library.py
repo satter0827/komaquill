@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks, FastAPI, Response
 from komaquill.adapters.conversation_archive import ArchivedConversation
 from komaquill.api import Client
 from komaquill.conversations.models import Conversation
+from komaquill.interfaces.http.background import execute_retained
 from komaquill.library.models import (
     CharacterPreset,
     CharacterSaveRequest,
@@ -75,7 +76,7 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
             )
         )
         if created:
-            tasks.add_task(client.library.execute, job.id)
+            tasks.add_task(execute_retained, client.library.execute, job.id)
         return job
 
     @app.get("/api/v1/preferences", response_model=Preferences, operation_id="get_preferences")
@@ -182,7 +183,7 @@ def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
     def create_job(body: CreationRequest, tasks: BackgroundTasks) -> CreationJob:
         job, created = selected().library.accept(body)
         if created:
-            tasks.add_task(selected().library.execute, job.id)
+            tasks.add_task(execute_retained, selected().library.execute, job.id)
         return job
 
     @app.get("/api/v1/creation-jobs/{identity}", response_model=CreationJob, operation_id="get_job")

@@ -38,6 +38,8 @@ class NativeTokens:
             ) from None
 
     def __call__(self, messages: Sequence[BaseMessage]) -> int:
+        if not messages:
+            return 0
         if self.model is None:
             raise KomaquillError(code="llm_unavailable", retryable=False)
         roles = {"human": "user", "ai": "assistant", "system": "system"}
@@ -49,6 +51,10 @@ class NativeTokens:
         history: Any = {
             "messages": [{"role": roles[m.type], "content": m.content} for m in messages]
         }
+        if all(message.type == "system" for message in messages):
+            # Trimming counts the system prefix alone; templates require a user turn.
+            # The empty turn only adds conservative overhead to that partial count.
+            history["messages"].append({"role": "user", "content": ""})
         try:
             rendered = self.model.apply_prompt_template(history)
         except Exception:

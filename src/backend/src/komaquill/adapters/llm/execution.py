@@ -34,15 +34,20 @@ def response_schema(schema: type[BaseModel], field_language: str | None) -> dict
     """Use the same wire schema for context budgeting and the SDK request."""
     result = deepcopy(schema.model_json_schema())
     if field_language:
-        for field in ("narration", "action_narration", "text"):
-            if field not in result["properties"]:
-                continue
-            meaning = result["properties"][field].get("description", "")
-            result["properties"][field]["description"] = (
-                meaning + " " + f"Write this entire {field} field only in {field_language}, "
-                "including after a language switch. "
-                "Do not copy a different language from history."
-            )
+        for definition in (result, *result.get("$defs", {}).values()):
+            properties = definition.get("properties", {})
+            fields = [
+                field for field in ("narration", "action_narration", "text") if field in properties
+            ]
+            if properties.get("field", {}).get("const") == "scenery":
+                fields.append("value")
+            for field in fields:
+                meaning = properties[field].get("description", "")
+                properties[field]["description"] = (
+                    meaning + " " + f"Write this entire {field} field only in {field_language}, "
+                    "including after a language switch. Keep supplied names unchanged. "
+                    "Do not copy a different language from history."
+                )
     return result
 
 
@@ -459,7 +464,9 @@ class StructuredExecution:
             return value
 
         def repair_prompt(invalid: ValueError) -> str:
-            issues = []
+            issues: list[dict[str, object]] = []
+            if isinstance(invalid, ResponseConstraintError):
+                issues.append({"path": list(invalid.path), "constraint": invalid.rule})
             if isinstance(invalid, ValidationError):
                 for issue in invalid.errors(
                     include_input=False, include_url=False, include_context=False

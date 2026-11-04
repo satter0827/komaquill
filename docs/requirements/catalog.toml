@@ -383,7 +383,7 @@ implementation_note = "引用とターンID・項目・範囲・内容ハッシ�
 [requirements.REQ-LLM-EFFICIENCY]
 summary = "会話の精度と自然さを維持しながらLLMのトークン量と不要な呼び出しを減らす"
 status = "in_progress"
-implementation_note = "共通予算、公式SDKによる読込済みモデルの計数、予算超過時の原文選択、状態の差分回答、回数と境界を保持する履歴投影、公式チェックポイントを実装した。実LLM比較では意味の誤りが残り、専用の事実回答と候補モデルへの切替は不採用とした。全呼び出しと失敗した生成物を保持し、品質維持と総量削減の受入は未完了とする。"
+implementation_note = "共通予算、公式SDKによる読込済みモデルの計数、予算超過時の原文選択、状態の差分回答、回数と境界を保持する履歴投影、公式チェックポイントを実装した。人物情報と現在状態を役割別にまとめ、入れ子のSchemaの言語指定と部分履歴のNative計数を修正した。実4B・9Bには意味の誤りが残り、9Bへの既定変更は不採用とした。全呼び出しと失敗した生成物を保持し、品質維持と総量削減の受入は未完了とする。"
 acceptance = [
     "人物の役割・現在状態・所有関係・生成言語・重要事項の参照と文章の自然さを削減前後で確認する",
     "指示・状態・履歴・スキーマの不要な重複を減らし、必要情報の削除や不自然な短文化を強制しない",
@@ -400,7 +400,7 @@ acceptance = [
     "比較証跡は版・操作・用途・呼び出し順・モデル・指示・出力参照・使用量・評価者を関連付け、元の生成物と評価を変更しない",
 ]
 sources = ["src/backend/src/komaquill/adapters/llm/context.py", "src/backend/src/komaquill/adapters/llm/memory.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
-tests = ["tests/unit/test_llm_graph.py", "tests/unit/test_llm_execution.py", "tests/integration/test_conversation_memory.py", "tests/unit/test_llm_comparison.py"]
+tests = ["tests/unit/test_llm_graph.py", "tests/unit/test_llm_execution.py", "tests/unit/test_llm_tokenization.py", "tests/integration/test_conversation_llm.py", "tests/integration/test_conversation_memory.py", "tests/unit/test_llm_comparison.py"]
 
 [requirements.REQ-LLM-BOUNDARIES]
 summary = "共通のLLM実行と会話・下書き・英訳・記憶作成の責務を分け、標準機能へ委譲する"
@@ -504,9 +504,9 @@ tests = ["tests/integration/test_player_actions.py", "tests/integration/test_pla
 [requirements.REQ-CHAT-CHECKPOINT]
 summary = "公式チェックポイントで受信済み応答を再利用し、保存と実行の正本を分ける"
 status = "implemented"
-acceptance = ["同じSQLite内の公式SqliteSaverで会話入力と要求・検証・有限修正を保存する", "原応答、使用量、設定の照合を保持し、受付不明の送信を再送しない", "保存直前の失敗から追加生成なしで復旧し、条件が変わった再開を停止する", "本文とイベントを分離し、概要とページ取得を全文の取得から分ける", "停止・バックアップ・内容照合を伴う明示移行で旧JSONと応答を保持する"]
+acceptance = ["同じSQLite内の公式SqliteSaverで会話入力と要求・検証・有限修正を保存する", "原応答、使用量、設定の照合を保持し、受付不明の送信を再送しない", "保存直前の失敗から追加生成なしで復旧し、条件が変わった再開を停止する", "HTTPの受付後の既知の保存失敗を送信済み応答へ再送出しない", "本文とイベントを分離し、概要とページ取得を全文の取得から分ける", "停止・バックアップ・内容照合を伴う明示移行で旧JSONと応答を保持する"]
 sources = ["src/backend/src/komaquill/adapters/checkpoints.py", "src/backend/src/komaquill/adapters/llm/workflow.py", "src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/database.py"]
-tests = ["tests/integration/test_execution_content.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_conversation_memory.py"]
+tests = ["tests/integration/test_execution_content.py", "tests/integration/test_conversation_durability.py", "tests/integration/test_conversation_memory.py", "tests/integration/test_operation_review.py", "tests/live/operation_recovery.py"]
 
 [requirements.REQ-CONTENT-MODE]
 summary = "すべての保存物を固定NSFWとして扱い実行条件と原本を保全する"

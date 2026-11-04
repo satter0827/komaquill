@@ -28,6 +28,7 @@ from komaquill.conversations.models import (
 from komaquill.conversations.visuals import VisualReview
 from komaquill.domain.errors import OperationStage
 from komaquill.domain.materials import InputArtifact
+from komaquill.interfaces.http.background import execute_retained
 from komaquill.messages import error_message, message
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
@@ -300,7 +301,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         service = selected().conversations
         operation, created = service.accept(identity, body)
         if created:
-            tasks.add_task(service.execute, operation.id)
+            tasks.add_task(execute_retained, service.execute, operation.id)
         return operation_view(operation)
 
     @app.get(
@@ -354,7 +355,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         service = selected().conversations
         result = service.resume_operation(identity, allow_real_llm=allow_real_llm, execute=False)
         if result.state == "accepted":
-            tasks.add_task(service.execute, identity)
+            tasks.add_task(execute_retained, service.execute, identity)
         return operation_view(result)
 
     @app.get("/api/v1/images", response_model=list[Run], operation_id="list_images")

@@ -25,3 +25,13 @@
 日時、ケース版、対象コードの内容ハッシュ、設定・モデル・指示の識別情報、実行回数、修正回数、使用量、不明値、拒否・失敗を含む全件を記録する。判定には評価者と根拠のターン・画像を対応付ける。好みと条件違反を分け、採用した結果だけで成功率を算出しない。
 
 本文・画像・要求・応答は`.artifacts/records`と作品データへ保持し、公開資料には匿名化した観測だけを記載する。訂正は追記し、原本を変更しない。実画像を見ていない判定を画質や人物数の達成として扱わない。
+
+## 実LLMの保存・復旧
+
+独立した検査`tests/live/operation_recovery.py`は、発言のみ、発言と行動、応答確定の失敗、応答チェックポイントの失敗、HTTP受付応答の喪失、下書きの保存失敗を扱う。通常ゲートでは実行しない。明示許可と既存の共通呼び出し予算を渡し、分離した作業場所へ保存する。
+
+```powershell
+node scripts/python.mjs -m tests.live.operation_recovery --allow-real-llm --output .artifacts/records/reports/recovery/RUN --budget .artifacts/records/reports/BUDGET/llm-budget.json
+```
+
+初回の実生成と復旧を分けて計数し、再起動後の復旧と同じ操作IDの再受付で追加推論がゼロ、行動が一度だけ適用されることを確認する。HTTPでは実サーバーへ同じ接続から照会し、受付後の保存失敗で接続を破壊しないことも確認する。結果は[実LLM・T4の再検証](results/live-ui-operations.md)を参照する。

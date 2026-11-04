@@ -65,6 +65,29 @@ def test_missing_model_is_not_loaded_and_client_is_closed(monkeypatch):
     assert calls == ["closed"]
 
 
+def test_native_counter_handles_empty_trim_candidates_without_rendering(monkeypatch):
+    calls = native(monkeypatch)
+    counter = NativeTokens(profile())
+    assert counter([]) == 0 and calls == []
+    messages = [SystemMessage(content="Policy"), HumanMessage(content="Hello")]
+    budget = ContextBudget(1000, 8192, 100, 100, "schema", count=counter)
+    assert budget.select(messages, trim=True) == messages
+    assert all(history["messages"] for history in calls)
+    counter.close()
+
+
+def test_native_counter_adapts_system_only_candidates_without_mutating_input(monkeypatch):
+    calls = native(monkeypatch)
+    counter = NativeTokens(profile())
+    system = [SystemMessage(content="Policy")]
+    assert counter(system) == 15
+    assert calls == [
+        {"messages": [{"role": "system", "content": "Policy"}, {"role": "user", "content": ""}]}
+    ]
+    assert len(system) == 1 and system[0].content == "Policy"
+    counter.close()
+
+
 def test_counting_failures_do_not_expose_sdk_details(monkeypatch):
     native(monkeypatch, broken=True)
     counter = NativeTokens(profile())

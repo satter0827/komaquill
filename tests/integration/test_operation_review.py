@@ -40,6 +40,65 @@ def test_http_connection_rejection_retains_its_safe_failure_stage(tmp_path, monk
         assert api.conversations.get(scene.id).revision == 0
 
 
+@pytest.mark.parametrize("kind", ["conversation", "draft"])
+def test_storage_failure_after_http_acceptance_does_not_abort_the_response(
+    tmp_path, monkeypatch, kind
+):
+    from komaquill.api import CharacterInput
+
+    api = Client.initialize(tmp_path)
+    identity = uuid4()
+    calls = []
+    if kind == "conversation":
+        scene = api.conversations.create(
+            ConversationInput(title="Retained reply", llm_profile="fake")
+        )
+
+        def reply(*_):
+            calls.append(identity)
+            return Reply(text="Saved once", state_patch={})
+
+        monkeypatch.setattr(api.conversations.responder, "reply", reply)
+        target = api.conversations.repository
+        method = "commit"
+        path = f"/api/v1/conversations/{scene.id}/turns"
+        body = {"operation_id": str(identity), "expected_revision": 0, "text": "Hello"}
+    else:
+
+        def draft(*_):
+            calls.append(identity)
+            return CharacterInput(name="Saved once")
+
+        monkeypatch.setattr(api.library.creator, "draft", draft)
+        target = api.library.store
+        method = "save_job"
+        path = "/api/v1/creation-jobs"
+        body = {
+            "operation_id": str(identity),
+            "kind": "character_draft",
+            "prompt": "An idea",
+            "llm_profile": "fake",
+        }
+    original = getattr(target, method)
+
+    def fail(*args):
+        if kind == "conversation" or args[0].state == "complete":
+            raise KomaquillError(code="storage_failed", stage="storage")
+        return original(*args)
+
+    monkeypatch.setattr(target, method, fail)
+    with TestClient(create_app(api)) as http:
+        accepted = http.post(path, json=body)
+        assert accepted.status_code == 202
+        monkeypatch.setattr(target, method, original)
+        receipt = http.get(
+            f"/api/v1/{'operations' if kind == 'conversation' else 'creation-jobs'}/{identity}"
+        )
+        assert receipt.status_code == 200 and receipt.json()["state"] == "complete"
+        assert http.get("/api/v1/conversations").status_code == 200
+        assert calls == [identity]
+
+
 def test_resume_availability_does_not_commit_a_retained_reply(tmp_path):
     api = Client.initialize(tmp_path)
     scene = api.conversations.create(ConversationInput(title="Read only", llm_profile="fake"))

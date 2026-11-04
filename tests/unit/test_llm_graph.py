@@ -34,8 +34,9 @@ def test_graph_bounds_calls_and_preserves_the_rejected_response(repairs, valid_a
     if valid_after <= repairs:
         assert run().text == "Done"
     else:
-        with pytest.raises(KomaquillError, match="invalid_response"):
+        with pytest.raises(KomaquillError, match="invalid_response") as rejected:
             run()
+        assert rejected.value.stage == "response_validation"
     assert [attempt for _, attempt in calls] == list(range(min(valid_after, repairs) + 1))
     if len(calls) == 2:
         assert calls[1][0][-2].content == "invalid"

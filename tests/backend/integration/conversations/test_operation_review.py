@@ -112,8 +112,12 @@ def test_resume_availability_does_not_commit_a_retained_reply(tmp_path):
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))
         before = connection.execute(select(operations.c.payload)).scalar_one()
+    request = AvailabilityRequest(kind="resume", identity=identity)
+    observed = api.availability.check(request)
+    assert not observed.ready and observed.reason == "operation_conflict"
+    assert observed.connections == []
     with pytest.raises(KomaquillError, match="operation_conflict"):
-        api.availability.check(AvailabilityRequest(kind="resume", identity=identity))
+        api.availability.require(request)
     assert api.conversations.get(scene.id).turn_count == 0
     with repository.database.engine.connect() as connection:
         assert connection.execute(select(operations.c.payload)).scalar_one() == before

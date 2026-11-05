@@ -24,7 +24,6 @@ from komaquill.domain.errors import KomaquillError
 
 if TYPE_CHECKING:
     from komaquill.adapters.llm.context import ContextBudget
-    from komaquill.adapters.llm.tokenization import NativeTokens
 
 
 MAX_REPAIR_ISSUES = 8
@@ -57,7 +56,6 @@ class StructuredExecution:
     ) -> None:
         self.workspace = workspace
         self.configuration = configuration
-        self._counters: dict[str, NativeTokens] = {}
 
     @cached_property
     def checkpoints(self) -> Any:
@@ -74,9 +72,6 @@ class StructuredExecution:
         return compile_request(self.checkpoints.saver)
 
     def close(self) -> None:
-        for counter in self._counters.values():
-            counter.close()
-        self._counters.clear()
         if "checkpoints" in self.__dict__:
             self.checkpoints.close()
         self.__dict__.pop("graph", None)
@@ -90,9 +85,7 @@ class StructuredExecution:
         profile = self.settings.llm_profiles[profile_id]
         counter = None
         if profile.token_counting == "lmstudio":
-            if profile_id not in self._counters:
-                self._counters[profile_id] = NativeTokens(profile)
-            counter = self._counters[profile_id]
+            counter = NativeTokens(profile)
         return ContextBudget(
             max_characters=self.settings.max_input_characters,
             window_tokens=min(self.settings.context_window_tokens, counter.window_tokens)

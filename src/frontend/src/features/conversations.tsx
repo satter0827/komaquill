@@ -135,10 +135,7 @@ function ConversationView({ identity }: { identity: string }) {
   const [operationId, setOperationId] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const narrow = useMediaQuery('(max-width: 1279px)')
-  const [wideOpen, setWideOpen] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const showState = narrow ? mobileOpen : wideOpen
-  const setShowState = narrow ? setMobileOpen : setWideOpen
+  const [showState, setShowState] = useState(false)
   const detail = useQuery({
     ...q.getConversationOptions({ path: { identity } }),
   })
@@ -936,7 +933,7 @@ function ConversationView({ identity }: { identity: string }) {
         </div>
       </section>
       {narrow ? (
-        <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+        <Dialog.Root open={showState} onOpenChange={setShowState}>
           <Modal
             label={messages.currentState}
             closeLabel={messages.closeState}

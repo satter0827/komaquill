@@ -1,5 +1,20 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  afterEach,
+  vi,
+} from 'vitest'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
@@ -121,6 +136,30 @@ async function actionDestination() {
 }
 
 describe('conversation workflow', () => {
+  it('keeps panel opening intent before the width change notification arrives', async () => {
+    const matchMedia = vi.mocked(window.matchMedia)
+    const original = matchMedia.getMockImplementation()!
+    let narrow = false
+    matchMedia.mockImplementation((query) => {
+      const media = original(query)
+      return {
+        ...media,
+        matches: query === '(max-width: 1279px)' ? narrow : media.matches,
+      }
+    })
+    try {
+      app('/conversations/one')
+      const trigger = await screen.findByRole('button', { name: m.showState })
+      narrow = true
+      fireEvent.click(trigger)
+      expect(
+        await screen.findByRole('dialog', { name: m.currentState }),
+      ).toBeVisible()
+    } finally {
+      matchMedia.mockImplementation(original)
+    }
+  })
+
   it.each(['/new', '/new?story=stories'])(
     'uses the story counterpart on first entry at %s',
     async (path) => {

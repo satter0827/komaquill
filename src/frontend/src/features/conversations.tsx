@@ -5,7 +5,13 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { Send, Feather, PanelRight, Sparkles } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
 import { Link, useParams } from 'react-router'
 import { isRejectedRequest, POLL_INTERVAL_MS } from '../api/client'
@@ -114,6 +120,7 @@ function ConversationView({ identity }: { identity: string }) {
   const [actionOpen, setActionOpen] = useState(false)
   const actionEditor = useRef<HTMLDivElement>(null)
   const messageInput = useRef<HTMLTextAreaElement>(null)
+  const composerOptions = useRef<HTMLDivElement>(null)
   const { scrollRef, contentRef, scrollToBottom, isAtBottom } =
     useStickToBottom({ initial: 'instant', resize: 'instant' })
   const [subjects, setSubjects] = useState<
@@ -139,6 +146,10 @@ function ConversationView({ identity }: { identity: string }) {
     identity,
     conversation: detail.data,
   })
+  useLayoutEffect(() => {
+    if (actionControls.queued && composerOptions.current)
+      composerOptions.current.scrollTop = 0
+  }, [actionControls.queued])
   const sendAvailability = useAvailability(
     detail.data ? { kind: 'conversation', identity } : undefined,
   )
@@ -682,7 +693,7 @@ function ConversationView({ identity }: { identity: string }) {
           </div>
         </div>
         <div className="composer-area">
-          {!isAtBottom && (
+          {!isAtBottom && (conversation.turn_count ?? 0) > 0 && (
             <Button
               className="latest-reply"
               onClick={() => void scrollToBottom('instant')}
@@ -690,7 +701,7 @@ function ConversationView({ identity }: { identity: string }) {
               {messages.latestReply}
             </Button>
           )}
-          <div className="composer-options">
+          <div className="composer-options" ref={composerOptions}>
             {send.error && (
               <p role="alert" className="error">
                 {failure(send.error)}

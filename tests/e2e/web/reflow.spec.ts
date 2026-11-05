@@ -70,7 +70,7 @@ for (const locale of ['ja', 'en'] as const) {
           )
         }
       }
-      await page.setViewportSize({ width: 390, height: 844 })
+      await page.setViewportSize({ width: 390, height: 700 })
       await page.getByRole('button', { name: messages.showNavigation }).click()
       const navigation = page.locator('.navigation-modal .navigation')
       expect(
@@ -95,6 +95,9 @@ for (const locale of ['ja', 'en'] as const) {
       await expect(page.locator('.queued-action > p')).toBeInViewport({
         ratio: 1,
       })
+      await expect(
+        page.getByRole('button', { name: messages.latestReply, exact: true }),
+      ).not.toBeVisible()
       await expect(input).toHaveValue('May we wait here for five minutes?')
       await page
         .getByRole('button', { name: messages.editQueuedAction, exact: true })

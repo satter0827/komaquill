@@ -50,6 +50,21 @@ def test_cli_initializes_without_a_repository_and_reports_bad_config(tmp_path):
     assert result.exit_code == 1 and "Traceback" not in result.output
 
 
+def test_invalid_first_configuration_can_be_corrected_before_storage_is_created(tmp_path):
+    from komaquill.api import Client, KomaquillError
+
+    config = tmp_path / "komaquill.toml"
+    config.write_text("unknown = true\n")
+    with pytest.raises(KomaquillError, match="invalid_configuration"):
+        Client.initialize(tmp_path)
+    assert not (tmp_path / ".artifacts/data").exists()
+    config.write_text('gpu = "L4"\n')
+    api = Client.initialize(tmp_path)
+    assert api._project.settings().gpu == "L4"
+    assert (tmp_path / ".artifacts/data/komaquill.sqlite3").is_file()
+    api.close()
+
+
 def test_settings_precedence_and_startup_snapshot(project, monkeypatch):
     (project.root / "komaquill.toml").write_text('gpu="L4"\nlocal_port=19000\n')
     assert project.settings().gpu == "L4"

@@ -172,6 +172,8 @@ def initialize(directory: Path) -> RuntimeWorkspace:
             handle.write(
                 "# Set project overrides here. Unspecified values use the packaged defaults.\n"
             )
+    project = RuntimeWorkspace(root)
+    project.settings()
     ignore = root / ".gitignore"
     if not ignore.exists():
         with ignore.open("x", encoding="utf-8") as handle:
@@ -181,7 +183,6 @@ def initialize(directory: Path) -> RuntimeWorkspace:
         if not any(row.strip() in {"/.artifacts/", ".artifacts/"} for row in rules.splitlines()):
             with ignore.open("a", encoding="utf-8") as handle:
                 handle.write(("" if rules.endswith("\n") else "\n") + "/.artifacts/\n")
-    project = RuntimeWorkspace(root)
     project.artifacts.mkdir(exist_ok=True)
     for folder in (project.data, project.records, project.state):
         folder.mkdir(exist_ok=True)
@@ -191,7 +192,6 @@ def initialize(directory: Path) -> RuntimeWorkspace:
             files("komaquill").joinpath("resources/artifacts.md").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-    project.settings()
     from komaquill.adapters.persistence.connection import Database
 
     Database(project.data / "komaquill.sqlite3", create=True).engine.dispose()

@@ -582,7 +582,7 @@ summary = "DBの関係と不変の生成物を分け、原本を保全して変�
 status = "implemented"
 acceptance = ["状態と関係をSQLiteで検査する", "内容ハッシュで画像と実要求・応答を識別する", "論理キーを物理パスとして扱わない", "公式Saverを含む使用中の全接続で切り替えを拒否する", "DBの喪失と版情報の欠損を空の状態へ置き換えない", "移動途中の停止から再開できる", "アーカイブ操作を原本のまま保持する"]
 sources = ["src/backend/src/komaquill/adapters/persistence/schema.py", "src/backend/src/komaquill/adapters/object_store.py", "src/backend/src/komaquill/adapters/persistence/migrate.py"]
-tests = ["tests/backend/integration/platform/test_storage_migration.py", "tests/backend/integration/platform/test_objects.py", "tests/backend/integration/storage/test_missing_database.py", "tests/backend/integration/storage/test_checkpoint_access.py", "tests/backend/integration/storage/test_call_record_integrity.py"]
+tests = ["tests/backend/integration/platform/test_storage_migration.py", "tests/backend/integration/platform/test_objects.py", "tests/backend/integration/storage/test_missing_database.py", "tests/backend/integration/storage/test_checkpoint_access.py", "tests/backend/integration/storage/test_call_record_integrity.py", "tests/backend/integration/platform/test_distribution.py"]
 
 [requirements.REQ-WEB-DEVICE-ACCESS]
 summary = "localhostを既定とし、HTTPSで承認した端末だけにLANアクセスを許可する"

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from datetime import UTC, datetime
+from math import isfinite
 from pathlib import Path
 from uuid import uuid4
 
@@ -55,14 +56,23 @@ def main(scope: str = "daily", *, plan: bool = False) -> bool:
     env.update(PYTHONUTF8="1", KOMAQUILL_PYTHON=sys.executable, NX_BASE=base)
     try:
         with (report / "output.log").open("w", encoding="utf-8") as output:
+            limits = policy(ROOT)
+            step_timeout = float(limits["step_timeout"])
+            pipeline_timeout = float(limits["pipeline_timeout"])
+            if not 0 < step_timeout < pipeline_timeout or not all(
+                isfinite(value) for value in (step_timeout, pipeline_timeout)
+            ):
+                payload["failure_code"] = "invalid_quality_limits"
+                raise ValueError
+            payload["timeout_seconds"] = pipeline_timeout
+            atomic_json(report / "checks.json", payload)
             result = run_owned(
                 command,
                 cwd=ROOT,
                 env=env,
                 stdout=output,
-                timeout=float(policy(ROOT).get("step_timeout", 900)),
+                timeout=pipeline_timeout,
             )
-        print((report / "output.log").read_text(encoding="utf-8"))
         success = result == 0 and input_fingerprint(ROOT) == fingerprint
         payload.update(status="passed" if success else "failed", exit_code=result)
     except subprocess.TimeoutExpired:
@@ -74,8 +84,16 @@ def main(scope: str = "daily", *, plan: bool = False) -> bool:
     except Exception as error:
         success = False
         payload.update(status="failed", exit_code=None, failure_type=type(error).__name__)
+    try:
+        output_text = (report / "output.log").read_text(encoding="utf-8", errors="replace")
+        payload["output_available"] = True
+    except OSError:
+        output_text = ""
+        payload["output_available"] = False
     payload["finished_at"] = datetime.now(UTC).isoformat()
     atomic_json(report / "checks.json", payload)
+    if output_text:
+        print(output_text)
     print(str(report / "checks.json"))
     return success
 

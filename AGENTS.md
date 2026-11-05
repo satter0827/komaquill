@@ -44,6 +44,7 @@
 - src/frontendはReact、src/backendはPython、src/contractsはAPI契約を担当する。tools/は品質ゲート・契約生成・配布・開発起動、scripts/は実機検証・評価・探索・外部監査、bootstrap/は環境導入、tests/は決定的な検査と再利用するfixtureを担当する。scriptsからtestsへの依存を禁止し、scriptsの機構はtests/scriptsから検証する。
 - 日常はpnpm check、PRはpnpm check:ci、公開前はpnpm check:allとpnpm buildを実行する。Nxの依存と入力から対象を選び、局所検査を全体成功へ昇格させない。実行管理は製品コードをimportせず、不足環境や中断も記録する。実機検査は分離する。
 - 同じ範囲のテストを複数のNx targetへ登録しない。スクリプト推論を含む実効グラフでテストの担当と依存を確認する。
+- 検査全体と個別検査の期限を分け、全体の期限に準備と終了確認を含める。タイムアウトでも取得済みのログと終端状態を残す。
 - src/・tools/・scripts/・bootstrap/のPythonを、未実行ファイルも含めて計測する。tests/を除外し、行90%以上・分岐80%以上を独立判定する。数値の正本はpyproject.tomlとする。
 - 回収の部分失敗、破損履歴、並行実行、設定変更、SSH切断、ログ取得失敗、GPU終了失敗、監視停止後の復旧を回帰テストで確認する。
 - PowerShellはWindowsで構文、引数、終了コード、生成先を検証する。GPUを使う検証は自動テストと分ける。

@@ -300,3 +300,94 @@ test('album keeps collapsed files unloaded and reopens the accepted result witho
   expect(readIds.filter((path) => path.endsWith(run.run_id))).toHaveLength(1)
   await evidence.capture('Album result remains reachable after closing its day')
 })
+
+for (const locale of ['ja', 'en'] as const) {
+  test(`${locale}: keeps failed cover recovery visible inside cards and editor previews`, async ({
+    page,
+    request,
+    evidence,
+  }) => {
+    const m = locale === 'ja' ? ja : en
+    await page.setViewportSize(
+      locale === 'ja' ? viewports.desktop : viewports.mobile,
+    )
+    const preferences = await (await request.get('/api/v1/preferences')).json()
+    await request.put('/api/v1/preferences', {
+      data: {
+        ...preferences,
+        locale,
+        font_size: locale === 'ja' ? 'normal' : 'large',
+      },
+    })
+    const identity = randomUUID()
+    await request.post('/api/v1/images', {
+      data: { request_id: identity, prompt: 'An empty coast.' },
+    })
+    await request.post(`/api/v1/images/${identity}/collect`)
+    const character = {
+      id: randomUUID(),
+      name: 'Cover recovery',
+      description: '',
+      revision: 0,
+      image_id: identity,
+    }
+    await page.route('**/api/v1/characters', (route) =>
+      route.fulfill({ json: [character] }),
+    )
+    await page.route('**/api/v1/stories', (route) =>
+      route.fulfill({ json: [character] }),
+    )
+    const conversation = await (
+      await request.post('/api/v1/conversations', {
+        data: { title: 'Cover recovery', llm_profile: 'fake', locale },
+      })
+    ).json()
+    await page.route(
+      `**/api/v1/conversations/${conversation.id}`,
+      async (route) => {
+        const response = await route.fetch()
+        const value = await response.json()
+        await route.fulfill({
+          json: {
+            ...value,
+            definition: { ...value.definition, presets: { story: character } },
+          },
+        })
+      },
+    )
+    let broken = true
+    let files = 0
+    await page.route(`**/api/v1/images/${identity}/files/0`, (route) => {
+      files++
+      return broken
+        ? route.fulfill({ status: 503, body: '' })
+        : route.continue()
+    })
+    for (const [path, selector] of [
+      ['/characters', '.preset-cover'],
+      [`/characters/${character.id}`, '.cover-preview'],
+      ['/stories', '.preset-cover'],
+      [`/stories/${character.id}`, '.cover-preview'],
+      [`/conversations/${conversation.id}`, '.conversation-banner'],
+    ]) {
+      broken = true
+      await page.goto(path)
+      const cover = page.locator(selector)
+      const retry = cover.getByRole('button', { name: m.retryCollection })
+      await expect(retry).toBeAttached()
+      await evidence.capture(`Image display failure remains within ${selector}`)
+      const bounds = await cover.boundingBox()
+      const control = await retry.boundingBox()
+      expect(control!.y).toBeGreaterThanOrEqual(bounds!.y)
+      expect(control!.y + control!.height).toBeLessThanOrEqual(
+        bounds!.y + bounds!.height,
+      )
+      broken = false
+      const before = files
+      await retry.click()
+      await expect(cover.locator('img')).toHaveJSProperty('naturalWidth', 8)
+      expect(files).toBeGreaterThan(before)
+      await expect(retry).toHaveCount(0)
+    }
+  })
+}

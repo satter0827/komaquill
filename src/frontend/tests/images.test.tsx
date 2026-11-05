@@ -7,7 +7,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { useState } from 'react'
-import { ImagesPage, ImageResult, groupImageDays } from '../src/features/images'
+import {
+  ImagesPage,
+  ImageResult,
+  OriginalImage,
+  groupImageDays,
+} from '../src/features/images'
 import {
   ImageActivityProvider,
   imageMonitorKey,
@@ -139,6 +144,17 @@ it('retries file display without collecting or generating again', async () => {
   expect(requests).toHaveLength(0)
   expect(collections).toBe(0)
   cache.clear()
+})
+it('displays a new image URL after the previous file failed', async () => {
+  const view = render(<OriginalImage identity="old" />)
+  fireEvent.error(screen.getByRole('img'))
+  expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  view.rerender(<OriginalImage identity="new" />)
+  expect(screen.getByRole('img')).toHaveAttribute(
+    'src',
+    '/api/v1/images/new/files/0',
+  )
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
 it('does not collect an old unfinished run when its day is opened', async () => {
   records.set('old', { ...saved('old', 'queued'), runtime_id: 'past' })

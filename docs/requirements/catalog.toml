@@ -545,6 +545,9 @@ acceptance = [
     "保存と開始にLLMやGPUの副作用を追加せず、名前と紹介を先に表示する",
     "日英、通常とコンパクト、文字拡大、狭い画面で配置と操作を検査する",
     "受付応答の喪失、表示・回収・生成の失敗で入力・操作ID・保存済み画像を保持する",
+    "手動の受付確認は同じIDのGETだけを行い、生成を伴うPOSTを再実行しない",
+    "受付不明を応答生成中と表示せず、送信中・受付確認中・応答生成中を区別する",
+    "画像表示失敗の説明と取得再試行を固定画像枠で切り落とさず、別画像への更新を妨げない",
 ]
 sources = ["src/frontend/src/features/image-activity.tsx", "src/frontend/src/features/images.tsx", "src/frontend/src/features/conversations.tsx", "src/frontend/src/features/availability.tsx", "src/frontend/src/app/styles.css"]
-tests = ["src/frontend/tests/images.test.tsx", "src/frontend/tests/content.test.tsx", "src/frontend/tests/conversations.test.tsx", "tests/e2e/web/layout-availability.spec.ts", "tests/e2e/web/workflow.spec.ts"]
+tests = ["src/frontend/tests/images.test.tsx", "src/frontend/tests/content.test.tsx", "src/frontend/tests/conversations.test.tsx", "src/frontend/tests/creators.test.tsx", "tests/e2e/web/layout-availability.spec.ts", "tests/e2e/web/recovery.spec.ts", "tests/e2e/web/workflow.spec.ts"]

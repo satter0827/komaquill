@@ -89,7 +89,7 @@ export function ConversationNotes({
               />
             </label>
             <Button type="submit" disabled={save.isPending}>
-              {prepared ? m.retryRequest : m.save}
+              {prepared ? m.retrySave : m.save}
             </Button>
             {save.error && <p role="alert">{failure(save.error)}</p>}
           </form>

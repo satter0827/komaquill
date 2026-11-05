@@ -534,7 +534,7 @@ export function VisualReviewForm({
         <Button
           onClick={() => review.mutate({ path: { identity }, body: prepared })}
         >
-          {m.retryRequest}
+          {m.retrySave}
         </Button>
       )}
       {prepared && review.isError && (

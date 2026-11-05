@@ -33,32 +33,35 @@ export function OriginalImage({
 }) {
   const m = useMessages()
   const format = useFormatMessage()
-  const [failed, setFailed] = useState(false)
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const url = `/api/v1/images/${identity}/files/${index}`
+  const failed = failedUrl === url
   return (
-    <div className="image-file">
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={alt || format('openImageLabel', { index: index + 1 })}
-      >
-        <img
-          key={attempt}
-          className={className}
-          src={url}
-          alt={alt || format('imageAlt', { index: index + 1 })}
-          onError={() => setFailed(true)}
-          onLoad={() => setFailed(false)}
-        />
-      </a>
+    <div className="image-file" data-failed={failed || undefined}>
+      {!failed && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={alt || format('openImageLabel', { index: index + 1 })}
+        >
+          <img
+            key={attempt}
+            className={className}
+            src={url}
+            alt={alt || format('imageAlt', { index: index + 1 })}
+            onError={() => setFailedUrl(url)}
+            onLoad={() => setFailedUrl(null)}
+          />
+        </a>
+      )}
       {failed && (
         <div className="image-error" role="alert">
           <p>{m.imageDisplayFailed}</p>
           <Button
             onClick={() => {
-              setFailed(false)
+              setFailedUrl(null)
               setAttempt((value) => value + 1)
             }}
           >
@@ -334,7 +337,7 @@ export function ImagesPage() {
             {submit.isPending
               ? m.requestSending
               : prepared
-                ? m.drawingReceiptUnknown
+                ? m.receiptUnknown
                 : latest.data?.state === 'saved'
                   ? m.albumAdded
                   : collectionError

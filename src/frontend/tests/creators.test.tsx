@@ -244,35 +244,40 @@ it('applies draft text without changing the selected counterpart or claiming it 
 it('resolves a lost creation response with the original ID and input', async () => {
   const requests: CreationRequest[] = []
   let job: CreationJob | null = null
+  let received = false
+  const observations: string[] = []
   server.use(
     http.post(`${base}/api/v1/creation-jobs`, async ({ request }) => {
       const body = (await request.json()) as CreationRequest
       requests.push(body)
-      if (requests.length === 1) return HttpResponse.error()
       job = {
         id: body.operation_id,
         request: body,
         state: 'complete',
         result: { name: 'Mira' },
       }
-      return HttpResponse.json(job, { status: 202 })
+      return HttpResponse.error()
     }),
-    http.get(`${base}/api/v1/creation-jobs/:identity`, () =>
-      job
+    http.get(`${base}/api/v1/creation-jobs/:identity`, ({ params }) => {
+      observations.push(String(params.identity))
+      return received
         ? HttpResponse.json(job)
-        : HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
-    ),
+        : HttpResponse.json({ code: 'request_not_found' }, { status: 404 })
+    }),
   )
   const button = await draftEditor()
   await userEvent.click(button)
   const retry = await screen.findByRole('button', { name: m.retryRequest })
+  expect(screen.getByText(m.receiptUnknown)).toBeVisible()
   await userEvent.clear(screen.getByLabelText(m.draftPrompt))
   await userEvent.type(screen.getByLabelText(m.draftPrompt), 'A different idea')
   expect(button).toBeDisabled()
+  received = true
   await userEvent.click(retry)
   expect(await screen.findByRole('button', { name: m.useDraft })).toBeVisible()
-  expect(requests).toHaveLength(2)
-  expect(requests[0]).toEqual(requests[1])
+  expect(requests).toHaveLength(1)
+  expect(observations.length).toBeGreaterThan(0)
+  expect(new Set(observations)).toEqual(new Set([requests[0].operation_id]))
 })
 
 it('allows correcting a creation rejected before acceptance', async () => {

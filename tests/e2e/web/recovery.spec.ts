@@ -115,7 +115,7 @@ test('recovers accepted drawings after losing their responses and allows a new d
   )
 })
 
-test('keeps an unconfirmed turn for explicit retry using the same operation', async ({
+test('checks an unconfirmed turn without resending its operation', async ({
   page,
   evidence,
 }) => {
@@ -141,15 +141,21 @@ test('keeps an unconfirmed turn for explicit retry using the same operation', as
   await page.getByRole('button', { name: ja.send, exact: true }).click()
   const retry = page.getByRole('button', { name: ja.retryRequest })
   await expect(retry).toBeVisible()
+  await expect(page.getByText(ja.receiptUnknown, { exact: true })).toBeVisible()
+  await expect(page.getByText(ja.pending, { exact: true })).toHaveCount(0)
   await expect.poll(() => observations).toBeGreaterThan(0)
   expect(submitted).toHaveLength(1)
   await expect(input).toHaveValue('Hello from the browser fixture.')
   await evidence.capture(
     'Unconfirmed request is observed without automatic resubmission',
   )
+  const before = observations
   await retry.click()
-  await expect(page.locator('.assistant-message')).toHaveCount(1)
-  expect(submitted).toHaveLength(2)
-  expect(new Set(submitted).size).toBe(1)
-  await expect(retry).toHaveCount(0)
+  await expect.poll(() => observations).toBeGreaterThan(before)
+  expect(submitted).toHaveLength(1)
+  await expect(input).toHaveValue('Hello from the browser fixture.')
+  await expect(
+    page.getByRole('button', { name: ja.send, exact: true }),
+  ).toBeDisabled()
+  await expect(retry).toBeVisible()
 })

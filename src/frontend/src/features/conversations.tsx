@@ -307,15 +307,15 @@ function ConversationView({ identity }: { identity: string }) {
       ? [...history.data.pages].reverse().flatMap((page) => page.items)
       : (detail.data.turns ?? []),
   }
-  const busy =
-    actionControls.unresolved ||
-    !!reviewControls.prepared ||
+  const replyPending =
     send.isPending ||
     (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
     savedOperations.data?.some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
+  const busy =
+    actionControls.unresolved || !!reviewControls.prepared || replyPending
   const needsReview = !!(
     conversation.definition.user?.visual_review_required ||
     conversation.definition.character?.visual_review_required
@@ -401,7 +401,6 @@ function ConversationView({ identity }: { identity: string }) {
           alt={snapshots.character.name}
         />
       )}
-      <div className="eyebrow">{messages.context}</div>
       <h2>{messages.currentState}</h2>
       <div className="state-items">
         {visibleState.map(([key, label, value]) => (
@@ -547,16 +546,10 @@ function ConversationView({ identity }: { identity: string }) {
         </header>
         {snapshots?.story?.image_id && (
           <div className="conversation-banner">
-            <a
-              href={`/api/v1/images/${snapshots.story.image_id}/files/0`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img
-                src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
-                alt={snapshots.story.name}
-              />
-            </a>
+            <OriginalImage
+              identity={snapshots.story.image_id}
+              alt={snapshots.story.name}
+            />
           </div>
         )}
 
@@ -701,9 +694,13 @@ function ConversationView({ identity }: { identity: string }) {
               </article>
             )
           })}
-          {busy && (
+          {replyPending && (
             <p className="pending" role="status">
-              {send.isPending ? messages.requestSending : messages.pending}
+              {send.isPending
+                ? messages.requestSending
+                : prepared && send.isError
+                  ? messages.receiptUnknown
+                  : messages.pending}
             </p>
           )}
         </div>
@@ -713,11 +710,8 @@ function ConversationView({ identity }: { identity: string }) {
               {failure(send.error)}
               {prepared && (
                 <Button
-                  onClick={() => {
-                    if (prepared)
-                      send.mutate({ path: { identity }, body: prepared })
-                  }}
-                  disabled={send.isPending}
+                  onClick={() => void operation.refetch()}
+                  disabled={operation.isFetching}
                 >
                   {messages.retryRequest}
                 </Button>

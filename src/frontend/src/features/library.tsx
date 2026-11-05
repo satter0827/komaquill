@@ -635,7 +635,7 @@ function PresetEditor({
               onClick={() => mutation.mutate(pendingSave)}
               disabled={mutation.isPending}
             >
-              {m.retryRequest}
+              {m.retrySave}
             </Button>
           )}
           {[

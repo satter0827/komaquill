@@ -1129,7 +1129,8 @@ fieldset,
   }
 }
 
-.conversation-banner > a {
+.conversation-banner > .image-file,
+.conversation-banner .image-file > a {
   display: block;
   width: 100%;
   height: 100%;
@@ -1412,4 +1413,17 @@ details > .details-content {
 .cover-preview .image-file > a {
   width: 100%;
   height: 100%;
+}
+
+.preset-cover:has(.image-file[data-failed]),
+.cover-preview:has(.image-file[data-failed]) {
+  aspect-ratio: auto;
+  padding: var(--space-group);
+}
+.image-file[data-failed] {
+  height: auto;
+}
+.conversation-banner:has(.image-file[data-failed]) {
+  height: auto;
+  padding: var(--space-group);
 }

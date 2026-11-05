@@ -101,6 +101,9 @@ export function CreationStatus({
       {creation.mutation.isPending && (
         <p className="subtle">{m.requestSending}</p>
       )}
+      {creation.prepared && creation.mutation.isError && (
+        <p className="subtle">{m.receiptUnknown}</p>
+      )}
       {data && (
         <p className={data.error ? 'error' : 'subtle'}>
           {data.error ? failure({ code: data.error }) : m[`job_${data.state}`]}
@@ -113,10 +116,8 @@ export function CreationStatus({
           </p>
           {creation.prepared && (
             <Button
-              disabled={creation.mutation.isPending}
-              onClick={() =>
-                creation.prepared && creation.start(creation.prepared)
-              }
+              disabled={creation.job.isFetching}
+              onClick={() => void creation.job.refetch()}
             >
               {m.retryRequest}
             </Button>

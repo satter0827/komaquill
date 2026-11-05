@@ -49,6 +49,7 @@ test('privacy covers portals and preserves focus, draft and history position', a
   page,
   request,
   evidence,
+  auditAccessibility,
 }) => {
   const scene = await (
     await request.post('/api/v1/conversations', {
@@ -58,6 +59,8 @@ test('privacy covers portals and preserves focus, draft and history position', a
   await page.goto(`/conversations/${scene.id}`)
   const input = page.getByRole('textbox', { name: ja.messageLabel })
   await input.fill('An unsent draft')
+  await page.getByRole('button', { name: ja.hideScreen, exact: true }).hover()
+  await auditAccessibility()
   await page
     .getByRole('button', { name: ja.drawingSettings, exact: true })
     .click()
@@ -168,6 +171,7 @@ test('album preserves portrait and landscape proportions', async ({
 test('unsaved notes survive popup closure and privacy survives responsive navigation changes', async ({
   page,
   request,
+  auditAccessibility,
 }) => {
   const scene = await (
     await request.post('/api/v1/conversations', {
@@ -206,4 +210,8 @@ test('unsaved notes survive popup closure and privacy survives responsive naviga
   await expect(
     page.getByRole('textbox', { name: ja.messageLabel }),
   ).toHaveValue('Retain the message draft.')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: ja.showNavigation }).click()
+  await page.getByRole('button', { name: ja.closePanel, exact: true }).hover()
+  await auditAccessibility()
 })

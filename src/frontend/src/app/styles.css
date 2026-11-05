@@ -24,6 +24,7 @@
   --ink: #442333;
   --accent: #d51e59;
   --accent-strong: #a91045;
+  --focus-ring: var(--accent);
   --muted: #795364;
   --line: #e4b9c9;
   --control-line: #ac7188;
@@ -63,8 +64,9 @@ a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
+summary:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 a {
@@ -101,6 +103,11 @@ h3 {
   display: flex;
   min-height: 0;
   position: relative;
+}
+.navigation,
+.navigation-modal {
+  --surface-soft: #ffffff18;
+  --focus-ring: #ffc5db;
 }
 .navigation {
   width: 248px;

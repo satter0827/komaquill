@@ -4,6 +4,8 @@
 
 短い画面・文字拡大と実LLMの再接続を要件から再確認した結果は[送信領域の再レビュー](verification/results/cherry-zero-base-review.md)を参照してください。
 
+マージ後の検査で確認した状況パネルの開閉と画面幅の切替は[状況パネルの再配置](verification/results/state-panel-reflow.md)を参照してください。
+
 会話・行動・アルバムの操作と監視の分担は[会話とアルバム](current/web.md#会話とアルバム)、利用手順は[会話画面](guides/web.md)、確認結果は[会話とアルバムのUI検証](verification/results/conversation-album-ui.md)を参照してください。
 
 要件から再確認した受付確認と画像失敗時の復旧は[会話とアルバムの再レビュー](verification/results/zero-base-conversation-album-review.md)を参照してください。

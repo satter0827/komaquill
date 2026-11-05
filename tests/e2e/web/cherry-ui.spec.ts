@@ -1,6 +1,86 @@
 import { randomUUID } from 'node:crypto'
 import { test, expect } from './fixtures'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
+import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
+
+for (const [locale, m] of [
+  ['ja', ja],
+  ['en', en],
+] as const) {
+  test(`${locale}: situation open and closed intent survives width changes`, async ({
+    page,
+    request,
+    evidence,
+  }) => {
+    const preferences = await (await request.get('/api/v1/preferences')).json()
+    await request.put('/api/v1/preferences', {
+      data: { ...preferences, locale },
+    })
+    const scene = await (
+      await request.post('/api/v1/conversations', {
+        data: { title: 'Situation reflow', llm_profile: 'fake' },
+      })
+    ).json()
+    await page.goto(`/conversations/${scene.id}`)
+    const input = page.getByRole('textbox', { name: m.messageLabel })
+    await input.fill('A retained message')
+    await page.getByRole('button', { name: m.showState, exact: true }).click()
+    await expect(page.locator('.state-panel')).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const dialog = page.getByRole('dialog', {
+      name: m.currentState,
+      exact: true,
+    })
+    await expect(dialog).toBeVisible()
+    await evidence.capture(`${locale} situation remains open after narrowing`)
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await expect(dialog).not.toBeVisible()
+    await expect(page.locator('.state-panel')).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(dialog).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(dialog).not.toBeVisible()
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await expect(page.locator('.state-panel')).not.toBeVisible()
+    await expect(input).toHaveValue('A retained message')
+    await page.setViewportSize({ width: 390, height: 844 })
+    const trigger = page.getByRole('button', { name: m.showState, exact: true })
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    await expect(dialog).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.getByRole('button', { name: m.showState, exact: true }).click()
+    await page.getByRole('button', { name: m.hideScreen, exact: true }).click()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const restore = page.getByRole('button', {
+      name: m.showScreen,
+      exact: true,
+    })
+    await expect(restore).toBeVisible()
+    await expect(restore).toBeFocused()
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Tab')
+    await expect(restore).toBeFocused()
+    await restore.click()
+    await expect(dialog).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    await expect(input).toHaveValue('A retained message')
+    await page.getByRole('button', { name: m.showNavigation }).click()
+    await page.getByRole('button', { name: m.hideScreen, exact: true }).click()
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await expect(restore).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(restore).toBeVisible()
+    await expect(restore).toBeFocused()
+    await restore.click()
+    await expect(
+      page.getByRole('button', { name: m.hideScreen, exact: true }),
+    ).toBeFocused()
+  })
+}
 
 test('action popover retains its draft and returns focus without a separate send', async ({
   page,

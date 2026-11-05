@@ -1,13 +1,35 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
-import type { CreationJob, OperationView } from '../src/api/generated/types.gen'
+import type {
+  CreationJob,
+  OperationView,
+  Run,
+} from '../src/api/generated/types.gen'
 import {
   creationOptions,
   operationOptions,
   watchReceipt,
+  imageOptions,
 } from '../src/features/operations'
 
 describe('late operation observations', () => {
+  it('consumes an already cached image receipt once without waiting for another response', () => {
+    const cache = new QueryClient()
+    const key = imageOptions('image').queryKey
+    const saved = {
+      run_id: 'image',
+      state: 'saved',
+      images: ['scene.png'],
+    } as Run
+    cache.setQueryData(key, saved)
+    const confirm = vi.fn((value: Run) => cache.setQueryData(key, value))
+    const unsubscribe = watchReceipt(cache, key, 'image', confirm)
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(saved)
+    cache.setQueryData(key, { ...saved, state: 'queued' })
+    expect(confirm).toHaveBeenCalledTimes(1)
+    unsubscribe()
+    cache.clear()
+  })
   it('confirms only the matching receipt once, including when confirmation updates the cache', () => {
     const cache = new QueryClient()
     const key = operationOptions('turn').queryKey

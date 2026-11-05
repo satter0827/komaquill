@@ -95,6 +95,7 @@ try {
     'Generate a standalone image using Japanese input',
     async () => {
       await page.goto('/images')
+      await page.getByRole('button', { name: ja.generate, exact: true }).click()
       await page
         .getByLabel(ja.imagePrompt, { exact: true })
         .fill('雨の港町の古書店。窓辺に木の机と青い封筒が一つ。人物はいない。')
@@ -103,7 +104,9 @@ try {
           new URL(response.url()).pathname === '/api/v1/images' &&
           response.request().method() === 'POST',
       )
-      await page.getByRole('button', { name: ja.generate, exact: true }).click()
+      await page
+        .getByRole('button', { name: ja.drawRequestedScene, exact: true })
+        .click()
       const created = await (await receipt).json()
       await page
         .locator(`img[src="/api/v1/images/${created.run_id}/files/0"]`)

@@ -7,7 +7,7 @@ import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
 import { useState } from 'react'
 import {
-  AvailabilityNotice,
+  ConnectionSummary,
   recheckAvailability,
   useAvailability,
 } from '../src/features/availability'
@@ -73,7 +73,7 @@ it('keeps a delayed refresh attached to the input it checked', async () => {
           onChange={(e) => setPrompt(e.target.value)}
         />
         <Button disabled={!status.ready}>{m.generate}</Button>
-        <AvailabilityNotice status={status} />
+        <ConnectionSummary />
       </>
     )
   }
@@ -103,6 +103,9 @@ it('keeps a delayed refresh attached to the input it checked', async () => {
       expect(screen.getByRole('button', { name: m.refresh })).toBeEnabled(),
     )
     expect(screen.getByRole('button', { name: m.generate })).toBeDisabled()
+    await userEvent.click(
+      screen.getByText(m.connectionSummary, { exact: true }),
+    )
     expect(screen.getByText(m.errors.llm_unavailable)).toBeVisible()
   } finally {
     release()
@@ -137,7 +140,7 @@ it('keeps execution disabled until a required connection is confirmed and refres
     return (
       <>
         <Button disabled={!status.ready}>{m.generate}</Button>
-        <AvailabilityNotice status={status} />
+        <ConnectionSummary />
       </>
     )
   }
@@ -231,7 +234,7 @@ it('disables execution when a fresh check fails even if the retained observation
     return (
       <>
         <Button disabled={!status.ready}>{m.generate}</Button>
-        <AvailabilityNotice status={status} />
+        <ConnectionSummary />
       </>
     )
   }
@@ -245,6 +248,7 @@ it('disables execution when a fresh check fails even if the retained observation
       </MemoryRouter>
     </QueryClientProvider>,
   )
+  await userEvent.click(screen.getByText(m.connectionSummary, { exact: true }))
   const button = screen.getByRole('button', { name: m.generate })
   await waitFor(() => expect(button).toBeEnabled())
   act(() => window.dispatchEvent(new Event('focus')))
@@ -256,5 +260,27 @@ it('disables execution when a fresh check fails even if the retained observation
   rejected = false
   await userEvent.click(screen.getByRole('button', { name: m.refresh }))
   await waitFor(() => expect(button).toBeEnabled())
+  cache.clear()
+})
+
+it('does not probe connections just to display the sidebar', async () => {
+  let probes = 0
+  server.use(
+    http.post(`${base}/api/v1/availability`, () => {
+      probes++
+      return HttpResponse.json({ ready: true, connections: [] })
+    }),
+  )
+  const cache = new QueryClient()
+  render(
+    <QueryClientProvider client={cache}>
+      <MemoryRouter>
+        <ConnectionSummary />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByText(m.connectionSummary, { exact: true }))
+  await userEvent.click(screen.getByRole('button', { name: m.refresh }))
+  expect(probes).toBe(0)
   cache.clear()
 })

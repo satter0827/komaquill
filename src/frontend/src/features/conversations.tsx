@@ -32,13 +32,12 @@ import {
 import { Button } from '../components/ui/button'
 import { CreationStatus, useCreation } from './creation'
 import {
-  AvailabilityNotice,
   recheckAvailability,
   useAvailability,
   useAvailabilityRecovery,
 } from './availability'
 import { ConversationNotes, SceneActions } from './conversation-tools'
-import { ImageResult, ImageLinks } from './images'
+import { ImageResult, OriginalImage } from './images'
 import {
   ActionDescription,
   PlayerActions,
@@ -47,7 +46,7 @@ import {
   VisualReviewForm,
 } from './player-actions'
 import {
-  isTerminal,
+  creationOptions,
   keepTerminal,
   operationOptions,
   operationPending,
@@ -65,11 +64,18 @@ const narrowViewport = () => window.matchMedia(narrowQuery).matches
 function Drawing({ job }: { job: CreationJob }) {
   const messages = useMessages()
   const failure = useFailure()
-  return job.image_id ? (
-    <ImageResult identity={job.image_id} />
+  const current = useQuery({
+    ...creationOptions(job.id),
+    initialData: job,
+    enabled: false,
+    refetchInterval: false,
+  })
+  const value = current.data ?? job
+  return value.image_id ? (
+    <ImageResult identity={value.image_id} />
   ) : (
     <p className="subtle">
-      {job.error ? failure({ code: job.error }) : messages.imagePreparing}
+      {value.error ? failure({ code: value.error }) : messages.imagePreparing}
     </p>
   )
 }
@@ -88,7 +94,7 @@ function AcceptedTurn({ operation }: { operation: OperationView }) {
         </div>
       )}
       {accepted.action && (
-        <div className="user-message">
+        <div className="user-action">
           <span className="message-label">{messages.myActions}</span>
           <ActionDescription action={accepted.action} />
         </div>
@@ -115,6 +121,9 @@ function ConversationView({ identity }: { identity: string }) {
   const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
+  const [actionOpen, setActionOpen] = useState(false)
+  const actionEditor = useRef<HTMLDetailsElement>(null)
+  const messageInput = useRef<HTMLTextAreaElement>(null)
   const [subjects, setSubjects] = useState<
     'character' | 'pair' | 'environment'
   >('character')
@@ -269,10 +278,6 @@ function ConversationView({ identity }: { identity: string }) {
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
-    refetchInterval: (query) =>
-      query.state.data?.some((job) => !isTerminal(job.state))
-        ? POLL_INTERVAL_MS
-        : false,
   })
   useEffect(() => {
     if (drawing.mutation.data || drawing.job.data)
@@ -302,15 +307,15 @@ function ConversationView({ identity }: { identity: string }) {
       ? [...history.data.pages].reverse().flatMap((page) => page.items)
       : (detail.data.turns ?? []),
   }
-  const busy =
-    actionControls.unresolved ||
-    !!reviewControls.prepared ||
+  const replyPending =
     send.isPending ||
     (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
     savedOperations.data?.some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
+  const busy =
+    actionControls.unresolved || !!reviewControls.prepared || replyPending
   const needsReview = !!(
     conversation.definition.user?.visual_review_required ||
     conversation.definition.character?.visual_review_required
@@ -388,17 +393,14 @@ function ConversationView({ identity }: { identity: string }) {
           {messages.closeState}
         </Button>
       )}
+
       {snapshots?.character?.image_id && (
-        <img
+        <OriginalImage
           className="character-portrait"
-          src={`/api/v1/images/${snapshots.character.image_id}/files/0`}
+          identity={snapshots.character.image_id}
           alt={snapshots.character.name}
         />
       )}
-      {snapshots?.character?.image_id && (
-        <ImageLinks identity={snapshots.character.image_id} />
-      )}
-      <div className="eyebrow">{messages.context}</div>
       <h2>{messages.currentState}</h2>
       <div className="state-items">
         {visibleState.map(([key, label, value]) => (
@@ -411,34 +413,41 @@ function ConversationView({ identity }: { identity: string }) {
           <span>{messages.companionPlace}</span>
           <p>{conversation.state?.character_place || messages.notSpecified}</p>
         </div>
-        {(['player', 'character'] as const).map((role) => (
-          <div key={role}>
-            <span>{role === 'player' ? messages.you : messages.character}</span>
-            <dl>
-              {(
-                ['clothing', 'pose', 'expression', 'held_objects'] as const
-              ).map((field) => {
-                const value = conversation.state?.[role]?.[field]
-                return (
-                  <div key={field}>
-                    <dt>
-                      {field === 'held_objects'
-                        ? messages.heldObjects
-                        : messages[field]}
-                    </dt>
-                    <dd>
-                      {value == null
-                        ? messages.notSpecified
-                        : (Array.isArray(value)
-                            ? value.map((item) => item.name).join(', ')
-                            : value) || messages.emptyValue}
-                    </dd>
-                  </div>
-                )
-              })}
-            </dl>
+        <details>
+          <summary>{messages.peopleDetails}</summary>
+          <div className="details-content">
+            {(['player', 'character'] as const).map((role) => (
+              <div key={role}>
+                <span>
+                  {role === 'player' ? messages.you : messages.character}
+                </span>
+                <dl>
+                  {(
+                    ['clothing', 'pose', 'expression', 'held_objects'] as const
+                  ).map((field) => {
+                    const value = conversation.state?.[role]?.[field]
+                    return (
+                      <div key={field}>
+                        <dt>
+                          {field === 'held_objects'
+                            ? messages.heldObjects
+                            : messages[field]}
+                        </dt>
+                        <dd>
+                          {value == null
+                            ? messages.notSpecified
+                            : (Array.isArray(value)
+                                ? value.map((item) => item.name).join(', ')
+                                : value) || messages.emptyValue}
+                        </dd>
+                      </div>
+                    )
+                  })}
+                </dl>
+              </div>
+            ))}
           </div>
-        ))}
+        </details>
         {!!conversation.state?.elapsed_minutes && (
           <p>
             {formatMessage('elapsedTime', {
@@ -453,14 +462,18 @@ function ConversationView({ identity }: { identity: string }) {
           busy={!!busy}
           controls={reviewControls}
         />
-      ) : (
-        <PlayerActions
-          conversation={conversation}
-          busy={!!busy}
-          controls={actionControls}
-        />
-      )}
-      <ConversationNotes conversation={conversation} />
+      ) : null}
+      <details>
+        <summary>{messages.actionHistory}</summary>
+        <div className="details-content">
+          {conversation.actions?.map((record) => (
+            <ActionDescription
+              key={record.request.operation_id}
+              action={record.request.action}
+            />
+          ))}
+        </div>
+      </details>
       <h3>{messages.scenario}</h3>
       <p className="state-description">
         {content(conversation.definition.scenario) || messages.openConversation}
@@ -475,36 +488,38 @@ function ConversationView({ identity }: { identity: string }) {
       )}
       <details className="story-details">
         <summary>{messages.fixedSettings}</summary>
-        <p>{conversation.state?.goal}</p>
-        {(['user', 'character'] as const).map((role) => (
-          <div key={role}>
-            <h3>{role === 'user' ? messages.you : messages.character}</h3>
-            <dl>
-              {(
-                [
-                  'name',
-                  'age',
-                  'gender',
-                  'appearance',
-                  'initial_clothing',
-                ] as const
-              ).map((field) => (
-                <div key={field}>
-                  <dt>{messages[field]}</dt>
-                  <dd>
-                    {conversation.definition[role]?.[field] ||
-                      messages.notSpecified}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))}
-        <span className="revision">
-          {formatMessage('revision', {
-            revision: conversation.revision ?? 0,
-          })}
-        </span>
+        <div className="details-content">
+          <p>{conversation.state?.goal}</p>
+          {(['user', 'character'] as const).map((role) => (
+            <div key={role}>
+              <h3>{role === 'user' ? messages.you : messages.character}</h3>
+              <dl>
+                {(
+                  [
+                    'name',
+                    'age',
+                    'gender',
+                    'appearance',
+                    'initial_clothing',
+                  ] as const
+                ).map((field) => (
+                  <div key={field}>
+                    <dt>{messages[field]}</dt>
+                    <dd>
+                      {conversation.definition[role]?.[field] ||
+                        messages.notSpecified}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+          <span className="revision">
+            {formatMessage('revision', {
+              revision: conversation.revision ?? 0,
+            })}
+          </span>
+        </div>
       </details>
     </aside>
   )
@@ -516,6 +531,12 @@ function ConversationView({ identity }: { identity: string }) {
             <span className="eyebrow">{messages.conversationLabel}</span>
             <h2>{conversation.definition.title}</h2>
           </div>
+          <details className="conversation-menu">
+            <summary>{messages.conversationMenu}</summary>
+            <div className="details-content">
+              <ConversationNotes conversation={conversation} />
+            </div>
+          </details>
           <Button
             aria-label={showState ? messages.closeState : messages.showState}
             onClick={() => setShowState(!showState)}
@@ -525,29 +546,28 @@ function ConversationView({ identity }: { identity: string }) {
         </header>
         {snapshots?.story?.image_id && (
           <div className="conversation-banner">
-            <a
-              href={`/api/v1/images/${snapshots.story.image_id}/files/0`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <img
-                src={`/api/v1/images/${snapshots.story.image_id}/files/0`}
-                alt={snapshots.story.name}
-              />
-            </a>
+            <OriginalImage
+              identity={snapshots.story.image_id}
+              alt={snapshots.story.name}
+            />
           </div>
         )}
-        {snapshots?.story?.image_id && (
-          <div className="banner-actions">
-            <ImageLinks identity={snapshots.story.image_id} />
-          </div>
-        )}
+
         <div
           className="turns"
           role="log"
           aria-label={messages.conversationHistory}
           tabIndex={0}
         >
+          {conversation.state?.character_place !==
+            conversation.state?.place && (
+            <p className="presence-notice">
+              {formatMessage('companionAway', {
+                place:
+                  conversation.state?.character_place || messages.notSpecified,
+              })}
+            </p>
+          )}
           {(drawings.data ?? [])
             .filter((job) => !job.turn_id)
             .map((job) => (
@@ -594,7 +614,16 @@ function ConversationView({ identity }: { identity: string }) {
                     <div className="action-preview" key={proposal.id}>
                       <ActionDescription action={proposal.action} />
                       {proposal.state === 'pending' ? (
-                        <Button onClick={() => setShowState(true)}>
+                        <Button
+                          onClick={() => {
+                            setActionOpen(true)
+                            requestAnimationFrame(() =>
+                              actionEditor.current
+                                ?.querySelector('button')
+                                ?.focus(),
+                            )
+                          }}
+                        >
                           {messages.reviewAction}
                         </Button>
                       ) : (
@@ -609,7 +638,7 @@ function ConversationView({ identity }: { identity: string }) {
                     </div>
                   ))}
                 {turn.action && (
-                  <div className="user-message">
+                  <div className="user-action">
                     <span className="message-label">{messages.myActions}</span>
                     <ActionDescription action={turn.action} />
                   </div>
@@ -619,7 +648,7 @@ function ConversationView({ identity }: { identity: string }) {
                   conversation.actions?.find(
                     (record) => record.request.operation_id === turn.action_id,
                   ) && (
-                    <div className="user-message">
+                    <div className="user-action">
                       <span className="message-label">
                         {messages.myActions}
                       </span>
@@ -634,29 +663,28 @@ function ConversationView({ identity }: { identity: string }) {
                     </div>
                   )}
                 <div className="assistant-message">
-                  {turn.assistant && (
-                    <span className="message-label">
-                      <Sparkles size={14} />
-                      {snapshots?.character?.name ?? messages.character}
-                    </span>
-                  )}
                   {turn.narration && (
                     <p className="scene-narration">{turn.narration}</p>
                   )}
                   {turn.action_narration && (
                     <p className="action-narration">{turn.action_narration}</p>
                   )}
-                  <p>{turn.assistant}</p>
+                  {turn.assistant && (
+                    <div className="dialogue">
+                      <span className="message-label">
+                        <Sparkles size={14} />
+                        {snapshots?.character?.name ??
+                          conversation.definition.character?.name ??
+                          messages.character}
+                      </span>
+                      <p>{turn.assistant}</p>
+                    </div>
+                  )}
                   <SceneActions
                     conversation={conversation}
                     turnId={turn.operation_id}
                   />
-                  {turn.image_id && (
-                    <ImageResult
-                      identity={turn.image_id}
-                      operationId={turn.operation_id}
-                    />
-                  )}
+                  {turn.image_id && <ImageResult identity={turn.image_id} />}
                   {(drawings.data ?? [])
                     .filter((job) => job.turn_id === turn.operation_id)
                     .map((job) => (
@@ -666,9 +694,13 @@ function ConversationView({ identity }: { identity: string }) {
               </article>
             )
           })}
-          {busy && (
+          {replyPending && (
             <p className="pending" role="status">
-              {messages.pending}
+              {send.isPending
+                ? messages.requestSending
+                : prepared && send.isError
+                  ? messages.receiptUnknown
+                  : messages.pending}
             </p>
           )}
         </div>
@@ -678,11 +710,8 @@ function ConversationView({ identity }: { identity: string }) {
               {failure(send.error)}
               {prepared && (
                 <Button
-                  onClick={() => {
-                    if (prepared)
-                      send.mutate({ path: { identity }, body: prepared })
-                  }}
-                  disabled={send.isPending}
+                  onClick={() => void operation.refetch()}
+                  disabled={operation.isFetching}
                 >
                   {messages.retryRequest}
                 </Button>
@@ -720,48 +749,119 @@ function ConversationView({ identity }: { identity: string }) {
             </p>
           )}
           <CreationStatus creation={drawing} />
-          <details>
-            <summary>{messages.drawingSettings}</summary>
-            <label>
-              {messages.drawingSubjects}
-              <select
-                value={subjects}
-                onChange={(event) => {
-                  setSubjects(event.target.value as typeof subjects)
-                  if (event.target.value === 'pair') setViewpoint('observer')
-                }}
-              >
-                <option value="character">{messages.partnerOnly}</option>
-                <option value="pair">{messages.bothPeople}</option>
-                <option value="environment">{messages.environmentOnly}</option>
-              </select>
-            </label>
-            <label>
-              {messages.viewpoint}
-              <select
-                value={viewpoint}
-                onChange={(event) =>
-                  setViewpoint(event.target.value as typeof viewpoint)
-                }
-              >
-                <option value="player">{messages.playerView}</option>
-                <option value="observer">{messages.observerView}</option>
-              </select>
-            </label>
-          </details>
+          <div className="composer-tools">
+            <details className="drawing-menu">
+              <summary>{messages.drawingSettings}</summary>
+              <div className="details-content">
+                <label>
+                  {messages.drawingSubjects}
+                  <select
+                    value={subjects}
+                    onChange={(event) => {
+                      setSubjects(event.target.value as typeof subjects)
+                      if (event.target.value === 'pair')
+                        setViewpoint('observer')
+                    }}
+                  >
+                    <option value="character">{messages.partnerOnly}</option>
+                    <option value="pair">{messages.bothPeople}</option>
+                    <option value="environment">
+                      {messages.environmentOnly}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  {messages.viewpoint}
+                  <select
+                    value={viewpoint}
+                    onChange={(event) =>
+                      setViewpoint(event.target.value as typeof viewpoint)
+                    }
+                  >
+                    <option value="player">{messages.playerView}</option>
+                    <option value="observer">{messages.observerView}</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+            <Button
+              className="draw-button"
+              aria-label={messages.drawScene}
+              title={messages.drawScene}
+              disabled={
+                !!busy ||
+                needsReview ||
+                drawing.busy ||
+                sampleDrawing ||
+                !drawAvailability.ready
+              }
+              onClick={() =>
+                drawing.start({
+                  kind: 'conversation_image',
+                  subjects,
+                  viewpoint,
+                  target_id: identity,
+                  expected_revision: conversation.revision,
+                  locale: preferences.value.locale,
+                  llm_profile: conversation.definition.llm_profile,
+                  allow_real_llm: true,
+                })
+              }
+            >
+              <ImagePlus size={18} aria-hidden="true" />
+              <span>{messages.drawScene}</span>
+            </Button>
+            <details
+              className="action-editor"
+              ref={actionEditor}
+              open={actionOpen}
+              onToggle={(event) => setActionOpen(event.currentTarget.open)}
+            >
+              <summary>{messages.addAction}</summary>
+              <div className="details-content">
+                <PlayerActions
+                  conversation={conversation}
+                  busy={!!busy || needsReview}
+                  controls={actionControls}
+                  onQueued={() => {
+                    setActionOpen(false)
+                    requestAnimationFrame(() => messageInput.current?.focus())
+                  }}
+                />
+              </div>
+            </details>
+          </div>
           {actionControls.queued && (
             <div className="queued-action">
-              <strong>{messages.myActions}</strong>
               <ActionDescription action={actionControls.queued.action} />
+              <Button
+                disabled={!!busy}
+                onClick={() => {
+                  actionControls.edit()
+                  setActionOpen(true)
+                  requestAnimationFrame(() =>
+                    actionEditor.current?.querySelector('select')?.focus(),
+                  )
+                }}
+              >
+                {messages.editQueuedAction}
+              </Button>
               <Button disabled={!!busy} onClick={actionControls.clear}>
                 {messages.removeQueuedAction}
               </Button>
             </div>
           )}
-          <AvailabilityNotice status={sendAvailability} />
-          {!drawAvailability.ready && (
-            <AvailabilityNotice status={drawAvailability} />
+
+          {actionControls.queued && (
+            <p className="subtle composer-hint">
+              {messages.actionWithMessage} {messages.unsentDrawing}
+            </p>
           )}
+          {!busy &&
+            (conversation.turn_count ?? 0) > 0 &&
+            !latestOperation?.error && (
+              <p className="saved-indicator">{messages.conversationSaved}</p>
+            )}
           <form
             className="composer"
             onSubmit={(event) => {
@@ -789,6 +889,7 @@ function ConversationView({ identity }: { identity: string }) {
             }}
           >
             <textarea
+              ref={messageInput}
               aria-label={messages.messageLabel}
               placeholder={messages.placeholder}
               rows={2}
@@ -798,39 +899,15 @@ function ConversationView({ identity }: { identity: string }) {
                 setText(event.target.value)
               }}
             />
-            <Button
-              className="draw-button"
-              aria-label={messages.drawScene}
-              title={messages.drawScene}
-              disabled={
-                !!busy ||
-                needsReview ||
-                drawing.busy ||
-                sampleDrawing ||
-                !drawAvailability.ready
-              }
-              onClick={() =>
-                drawing.start({
-                  kind: 'conversation_image',
-                  subjects,
-                  viewpoint,
-                  target_id: identity,
-                  expected_revision: conversation.revision,
-                  locale: preferences.value.locale,
-                  llm_profile: conversation.definition.llm_profile,
-                  allow_real_llm: true,
-                })
-              }
-            >
-              <ImagePlus size={20} aria-hidden="true" />
-            </Button>
+
             <Button
               type="submit"
               className="send-button"
               aria-label={messages.send}
               disabled={!canSend}
             >
-              <ArrowUp size={20} />
+              <ArrowUp size={18} />
+              <span>{messages.send}</span>
             </Button>
           </form>
         </div>

@@ -1,4 +1,4 @@
-import { parseObjects } from './physical-objects'
+import { objectLines, parseObjects } from './physical-objects'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
@@ -12,6 +12,12 @@ import type {
 import { useFailure, useFormatMessage, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
 type PlayerAction = NonNullable<SendInput['action']>
+const PREPARATION_FIELDS = [
+  'clothing',
+  'pose',
+  'expression',
+  'held_objects',
+] as const
 
 export function ActionDescription({ action }: { action: PlayerAction }) {
   const m = useMessages()
@@ -59,6 +65,7 @@ export function usePlayerActions({
   const cache = useQueryClient()
   const [kind, setKind] = useState<PlayerAction['kind']>('move')
   const [value, setValue] = useState('')
+  const [editingAction, setEditingAction] = useState<PlayerAction | null>(null)
   const [prepareField, setPrepareField] = useState<
     'clothing' | 'pose' | 'expression' | 'held_objects'
   >('clothing')
@@ -78,6 +85,7 @@ export function usePlayerActions({
     })
   const clear = useCallback(() => {
     setQueued(null)
+    setEditingAction(null)
     setValue('')
     draftRevisionRef.current = null
   }, [])
@@ -98,10 +106,32 @@ export function usePlayerActions({
         : (draftRevisionRef.current ?? conversation!.revision ?? 0),
     })
   return {
+    edit: () => {
+      if (!queued) return
+      const action = queued.action
+      setEditingAction(action)
+      draftRevisionRef.current = queued.revision
+      setKind(action.kind)
+      if (action.kind === 'move') setValue(action.destination)
+      else if (action.kind === 'wait') setValue(String(action.minutes))
+      else if (action.kind === 'intention') setValue(action.text)
+      else {
+        const field =
+          PREPARATION_FIELDS.find((key) => action[key] != null) ?? 'clothing'
+        setPrepareField(field)
+        setValue(
+          field === 'held_objects'
+            ? objectLines(action.held_objects ?? [])
+            : String(action[field] ?? ''),
+        )
+      }
+    },
     kind,
     setKind,
     value,
     setValue,
+    editingAction,
+    setEditingAction,
     prepareField,
     setPrepareField,
     queued,
@@ -123,10 +153,12 @@ export function PlayerActions({
   conversation,
   busy,
   controls,
+  onQueued,
 }: {
   conversation: Conversation
   busy: boolean
   controls: ReturnType<typeof usePlayerActions>
+  onQueued?: () => void
 }) {
   const m = useMessages()
   const failure = useFailure()
@@ -135,18 +167,33 @@ export function PlayerActions({
     setKind,
     value,
     setValue,
+    editingAction,
+    setEditingAction,
     prepareField,
     setPrepareField,
     queued,
     setQueued,
     draftRevisionRef,
-    queue,
+    queue: queueAction,
     dismiss,
     dismissal,
     setDismissal,
     identity,
     cache,
   } = controls
+  const queue = (action: PlayerAction, proposal?: string) => {
+    queueAction(action, proposal)
+    setEditingAction(null)
+    onQueued?.()
+  }
+  const updateValue = (next: string) => {
+    draftRevisionRef.current ??= conversation.revision ?? 0
+    setValue(next)
+  }
+  const remaining =
+    editingAction?.kind === 'prepare'
+      ? { ...editingAction, [prepareField]: undefined }
+      : null
   const blocked = busy || dismiss.isPending || !!dismissal
   return (
     <section className="player-actions">
@@ -194,12 +241,19 @@ export function PlayerActions({
                 : kind === 'intention'
                   ? { kind, text: value }
                   : {
+                      ...(editingAction?.kind === 'prepare'
+                        ? editingAction
+                        : {}),
                       kind,
                       [prepareField]:
                         prepareField === 'held_objects'
                           ? parseObjects(
                               value,
-                              conversation.state?.player?.held_objects ?? [],
+                              (editingAction?.kind === 'prepare'
+                                ? editingAction.held_objects
+                                : undefined) ??
+                                conversation.state?.player?.held_objects ??
+                                [],
                             )
                           : value,
                     }
@@ -210,56 +264,77 @@ export function PlayerActions({
           <label>
             {m.chooseAction}
             <select
-              value={kind}
+              value={kind === 'prepare' ? prepareField : kind}
               onChange={(e) => {
-                setKind(e.target.value as PlayerAction['kind'])
-                setValue('')
-                draftRevisionRef.current = null
+                const selected = e.target.value
+                if (PREPARATION_FIELDS.some((field) => field === selected)) {
+                  setKind('prepare')
+                  if (editingAction?.kind !== 'prepare') {
+                    setEditingAction(null)
+                    draftRevisionRef.current = null
+                  }
+                  setPrepareField(selected as typeof prepareField)
+                  const field = selected as typeof prepareField
+                  setValue(
+                    editingAction?.kind === 'prepare'
+                      ? field === 'held_objects'
+                        ? objectLines(editingAction.held_objects)
+                        : String(editingAction[field] ?? '')
+                      : '',
+                  )
+                } else {
+                  setKind(selected as PlayerAction['kind'])
+                  setEditingAction(null)
+                  setValue('')
+                  draftRevisionRef.current = null
+                }
               }}
             >
               <option value="move">{m.actionMove}</option>
               <option value="wait">{m.actionWait}</option>
-              <option value="prepare">{m.actionPrepare}</option>
+              <option value="clothing">{m.playerClothing}</option>
+              <option value="pose">{m.pose}</option>
+              <option value="expression">{m.expression}</option>
+              <option value="held_objects">{m.heldObjects}</option>
               <option value="intention">{m.actionIntention}</option>
             </select>
           </label>
-          {kind === 'prepare' && (
-            <label>
-              {m.choosePreparation}
-              <select
-                value={prepareField}
-                onChange={(e) => {
-                  setPrepareField(e.target.value as typeof prepareField)
-                  setValue('')
-                  draftRevisionRef.current = null
-                }}
-              >
-                <option value="clothing">{m.playerClothing}</option>
-                <option value="pose">{m.pose}</option>
-                <option value="expression">{m.expression}</option>
-                <option value="held_objects">{m.heldObjects}</option>
-              </select>
-            </label>
-          )}
+
           <label>
             {kind === 'move'
               ? m.destination
               : kind === 'wait'
                 ? m.waitMinutes
                 : kind === 'prepare'
-                  ? m.preparationValue
+                  ? prepareField === 'held_objects'
+                    ? m.heldObjectsInput
+                    : m.preparationValue
                   : m.currentIntention}
-            <input
-              required={kind === 'move' || kind === 'wait'}
-              type={kind === 'wait' ? 'number' : 'text'}
-              min={kind === 'wait' ? 1 : undefined}
-              value={value}
-              onChange={(e) => {
-                draftRevisionRef.current ??= conversation.revision ?? 0
-                setValue(e.target.value)
-              }}
-            />
+            {kind === 'prepare' || kind === 'intention' ? (
+              <textarea
+                rows={
+                  kind === 'prepare' && prepareField === 'held_objects' ? 3 : 2
+                }
+                value={value}
+                onChange={(event) => updateValue(event.target.value)}
+              />
+            ) : (
+              <input
+                required={kind === 'move' || kind === 'wait'}
+                type={kind === 'wait' ? 'number' : 'text'}
+                min={kind === 'wait' ? 1 : undefined}
+                value={value}
+                onChange={(event) => updateValue(event.target.value)}
+              />
+            )}
           </label>
+          {remaining &&
+            PREPARATION_FIELDS.some((field) => remaining[field] != null) && (
+              <div className="details-content">
+                <p className="subtle">{m.additionalActionChanges}</p>
+                <ActionDescription action={remaining} />
+              </div>
+            )}
           <Button type="submit">{m.queueAction}</Button>
         </fieldset>
       </form>
@@ -303,15 +378,6 @@ export function PlayerActions({
           {m.checkAction}
         </Button>
       )}
-      <details>
-        <summary>{m.actionHistory}</summary>
-        {(conversation.actions ?? []).map((record) => (
-          <ActionDescription
-            key={record.request.operation_id}
-            action={record.request.action}
-          />
-        ))}
-      </details>
     </section>
   )
 }
@@ -468,7 +534,7 @@ export function VisualReviewForm({
         <Button
           onClick={() => review.mutate({ path: { identity }, body: prepared })}
         >
-          {m.retryRequest}
+          {m.retrySave}
         </Button>
       )}
       {prepared && review.isError && (

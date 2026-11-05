@@ -497,7 +497,7 @@ tests = ["tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/fixtures.ts"]
 [requirements.REQ-PLAYER-ACTIONS]
 summary = "自分の行動を確認して確定し会話と画像へ同じ状態を反映する"
 status = "implemented"
-acceptance = ["自分の行動案は発言と同時に送信するまで適用しない", "行動には発言を必須とし一件の応答操作で受け付ける", "右ペインと会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
+acceptance = ["自分の行動案は発言と同時に送信するまで適用しない", "行動には発言を必須とし一件の応答操作で受け付ける", "送信欄からの行動と会話中の案は同じ処理を呼ぶ", "自分と相手の現在地・服装・持ち物を区別する", "行動の確定後に返答を生成し失敗で行動を戻さない", "同じ操作IDの確認で行動と返答を再送しない", "固定情報・古い版・変更権限を検査する", "日英と再開を画面で確認する", "旧データの曖昧な外見は本人が確認し元の記録を保持する", "外見確認は対象の人物だけを変更し未指定の服装を解除へ変えない", "生成言語の省略は会話の言語を継承し明示的な不明の現在地を保持する", "保存失敗後も実行の終了を判定し保存済み応答から追加送信なしで復旧する"]
 sources = ["src/backend/src/komaquill/conversations/actions.py", "src/backend/src/komaquill/conversations/context.py", "src/backend/src/komaquill/adapters/database.py", "src/frontend/src/features/player-actions.tsx"]
 tests = ["tests/integration/test_player_actions.py", "tests/integration/test_player_review_regressions.py", "src/frontend/tests/conversations.test.tsx", "tests/e2e/web/actions.spec.ts", "tests/unit/test_player_actions_collection.py"]
 
@@ -528,3 +528,27 @@ status = "implemented"
 acceptance = ["設定の存在と対象モデル・実行先の観測を区別する", "翻訳不要の描画にLLMを要求しない", "未確認・確認中・期限切れ・利用不可では依存する実行操作を止める", "受付前に共通判定を行い通信中はDBロックを保持しない", "本文保存・履歴閲覧・ダウンロード・保存済み結果の確定に不要な接続を要求しない", "接続確認で推論・モデル読み込み・GPU確保を行わない"]
 sources = ["src/backend/src/komaquill/availability.py", "src/backend/src/komaquill/api/availability.py", "src/frontend/src/features/availability.tsx"]
 tests = ["tests/integration/test_operation_availability.py", "tests/integration/test_operation_review.py", "src/frontend/tests/content.test.tsx", "src/frontend/tests/conversations.test.tsx", "src/frontend/tests/images.test.tsx", "src/frontend/tests/operations.test.ts", "tests/e2e/web/layout-availability.spec.ts"]
+
+
+[requirements.REQ-CONVERSATION-ALBUM-UX]
+summary = "会話・行動・描画を整理し、物語とアルバムを迷わず利用できる"
+status = "implemented"
+implementation_note = "既存の公開APIとRunを再利用し、画像表示と受付済み処理の監視を分離する。本文・保存形式・モデルを変更しない。"
+acceptance = [
+    "情景・動作・台詞と自分の発言を位置・枠・余白で区別し、保存本文と人物名を維持する",
+    "行動を入力欄から追加・編集・取消し、追加後に発言欄へ戻して発言と一度だけ送信する",
+    "アルバムの日付を現地日付と実際の画像枚数で新しい順に並べ、初期状態で閉じる",
+    "今回の受付と結果を同じIDで追い、保存後に該当日と結果へのリンクを示す",
+    "折りたたみと画面遷移で受付済み処理の監視を失わず、過去の未完了履歴は表示だけで回収しない",
+    "原画像を通常リンクで開き、保存と終了にはブラウザー標準機能を使う",
+    "接続表示は既存判定の購読だけを行い、本文の配置や操作別の判定へ介入しない",
+    "保存と開始にLLMやGPUの副作用を追加せず、名前と紹介を先に表示する",
+    "日英、通常とコンパクト、文字拡大、狭い画面で配置と操作を検査する",
+    "受付応答の喪失、表示・回収・生成の失敗で入力・操作ID・保存済み画像を保持する",
+    "今回送信した描画の受付不明では画面遷移後も同じIDの照会を続け、受付確認前に回収や生成の再送をしない",
+    "手動の受付確認は同じIDのGETだけを行い、生成を伴うPOSTを再実行しない",
+    "受付不明を応答生成中と表示せず、送信中・受付確認中・応答生成中を区別する",
+    "画像表示失敗の説明と取得再試行を固定画像枠で切り落とさず、別画像への更新を妨げない",
+]
+sources = ["src/frontend/src/features/image-activity.tsx", "src/frontend/src/features/images.tsx", "src/frontend/src/features/creation.tsx", "src/frontend/src/features/operations.ts", "src/frontend/src/features/conversations.tsx", "src/frontend/src/features/availability.tsx", "src/frontend/src/app/styles.css"]
+tests = ["src/frontend/tests/images.test.tsx", "src/frontend/tests/operations.test.ts", "src/frontend/tests/content.test.tsx", "src/frontend/tests/conversations.test.tsx", "src/frontend/tests/creators.test.tsx", "tests/e2e/web/layout-availability.spec.ts", "tests/e2e/web/recovery.spec.ts", "tests/e2e/web/workflow.spec.ts"]

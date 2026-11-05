@@ -8,11 +8,13 @@ test('saves the single player and personal attributes', async ({
   evidence,
 }) => {
   await page.goto('/player')
+  await page.getByText(ja.basicDetails, { exact: true }).click()
   await page.getByLabel(ja.age, { exact: true }).fill('28')
   await page.getByLabel(ja.gender, { exact: true }).fill('女性')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
-  await expect(page.getByRole('status').first()).toHaveText(ja.saved)
+  await expect(page.locator('.editor-page [role=status]')).toHaveText(ja.saved)
   await page.reload()
+  await page.getByText(ja.basicDetails, { exact: true }).click()
   await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('28')
   await expect(page.getByRole('button', { name: ja.duplicate })).toHaveCount(0)
   await expect(
@@ -27,7 +29,8 @@ test('automatically collects a portrait and preserves it after duplication', asy
 }) => {
   const name = 'Actor-' + randomUUID().slice(0, 8)
   await page.goto('/characters/new')
-  await page.getByLabel(ja.name, { exact: true }).fill(name)
+  await page.getByText(ja.basicDetails, { exact: true }).click()
+  await page.getByLabel(ja.requiredName, { exact: true }).fill(name)
   await page
     .getByLabel(ja.appearance, { exact: true })
     .fill('An adult with short red hair.')
@@ -46,9 +49,9 @@ test('automatically collects a portrait and preserves it after duplication', asy
     'naturalWidth',
     8,
   )
-  await page.getByLabel(ja.name, { exact: true }).fill(name + ' edited')
+  await page.getByLabel(ja.requiredName, { exact: true }).fill(name + ' edited')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
-  await expect(page.getByRole('status').first()).toHaveText(ja.saved)
+  await expect(page.locator('.editor-page [role=status]')).toHaveText(ja.saved)
   await page.getByRole('button', { name: ja.duplicate }).click()
   await expect(
     page.locator('.preset-card h2').filter({ hasText: name }),
@@ -81,7 +84,7 @@ test('continues dialogue with narration and draws only on request', async ({
   await evidence.capture('Three replies and narration without automatic images')
   const draw = page.getByRole('button', { name: ja.drawScene, exact: true })
   await expect(draw.locator('svg')).toHaveCount(1)
-  await expect(draw).toHaveText('')
+  await expect(draw).toHaveText(ja.drawScene)
   await input.fill('Unsent text remains here')
   await draw.click()
   await expect(input).toHaveValue('Unsent text remains here')
@@ -111,7 +114,8 @@ test('saves a banner and starts with the recommended character', async ({
 }) => {
   const name = 'Story-' + randomUUID().slice(0, 8)
   await page.goto('/stories/new')
-  await page.getByLabel(ja.name, { exact: true }).fill(name)
+  await page.getByText(ja.basicDetails, { exact: true }).click()
+  await page.getByLabel(ja.requiredName, { exact: true }).fill(name)
   await page
     .getByLabel(ja.opening, { exact: true })
     .fill('A visitor waits at the clocktower.')
@@ -124,10 +128,12 @@ test('saves a banner and starts with the recommended character', async ({
   )
   const storyId = page.url().split('/').at(-1)
   await page.goto('/new?story=' + storyId)
+  await page.locator('.start-selection > summary').click()
   await expect(
     page.getByLabel(ja.chooseCharacter).locator('option:checked'),
   ).toHaveText('栞')
   await page.reload()
+  await page.locator('.start-selection > summary').click()
   await expect(
     page.getByText('A visitor waits at the clocktower.', { exact: true }),
   ).toBeVisible()
@@ -185,6 +191,7 @@ test('generates and automatically collects a standalone image', async ({
   page,
 }) => {
   await page.goto('/images')
+  await page.getByRole('button', { name: ja.generate, exact: true }).click()
   await page
     .getByLabel(ja.imagePrompt, { exact: true })
     .fill('a quiet green garden')
@@ -193,7 +200,9 @@ test('generates and automatically collects a standalone image', async ({
       new URL(response.url()).pathname === '/api/v1/images' &&
       response.request().method() === 'POST',
   )
-  await page.getByRole('button', { name: ja.generate, exact: true }).click()
+  await page
+    .getByRole('button', { name: ja.drawRequestedScene, exact: true })
+    .click()
   const created = await (await receipt).json()
   await expect(
     page.locator(`img[src="/api/v1/images/${created.run_id}/files/0"]`),
@@ -229,16 +238,19 @@ test('retains one profile across start, edit, return and start navigation', asyn
   const characters = await (await request.get('/api/v1/characters')).json()
   const selection = `/new?story=${stories[0].id}&character=${characters[0].id}`
   await page.goto(selection)
+  await page.locator('.start-selection > summary').click()
   await page.getByRole('link', { name: ja.edit, exact: true }).click()
-  await expect(page.getByLabel(ja.name, { exact: true })).toHaveValue(
+  await expect(page.getByLabel(ja.requiredName, { exact: true })).toHaveValue(
     player.name,
   )
+  await page.getByText(ja.basicDetails, { exact: true }).click()
   await page.getByLabel(ja.age, { exact: true }).fill('37')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
   await expect
     .poll(() => new URL(page.url()).pathname + new URL(page.url()).search)
     .toBe(selection)
   await page.getByRole('link', { name: ja.players, exact: true }).click()
+  await page.getByText(ja.basicDetails, { exact: true }).click()
   await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('37')
   await page
     .getByRole('link', { name: ja.newConversation, exact: true })
@@ -277,6 +289,7 @@ test('regenerates the current age and gender and displays one preview', async ({
     })
   ).json()
   await page.goto(`/characters/${created.preset.id}`)
+  await page.getByText(ja.basicDetails, { exact: true }).click()
   await page.getByLabel(ja.age, { exact: true }).fill('60')
   await page.getByLabel(ja.gender, { exact: true }).fill('man')
   await expect(
@@ -307,18 +320,15 @@ test('regenerates the current age and gender and displays one preview', async ({
     8,
   )
   await expect(page.locator('.editor-preview img')).toHaveCount(1)
-  await expect(
-    page.locator('.editor-preview').getByText(ja.imageReady, { exact: true }),
-  ).toHaveCount(1)
+  await expect(page.locator('.editor-preview .image-result')).toHaveCount(0)
   await expect(
     page.locator('.editor-preview').getByText(ja.job_complete, { exact: true }),
   ).toHaveCount(0)
   await page.reload()
+  await page.getByText(ja.basicDetails, { exact: true }).click()
   await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('60')
   await expect(page.locator('.editor-preview img')).toHaveCount(1)
-  await expect(
-    page.locator('.editor-preview').getByText(ja.imageReady, { exact: true }),
-  ).toHaveCount(1)
+  await expect(page.locator('.editor-preview .image-result')).toHaveCount(0)
   await expect(
     page.locator('.editor-preview').getByText(ja.job_complete, { exact: true }),
   ).toHaveCount(0)

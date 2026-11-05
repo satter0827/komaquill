@@ -1,4 +1,4 @@
-import { ImageLinks } from './images'
+import { OriginalImage } from './images'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useState } from 'react'
@@ -7,7 +7,7 @@ import { useFailure, useMessages, usePreferences } from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { paths } from './library'
 
-export function NewConversation() {
+export function NewConversation({ compact = false }: { compact?: boolean }) {
   const m = useMessages()
   const [style, setStyle] = useState({ tone: '', topics: '', avoid: '' })
   const failure = useFailure()
@@ -51,11 +51,19 @@ export function NewConversation() {
     if (kind === 'story') next.delete('character')
     setSearch(next)
   }
+  if (compact && (!player.data || !character || !story))
+    return (
+      <Link className="button primary" to="/new">
+        {m.newConversation}
+      </Link>
+    )
   return (
-    <section className="page start-page">
-      <div className="eyebrow">{m.newEyebrow}</div>
-      <h1>{m.newConversation}</h1>
-      <p className="subtle">{m.newDescription}</p>
+    <section
+      className={compact ? 'home-section start-page' : 'page start-page'}
+    >
+      {!compact && <div className="eyebrow">{m.newEyebrow}</div>}
+      {compact ? <h2>{m.newConversation}</h2> : <h1>{m.newConversation}</h1>}
+      {!compact && <p className="subtle">{m.newDescription}</p>}
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -71,79 +79,91 @@ export function NewConversation() {
             })
         }}
       >
-        <div className="selection-grid">
-          <section className="selection-card">
-            <h2>{m.choosePlayer}</h2>
-            <p>{player.data?.name}</p>
-            <p className="subtle">{player.data?.description}</p>
-            <Link
-              to={`/player?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
-            >
-              {m.edit}
-            </Link>
-          </section>
-          {(['story', 'character'] as const).map((kind) => {
-            const record = kind === 'story' ? story : character
-            return (
-              <section
-                className={`selection-card selection-${kind}`}
-                key={kind}
+        <details
+          className="start-selection"
+          open={!player.data || !character || !story}
+        >
+          <summary>
+            {player.data && character && story
+              ? `${player.data.name} · ${character.name} · ${story.name}`
+              : m.chooseStory}
+          </summary>
+          <div className="details-content selection-grid">
+            <section className="selection-card">
+              <h2>{m.choosePlayer}</h2>
+              <p>{player.data?.name}</p>
+              <p className="subtle">{player.data?.description}</p>
+              <Link
+                to={`/player?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
               >
-                {record?.image_id && (
-                  <img
-                    className="selection-image"
-                    src={`/api/v1/images/${record.image_id}/files/0`}
-                    alt={record.name}
-                  />
-                )}
-                {record?.image_id && <ImageLinks identity={record.image_id} />}
-                <label>
-                  {kind === 'story' ? m.chooseStory : m.chooseCharacter}
-                  <select
-                    value={record?.id ?? ''}
-                    disabled={mutation.isPending}
-                    onChange={(event) => change(kind, event.target.value)}
-                  >
-                    {!record && <option value="">{m.noPresets}</option>}
-                    {choices(kind).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <p className="subtle">
-                  {record
-                    ? record.description ||
-                      ('opening' in record
-                        ? record.opening || record.world || record.goal
-                        : record.appearance || record.role) ||
-                      record.name
-                    : m.noPresets}
-                </p>
-                <Link
-                  className="text-button"
-                  to={`${paths[kind]}/new?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
+                {m.edit}
+              </Link>
+            </section>
+            {(['story', 'character'] as const).map((kind) => {
+              const record = kind === 'story' ? story : character
+              return (
+                <section
+                  className={`selection-card selection-${kind}`}
+                  key={kind}
                 >
-                  {m.new} →
-                </Link>
-              </section>
-            )
-          })}
-        </div>
+                  {record?.image_id && (
+                    <OriginalImage
+                      className="selection-image"
+                      identity={record.image_id}
+                      alt={record.name}
+                    />
+                  )}
+
+                  <label>
+                    {kind === 'story' ? m.chooseStory : m.chooseCharacter}
+                    <select
+                      value={record?.id ?? ''}
+                      disabled={mutation.isPending}
+                      onChange={(event) => change(kind, event.target.value)}
+                    >
+                      {!record && <option value="">{m.noPresets}</option>}
+                      {choices(kind).map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="subtle">
+                    {record
+                      ? record.description ||
+                        ('opening' in record
+                          ? record.opening || record.world || record.goal
+                          : record.appearance || record.role) ||
+                        record.name
+                      : m.noPresets}
+                  </p>
+                  <Link
+                    className="text-button"
+                    to={`${paths[kind]}/new?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
+                  >
+                    {m.new} →
+                  </Link>
+                </section>
+              )
+            })}
+          </div>
+        </details>
         <details>
           <summary>{m.expressionSettings}</summary>
-          {(['tone', 'topics', 'avoid'] as const).map((key) => (
-            <label key={key}>
-              {m[key]}
-              <textarea
-                value={style[key]}
-                onChange={(event) =>
-                  setStyle({ ...style, [key]: event.target.value })
-                }
-              />
-            </label>
-          ))}
+          <div className="details-content">
+            {(['tone', 'topics', 'avoid'] as const).map((key) => (
+              <label key={key}>
+                {m[key]}
+                <textarea
+                  value={style[key]}
+                  onChange={(event) =>
+                    setStyle({ ...style, [key]: event.target.value })
+                  }
+                />
+              </label>
+            ))}
+          </div>
         </details>
         <Button
           className="primary"
@@ -158,7 +178,12 @@ export function NewConversation() {
         >
           {m.create}
         </Button>
-        {[mutation.error, player.error, characters.error, stories.error]
+        {[
+          mutation.error,
+          player.error,
+          characters.error,
+          ...(compact ? [] : [stories.error]),
+        ]
           .filter(Boolean)
           .map((error, index) => (
             <p key={index} role="alert" className="error">

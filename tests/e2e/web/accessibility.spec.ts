@@ -29,7 +29,7 @@ for (const locale of ['ja', 'en'] as const) {
       await auditAccessibility()
     }
     await page.goto('/characters/new')
-    const name = page.getByLabel(messages.name, { exact: true })
+    const name = page.getByLabel(messages.requiredName, { exact: true })
     await name.fill(`Unsaved ${locale}`)
     await page.route('**/api/v1/characters/save', (route) =>
       route.fulfill({

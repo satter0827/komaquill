@@ -12,6 +12,11 @@ import m from '../src/app/locales/ja.json'
 const base = 'http://localhost'
 client.setConfig({ baseUrl: base, throwOnError: true })
 const server = setupServer(
+  http.get(`${base}/api/v1/player`, () =>
+    HttpResponse.json({ name: 'Player', revision: 0 }),
+  ),
+  http.get(`${base}/api/v1/characters`, () => HttpResponse.json([])),
+  http.get(`${base}/api/v1/runtime`, () => HttpResponse.json({ pending: [] })),
   http.post(`${base}/api/v1/availability`, () =>
     HttpResponse.json({ ready: true, connections: [] }),
   ),
@@ -52,7 +57,11 @@ it('shows a failed library load and recovers without losing saved stories', asyn
       ]),
     ),
   )
-  await userEvent.click(screen.getByRole('button', { name: m.refresh }))
+  await userEvent.click(
+    screen
+      .getByRole('main')
+      .querySelector<HTMLButtonElement>('.error + button')!,
+  )
   expect(
     await screen.findByRole('heading', { name: 'Saved story' }),
   ).toBeVisible()

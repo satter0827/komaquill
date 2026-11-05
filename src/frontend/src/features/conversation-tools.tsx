@@ -1,3 +1,4 @@
+import { MoreHorizontal } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -64,57 +65,63 @@ export function ConversationNotes({
     q.getBookmarksOptions({ path: { identity: conversation.id ?? '' } }),
   )
   return (
-    <details>
-      <summary>{m.pinnedNotes}</summary>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          save.mutate({
-            path: { identity: conversation.id ?? '' },
-            body: {
-              ...prepareNotes(),
-            },
-          })
-        }}
-      >
-        <label>
-          {m.notesDescription}
-          <textarea
-            disabled={!!prepared}
-            value={draft ?? conversation.notes?.join('\n') ?? ''}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-        </label>
-        <Button type="submit" disabled={save.isPending}>
-          {prepared ? m.retryRequest : m.save}
-        </Button>
-        {save.error && <p role="alert">{failure(save.error)}</p>}
-      </form>
+    <div className="story-menu-content">
+      <details>
+        <summary>{m.pinnedNotes}</summary>
+        <div className="details-content">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              save.mutate({
+                path: { identity: conversation.id ?? '' },
+                body: {
+                  ...prepareNotes(),
+                },
+              })
+            }}
+          >
+            <label>
+              {m.notesDescription}
+              <textarea
+                disabled={!!prepared}
+                value={draft ?? conversation.notes?.join('\n') ?? ''}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+            </label>
+            <Button type="submit" disabled={save.isPending}>
+              {prepared ? m.retrySave : m.save}
+            </Button>
+            {save.error && <p role="alert">{failure(save.error)}</p>}
+          </form>
+        </div>
+      </details>
       <details>
         <summary>{m.exportConversation}</summary>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={includeImages}
-            onChange={(event) => setIncludeImages(event.target.checked)}
-          />
-          {m.includeImages}
-        </label>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={includeConditions}
-            onChange={(event) => setIncludeConditions(event.target.checked)}
-          />
-          {m.includeConditions}
-        </label>
-        <a
-          className="button"
-          download
-          href={`/api/v1/conversations/${conversation.id}/export?include_images=${includeImages}&include_conditions=${includeConditions}`}
-        >
-          {m.downloadCopy}
-        </a>
+        <div className="details-content">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={includeImages}
+              onChange={(event) => setIncludeImages(event.target.checked)}
+            />
+            {m.includeImages}
+          </label>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={includeConditions}
+              onChange={(event) => setIncludeConditions(event.target.checked)}
+            />
+            {m.includeConditions}
+          </label>
+          <a
+            className="button"
+            download
+            href={`/api/v1/conversations/${conversation.id}/export?include_images=${includeImages}&include_conditions=${includeConditions}`}
+          >
+            {m.downloadCopy}
+          </a>
+        </div>
       </details>
       <h3>{m.savedScenes}</h3>
       {bookmarks.error && <p role="alert">{failure(bookmarks.error)}</p>}
@@ -128,7 +135,7 @@ export function ConversationNotes({
           />
         </div>
       ))}
-    </details>
+    </div>
   )
 }
 
@@ -200,10 +207,16 @@ export function SceneActions({
     return { path: { identity: conversation.id ?? '' }, body }
   }
   return (
-    <div>
-      <Button onClick={() => setOpen(!open)}>{m.sceneActions}</Button>
+    <div className="scene-menu">
+      <Button
+        aria-label={m.sceneActions}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <MoreHorizontal size={18} />
+      </Button>
       {open && (
-        <div>
+        <div className="details-content scene-menu-content">
           <label>
             {m.sceneName}
             <input

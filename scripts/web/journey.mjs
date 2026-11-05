@@ -18,9 +18,10 @@ export async function captureJourney(page, evidence, { live = false } = {}) {
   })
   await evidence.step('Inspect Your profile', async () => {
     await page.getByRole('link', { name: ja.players, exact: true }).click()
-    await page.getByLabel(ja.name, { exact: true }).waitFor()
+    await page.getByLabel(ja.requiredName, { exact: true }).waitFor()
     if (live) {
-      await page.getByLabel(ja.name, { exact: true }).fill('灯')
+      await page.getByText(ja.basicDetails, { exact: true }).click()
+      await page.getByLabel(ja.requiredName, { exact: true }).fill('灯')
       await page.getByLabel(ja.address, { exact: true }).fill('灯さん')
       await page.getByLabel(ja.age, { exact: true }).fill('28')
       await page.getByLabel(ja.gender, { exact: true }).fill('女性')
@@ -33,7 +34,8 @@ export async function captureJourney(page, evidence, { live = false } = {}) {
   })
   await evidence.step('Create a character and its portrait', async () => {
     await page.goto('/characters/new')
-    await page.getByLabel(ja.name, { exact: true }).fill(actor)
+    await page.getByText(ja.basicDetails, { exact: true }).click()
+    await page.getByLabel(ja.requiredName, { exact: true }).fill(actor)
     await page
       .getByLabel(ja.appearance, { exact: true })
       .fill(live ? '短い赤茶色の髪。' : 'An adult with short red hair.')
@@ -57,7 +59,8 @@ export async function captureJourney(page, evidence, { live = false } = {}) {
     'Save a story and its recommended counterpart',
     async () => {
       await page.goto('/stories/new')
-      await page.getByLabel(ja.name, { exact: true }).fill(story)
+      await page.getByText(ja.basicDetails, { exact: true }).click()
+      await page.getByLabel(ja.requiredName, { exact: true }).fill(story)
       await page
         .getByLabel(ja.opening, { exact: true })
         .fill(

@@ -50,7 +50,9 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
             {runtime.data?.gpu === 'active'
               ? messages.running
               : runtime.data?.gpu === 'absent'
-                ? messages.stopped
+                ? views.data?.some((view) => view.backend === 'external')
+                  ? messages.unmanagedEnvironment
+                  : messages.stopped
                 : messages.unknown}
           </dd>
           <dt>{messages.connection}</dt>
@@ -82,24 +84,27 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
           {messages.refresh}
         </Button>
       </div>
-      <div className="runtime-views">
-        {views.data?.map((view) => (
-          <div key={`${view.profile}-${view.view}`}>
-            <a href={view.url} target="_blank" rel="noopener noreferrer">
-              {view.profile} ·{' '}
-              {view.view === 'app' ? messages.appMode : messages.nodeGraph}
-            </a>
-            {view.backend === 'external' && (
-              <a
-                href={`/api/v1/runtime/workflows/${encodeURIComponent(view.profile)}/${view.view}`}
-                download="workflow.json"
-              >
-                {messages.downloadWorkflow}
+      <details>
+        <summary>{messages.drawingSettings}</summary>
+        <div className="details-content runtime-views">
+          {views.data?.map((view) => (
+            <div key={`${view.profile}-${view.view}`}>
+              <a href={view.url} target="_blank" rel="noopener noreferrer">
+                {view.profile} ·{' '}
+                {view.view === 'app' ? messages.appMode : messages.nodeGraph}
               </a>
-            )}
-          </div>
-        ))}
-      </div>
+              {view.backend === 'external' && (
+                <a
+                  href={`/api/v1/runtime/workflows/${encodeURIComponent(view.profile)}/${view.view}`}
+                  download="workflow.json"
+                >
+                  {messages.downloadWorkflow}
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      </details>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -124,7 +129,9 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
         onClick={() => stop.mutate({})}
         disabled={stop.isPending}
       >
-        {messages.stop}
+        {views.data?.some((view) => view.backend === 'external')
+          ? messages.disconnect
+          : messages.stop}
       </Button>
       {[runtime.error, views.error, start.error, stop.error, refresh.error]
         .filter(Boolean)

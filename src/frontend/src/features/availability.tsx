@@ -4,10 +4,13 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { Link } from 'react-router'
 import { checkAvailability } from '../api/generated/sdk.gen'
-import type { AvailabilityRequest } from '../api/generated/types.gen'
+import type {
+  Availability,
+  AvailabilityRequest,
+} from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
 
@@ -53,11 +56,13 @@ export async function recheckAvailability(cache: QueryClient) {
     queries.map(async (query) => {
       const request = query.queryKey[1] as AvailabilityRequest | undefined
       if (!request) return
-      const result = await checkAvailability({
-        body: request,
-        query: { refresh: true },
+      await cache.fetchQuery({
+        queryKey: query.queryKey,
+        queryFn: async () =>
+          (await checkAvailability({ body: request, query: { refresh: true } }))
+            .data!,
+        staleTime: 0,
       })
-      cache.setQueryData(query.queryKey, result.data!)
     }),
   )
 }
@@ -70,9 +75,13 @@ export function useAvailability(request?: AvailabilityRequest) {
         queryKey: ['availability', checked],
         exact: true,
       })
-      return (
-        await checkAvailability({ body: checked, query: { refresh: true } })
-      ).data!
+      return cache.fetchQuery({
+        queryKey: ['availability', checked],
+        queryFn: async () =>
+          (await checkAvailability({ body: checked, query: { refresh: true } }))
+            .data!,
+        staleTime: 0,
+      })
     },
     onSuccess: (data, checked) =>
       cache.setQueryData(['availability', checked], data),
@@ -128,32 +137,129 @@ export function useAvailability(request?: AvailabilityRequest) {
   }
 }
 
-export function AvailabilityNotice({
-  status,
-}: {
-  status: ReturnType<typeof useAvailability>
-}) {
+export function useConnectionSummary() {
+  const cache = useQueryClient()
+  const queries = cache.getQueryCache()
+  const subscribe = useCallback(
+    (notify: () => void) => queries.subscribe(notify),
+    [queries],
+  )
+  const snapshot = useCallback(
+    () =>
+      queries
+        .findAll({ queryKey: ['availability'], type: 'active' })
+        .map(
+          (query) =>
+            `${query.queryHash}:${query.state.dataUpdatedAt}:${query.state.errorUpdatedAt}:${query.state.fetchStatus}`,
+        )
+        .join('|'),
+    [queries],
+  )
+  useSyncExternalStore(subscribe, snapshot, snapshot)
+  const active = queries.findAll({ queryKey: ['availability'], type: 'active' })
+  return {
+    checking: active.some((query) => query.state.fetchStatus === 'fetching'),
+    failed: active.some(
+      (query) =>
+        query.state.error ||
+        (query.state.data as Availability | undefined)?.ready === false,
+    ),
+    errors: active.flatMap((query) =>
+      query.state.error ? [query.state.error] : [],
+    ),
+    connections: [
+      ...new Map(
+        active
+          .flatMap((query) =>
+            (
+              (query.state.data as Availability | undefined)?.connections ?? []
+            ).map((value) =>
+              query.state.error
+                ? { ...value, state: 'unknown' as const }
+                : value,
+            ),
+          )
+          .sort((a, b) => a.observed_at.localeCompare(b.observed_at))
+          .map((value) => [`${value.kind}-${value.target}`, value]),
+      ).values(),
+    ],
+    refresh: () => recheckAvailability(cache),
+  }
+}
+
+export function ConnectionSummary() {
   const m = useMessages()
   const failure = useFailure()
-  if (status.ready) return null
-  const unavailable = status.data?.connections?.find((c) => c.state !== 'ready')
+  const status = useConnectionSummary()
   return (
-    <div className="availability-notice" role="status">
-      <p>
-        {status.isFetching
-          ? m.checkingConnection
-          : status.error
-            ? failure(status.error)
-            : unavailable?.reason
-              ? failure({ code: unavailable.reason })
-              : m.connectionRequired}
-      </p>
-      <div className="actions">
-        <Button onClick={status.refresh} disabled={status.isFetching}>
+    <details className="connection-summary">
+      <summary>
+        {m.connectionSummary}
+        <span
+          className="connection-indicator"
+          data-warning={status.failed || undefined}
+          aria-hidden="true"
+        />
+        <span className="subtle">
+          {status.failed
+            ? m.connectionRequired
+            : status.connections.length
+              ? m.connectionReady
+              : m.notObserved}
+        </span>
+      </summary>
+      <div className="details-content">
+        <dl>
+          {(['llm', 'comfy'] as const).map((kind) => {
+            const values = status.connections.filter(
+              (value) => value.kind === kind,
+            )
+            const unavailable = values.find(
+              (value) =>
+                value.state !== 'ready' ||
+                Date.parse(value.expires_at) <= Date.now(),
+            )
+            return (
+              <div key={kind}>
+                <dt>
+                  {kind === 'llm'
+                    ? m.conversationConnection
+                    : m.drawingConnection}
+                </dt>
+                <dd>
+                  {!values.length
+                    ? m.notObserved
+                    : unavailable
+                      ? m.connectionRequired
+                      : m.connectionReady}
+                </dd>
+              </div>
+            )
+          })}
+        </dl>
+        <p className="connection-progress" role="status">
+          {status.checking ? m.checkingConnection : ''}
+        </p>
+        {status.connections
+          .filter((value) => value.reason)
+          .map((value) => (
+            <p key={`${value.kind}-${value.target}`} className="error">
+              {failure({ code: value.reason })}
+            </p>
+          ))}
+        {status.errors.map((error, index) => (
+          <p key={index} className="error">
+            {failure(error)}
+          </p>
+        ))}
+        <Button
+          onClick={() => void status.refresh()}
+          disabled={status.checking}
+        >
           {m.refresh}
         </Button>
         <Link to="/settings">{m.connectionSettings}</Link>
       </div>
-    </div>
+    </details>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
@@ -146,6 +146,9 @@ describe('conversation workflow', () => {
         expect(screen.getByLabelText(m.chooseCharacter)).toHaveValue(
           'recommended',
         ),
+      )
+      await userEvent.click(
+        document.querySelector('.start-selection > summary')!,
       )
       expect(screen.getByText('A saved opening')).toBeVisible()
       expect(screen.queryByText(m.noPresets)).not.toBeInTheDocument()
@@ -378,8 +381,10 @@ describe('conversation workflow', () => {
     expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
     expect(screen.getByRole('button', { name: m.drawScene })).toBeDisabled()
   })
-  it('reuses the request ID and body after a lost response', async () => {
-    const requests: unknown[] = []
+  it('checks a lost response by its original ID without posting again', async () => {
+    const requests: Array<{ operation_id: string }> = []
+    const observations: string[] = []
+    let received = false
     server.use(
       http.get(`${base}/api/v1/conversations/one`, () =>
         HttpResponse.json({
@@ -393,22 +398,20 @@ describe('conversation workflow', () => {
       http.post(
         `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
-          requests.push(await request.json())
-          return requests.length === 1
-            ? HttpResponse.error()
-            : HttpResponse.json(
-                {
-                  id: (requests[0] as { operation_id: string }).operation_id,
-                  conversation_id: 'one',
-                  state: 'complete',
-                },
-                { status: 202 },
-              )
+          requests.push((await request.json()) as { operation_id: string })
+          return HttpResponse.error()
         },
       ),
-      http.get(`${base}/api/v1/operations/:identity`, () =>
-        HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
-      ),
+      http.get(`${base}/api/v1/operations/:identity`, ({ params }) => {
+        observations.push(String(params.identity))
+        return received
+          ? HttpResponse.json({
+              id: params.identity,
+              conversation_id: 'one',
+              state: 'complete',
+            })
+          : HttpResponse.json({ code: 'request_not_found' }, { status: 404 })
+      }),
     )
     app('/conversations/one')
     await userEvent.type(
@@ -419,11 +422,18 @@ describe('conversation workflow', () => {
     await screen.findByRole('button', { name: m.retryRequest })
     expect(screen.getByRole('button', { name: m.drawScene })).toBeDisabled()
     expect(screen.getByLabelText(m.destination)).toBeDisabled()
+    received = true
     await userEvent.click(
       await screen.findByRole('button', { name: m.retryRequest }),
     )
-    expect(requests).toHaveLength(2)
-    expect(requests[0]).toEqual(requests[1])
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: m.retryRequest }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(requests).toHaveLength(1)
+    expect(observations.length).toBeGreaterThan(0)
+    expect(new Set(observations)).toEqual(new Set([requests[0].operation_id]))
   })
   it('clears an interrupted receipt when an explicit resume completes the same operation', async () => {
     const cache = new QueryClient({
@@ -571,13 +581,8 @@ describe('conversation workflow', () => {
       )
       await userEvent.selectOptions(
         screen.getByLabelText(m.chooseAction),
-        next === 'pose' ? 'prepare' : 'intention',
+        next === 'pose' ? 'pose' : 'intention',
       )
-      if (next === 'pose')
-        await userEvent.selectOptions(
-          screen.getByLabelText(m.choosePreparation),
-          'pose',
-        )
       await userEvent.type(
         screen.getByLabelText(
           next === 'pose' ? m.preparationValue : m.currentIntention,
@@ -692,22 +697,22 @@ describe('conversation workflow', () => {
     expect(input).toHaveValue('Next draft')
     expect(requests).toHaveLength(1)
   })
-  it('retries a message with its action only explicitly using the same operation', async () => {
+  it('keeps an unknown message and action when a manual check still finds no receipt', async () => {
     const requests: unknown[] = []
+    let observations = 0
     server.use(
       http.post(
         `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
           const body = await request.json()
           requests.push(body)
-          return requests.length === 1
-            ? HttpResponse.error()
-            : HttpResponse.json({ id: 'op', state: 'accepted' })
+          return HttpResponse.error()
         },
       ),
-      http.get(`${base}/api/v1/operations/:id`, () =>
-        HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
-      ),
+      http.get(`${base}/api/v1/operations/:id`, () => {
+        observations++
+        return HttpResponse.json({ code: 'request_not_found' }, { status: 404 })
+      }),
     )
     app('/conversations/one')
     await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
@@ -717,11 +722,21 @@ describe('conversation workflow', () => {
       'Go together?',
     )
     await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await waitFor(() => expect(observations).toBeGreaterThan(0))
+    const before = observations
     await userEvent.click(
       await screen.findByRole('button', { name: m.retryRequest }),
     )
-    await waitFor(() => expect(requests).toHaveLength(2))
-    expect(requests[0]).toEqual(requests[1])
+    await waitFor(() => expect(observations).toBeGreaterThan(before))
+    expect(requests).toHaveLength(1)
+    expect(screen.queryByText(m.pending)).not.toBeInTheDocument()
+    expect(screen.getByText(m.receiptUnknown)).toBeVisible()
+    expect(screen.getByRole('textbox', { name: m.messageLabel })).toHaveValue(
+      'Go together?',
+    )
+    expect(
+      screen.getByRole('button', { name: m.removeQueuedAction }),
+    ).toBeDisabled()
     expect(requests[0]).toMatchObject({
       text: 'Go together?',
       action: { kind: 'move', destination: 'Beach' },
@@ -923,6 +938,100 @@ it('shows the current character condition without internal state values', async 
     ).toHaveLength(1),
   )
   expect(screen.getByText('Blue shirt')).toBeInTheDocument()
+  expect(screen.getAllByText(m.currentState)).toHaveLength(1)
   expect(screen.getAllByText('Garden').length).toBeGreaterThan(0)
   expect(screen.queryByText('{"age":"28"}')).not.toBeInTheDocument()
+})
+
+it('edits multiple held objects without dropping other queued preparation fields', async () => {
+  const requests: Array<{
+    action: {
+      kind: string
+      clothing: string
+      held_objects: Array<{ id: string; name: string }>
+    }
+    proposal_id?: string
+  }> = []
+  server.use(
+    http.get(`${base}/api/v1/conversations/one`, () =>
+      HttpResponse.json({
+        id: 'one',
+        definition: { title: 'Preparation', llm_profile: 'fake' },
+        state: { player: { held_objects: [] } },
+        revision: 0,
+        turns: [],
+        proposals: [
+          {
+            id: 'proposal',
+            turn_id: 'source',
+            state: 'pending',
+            revision: 0,
+            action: {
+              kind: 'prepare',
+              clothing: 'Blue coat',
+              held_objects: [
+                { id: 'book', name: 'Book' },
+                { id: 'key', name: 'Key' },
+              ],
+            },
+          },
+        ],
+      }),
+    ),
+    http.post(`${base}/api/v1/conversations/one/turns`, async ({ request }) => {
+      requests.push((await request.json()) as (typeof requests)[number])
+      return HttpResponse.json(
+        { id: 'op', conversation_id: 'one', state: 'accepted' },
+        { status: 202 },
+      )
+    }),
+  )
+  app('/conversations/one')
+  await userEvent.click(await screen.findByText(m.addAction, { exact: true }))
+  const proposal = document.querySelector('.action-proposal')! as HTMLElement
+  await userEvent.click(
+    within(proposal).getByRole('button', { name: m.queueAction }),
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: m.editQueuedAction }),
+  )
+  await userEvent.selectOptions(
+    screen.getByLabelText(m.chooseAction),
+    'held_objects',
+  )
+  const objects = screen.getByLabelText(m.heldObjectsInput)
+  expect(objects.tagName).toBe('TEXTAREA')
+  expect(objects).toHaveValue('Book\nKey')
+  await userEvent.type(objects, '{End}{Enter}Map')
+  await userEvent.click(
+    within(
+      document.querySelector('.player-actions form')! as HTMLElement,
+    ).getByRole('button', { name: m.queueAction }),
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: m.editQueuedAction }),
+  )
+  const clothing = screen.getByLabelText(m.preparationValue)
+  await userEvent.clear(clothing)
+  await userEvent.type(clothing, 'Red coat')
+  await userEvent.click(
+    within(
+      document.querySelector('.player-actions form')! as HTMLElement,
+    ).getByRole('button', { name: m.queueAction }),
+  )
+  const message = screen.getByRole('textbox', { name: m.messageLabel })
+  await waitFor(() => expect(message).toHaveFocus())
+  await userEvent.type(message, 'Let us go.')
+  await userEvent.click(screen.getByRole('button', { name: m.send }))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0].action).toMatchObject({
+    kind: 'prepare',
+    clothing: 'Red coat',
+    held_objects: [
+      { id: 'book', name: 'Book' },
+      { id: 'key', name: 'Key' },
+      { name: 'Map' },
+    ],
+  })
+  expect(requests[0].proposal_id).toBeUndefined()
 })

@@ -108,6 +108,18 @@ test('network routes discard credentials, query values and unknown path segments
     '/api/v1/conversations/:value/turns',
   )
   assert.equal(route('not a URL'), ':invalid-url')
+  assert.equal(
+    route('http://localhost/api/v1/availability'),
+    '/api/v1/availability',
+  )
+  assert.equal(
+    route('http://localhost/api/v1/conversations/from-presets'),
+    '/api/v1/conversations/from-presets',
+  )
+  assert.equal(
+    route('http://localhost/api/v1/conversations/images'),
+    '/api/v1/conversations/:value',
+  )
   const value = diagnostic(new Error('private diagnostic payload'))
   assert.equal(value.type, 'Error')
   assert.equal(JSON.stringify(value).includes('private'), false)

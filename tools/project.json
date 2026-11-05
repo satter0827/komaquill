@@ -1,10 +1,12 @@
 {
   "name": "tools",
+  "implicitDependencies": ["contracts"],
   "targets": {
     "lint": {
       "executor": "nx:run-commands",
       "inputs": [
         "default",
+        "{workspaceRoot}/src/contracts/openapi.json",
         "{workspaceRoot}/bootstrap/**/*",
         "{workspaceRoot}/pyproject.toml",
         "{workspaceRoot}/docs/**/*",
@@ -27,6 +29,7 @@
       "executor": "nx:run-commands",
       "inputs": [
         "default",
+        "{workspaceRoot}/src/contracts/openapi.json",
         "{workspaceRoot}/bootstrap/**/*",
         "{workspaceRoot}/tests/**/*.test.mjs",
         "{workspaceRoot}/src/frontend/src/app/locales/*.json",

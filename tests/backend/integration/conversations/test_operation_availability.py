@@ -77,6 +77,70 @@ def observed(kind, target, ready=True):
     )
 
 
+def test_stale_drawing_probe_reports_ineligibility_without_relaxing_acceptance(
+    tmp_path, monkeypatch
+):
+    from fastapi.testclient import TestClient
+    from komaquill.interfaces.http.app import create_app
+
+    client = Client.initialize(tmp_path)
+    scene = client.conversations.create(
+        ConversationInput(title="Probe race", llm_profile="fake", locale="en")
+    )
+    request = CreationRequest(
+        operation_id=uuid4(),
+        kind="conversation_image",
+        target_id=scene.id,
+        expected_revision=scene.revision,
+    )
+    client.conversations.send(
+        scene.id, SendInput(operation_id=uuid4(), expected_revision=scene.revision, text="Hello")
+    )
+    monkeypatch.setattr(
+        client.availability,
+        "observe",
+        lambda *_args, **_kwargs: pytest.fail("Do not probe an obsolete selection."),
+    )
+    with TestClient(create_app(client), base_url="http://localhost") as web:
+        response = web.post(
+            "/api/v1/availability",
+            json=AvailabilityRequest(kind="creation", creation=request).model_dump(mode="json"),
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "ready": False,
+            "reason": "operation_conflict",
+            "connections": [],
+        }
+        with pytest.raises(KomaquillError, match="operation_conflict"):
+            client.library.accept(request)
+
+
+def test_completed_resume_probe_is_unavailable_and_storage_failures_still_propagate(
+    tmp_path, monkeypatch
+):
+    client = Client.initialize(tmp_path)
+    scene = client.conversations.create(
+        ConversationInput(title="Completed", llm_profile="fake", locale="en")
+    )
+    operation = client.conversations.send(
+        scene.id, SendInput(operation_id=uuid4(), expected_revision=0, text="Hello")
+    )
+    result = client.availability.check(AvailabilityRequest(kind="resume", identity=operation.id))
+    assert not result.ready and result.reason == "operation_conflict" and result.connections == []
+
+    def fail(_):
+        raise KomaquillError(code="storage_failed")
+
+    monkeypatch.setattr(client.availability, "creation_source", fail)
+    request = CreationRequest(
+        operation_id=uuid4(), kind="conversation_image", target_id=scene.id, expected_revision=1
+    )
+    with pytest.raises(KomaquillError, match="storage_failed"):
+        client.availability.check(AvailabilityRequest(kind="creation", creation=request))
+    client.close()
+
+
 def test_image_dependencies_follow_the_actual_translation_input(tmp_path, monkeypatch):
     client = Client.initialize(tmp_path)
     checks = []

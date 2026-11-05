@@ -1,7 +1,7 @@
 """Bound a tool invocation and clean up its owned descendants on interruption."""
 
-import os
 import subprocess
+import sys
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -22,9 +22,9 @@ def owned_process(
     env: Mapping[str, str],
     stdout: IO[str],
 ) -> Iterator[subprocess.Popen[str]]:
-    flags = (
-        subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
-    )
+    flags = 0
+    if sys.platform == "win32":
+        flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
     with subprocess.Popen(
         command,
         cwd=cwd,

@@ -8,6 +8,21 @@ import { writeFile as atomicWriteFile } from 'atomically'
 export const hash = (value) => createHash('sha256').update(value).digest('hex')
 const time = () => new Date().toISOString()
 const RESOURCE_CONSOLE_EVENT_WINDOW = 3
+const isParameter = (segment) =>
+  segment.startsWith('{') && segment.endsWith('}')
+const apiPaths = Object.keys(
+  JSON.parse(
+    readFileSync(
+      new URL('../../../src/contracts/openapi.json', import.meta.url),
+      'utf8',
+    ),
+  ).paths,
+)
+  .map((value) => value.split('/').filter(Boolean))
+  .sort(
+    (left, right) =>
+      left.filter(isParameter).length - right.filter(isParameter).length,
+  )
 const networkFailureCode = (text) => {
   const code = /^net::(ERR_[A-Z_]+)$/.exec(text ?? '')?.[1]
   return new Set([
@@ -52,6 +67,21 @@ export function route(url) {
     ])
     if (publicFiles.has(parsed.pathname)) return parsed.pathname
     const segments = parsed.pathname.split('/').filter(Boolean)
+    const documented = apiPaths.find(
+      (pattern) =>
+        pattern.length === segments.length &&
+        pattern.every(
+          (segment, index) =>
+            isParameter(segment) || segment === segments[index],
+        ),
+    )
+    if (documented)
+      return (
+        '/' +
+        documented
+          .map((segment) => (isParameter(segment) ? ':value' : segment))
+          .join('/')
+      )
     const fixed = new Set([
       'api',
       'v1',

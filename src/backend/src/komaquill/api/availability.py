@@ -55,7 +55,7 @@ class AvailabilityService:
             try:
                 source, _ = self.creation_source(request.creation)
             except KomaquillError as error:
-                if error.code == ErrorCode.VISUAL_REVIEW_REQUIRED:
+                if error.code in {ErrorCode.VISUAL_REVIEW_REQUIRED, ErrorCode.OPERATION_CONFLICT}:
                     return Availability(ready=False, reason=error.code)
                 raise
             required = self.creation_dependencies(request.creation, source)
@@ -75,7 +75,7 @@ class AvailabilityService:
             assert request.identity is not None
             operation = self.operation(request.identity)
             if not operation.can_resume:
-                raise KomaquillError(code="operation_conflict", retryable=False)
+                return Availability(ready=False, reason=ErrorCode.OPERATION_CONFLICT)
         connections = [self.observe(kind, target, refresh=refresh) for kind, target in required]
         return Availability(
             ready=all(c.state == "ready" for c in connections), connections=connections

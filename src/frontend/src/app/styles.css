@@ -108,6 +108,8 @@ h3 {
 .navigation-modal {
   --surface-soft: #ffffff18;
   --focus-ring: #ffc5db;
+  --error: #ffc5db;
+  --warning: #ffdc9c;
 }
 .navigation {
   width: 15.5rem;

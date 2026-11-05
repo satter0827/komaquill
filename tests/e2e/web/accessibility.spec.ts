@@ -80,10 +80,14 @@ for (const locale of ['ja', 'en'] as const) {
     })
     await state.focus()
     await page.keyboard.press('Enter')
-    await expect(page.locator('dialog')).toBeVisible()
+    await expect(
+      page.getByRole('dialog', { name: messages.currentState, exact: true }),
+    ).toBeVisible()
     await auditAccessibility()
     await page.keyboard.press('Escape')
-    await expect(page.locator('dialog')).not.toBeVisible()
+    await expect(
+      page.getByRole('dialog', { name: messages.currentState, exact: true }),
+    ).not.toBeVisible()
     await expect(state).toBeFocused()
     await page.route('**/api/v1/conversations', (route) =>
       route.fulfill({
@@ -135,7 +139,9 @@ for (const locale of ['ja', 'en'] as const) {
       })
       await state.focus()
       await page.keyboard.press('Enter')
-      await expect(page.locator('dialog')).toBeVisible()
+      await expect(
+        page.getByRole('dialog', { name: messages.currentState, exact: true }),
+      ).toBeVisible()
       await evidence.capture('Enlarged scene details')
       await auditAccessibility()
       await page.keyboard.press('Escape')

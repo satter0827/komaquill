@@ -1,5 +1,7 @@
 # 文書の索引
 
+画面の装飾と共通操作の更新は[視覚設計と操作の検証](verification/results/cherry-ui.md)を参照してください。
+
 会話・行動・アルバムの操作と監視の分担は[会話とアルバム](current/web.md#会話とアルバム)、利用手順は[会話画面](guides/web.md)、確認結果は[会話とアルバムのUI検証](verification/results/conversation-album-ui.md)を参照してください。
 
 要件から再確認した受付確認と画像失敗時の復旧は[会話とアルバムの再レビュー](verification/results/zero-base-conversation-album-review.md)を参照してください。

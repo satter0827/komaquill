@@ -120,12 +120,12 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
             onChange={(event) => setEndpoint(event.target.value)}
           />
         </label>
-        <Button type="submit" className="primary" disabled={start.isPending}>
+        <Button type="submit" variant="primary" disabled={start.isPending}>
           {messages.start}
         </Button>
       </form>
       <Button
-        className="danger"
+        variant="danger"
         onClick={() => stop.mutate({})}
         disabled={stop.isPending}
       >

@@ -6,12 +6,15 @@ import {
   MessageSquare,
   Plus,
   Settings2,
-  Sparkles,
+  Feather,
+  EyeOff,
   UserRound,
   Users,
 } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { Link, NavLink, Route, Routes } from 'react-router'
+import { Dialog, Modal } from '../components/ui/popup'
+import { useMediaQuery } from './viewport'
+import { Link, NavLink, Route, Routes, useLocation } from 'react-router'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import { Button } from '../components/ui/button'
 import {
@@ -44,145 +47,199 @@ function Application() {
   const connectionSummary = useConnectionSummary()
   const [navigation, setNavigation] = useState(false)
   const [privateScreen, setPrivateScreen] = useState(false)
-  const hiddenFocus = useRef<HTMLElement | null>(null)
+  const [privacyHandle] = useState(() => Dialog.createHandle())
+  const navigationTrigger = useRef<HTMLButtonElement>(null)
+  const narrow = useMediaQuery('(max-width: 850px)')
+  return (
+    <Dialog.Root open={navigation && narrow} onOpenChange={setNavigation}>
+      <div className="application">
+        <div className="workspace">
+          {!narrow && (
+            <Navigation
+              onNavigate={() => setNavigation(false)}
+              privacyHandle={privacyHandle}
+            />
+          )}
+          <main className="main-area">
+            <header className="mobile-header">
+              <Dialog.Trigger
+                ref={navigationTrigger}
+                render={
+                  <Button variant="ghost" aria-label={m.showNavigation} />
+                }
+              >
+                <Menu size={20} />
+                <span
+                  className="connection-indicator"
+                  data-warning={connectionSummary.failed || undefined}
+                />
+              </Dialog.Trigger>
+              {narrow && (
+                <Modal
+                  label={m.workspace}
+                  closeLabel={m.closePanel}
+                  className="navigation-modal"
+                >
+                  <Navigation
+                    onNavigate={() => setNavigation(false)}
+                    privacyHandle={privacyHandle}
+                  />
+                </Modal>
+              )}
+              <span>{m.brand}</span>
+            </header>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/new" element={<NewConversation />} />
+              <Route
+                path="/conversations/:identity"
+                element={<ConversationPage />}
+              />
+              <Route
+                path="/archive/conversations/:identity"
+                element={<ArchivedConversationPage />}
+              />
+              <Route path="/player" element={<PlayerPage />} />
+              {(['character', 'story'] as const).map((kind) => (
+                <Route
+                  key={kind}
+                  path={`/${kind === 'story' ? 'stories' : 'characters'}`}
+                >
+                  <Route index element={<LibraryPage kind={kind} />} />
+                  <Route
+                    path=":identity"
+                    element={<LibraryPage kind={kind} />}
+                  />
+                </Route>
+              ))}
+              <Route path="/settings" element={<PreferencesPage />} />
+              <Route path="/images" element={<ImagesPage />} />
+              <Route path="/runtime" element={<RuntimePage />} />
+              <Route path="*" element={<Home />} />
+            </Routes>
+          </main>
+        </div>
+        <Dialog.Root
+          open={privateScreen}
+          handle={privacyHandle}
+          disablePointerDismissal
+          onOpenChange={(open, details) => {
+            if (!open && details.reason !== 'close-press') {
+              details.cancel()
+              return
+            }
+            setPrivateScreen(open)
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Popup
+              className="privacy-overlay"
+              finalFocus={() =>
+                document.querySelector<HTMLButtonElement>('.privacy-button') ??
+                navigationTrigger.current ??
+                true
+              }
+            >
+              <Dialog.Title className="sr-only">{m.hideScreen}</Dialog.Title>
+              <Dialog.Close render={<Button variant="primary" />}>
+                {m.showScreen}
+              </Dialog.Close>
+            </Dialog.Popup>
+          </Dialog.Portal>
+        </Dialog.Root>
+      </div>
+    </Dialog.Root>
+  )
+}
+
+function Navigation({
+  onNavigate,
+  privacyHandle,
+}: {
+  onNavigate: () => void
+  privacyHandle: ReturnType<typeof Dialog.createHandle>
+}) {
+  const m = useMessages()
+  const { pathname } = useLocation()
+  const playing =
+    pathname === '/' ||
+    pathname === '/new' ||
+    pathname.startsWith('/conversations/') ||
+    pathname.startsWith('/archive/conversations/')
   const conversations = useQuery({
     ...q.listConversationsOptions(),
   })
   return (
-    <div className="application">
-      {privateScreen && (
-        <div className="privacy-overlay">
-          <Button
-            autoFocus
-            onClick={() => {
-              setPrivateScreen(false)
-              requestAnimationFrame(() => hiddenFocus.current?.focus())
-            }}
-          >
-            {m.showScreen}
-          </Button>
-        </div>
-      )}
-      <div
-        className="workspace"
-        style={privateScreen ? { display: 'none' } : undefined}
+    <aside className="navigation">
+      <NavLink to="/" className="brand">
+        <span className="brand-icon">
+          <Feather size={24} />
+        </span>
+        {m.brand}
+      </NavLink>
+      <Link
+        className="button primary new-conversation"
+        to="/new"
+        onClick={() => onNavigate()}
       >
-        <aside className={`navigation ${navigation ? 'is-open' : ''}`}>
-          <NavLink to="/" className="brand">
-            <span className="brand-icon">
-              <Sparkles size={19} />
-            </span>
-            {m.brand}
+        <Plus size={17} />
+        {m.newConversation}
+      </Link>
+      <div className="section-label">{m.workspace}</div>
+      <nav onClick={() => onNavigate()}>
+        <Link
+          to="/"
+          className={playing ? 'active' : undefined}
+          aria-current={playing ? 'location' : undefined}
+        >
+          <MessageSquare size={17} />
+          {m.play}
+        </Link>
+        <NavLink to="/characters">
+          <Users size={17} />
+          {m.characters}
+        </NavLink>
+        <NavLink to="/stories">
+          <BookOpen size={17} />
+          {m.stories}
+        </NavLink>
+        <NavLink to="/player">
+          <UserRound size={17} />
+          {m.players}
+        </NavLink>
+      </nav>
+      <div className="section-label recent-label">{m.recent}</div>
+      <div className="recent-list">
+        {conversations.data?.map((conversation) => (
+          <NavLink
+            key={conversation.id}
+            to={`/conversations/${conversation.id}`}
+            onClick={() => onNavigate()}
+          >
+            <MessageSquare size={14} />
+            <span>{conversation.definition.title}</span>
           </NavLink>
-          <Link
-            className="button primary new-conversation"
-            to="/new"
-            onClick={() => setNavigation(false)}
-          >
-            <Plus size={17} />
-            {m.newConversation}
-          </Link>
-          <div className="section-label">{m.workspace}</div>
-          <nav onClick={() => setNavigation(false)}>
-            <NavLink to="/" end>
-              <MessageSquare size={17} />
-              {m.play}
-            </NavLink>
-            <NavLink to="/characters">
-              <Users size={17} />
-              {m.characters}
-            </NavLink>
-            <NavLink to="/stories">
-              <BookOpen size={17} />
-              {m.stories}
-            </NavLink>
-            <NavLink to="/player">
-              <UserRound size={17} />
-              {m.players}
-            </NavLink>
-          </nav>
-          <div className="section-label recent-label">{m.recent}</div>
-          <div className="recent-list">
-            {conversations.data?.map((conversation) => (
-              <NavLink
-                key={conversation.id}
-                to={`/conversations/${conversation.id}`}
-                onClick={() => setNavigation(false)}
-              >
-                <MessageSquare size={14} />
-                <span>{conversation.definition.title}</span>
-              </NavLink>
-            ))}
-          </div>
-          <ConnectionSummary />
-          <nav
-            className="secondary-navigation"
-            onClick={() => setNavigation(false)}
-          >
-            <NavLink to="/images">
-              <Image size={17} />
-              {m.images}
-            </NavLink>
-            <NavLink to="/settings">
-              <Settings2 size={17} />
-              {m.preferences}
-            </NavLink>
-            <Button
-              className="privacy-button"
-              onClick={(event) => {
-                event.stopPropagation()
-                hiddenFocus.current =
-                  document.activeElement as HTMLElement | null
-                setPrivateScreen(true)
-              }}
-            >
-              {m.hideScreen}
-            </Button>
-          </nav>
-        </aside>
-        <main className="main-area">
-          <header className="mobile-header">
-            <Button
-              aria-label={m.showNavigation}
-              onClick={() => setNavigation(!navigation)}
-            >
-              <Menu size={19} />
-              <span
-                className="connection-indicator"
-                data-warning={connectionSummary.failed || undefined}
-              />
-            </Button>
-            <span>{m.brand}</span>
-          </header>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/new" element={<NewConversation />} />
-            <Route
-              path="/conversations/:identity"
-              element={<ConversationPage />}
-            />
-            <Route
-              path="/archive/conversations/:identity"
-              element={<ArchivedConversationPage />}
-            />
-            <Route path="/player" element={<PlayerPage />} />
-            {(['character', 'story'] as const).map((kind) => (
-              <Route
-                key={kind}
-                path={`/${kind === 'story' ? 'stories' : 'characters'}`}
-              >
-                <Route index element={<LibraryPage kind={kind} />} />
-                <Route path=":identity" element={<LibraryPage kind={kind} />} />
-              </Route>
-            ))}
-            <Route path="/settings" element={<PreferencesPage />} />
-            <Route path="/images" element={<ImagesPage />} />
-            <Route path="/runtime" element={<RuntimePage />} />
-            <Route path="*" element={<Home />} />
-          </Routes>
-        </main>
+        ))}
       </div>
-    </div>
+      <ConnectionSummary />
+      <nav className="secondary-navigation">
+        <NavLink to="/images" onClick={onNavigate}>
+          <Image size={17} />
+          {m.images}
+        </NavLink>
+        <NavLink to="/settings" onClick={onNavigate}>
+          <Settings2 size={17} />
+          {m.preferences}
+        </NavLink>
+        <Dialog.Trigger
+          handle={privacyHandle}
+          render={<Button className="privacy-button" />}
+        >
+          <EyeOff size={18} aria-hidden="true" />
+          {m.hideScreen}
+        </Dialog.Trigger>
+      </nav>
+    </aside>
   )
 }
 

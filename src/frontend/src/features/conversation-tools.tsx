@@ -10,6 +10,7 @@ import type {
 } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
+import { Popover, Popup } from '../components/ui/popup'
 
 export function ConversationNotes({
   conversation,
@@ -208,15 +209,13 @@ export function SceneActions({
   }
   return (
     <div className="scene-menu">
-      <Button
-        aria-label={m.sceneActions}
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        <MoreHorizontal size={18} />
-      </Button>
-      {open && (
-        <div className="details-content scene-menu-content">
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger
+          render={<Button variant="ghost" aria-label={m.sceneActions} />}
+        >
+          <MoreHorizontal size={18} />
+        </Popover.Trigger>
+        <Popup label={m.sceneActions}>
           <label>
             {m.sceneName}
             <input
@@ -242,8 +241,8 @@ export function SceneActions({
           >
             {m.forkScene}
           </Button>
-        </div>
-      )}
+        </Popup>
+      </Popover.Root>
       {(save.error || fork.error) && (
         <p role="alert">{failure(save.error || fork.error)}</p>
       )}

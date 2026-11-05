@@ -287,7 +287,7 @@
   "saveScene": "Bookmark this moment",
   "forkScene": "Start a new path from here",
   "olderTurns": "Load earlier messages",
-  "drawingSettings": "Image settings",
+  "drawingSettings": "Illustration options",
   "drawingSubjects": "People to draw",
   "partnerOnly": "Partner only",
   "bothPeople": "Player and partner",
@@ -348,5 +348,8 @@
   "drawingResultUnknown": "The illustration result could not be confirmed. Check the connection and processing status in settings.",
   "heldObjectsInput": "My held objects (one per line)",
   "additionalActionChanges": "Other changes in this action",
-  "requestSending": "Sending…"
+  "requestSending": "Sending…",
+  "closePanel": "Close",
+  "latestReply": "Latest reply",
+  "connectionCheckNeeded": "Check"
 }

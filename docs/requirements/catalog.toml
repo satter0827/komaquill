@@ -602,5 +602,5 @@ tests = ["tests/backend/integration/llm/test_call_budget.py", "tests/scripts/int
 summary = "検査の終了と中断で所有プロセスを回収し、別の実行を終了しない"
 status = "implemented"
 acceptance = ["正常終了とタイムアウトで所有する子プロセスの終了を確認する", "親の終了後も所有境界を維持する", "別の実行のプロセスを終了しない", "管理自体の例外と検査不能も安全な終端記録にする", "全体と個別検査の期限を分けて不整合を拒否する", "タイムアウトでも取得済みの出力を表示する"]
-sources = ["pyproject.toml", "tools/runtime/processes.py", "tools/checks/run.py", "tools/testing/affected.py"]
-tests = ["tests/tools/integration/runtime/test_processes.py", "tests/tools/integration/runner/test_check_runner.py", "tests/tools/integration/selection/test_affected.py"]
+sources = ["tools/runtime/processes.py", "tools/checks/run.py", "tools/testing/affected.py"]
+tests = ["tests/tools/integration/runtime/test_processes.py", "tests/tools/integration/runner/test_check_runner.py", "tests/tools/integration/selection/test_affected.py", "tests/system/structure/repository/test_layout.py"]

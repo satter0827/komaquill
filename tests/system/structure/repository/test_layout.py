@@ -65,6 +65,37 @@ def test_frontend_test_execution_has_one_owner_in_the_effective_nx_graph():
     assert "frontend" in projects["frontend-tests"]["implicitDependencies"]
 
 
+def test_pipeline_deadline_outlives_python_and_browser_suite_deadlines(tmp_path):
+    import json
+    import os
+
+    from tools.reporting import policy
+    from tools.runtime.processes import run_owned
+
+    output = tmp_path / "web-config.json"
+    with output.open("w", encoding="utf-8") as stream:
+        assert (
+            run_owned(
+                [
+                    "node",
+                    "--input-type=module",
+                    "-e",
+                    "import {webConfig} from './tools/testing/web/config.mjs'; "
+                    "console.log(JSON.stringify(webConfig()))",
+                ],
+                cwd=ROOT,
+                env={**os.environ, "KOMAQUILL_WEB_EVIDENCE_DIR": str(tmp_path / "browser")},
+                stdout=stream,
+                timeout=10,
+            )
+            == 0
+        )
+    browser = json.loads(output.read_text(encoding="utf-8"))
+    limits = policy(ROOT)
+    assert limits["pipeline_timeout"] > limits["step_timeout"] > 0
+    assert limits["pipeline_timeout"] * 1000 > browser["globalTimeout"] > 0
+
+
 def test_frozen_migration_does_not_import_current_business_or_schema():
     import ast
 

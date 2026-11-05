@@ -8,7 +8,6 @@ from typing import Literal
 from filelock import FileLock
 from PIL import Image
 
-from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.materials import workspace_identity
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.domain.errors import KomaquillError
@@ -78,7 +77,7 @@ def import_bytes(
             state="saved",
         )
         identity = hashlib.sha256(f"{kind}:{item.sha256}:{item.name}".encode()).hexdigest()
-        target = project.data / "inputs/records" / f"local-{identity}.json"
-        if not target.exists():
-            atomic_json(target, record.model_dump(mode="json"))
+        key = f"inputs/records/local-{identity}.json"
+        if project.artifacts_store.repository.reference(key) is None:
+            project.artifacts_store.write(key, record.model_dump_json().encode())
     return item

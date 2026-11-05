@@ -11,14 +11,14 @@ def reconcile_creations(workspace: Path) -> None:
     """Finish saved image references without making new remote requests."""
     if not (workspace / ".artifacts/data/komaquill.sqlite3").is_file():
         return
-    from komaquill.adapters.database import database
     from komaquill.adapters.diagnostics import record_event
-    from komaquill.adapters.library_repository import LibraryRepository
+    from komaquill.adapters.persistence.connection import database
+    from komaquill.adapters.persistence.library import LibraryRepository
     from komaquill.adapters.storage_errors import stored
     from komaquill.adapters.workspace import RuntimeWorkspace
+    from komaquill.application.library.operations import reconcile_jobs
     from komaquill.domain.errors import KomaquillError, failure_info
     from komaquill.domain.models import Run
-    from komaquill.library.operations import reconcile_jobs
 
     project = RuntimeWorkspace(workspace)
 

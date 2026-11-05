@@ -28,7 +28,7 @@ class WorkspacePaths:
 
     @property
     def runs(self) -> Path:
-        return self.data / "runs"
+        return self.data / "archive/runs"
 
     @property
     def inputs(self) -> Path:

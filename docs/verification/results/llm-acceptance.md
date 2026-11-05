@@ -4,7 +4,7 @@
 
 ## 対象と判定
 
-2026-11-03、Windowsのcodex/llm-acceptanceで、mainの01096b1を基点に検証した。実モデルはLM StudioのCPU実行、画像は専用T4のWAIを使用した。採用した変更は[設計判断](../../decisions/0018-source-backed-conversation.md)、設定と固定版は[既定設定](../../../src/backend/src/komaquill/resources/conversations/defaults.toml)と[ロック](../../../src/backend/uv.lock)を正本とする。
+2026-11-03、Windowsのcodex/llm-acceptanceで、mainの01096b1を基点に検証した。実モデルはLM StudioのCPU実行、画像は専用T4のWAIを使用した。採用した変更は[設計判断](../../decisions/0018-source-backed-conversation.md)、設定と固定版は[既定設定](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/src/komaquill/resources/conversations/defaults.toml)と[ロック](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/uv.lock)を正本とする。
 
 意味の正確さを維持した総トークン削減は未達である。実行・保存の成功、原文の引用検証、計数の成功を、文章や画像の品質合格として扱わない。既定モデルとWAIの生成セットは維持する。
 

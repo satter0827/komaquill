@@ -13,11 +13,22 @@ from pydantic import Field, model_validator
 from komaquill.adapters.llm.constraints import ResponseConstraintError
 from komaquill.adapters.llm.execution import StructuredExecution, response_schema
 from komaquill.adapters.llm.language import ResponseLanguageError, check_language
-from komaquill.conversations.actions import IntentionAction, MoveAction, PrepareAction, WaitAction
-from komaquill.conversations.context import scene_context
-from komaquill.conversations.models import ConnectionProfile, Conversation, Reply, TurnRequest
-from komaquill.conversations.transitions import published_reply
+from komaquill.domain.conversations.actions import (
+    IntentionAction,
+    MoveAction,
+    PrepareAction,
+    WaitAction,
+)
+from komaquill.domain.conversations.context import scene_context
+from komaquill.domain.conversations.models import (
+    ConnectionProfile,
+    Conversation,
+    Reply,
+    TurnRequest,
+)
+from komaquill.domain.conversations.transitions import published_reply
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.library.models import CharacterInput, PlayerInput, StoryInput
 from komaquill.domain.roleplay import (
     MAX_CLOTHING_LENGTH,
     MAX_EXPRESSION_POSE_LENGTH,
@@ -28,11 +39,6 @@ from komaquill.domain.roleplay import (
     PhysicalObjects,
     Record,
     StatePatch,
-)
-from komaquill.library.models import (
-    CharacterInput,
-    PlayerInput,
-    StoryInput,
 )
 
 
@@ -284,7 +290,14 @@ class ConversationResponder:
             self.execution.record(
                 request.operation_id,
                 0,
-                {"provider": "fake", "locale": locale, "input": request.text, "response": response},
+                {
+                    "format_version": 1,
+                    "provider": "fake",
+                    "status": "fixture_response",
+                    "locale": locale,
+                    "input": request.text,
+                    "response": response,
+                },
             )
             fake = FakeListLLM(responses=[json.dumps(response, ensure_ascii=False)])
             with tracing_context(enabled=False):

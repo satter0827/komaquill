@@ -1,0 +1,335 @@
+"""Back up a stopped workspace before explicitly upgrading its database."""
+
+import hashlib
+import json
+import re
+import shutil
+import sqlite3
+from contextlib import closing
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from komaquill.adapters.atomic import atomic_json, replace_file
+from komaquill.adapters.file_users import file_users
+from komaquill.adapters.monitor_state import alive, read_monitor
+from komaquill.adapters.paths import WorkspacePaths
+from komaquill.adapters.persistence import archive_layout
+from komaquill.adapters.persistence.access import acquire
+from komaquill.adapters.persistence.connection import Database, database
+from komaquill.adapters.storage_errors import stored
+from komaquill.domain.errors import KomaquillError
+
+
+def inventory(connection: sqlite3.Connection) -> dict[str, str]:
+    result = {}
+    for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+        if name == "alembic_version":
+            continue
+        quoted = '"' + name.replace('"', '""') + '"'
+        columns = [row[1] for row in connection.execute(f"PRAGMA table_info({quoted})")]
+        selection = ",".join('"' + column.replace('"', '""') + '"' for column in columns)
+        rows = sorted(repr(row) for row in connection.execute(f"SELECT {selection} FROM {quoted}"))
+        result[name] = hashlib.sha256("\n".join(rows).encode()).hexdigest()
+    return result
+
+
+def artifact_inventory(folder: Path) -> dict[str, str]:
+    result = {}
+    for path in sorted(folder.rglob("*")):
+        if (
+            path.is_file()
+            and not path.name.startswith("komaquill.sqlite3")
+            and not path.name.endswith(".lock")
+        ):
+            with path.open("rb") as handle:
+                result[path.relative_to(folder).as_posix()] = hashlib.file_digest(
+                    handle, "sha256"
+                ).hexdigest()
+    return result
+
+
+def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    tables = {row[0] for row in before.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "preferences" not in tables:
+        return True
+    retained = {
+        identity: payload
+        for identity, payload in after.execute(
+            "SELECT id,payload FROM state_migration_originals WHERE kind='presets'"
+        )
+    }
+    execution_retained = dict(
+        after.execute("SELECT id,payload FROM execution_migration_originals WHERE kind='preset'")
+    )
+    if before.execute("SELECT version_num FROM alembic_version").fetchone()[0] in {
+        "0006",
+        "0007",
+        "0008",
+        "0009",
+        "0010",
+        "0011",
+        "0012",
+    }:
+        current = {
+            row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
+        }
+        prior_preferences = [
+            (identity, json.loads(payload))
+            for identity, payload in before.execute(
+                "SELECT id,payload FROM preferences ORDER BY id"
+            )
+        ]
+        for _, value in prior_preferences:
+            value.pop("nsfw_enabled", None)
+        current_preferences = [
+            (identity, json.loads(payload))
+            for identity, payload in after.execute("SELECT id,payload FROM preferences ORDER BY id")
+        ]
+        return prior_preferences == current_preferences and all(
+            identity in current
+            and kind == current[identity][0]
+            and deleted == current[identity][2]
+            and (
+                payload == current[identity][1]
+                or payload == retained.get(identity)
+                or payload == execution_retained.get(identity)
+            )
+            for identity, kind, payload, deleted in before.execute(
+                "SELECT id,kind,payload,deleted FROM presets"
+            )
+        )
+    previous = before.execute("SELECT payload FROM preferences WHERE id=1").fetchone()
+    if previous is None:
+        return True
+    configured = json.loads(previous[0])
+    chosen = configured.pop("player_id", None)
+    configured.pop("image_frequency", None)
+    configured.pop("nsfw_enabled", None)
+    if configured.get("llm_profile") == "fake":
+        configured["llm_profile"] = "lmstudio-4b"
+    current = after.execute("SELECT payload FROM preferences WHERE id=1").fetchone()
+    if current is None or json.loads(current[0]) != configured:
+        return False
+    original = {
+        row[0]: row[1:] for row in before.execute("SELECT id,kind,payload,deleted FROM presets")
+    }
+    updated = {
+        row[0]: (row[1], retained.get(row[0], row[2]), row[3])
+        for row in after.execute("SELECT id,kind,payload,deleted FROM presets")
+    }
+    active = [identity for identity, row in original.items() if row[0] == "player" and not row[2]]
+    if chosen not in active and len(active) == 1:
+        chosen = active[0]
+    expected = {
+        identity: (row[0], row[1], 1 if row[0] == "player" and identity != chosen else row[2])
+        for identity, row in original.items()
+    }
+    return updated == expected
+
+
+def database_in_use(project: WorkspacePaths) -> bool:
+    if alive(read_monitor(project)):
+        return True
+    users = file_users([project.data / "komaquill.sqlite3"])
+    return users is None or bool(users)
+
+
+def conversations_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    tables = {row[0] for row in before.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "conversations" not in tables:
+        return True
+    current = dict(after.execute("SELECT id,payload FROM conversations"))
+    archive = dict(after.execute("SELECT id,payload FROM archived_conversations"))
+    retained = set(
+        after.execute("SELECT id,payload FROM state_migration_originals WHERE kind='conversations'")
+    )
+    retained.update(
+        after.execute(
+            "SELECT id,payload FROM execution_migration_originals "
+            "WHERE kind IN ('conversation','conversation_memory')"
+        )
+    )
+
+    return all(
+        current.get(identity) == payload
+        or archive.get(identity) == payload
+        or (identity, payload) in retained
+        for identity, payload in before.execute("SELECT id,payload FROM conversations")
+    )
+
+
+def operations_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    columns = [row[1] for row in before.execute("PRAGMA table_info(operations)")]
+    if not columns:
+        return True
+    retained = dict(
+        after.execute(
+            "SELECT id,payload FROM execution_migration_originals WHERE kind='operation_reply'"
+        )
+    )
+    names = [name for name in columns if name != "reply"]
+    selected = ",".join('"' + name + '"' for name in names)
+    prior = before.execute(f"SELECT {selected} FROM operations").fetchall()
+    if before.execute("SELECT name FROM sqlite_master WHERE name='archived_operations'").fetchone():
+        prior += before.execute(f"SELECT {selected} FROM archived_operations").fetchall()
+    if sorted(prior) != sorted(
+        after.execute(
+            f"SELECT {selected} FROM operations "
+            f"UNION ALL SELECT {selected} FROM archived_operations"
+        ).fetchall()
+    ):
+        return False
+    return "reply" not in columns or all(
+        retained.get(identity) == reply
+        for identity, reply in before.execute(
+            "SELECT id,reply FROM operations WHERE reply IS NOT NULL"
+        )
+    )
+
+
+def originals_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> bool:
+    exists = before.execute(
+        "SELECT name FROM sqlite_master WHERE name='execution_migration_originals'"
+    ).fetchone()
+    if exists is None:
+        return True
+    return set(before.execute("SELECT * FROM execution_migration_originals")).issubset(
+        set(after.execute("SELECT * FROM execution_migration_originals"))
+    )
+
+
+@stored
+def migrate(workspace: Path) -> Path:
+    source = WorkspacePaths(workspace).data / "komaquill.sqlite3"
+    lease = acquire(source, exclusive=True, timeout=0)
+    try:
+        return convert(workspace)
+    finally:
+        lease.release()
+
+
+def convert(workspace: Path) -> Path:
+    project = WorkspacePaths(workspace)
+    if database_in_use(project):
+        raise KomaquillError(
+            code="operation_busy",
+            stage="storage",
+            retryable=False,
+            display_key="migration.stop_required",
+        )
+    if archive_layout.pending(project).is_file():
+        previous = json.loads(archive_layout.pending(project).read_bytes())
+        if previous.get("status") == "pending":
+            return archive_layout.finish(project)
+    source = project.data / "komaquill.sqlite3"
+    if not source.is_file():
+        raise KomaquillError(code="request_not_found", stage="storage", retryable=False)
+    files_before = artifact_inventory(project.data)
+    destination = project.records / "migrations" / str(uuid4())
+    destination.mkdir(parents=True)
+    backup = destination / "before.sqlite3"
+    with closing(sqlite3.connect(source)) as connection, closing(sqlite3.connect(backup)) as copied:
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        if "operations" in tables:
+            for (payload,) in connection.execute("SELECT payload FROM operations"):
+                if json.loads(payload).get("state") in {"accepted", "running"}:
+                    raise KomaquillError(code="operation_busy", stage="storage", retryable=False)
+        before = inventory(connection)
+        connection.backup(copied)
+        if inventory(copied) != before:
+            raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+    record = {
+        "created_at": datetime.now(UTC).isoformat(),
+        "backup_sha256": hashlib.sha256(backup.read_bytes()).hexdigest(),
+        "before": before,
+        "files_before": files_before,
+        "changes": ["relational_constraints", "immutable_objects", "append_only_llm_records"],
+        "state": "backed_up",
+    }
+    report = destination / "migration.json"
+    atomic_json(report, record)
+    staging = destination / "staged"
+    staging.mkdir()
+    converted = staging / source.name
+    shutil.copyfile(backup, converted)
+    upgraded = Database(converted, migrate=True)
+    from komaquill.adapters.object_store import ObjectStore
+    from komaquill.adapters.persistence.artifacts import ArtifactRepository
+
+    repository = ArtifactRepository(upgraded)
+    for key, sha256 in files_before.items():
+        if key.split("/")[0] not in {"runs", "inputs", "workflows", "image-preparations"}:
+            continue
+        reference = repository.objects.import_file(project.data / key, expected_sha256=sha256)
+        repository.bind(key, reference)
+    for path in (project.data / "conversation-calls").glob("*/*.json"):
+        match = re.fullmatch(r"(.*?)([0-9]+)", path.stem)
+        if match is None:
+            raise KomaquillError(code="storage_failed", stage="storage")
+        repository.record(
+            UUID(path.parent.name), match[1], int(match[2]), json.loads(path.read_bytes())
+        )
+    upgraded.engine.dispose()
+    with closing(sqlite3.connect(converted)) as connection:
+        if (
+            connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
+            or connection.execute("PRAGMA foreign_key_check").fetchall()
+        ):
+            raise KomaquillError(code="storage_failed", stage="storage")
+        after = inventory(connection)
+        with closing(sqlite3.connect(backup)) as copied:
+            existing = {
+                row[0]
+                for row in copied.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            }
+            for name in ("objects", "artifact_bindings", "llm_records"):
+                if name in existing and not set(copied.execute(f'SELECT * FROM "{name}"')).issubset(
+                    set(connection.execute(f'SELECT * FROM "{name}"'))
+                ):
+                    raise KomaquillError(code="storage_failed", stage="storage")
+            if (
+                not library_preserved(copied, connection)
+                or not conversations_preserved(copied, connection)
+                or not operations_preserved(copied, connection)
+                or not originals_preserved(copied, connection)
+            ):
+                raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+    if any(
+        after.get(key) != value
+        for key, value in before.items()
+        if key
+        not in {
+            "presets",
+            "preferences",
+            "conversations",
+            "operations",
+            "execution_migration_originals",
+            "content_labels",
+            "objects",
+            "artifact_bindings",
+            "llm_records",
+        }
+    ):
+        raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+    files_after = artifact_inventory(project.data)
+    if files_after != files_before:
+        raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+    # Publish all verified objects before the atomic database switch. A stopped process
+    # may leave unreferenced objects, but never a reference to an unpublished object.
+    current_objects = ObjectStore(project.data)
+    for path in repository.objects.root.glob("*/*"):
+        if path.is_file() and path.parent.name != ".tmp":
+            current_objects.import_file(path, expected_sha256=path.name)
+    database.cache_clear()
+    if database_in_use(project):
+        raise KomaquillError(code="operation_busy", stage="storage")
+    replace_file(converted, source)
+    atomic_json(report, {**record, "after": after, "state": "database_converted"})
+    archive_layout.begin(project, report, files_before)
+    archive_layout.finish(project)
+    database.cache_clear()
+    return report

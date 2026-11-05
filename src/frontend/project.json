@@ -7,7 +7,8 @@
     "lint": {
       "executor": "nx:run-commands",
       "inputs": [
-        "frontend"
+        "frontend",
+        "{workspaceRoot}/tests/frontend/**/*"
       ],
       "options": {
         "command": "pnpm --dir src/frontend lint"
@@ -16,25 +17,18 @@
     "typecheck": {
       "executor": "nx:run-commands",
       "inputs": [
-        "frontend"
+        "frontend",
+        "{workspaceRoot}/tests/frontend/**/*"
       ],
       "options": {
         "command": "pnpm --dir src/frontend typecheck"
       }
     },
-    "test": {
-      "executor": "nx:run-commands",
-      "inputs": [
-        "frontend"
-      ],
-      "options": {
-        "command": "pnpm --dir src/frontend test"
-      }
-    },
     "build": {
       "executor": "nx:run-commands",
       "inputs": [
-        "frontend"
+        "frontend",
+        "{workspaceRoot}/tests/frontend/**/*"
       ],
       "outputs": [
         "{workspaceRoot}/.artifacts/build/frontend"

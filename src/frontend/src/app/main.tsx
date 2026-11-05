@@ -3,7 +3,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import '../api/client'
-import { PreferencesProvider } from './preferences'
+import { PreferencesProvider } from '../shared/preferences'
 import { App } from './shell'
 import './styles.css'
 

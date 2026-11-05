@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 
 from komaquill.adapters.llm.context import ContextBudget
 from komaquill.adapters.llm_configuration import ConversationSettings
-from komaquill.conversations.history import memory_sources
-from komaquill.conversations.models import Conversation, TurnRequest
+from komaquill.domain.conversations.history import memory_sources
+from komaquill.domain.conversations.models import Conversation, TurnRequest
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import ConversationMemory, MemoryPassage, Record
 

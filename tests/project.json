@@ -1,0 +1,16 @@
+{
+  "name": "python-tests",
+  "implicitDependencies": ["backend", "tools", "scripts", "bootstrap", "contracts"],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [{ "projects": ["backend"], "target": "build" }],
+      "inputs": ["default", "^default", "{workspaceRoot}/pyproject.toml"],
+      "options": { "command": "node tools/runtime/python.mjs -m tools.testing.affected" },
+      "configurations": {
+        "ci": { "command": "node tools/runtime/python.mjs -m tools.testing.affected --all --coverage" }
+      }
+    }
+  }
+}

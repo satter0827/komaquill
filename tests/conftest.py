@@ -1,113 +1,79 @@
-"""Provide ComfyUI test boundaries without network or GPU dependencies."""
+"""Isolate deterministic tests and retain failed workspaces."""
 
 import ipaddress
 import os
 import shutil
 import socket
 from contextlib import suppress
-from uuid import uuid4
+from pathlib import Path
 
-import httpx
 import pytest
-from komaquill.adapters.comfyui import ComfyClient
-from komaquill.adapters.workspace import RuntimeWorkspace
-from komaquill.domain.models import Session
-
-from tests.support.comfy import ComfyStub
-from tests.support.presets import asset
 
 
-@pytest.fixture
-def substituted_services(monkeypatch):
-    """Pair substituted inference and rendering services with read-only observations."""
-    from komaquill.api.availability import AvailabilityService
-
-    monkeypatch.setattr(AvailabilityService, "_llm", lambda *_: None)
-    monkeypatch.setattr(AvailabilityService, "_comfy", lambda *_: None)
+def loopback(host):
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 @pytest.fixture(autouse=True)
 def offline_network(monkeypatch):
-    """Keep accidental real network access outside the daily test suite."""
+    """Allow connections only to loopback sockets bound by this test process."""
+    allowed = set()
+    bind = socket.socket.bind
     connect = socket.socket.connect
+    connect_ex = socket.socket.connect_ex
+    resolve = socket.getaddrinfo
 
-    def local_only(connection, address):
+    def local_bind(connection, address):
+        if isinstance(address, tuple) and not loopback(address[0]):
+            raise AssertionError("Tests must bind an explicit loopback address.")
+        result = bind(connection, address)
         if isinstance(address, tuple):
-            try:
-                allowed = ipaddress.ip_address(address[0]).is_loopback
-            except ValueError:
-                allowed = address[0] == "localhost"
-            if address[1] == 1234:
-                raise AssertionError("The live model endpoint is disabled in offline tests.")
-            if not allowed:
-                raise AssertionError("External network access is disabled in offline tests.")
+            allowed.add(connection.getsockname()[1])
+        return result
+
+    def check(address):
+        if isinstance(address, tuple) and (not loopback(address[0]) or address[1] not in allowed):
+            raise AssertionError("Connect only to a loopback service created by this test.")
+
+    def local_connect(connection, address):
+        check(address)
         return connect(connection, address)
 
-    monkeypatch.setattr(socket.socket, "connect", local_only)
+    def local_connect_ex(connection, address):
+        check(address)
+        return connect_ex(connection, address)
+
+    def local_resolve(host, *args, **kwargs):
+        if host is not None and not loopback(host):
+            raise AssertionError("External name resolution is disabled in deterministic tests.")
+        return resolve(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "bind", local_bind)
+    monkeypatch.setattr(socket.socket, "connect", local_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", local_connect_ex)
+    monkeypatch.setattr(socket, "getaddrinfo", local_resolve)
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    monkeypatch.setenv(
-        "KOMAQUILL_CONVERSATION__LLM_PROFILES__LMSTUDIO-4B__TOKEN_COUNTING", "approximate"
-    )
-
-
-@pytest.fixture
-def stopped_database(monkeypatch):
-    """Isolate migration data contracts from unrelated host processes."""
-    from komaquill.adapters import database_migration
-
-    monkeypatch.setattr(database_migration, "file_users", lambda _: set())
-
-
-@pytest.fixture
-def project(tmp_path):
-    (tmp_path / "komaquill.toml").write_text(
-        'models = ["klein-4b"]\npoll_interval = 0.001\ngeneration_timeout = 1.0\n'
-        "story_max_in_flight = 1\n"
-        + "".join(f"[presets.{name}]\nbatch_size = 1\n" for name in ("klein-4b", "klein-4b-edit"))
-    )
-    return RuntimeWorkspace(tmp_path)
-
-
-@pytest.fixture
-def session():
-    return Session(
-        endpoint="http://127.0.0.1:18188",
-        runtime_id=uuid4(),
-        source_revision="a" * 40,
-        comfy_revision="b" * 40,
-        frontend_version="1.55.18",
-        asset_sha256={asset().name: asset().sha256},
-    )
-
-
-@pytest.fixture
-def stub(session):
-    return ComfyStub(session.model_copy(deep=True))
+    for name in tuple(os.environ):
+        if name.startswith(("KOMAQUILL_ALLOW_", "LANGCHAIN_", "LANGSMITH_", "OPENAI_")):
+            monkeypatch.delenv(name)
 
 
 def pytest_configure(config):
     if config.option.basetemp is None:
-        (config.rootpath / ".artifacts/tmp").mkdir(parents=True, exist_ok=True)
         config.option.basetemp = config.rootpath / ".artifacts/tmp" / f"pytest-{os.getpid()}"
-    (config.rootpath / ".artifacts/records/reports/quality").mkdir(parents=True, exist_ok=True)
-
-
-@pytest.fixture
-def client(stub):
-    connection = ComfyClient(stub.session.endpoint, transport=httpx.MockTransport(stub.respond))
-    yield connection
-    connection.close()
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Remove only the runner-owned temporary workspace, skipping locked files."""
-    folder = session.config.option.basetemp
-    if folder is None:
+    """Clean only the runner-owned successful workspace."""
+    if exitstatus or session.config.option.basetemp is None:
         return
-    from pathlib import Path
-
-    folder = Path(folder).resolve()
+    folder = Path(session.config.option.basetemp).resolve()
     allowed = (session.config.rootpath / ".artifacts/tmp").resolve()
-    if folder.is_relative_to(allowed) and folder != allowed:
+    if folder != allowed and folder.is_relative_to(allowed):
         with suppress(OSError):
             shutil.rmtree(folder)

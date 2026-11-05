@@ -3,14 +3,14 @@
 from pathlib import Path
 from uuid import UUID
 
-from komaquill.adapters.archive import ArchiveRepository, load_archived_runs
-from komaquill.adapters.conversation_archive import (
+from komaquill.adapters.locations import Locations
+from komaquill.adapters.persistence.archive import ArchiveRepository, load_archived_runs
+from komaquill.adapters.persistence.connection import database
+from komaquill.adapters.persistence.conversation_archive import (
     ArchivedConversation,
     get_conversation,
     list_conversations,
 )
-from komaquill.adapters.database import database
-from komaquill.adapters.locations import Locations
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
 from komaquill.domain.errors import KomaquillError, OperationStage
@@ -75,7 +75,7 @@ class ArchiveService:
             return Locations(self.project).artifact(key)
 
     def export(self, identity: UUID, destination: str | Path) -> Path:
-        from komaquill.adapters.evaluations import write_export
+        from komaquill.adapters.evaluation_export import write_export
 
         with api_operation(OperationStage.STORAGE):
             path = Path(destination)

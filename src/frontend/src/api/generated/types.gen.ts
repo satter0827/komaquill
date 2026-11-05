@@ -95,6 +95,7 @@ export type Availability = {
      * Ready
      */
     ready: boolean;
+    reason?: ErrorCode | null;
     /**
      * Connections
      */
@@ -390,6 +391,24 @@ export type CharacterSaveRequest = {
      */
     expected_revision?: number | null;
     value: CharacterInput;
+};
+
+/**
+ * CodeLocation
+ */
+export type CodeLocation = {
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Line
+     */
+    line: number;
+    /**
+     * Function
+     */
+    function: string;
 };
 
 /**
@@ -837,7 +856,7 @@ export type CreationRequest = {
  *
  * Identify safe, machine-readable product failure categories.
  */
-export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
+export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'execution_budget_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
  * ErrorView
@@ -874,6 +893,10 @@ export type FailureInfo = {
      * Retryable
      */
     retryable?: boolean;
+    /**
+     * Locations
+     */
+    locations?: Array<CodeLocation>;
 };
 
 /**
@@ -3372,6 +3395,194 @@ export type GetSettingsResponses = {
 };
 
 export type GetSettingsResponse = GetSettingsResponses[keyof GetSettingsResponses];
+
+export type CheckDeviceAccessData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/access';
+};
+
+export type CheckDeviceAccessErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type CheckDeviceAccessError = CheckDeviceAccessErrors[keyof CheckDeviceAccessErrors];
+
+export type CheckDeviceAccessResponses = {
+    /**
+     * Response Check Device Access
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: boolean;
+    };
+};
+
+export type CheckDeviceAccessResponse = CheckDeviceAccessResponses[keyof CheckDeviceAccessResponses];
+
+export type ListDevicesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/devices';
+};
+
+export type ListDevicesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListDevicesError = ListDevicesErrors[keyof ListDevicesErrors];
+
+export type ListDevicesResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ApproveDeviceData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{identity}/approve';
+};
+
+export type ApproveDeviceErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ApproveDeviceError = ApproveDeviceErrors[keyof ApproveDeviceErrors];
+
+export type ApproveDeviceResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type RevokeDeviceData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/devices/{identity}';
+};
+
+export type RevokeDeviceErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type RevokeDeviceError = RevokeDeviceErrors[keyof RevokeDeviceErrors];
+
+export type RevokeDeviceResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type ListConversationsData = {
     body?: never;

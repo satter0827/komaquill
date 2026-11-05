@@ -15,7 +15,6 @@ from uuid import UUID
 from filelock import FileLock, Timeout
 from pydantic import BaseModel, SecretStr, ValidationError
 
-from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.configuration import WorkspaceConfiguration
 from komaquill.adapters.llm.constraints import ResponseConstraintError
 from komaquill.adapters.llm.language import ResponseLanguageError
@@ -24,6 +23,7 @@ from komaquill.domain.errors import KomaquillError
 
 if TYPE_CHECKING:
     from komaquill.adapters.llm.context import ContextBudget
+    from komaquill.adapters.persistence.budgets import CallBudget
 
 
 MAX_REPAIR_ISSUES = 8
@@ -56,11 +56,12 @@ class StructuredExecution:
     ) -> None:
         self.workspace = workspace
         self.configuration = configuration
+        self.call_budget: CallBudget | None = None
 
     @cached_property
     def checkpoints(self) -> Any:
-        from komaquill.adapters.checkpoints import Checkpoints
-        from komaquill.adapters.database import database
+        from komaquill.adapters.persistence.checkpoints import Checkpoints
+        from komaquill.adapters.persistence.connection import database
 
         storage = database(self.workspace / ".artifacts/data/komaquill.sqlite3")
         return Checkpoints(storage.path)
@@ -106,7 +107,7 @@ class StructuredExecution:
             raise KomaquillError(code="invalid_configuration", retryable=False) from None
 
     def system_text(self, operation: UUID, system: str) -> str:
-        from komaquill.adapters.database import database
+        from komaquill.adapters.persistence.connection import database
 
         enabled = database(self.workspace / ".artifacts/data/komaquill.sqlite3").content.capture(
             operation
@@ -122,16 +123,22 @@ class StructuredExecution:
     def record(
         self, operation: UUID, attempt: int, payload: dict[str, Any], purpose: str = ""
     ) -> None:
-        atomic_json(
-            self.workspace
-            / ".artifacts/data/conversation-calls"
-            / str(operation)
-            / f"{purpose}{attempt}.json",
-            payload,
-        )
-        self._record_usage(operation)
+        self.records.record(operation, purpose, attempt, payload)
 
-    def _record_usage(self, operation: UUID) -> None:
+    @cached_property
+    def records(self) -> Any:
+        from komaquill.adapters.persistence.artifacts import ArtifactRepository
+        from komaquill.adapters.persistence.connection import database
+
+        return ArtifactRepository(database(self.workspace / ".artifacts/data/komaquill.sqlite3"))
+
+    def call_records(self, operation: UUID) -> list[tuple[Path, dict[str, Any]]]:
+        return [
+            (Path(f"{purpose}{attempt}.json"), payload)
+            for purpose, attempt, payload in self.records.calls(operation)
+        ]
+
+    def usage(self, operation: UUID) -> dict[str, Any]:
         from typing import cast
 
         from langchain_core.messages.ai import UsageMetadata, add_usage
@@ -139,27 +146,22 @@ class StructuredExecution:
         known: UsageMetadata | None = None
         count = 0
         unknown = 0
-        directory = self.workspace / ".artifacts/data/conversation-calls" / str(operation)
-        for path in sorted(directory.glob("*.json")):
-            record = json.loads(path.read_bytes())
+        for _, record in self.call_records(operation):
             count += 1
             usage = record.get("usage")
             if usage is None:
                 unknown += 1
             else:
                 known = add_usage(known, cast(UsageMetadata, usage))
-        atomic_json(
-            self.workspace / ".artifacts/data/conversation-usage" / f"{operation}.json",
-            {
-                "format_version": 1,
-                "operation_id": str(operation),
-                "call_count": count,
-                "known_calls": count - unknown,
-                "unknown_calls": unknown,
-                "known_usage": known,
-                "usage_complete": unknown == 0,
-            },
-        )
+        return {
+            "format_version": 1,
+            "operation_id": str(operation),
+            "call_count": count,
+            "known_calls": count - unknown,
+            "unknown_calls": unknown,
+            "known_usage": known,
+            "usage_complete": unknown == 0,
+        }
 
     def _model(self, profile: LLMProfile) -> Any:
         try:
@@ -197,8 +199,7 @@ class StructuredExecution:
         ).hexdigest()
 
     def has_response(self, operation: UUID) -> bool:
-        directory = self.workspace / ".artifacts/data/conversation-calls" / str(operation)
-        return any(path.stem.isdecimal() for path in directory.glob("*.json"))
+        return any(path.stem.isdecimal() for path, _ in self.call_records(operation))
 
     def replay[T: BaseModel](
         self,
@@ -209,14 +210,13 @@ class StructuredExecution:
         validate: Callable[[T], None],
         field_language: str,
     ) -> T:
-        directory = self.workspace / ".artifacts/data/conversation-calls" / str(operation)
-        paths = sorted(
-            (p for p in directory.glob("*.json") if p.stem.isdecimal()), key=lambda p: int(p.stem)
+        records = sorted(
+            ((p, value) for p, value in self.call_records(operation) if p.stem.isdecimal()),
+            key=lambda item: int(item[0].stem),
         )
-        if not paths:
+        if not records:
             raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
-        path = paths[-1]
-        record = json.loads(path.read_bytes())
+        path, record = records[-1]
         effective_system = self.system_text(operation, system)
         if (
             self.checkpoints.load(f"settings:{operation}")
@@ -263,7 +263,7 @@ class StructuredExecution:
             raise KomaquillError(code="fake_input_mismatch", retryable=False)
         if not permitted:
             raise KomaquillError(code="real_llm_not_allowed", retryable=False)
-        from komaquill.adapters.database import database
+        from komaquill.adapters.persistence.connection import database
 
         database(self.workspace / ".artifacts/data/komaquill.sqlite3").content.capture(operation)
         if urlsplit(profile.base_url or "").hostname not in {
@@ -340,14 +340,15 @@ class StructuredExecution:
                 "repair_reserve_tokens": budget.repair_tokens,
             }
             index = call_offset + attempt
-            path = (
-                self.workspace
-                / ".artifacts/data/conversation-calls"
-                / str(operation)
-                / f"{purpose}{index}.json"
+            previous = next(
+                (
+                    value
+                    for key, value in self.call_records(operation)
+                    if key.stem == f"{purpose}{index}"
+                ),
+                None,
             )
-            if path.exists():
-                previous = json.loads(path.read_bytes())
+            if previous is not None:
                 if (
                     previous.get("invocation_id") != invocation
                     or previous.get("messages") != record["messages"]
@@ -367,6 +368,8 @@ class StructuredExecution:
                 raise KomaquillError(
                     code=previous.get("error", "submission_unknown"), retryable=False
                 )
+            if self.call_budget is not None:
+                self.call_budget.reserve()
             self.record(operation, index, record, purpose)
             started = time.monotonic()
             try:
@@ -493,10 +496,9 @@ class StructuredExecution:
                     self.checkpoints.save(settings_key, {"sha256": settings_hash})
                 elif saved_settings != {"sha256": settings_hash}:
                     raise KomaquillError(code="operation_conflict", retryable=False)
-                directory = self.workspace / ".artifacts/data/conversation-calls" / str(operation)
                 records = [
-                    (path, json.loads(path.read_bytes()))
-                    for path in directory.glob("*.json")
+                    (path, value)
+                    for path, value in self.call_records(operation)
                     if path.stem.startswith(purpose) and path.stem.removeprefix(purpose).isdecimal()
                 ]
                 retained = [

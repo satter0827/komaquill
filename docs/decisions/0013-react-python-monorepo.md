@@ -20,4 +20,4 @@ Nxはfrontend、backend、contracts、tools、e2eを選択する。Python内の�
 
 ## 影響
 
-HTTPとCLIは同じ保存・処理権を使う。新しいGPUの確保はstartだけで行い、workerへ会話、DB、LLM設定を配布しない。利用方法は[画面の手順](../guides/web.md)、現在の境界は[設計](../current/web.md)、検証の対象は[開発手順](../development/workflow.md)を参照する。
+HTTPとCLIは同じ保存・処理権を使う。新しいGPUの確保はstartだけで行い、workerへ会話、DB、LLM設定を配布しない。利用方法は[画面の手順](../guides/web.md)、現在の境界は[設計](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/docs/current/web.md)、検証の対象は[開発手順](../development/workflow.md)を参照する。

@@ -14,7 +14,7 @@ from filelock import FileLock
 
 from komaquill.adapters.paths import GpuPaths, WorkspacePaths
 from komaquill.domain.errors import FailureInfo
-from komaquill.messages import message
+from komaquill.resources.messages import message
 
 if TYPE_CHECKING:
     from komaquill.domain.usage import AccountUsage

@@ -28,10 +28,10 @@
 
 ## 実LLMの保存・復旧
 
-独立した検査`tests/live/operation_recovery.py`は、発言のみ、発言と行動、応答確定の失敗、応答チェックポイントの失敗、HTTP受付応答の喪失、下書きの保存失敗を扱う。通常ゲートでは実行しない。明示許可と既存の共通呼び出し予算を渡し、分離した作業場所へ保存する。
+独立した検査`scripts/acceptance/conversations/recovery.py`は、発言のみ、発言と行動、応答確定の失敗、応答チェックポイントの失敗、HTTP受付応答の喪失、下書きの保存失敗を扱う。通常ゲートでは実行しない。明示許可と既存の共通呼び出し予算を渡し、分離した作業場所へ保存する。
 
 ```powershell
-node scripts/python.mjs -m tests.live.operation_recovery --allow-real-llm --output .artifacts/records/reports/recovery/RUN --budget .artifacts/records/reports/BUDGET/llm-budget.json
+node tools/runtime/python.mjs -m scripts.acceptance.conversations.recovery --allow-real-llm --output .artifacts/records/reports/recovery/RUN --budget .artifacts/records/reports/BUDGET/llm-budget.json
 ```
 
 初回の実生成と復旧を分けて計数し、再起動後の復旧と同じ操作IDの再受付で追加推論がゼロ、行動が一度だけ適用されることを確認する。HTTPでは実サーバーへ同じ接続から照会し、受付後の保存失敗で接続を破壊しないことも確認する。結果は[実LLM・T4の再検証](results/live-ui-operations.md)を参照する。

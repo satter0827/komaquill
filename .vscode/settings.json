@@ -4,9 +4,7 @@
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
   "python.testing.pytestArgs": [
-    "tests/unit",
-    "tests/integration",
-    "tests/structure"
+    "tests"
   ],
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",

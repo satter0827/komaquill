@@ -3,23 +3,25 @@
 from functools import cached_property
 from pathlib import Path
 from types import TracebackType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
     from komaquill.adapters.configuration import WorkspaceConfiguration
     from komaquill.adapters.llm.execution import StructuredExecution
+    from komaquill.adapters.persistence.devices import DeviceStore
+    from komaquill.adapters.web_configuration import WebSettings
     from komaquill.api.archive import ArchiveService
     from komaquill.api.availability import AvailabilityService
-    from komaquill.conversations.service import ConversationService
-    from komaquill.library.models import (
+    from komaquill.application.conversations.service import ConversationService
+    from komaquill.application.library.service import LibraryService, PlayerService, PresetService
+    from komaquill.domain.library.models import (
         CharacterInput,
         CharacterPreset,
         StoryInput,
         StoryPreset,
     )
-    from komaquill.library.recovery import ImageLinkInspection, ImageLinkRepairResult
-    from komaquill.library.service import LibraryService, PlayerService, PresetService
+    from komaquill.domain.library.recovery import ImageLinkInspection, ImageLinkRepairResult
 
 from komaquill.adapters.workspace import RuntimeWorkspace, find_project, initialize
 from komaquill.api._errors import api_operation
@@ -53,9 +55,16 @@ class Client:
         return self._project.root
 
     def migrate(self) -> Path:
-        from komaquill.adapters.database_migration import migrate
+        from komaquill.adapters.persistence.migrate import migrate
 
-        return migrate(self.workspace)
+        workspace = self.workspace
+        self.close()
+        result = migrate(workspace)
+        # No service may retain a graph or connection to the replaced database.
+        replacement = Client(workspace)
+        self.__dict__.clear()
+        self.__dict__.update(replacement.__dict__)
+        return result
 
     def inspect_image_links(self) -> "ImageLinkInspection":
         """Record candidates without modifying the existing database."""
@@ -80,7 +89,19 @@ class Client:
         from komaquill.adapters.llm.execution import StructuredExecution
 
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
-            return StructuredExecution(self.workspace, lambda: self._configuration)
+            execution = StructuredExecution(self.workspace, lambda: self._configuration)
+            binding = self.workspace / ".artifacts/state/llm-budget.json"
+            if binding.is_file():
+                import json
+
+                from komaquill.adapters.persistence.budgets import CallBudget
+                from komaquill.adapters.persistence.connection import database
+
+                value = json.loads(binding.read_bytes())
+                execution.call_budget = CallBudget(
+                    database(Path(value["ledger"])), value["max_calls"], value["max_seconds"]
+                )
+            return execution
 
     @cached_property
     def availability(self) -> "AvailabilityService":
@@ -97,7 +118,7 @@ class Client:
 
     @cached_property
     def conversations(self) -> "ConversationService":
-        from komaquill.composition import conversations
+        from komaquill.composition.services import conversations
 
         return conversations(
             self.workspace, self._execution, self.availability.require_conversation
@@ -111,7 +132,7 @@ class Client:
 
     @cached_property
     def _library(self) -> "LibraryService":
-        from komaquill.composition import library
+        from komaquill.composition.services import library
 
         return library(
             self.workspace,
@@ -136,6 +157,58 @@ class Client:
     @cached_property
     def operations(self) -> OperationService:
         return OperationService(self.conversations.repository)
+
+    def limit_llm_calls(self, ledger: Path, *, max_calls: int, max_seconds: int) -> None:
+        """Attach a persistent allowance without resetting previous reservations."""
+        from komaquill.adapters.atomic import atomic_json
+        from komaquill.adapters.persistence.budgets import CallBudget
+        from komaquill.adapters.persistence.connection import database
+
+        with api_operation(OperationStage.CHECK):
+            self._execution.call_budget = CallBudget(database(ledger), max_calls, max_seconds)
+            atomic_json(
+                self.workspace / ".artifacts/state/llm-budget.json",
+                {
+                    "ledger": str(ledger.resolve()),
+                    "max_calls": max_calls,
+                    "max_seconds": max_seconds,
+                },
+            )
+
+    def llm_usage(self) -> dict[str, object]:
+        """Read the attached allowance without contacting a model."""
+        return self._execution.call_budget.snapshot() if self._execution.call_budget else {}
+
+    def llm_records(self, operation: UUID) -> list[dict[str, Any]]:
+        """Read private request evidence without credentials or HTTP headers."""
+        with api_operation(OperationStage.STORAGE):
+            return [value for _, value in self._execution.call_records(operation)]
+
+    def operation_usage(self, operation: UUID) -> dict[str, Any]:
+        with api_operation(OperationStage.STORAGE):
+            return self._execution.usage(operation)
+
+    @cached_property
+    def devices(self) -> "DeviceStore":
+        from komaquill.adapters.persistence.connection import database
+        from komaquill.adapters.persistence.devices import DeviceStore
+
+        return DeviceStore(
+            database(self._project.data / "komaquill.sqlite3"), self._configuration.web
+        )
+
+    @property
+    def web_settings(self) -> "WebSettings":
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            return self._configuration.web
+
+    def export_web_proxy(self, *, port: int = 8765) -> Path:
+        from komaquill.adapters.web_proxy import write_config
+
+        with api_operation(OperationStage.STORAGE):
+            return write_config(
+                self._project, self.web_settings, port, self._configuration.runtime.local_port
+            )
 
     def close(self) -> None:
         if "_execution" in self.__dict__:
@@ -181,7 +254,7 @@ class Client:
     @cached_property
     def images(self) -> ImageService:
         from komaquill.adapters.llm.images import ImageDescriber
-        from komaquill.availability import AvailabilityRequest
+        from komaquill.domain.availability import AvailabilityRequest
 
         return ImageService(
             self._project,

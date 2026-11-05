@@ -33,14 +33,17 @@ class LLMProfile(BaseModel):
                     "Fake profiles must not contain connection or credential settings."
                 )
             return self
-        url = urlsplit(self.base_url or "")
+        value = self.base_url or ""
+        if any(character.isspace() or ord(character) < 32 for character in value) or "\\" in value:
+            raise ValueError("Use an endpoint without whitespace or backslashes.")
+        url = urlsplit(value)
         if (
             not url.hostname
             or url.port == 0
-            or url.username
-            or url.password
-            or url.query
-            or url.fragment
+            or url.username is not None
+            or url.password is not None
+            or "?" in value
+            or "#" in value
             or url.scheme not in {"http", "https"}
             or (url.scheme == "http" and url.hostname not in {"localhost", "127.0.0.1", "::1"})
         ):

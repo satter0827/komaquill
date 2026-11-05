@@ -31,7 +31,7 @@
       "type": "process",
       "command": "${command:python.interpreterPath}",
       "args": [
-        "${workspaceFolder}/scripts/check.py",
+        "${workspaceFolder}/tools/checks/run.py",
         "--scope",
         "${input:checkScope}"
       ]

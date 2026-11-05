@@ -17,7 +17,7 @@ from komaquill.adapters.colab_execution import execution_transport
 from komaquill.adapters.diagnostics import record_event
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.domain.errors import ErrorCode, FailureInfo, OperationStage
-from komaquill.messages import message
+from komaquill.resources.messages import message
 
 
 def main() -> None:

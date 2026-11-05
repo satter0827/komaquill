@@ -21,7 +21,7 @@ from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.models import JsonObject
 from komaquill.domain.presets import MODEL_ROLES
-from komaquill.messages import error_message, message
+from komaquill.resources.messages import error_message, message
 from komaquill.worker.progress import progress
 
 

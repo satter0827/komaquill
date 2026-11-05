@@ -1,0 +1,244 @@
+[
+  {
+    "name": "archived_conversations",
+    "create": "\nCREATE TABLE archived_conversations (\n\tid VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\treason VARCHAR NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "payload",
+      "reason"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "command_receipts",
+    "create": "\nCREATE TABLE command_receipts (\n\tid VARCHAR NOT NULL, \n\tfingerprint VARCHAR NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "fingerprint"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "conversations",
+    "create": "\nCREATE TABLE conversations (\n\tid VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\trevision INTEGER GENERATED ALWAYS AS (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.revision') END) STORED, \n\tPRIMARY KEY (id), \n\tCONSTRAINT conversation_identity CHECK (json_valid(payload) AND json_extract(payload, '$.id') = id), \n\tCONSTRAINT conversation_revision CHECK (revision >= 0)\n)\n\n",
+    "columns": [
+      "id",
+      "payload"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "creation_jobs",
+    "create": "\nCREATE TABLE creation_jobs (\n\tid VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\towner_pid INTEGER NOT NULL, \n\towner_started VARCHAR NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "payload",
+      "owner_pid",
+      "owner_started"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "devices",
+    "create": "\nCREATE TABLE devices (\n\tid VARCHAR NOT NULL, \n\ttoken_sha256 VARCHAR(64) NOT NULL, \n\tlabel VARCHAR NOT NULL, \n\tstate VARCHAR NOT NULL, \n\tcreated_at VARCHAR NOT NULL, \n\texpires_at VARCHAR NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT device_state CHECK (state IN ('pending','approved','revoked')), \n\tUNIQUE (token_sha256)\n)\n\n",
+    "columns": [
+      "id",
+      "token_sha256",
+      "label",
+      "state",
+      "created_at",
+      "expires_at"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "evaluations",
+    "create": "\nCREATE TABLE evaluations (\n\tid VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "payload"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "execution_budgets",
+    "create": "\nCREATE TABLE execution_budgets (\n\tid VARCHAR NOT NULL, \n\tmax_calls INTEGER NOT NULL, \n\tmax_seconds INTEGER NOT NULL, \n\treserved_calls INTEGER DEFAULT '0' NOT NULL, \n\texpires_at VARCHAR NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT budget_calls CHECK (max_calls > 0 AND reserved_calls BETWEEN 0 AND max_calls)\n)\n\n",
+    "columns": [
+      "id",
+      "max_calls",
+      "max_seconds",
+      "reserved_calls",
+      "expires_at"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "image_submissions",
+    "create": "\nCREATE TABLE image_submissions (\n\tid VARCHAR NOT NULL, \n\tfingerprint VARCHAR NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "fingerprint"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "images",
+    "create": "\nCREATE TABLE images (\n\tid VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tstate VARCHAR GENERATED ALWAYS AS (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.state') END) STORED, \n\tPRIMARY KEY (id), \n\tCONSTRAINT image_identity CHECK (json_valid(payload) AND json_extract(payload, '$.run_id') = id)\n)\n\n",
+    "columns": [
+      "id",
+      "payload"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "objects",
+    "create": "\nCREATE TABLE objects (\n\tsha256 VARCHAR(64) NOT NULL, \n\tsize_bytes INTEGER NOT NULL, \n\tPRIMARY KEY (sha256), \n\tCONSTRAINT object_digest CHECK (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*' AND size_bytes >= 0)\n)\n\n",
+    "columns": [
+      "sha256",
+      "size_bytes"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "preferences",
+    "create": "\nCREATE TABLE preferences (\n\tid INTEGER NOT NULL, \n\tpayload TEXT NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT preferences_singleton CHECK (id = 1 AND json_valid(payload))\n)\n\n",
+    "columns": [
+      "id",
+      "payload"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "preset_saves",
+    "create": "\nCREATE TABLE preset_saves (\n\tid VARCHAR NOT NULL, \n\tfingerprint VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "fingerprint",
+      "payload"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "presets",
+    "create": "\nCREATE TABLE presets (\n\tid VARCHAR NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tdeleted BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    "columns": [
+      "id",
+      "kind",
+      "payload",
+      "deleted"
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX one_active_player ON presets (kind) WHERE kind='player' AND deleted=0"
+    ]
+  },
+  {
+    "name": "archived_operations",
+    "create": "\nCREATE TABLE archived_operations (\n\tid VARCHAR NOT NULL, \n\tconversation_id VARCHAR NOT NULL, \n\trequest TEXT NOT NULL, \n\tfingerprint VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tactive_slot INTEGER, \n\towner_pid INTEGER NOT NULL, \n\towner_started VARCHAR NOT NULL, \n\tbase_revision INTEGER, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(conversation_id) REFERENCES archived_conversations (id)\n)\n\n",
+    "columns": [
+      "id",
+      "conversation_id",
+      "request",
+      "fingerprint",
+      "payload",
+      "active_slot",
+      "owner_pid",
+      "owner_started",
+      "base_revision"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "artifact_bindings",
+    "create": "\nCREATE TABLE artifact_bindings (\n\t\"key\" TEXT NOT NULL, \n\tsha256 VARCHAR(64) NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tPRIMARY KEY (\"key\"), \n\tFOREIGN KEY(sha256) REFERENCES objects (sha256)\n)\n\n",
+    "columns": [
+      "key",
+      "sha256",
+      "kind"
+    ],
+    "indexes": [
+      "CREATE INDEX ix_artifact_object ON artifact_bindings (sha256)"
+    ]
+  },
+  {
+    "name": "conversation_bookmarks",
+    "create": "\nCREATE TABLE conversation_bookmarks (\n\tid VARCHAR NOT NULL, \n\tconversation_id VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT bookmark_json CHECK (json_valid(payload)), \n\tFOREIGN KEY(conversation_id) REFERENCES conversations (id)\n)\n\n",
+    "columns": [
+      "id",
+      "conversation_id",
+      "payload"
+    ],
+    "indexes": [
+      "CREATE INDEX ix_bookmarks_conversation ON conversation_bookmarks (conversation_id)"
+    ]
+  },
+  {
+    "name": "conversation_events",
+    "create": "\nCREATE TABLE conversation_events (\n\tconversation_id VARCHAR NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tid VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tpending INTEGER NOT NULL, \n\tPRIMARY KEY (conversation_id, kind, id), \n\tCONSTRAINT event_pending CHECK (pending IN (0,1) AND json_valid(payload)), \n\tFOREIGN KEY(conversation_id) REFERENCES conversations (id)\n)\n\n",
+    "columns": [
+      "conversation_id",
+      "kind",
+      "id",
+      "payload",
+      "pending"
+    ],
+    "indexes": [
+      "CREATE INDEX ix_conversation_events_current ON conversation_events (conversation_id, pending)"
+    ]
+  },
+  {
+    "name": "conversation_turns",
+    "create": "\nCREATE TABLE conversation_turns (\n\tconversation_id VARCHAR NOT NULL, \n\tposition INTEGER NOT NULL, \n\tturn_id VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tprefix_sha256 VARCHAR NOT NULL, \n\tPRIMARY KEY (conversation_id, position), \n\tCONSTRAINT turn_position CHECK (position >= 0 AND json_valid(payload)), \n\tCONSTRAINT uq_turn_identity UNIQUE (conversation_id, turn_id), \n\tFOREIGN KEY(conversation_id) REFERENCES conversations (id)\n)\n\n",
+    "columns": [
+      "conversation_id",
+      "position",
+      "turn_id",
+      "payload",
+      "prefix_sha256"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "device_events",
+    "create": "\nCREATE TABLE device_events (\n\tid VARCHAR NOT NULL, \n\tdevice_id VARCHAR NOT NULL, \n\tstate VARCHAR NOT NULL, \n\trecorded_at VARCHAR NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT device_event_state CHECK (state IN ('pending','approved','revoked')), \n\tFOREIGN KEY(device_id) REFERENCES devices (id)\n)\n\n",
+    "columns": [
+      "id",
+      "device_id",
+      "state",
+      "recorded_at"
+    ],
+    "indexes": [
+      "CREATE INDEX ix_device_events_device ON device_events (device_id, recorded_at)"
+    ]
+  },
+  {
+    "name": "llm_records",
+    "create": "\nCREATE TABLE llm_records (\n\toperation_id VARCHAR NOT NULL, \n\tpurpose VARCHAR NOT NULL, \n\tattempt INTEGER NOT NULL, \n\trevision INTEGER NOT NULL, \n\tsha256 VARCHAR(64) NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\tPRIMARY KEY (operation_id, purpose, attempt, revision), \n\tCONSTRAINT llm_record_position CHECK (attempt >= 0 AND revision >= 0), \n\tFOREIGN KEY(sha256) REFERENCES objects (sha256)\n)\n\n",
+    "columns": [
+      "operation_id",
+      "purpose",
+      "attempt",
+      "revision",
+      "sha256",
+      "status"
+    ],
+    "indexes": []
+  },
+  {
+    "name": "operations",
+    "create": "\nCREATE TABLE operations (\n\tid VARCHAR NOT NULL, \n\tconversation_id VARCHAR NOT NULL, \n\trequest TEXT NOT NULL, \n\tfingerprint VARCHAR NOT NULL, \n\tpayload TEXT NOT NULL, \n\tactive_slot INTEGER, \n\towner_pid INTEGER NOT NULL, \n\towner_started VARCHAR NOT NULL, \n\tbase_revision INTEGER, \n\tstate VARCHAR GENERATED ALWAYS AS (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.state') END) STORED, \n\tPRIMARY KEY (id), \n\tCONSTRAINT operation_json CHECK (json_valid(request) AND json_valid(payload)), \n\tCONSTRAINT operation_identity CHECK (json_extract(payload, '$.id') = id AND json_extract(payload, '$.conversation_id') = conversation_id), \n\tCONSTRAINT operation_state CHECK (state IN ('accepted','running','complete','failed','interrupted')), \n\tCONSTRAINT operation_slot CHECK (active_slot IS NULL OR active_slot = 1), \n\tCONSTRAINT operation_owner CHECK (owner_pid > 0 AND (base_revision IS NULL OR base_revision >= 0)), \n\tFOREIGN KEY(conversation_id) REFERENCES conversations (id), \n\tUNIQUE (active_slot)\n)\n\n",
+    "columns": [
+      "id",
+      "conversation_id",
+      "request",
+      "fingerprint",
+      "payload",
+      "active_slot",
+      "owner_pid",
+      "owner_started",
+      "base_revision"
+    ],
+    "indexes": [
+      "CREATE INDEX ix_operations_conversation ON operations (conversation_id, state)"
+    ]
+  }
+]

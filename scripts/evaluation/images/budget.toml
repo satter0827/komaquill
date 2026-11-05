@@ -1,0 +1,10 @@
+# Bounded conditions for one explicit six-image WAI review.
+models = ["wai-illustrious"]
+gpu = "T4"
+compute_unit_limit = 4.0
+compute_unit_reserve = 2.0
+submission_timeout = 1200.0
+session_timeout = 1800.0
+
+[presets.wai-illustrious]
+batch_size = 1

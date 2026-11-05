@@ -6,7 +6,7 @@
 
 Reactは入力、選択、画像配置、保存結果と進捗を表示する。Pythonは保存、設定の合成、操作ID、状態の更新、LLM、英訳、画像の受付と完了反映を扱う。HTTPと公開Python APIは同じ機能処理を呼び、OpenAPIからTypeScriptクライアントを生成する。
 
-自分は1件のプロフィール、相手とストーリーは複数のプリセットとして保存する。人物の名前・年齢・性別・外見・立場などの共通型は[人物と状態](../../src/backend/src/komaquill/domain/roleplay.py)、保存と作成の型は[ライブラリ](../../src/backend/src/komaquill/library/models.py)を正本とする。
+自分は1件のプロフィール、相手とストーリーは複数のプリセットとして保存する。人物の名前・年齢・性別・外見・立場などの共通型は[人物と状態](../../src/backend/src/komaquill/domain/roleplay.py)、保存と作成の型は[ライブラリ](../../src/backend/src/komaquill/domain/library/models.py)を正本とする。
 
 会話開始では、自分の版と相手・ストーリーのIDと版を短いトランザクションで解決し、定義と参照画像を固定する。その後のプリセット編集・削除は開始済み会話へ反映しない。直接渡すConversationInputも同じ型付きの人物・舞台を使い、JSON文字列を再解釈しない。
 
@@ -58,7 +58,7 @@ LLMには通常一回の構造化応答で、相手と周囲の変更案、自�
 
 DB移行はアプリと監視を停止してmigrateを明示実行する。WindowsではRestart Managerで対象DBの利用者を照会する。全プロセスのハンドルを列挙せず、確認できない場合は移行を止める。バックアップ、表の内容ハッシュ、移行後の照合をrecords/migrationsへ保存する。旧会話は明確な構造だけを変換し、推測が必要な状態は原文とIDを保持して読み取り専用の会話へ分離する。「以前の会話」から本文を開ける。旧APIの別名や旧配置へのフォールバックは追加しない。
 
-検証は[保存と画像操作](../../tests/integration/test_preset_saves.py)、[要約](../../tests/integration/test_conversation_memory.py)、[移行](../../tests/integration/test_roleplay_migration.py)、[画面E2E](../../tests/e2e/web/workflow.spec.ts)、[実出力の収集](../../scripts/review_roleplay.py)に分ける。保存成功、構造上の成功、文章の自然さ、画像の指定遵守を別に判定する。
+検証は[保存と画像操作](../../tests/backend/integration/library/test_preset_saves.py)、[要約](../../tests/backend/integration/conversations/test_conversation_memory.py)、[移行](../../tests/backend/integration/images/test_roleplay_migration.py)、[画面E2E](../../tests/system/e2e/web/workflow.spec.ts)、[実出力の収集](../../scripts/evaluation/images/roleplay.py)に分ける。保存成功、構造上の成功、文章の自然さ、画像の指定遵守を別に判定する。
 
 行動の確定、人物の確認、画像と要約の契約は[自分の行動と現在の場面](player-actions.md)を参照する。
 

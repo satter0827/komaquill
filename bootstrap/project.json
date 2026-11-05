@@ -1,0 +1,19 @@
+{
+  "name": "bootstrap",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node tools/runtime/python.mjs -m ruff check bootstrap" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "node tools/runtime/python.mjs -m mypy bootstrap" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": ["default", "{workspaceRoot}/tests/bootstrap/**/*"],
+      "options": { "command": "node --test tests/bootstrap/integration/environment/node-environment.test.mjs" }
+    }
+  }
+}

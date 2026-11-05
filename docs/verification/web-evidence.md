@@ -1,13 +1,13 @@
 # 画面のE2Eとレビュー用証跡
 
-保存、選択、送信、再表示など、期待結果が一意に決まる検査は`tests/e2e/web/`へ置きます。分かりやすさ、文章の自然さ、画像の魅力など、判断が必要な観察は`scripts/web/`へ置きます。要件はREQ-WEB-EVIDENCEです。
+保存、選択、送信、再表示など、期待結果が一意に決まる検査は`tests/system/e2e/web/`へ置きます。分かりやすさ、文章の自然さ、画像の魅力など、判断が必要な観察は`scripts/review/web/`へ置きます。証跡の収集処理は`tools/testing/web/`で共有します。要件はREQ-WEB-EVIDENCEです。
 
 ## 実行する
 
 Python環境とNode依存を[開発手順](../development/workflow.md)に従って導入し、PlaywrightのChromiumを準備します。
 
 ```powershell
-node scripts/playwright.mjs install chromium
+node tools/testing/playwright.mjs install chromium
 pnpm test:web
 pnpm review:web
 ```
@@ -16,11 +16,11 @@ pnpm review:web
 
 `review:web`は同じ画面で一連の操作を実行し、評価用の材料を保存します。実行完了は`captured`であり、使いやすさや作品品質の合格ではありません。
 
-通常の品質ゲートは`tests/`の検査を実行します。収集処理も、`tests/js/web-evidence.test.mjs`で秘匿化、ハッシュ照合、欠落、失敗、状態分類を検査し、`tests/e2e/web/evidence.spec.ts`で実ブラウザーからの収集を検査します。主観評価のシナリオは通常のテスト検出へ混ぜません。JavaScriptの開発用検査はNxの`tools:test`が担当します。
+通常の品質ゲートは`tests/`の検査を実行します。収集処理も、`tests/tools/integration/web/evidence.test.mjs`で秘匿化、ハッシュ照合、欠落、失敗、状態分類を検査し、`tests/system/e2e/web/evidence.spec.ts`で実ブラウザーからの収集を検査します。主観評価のシナリオは通常のテスト検出へ混ぜません。JavaScriptの開発用検査はNxの`tools:test`が担当します。
 
 ## 接続先と保存範囲
 
-実行ごとに新しい作業フォルダーを`.artifacts/records/reports/web/`へ作成します。既存の作品、個人設定、起動済みの画面は使用しません。検査用のHTTPサーバーだけを`127.0.0.1:8766`で起動し、既存サーバーの流用は拒否します。
+実行ごとに新しい証跡フォルダーを`.artifacts/records/reports/web/`へ作成します。各ケースは別の作業フォルダーを持ち、配布wheelのCLIをloopbackのOS割当ポートで起動します。既存の作品、個人設定、起動済みの画面は使用しません。
 
 LLMとComfyUIは、ローカルの検査専用APIに置き換えます。LLMは決められた検査用応答、画像は小さな検査用PNGです。実モデルへの許可と接続用環境変数を引き継がず、GPUは確保しません。実LLMの応答品質、日本語の英訳品質、生成画像の画質や人物の一貫性は、この結果では判断できません。
 
@@ -45,7 +45,7 @@ LLMとComfyUIは、ローカルの検査専用APIに置き換えます。LLMは�
 └── workspace/               # 今回だけの保存先
 ```
 
-AIは最初に`run.json`で対象版・実接続の有無・入力変更の有無を確認し、`index.json`から対象ケースを選びます。次に`scenario.json`の操作順と画像・DOM・アクセシビリティ構造を照合します。各操作の`event_sequence`は、その撮影直前までのイベント番号です。ネットワーク経路の可変部分は伏せているため、通信内容の推測には使いません。
+AIは最初に`run.json`で対象版・実接続の有無・入力変更の有無を確認し、`index.json`から対象ケースを選びます。次に`scenario.json`の操作順と画像・DOM・アクセシビリティ構造を照合します。各操作の`event_sequence`は、その撮影直前までのイベント番号です。通信は要求IDと接続元のハッシュで対応付け、公開APIの固定経路を残します。利用者のID・ファイル名・クエリーは伏せているため、通信内容の推測には使いません。
 
 各ファイルのハッシュとサイズ、各操作の3種類の証跡を検査します。欠落・改変・未実行を成功にしません。失敗時も最後の画面と、それまでの操作を保持します。`--list`は検出結果であり、画面操作の成功には数えません。
 
@@ -68,7 +68,9 @@ AIは最初に`run.json`で対象版・実接続の有無・入力変更の有�
 
 ## 実機の受入
 
-`node scripts/python.mjs -m tests.live.play_acceptance --allow-real-llm`は実4Bの下書き確認、`--start-t4`を加えると隔離した画面で実画像まで確認する。実モデルとGPUを明示起動し、今回所有した資源を終了時に解放する。既存の利用者の作品や起動済み画面は使わない。
+`pnpm verify:live --allow-real-llm --output .artifacts/records/reports/live/attempt-1`で実LLMを確認します。`--allow-gpu`を加えると隔離した作業場所でT4の生成と標準画面まで確認します。今回所有したGPUは終了時に解放し、既存の利用者の作品や起動済み画面は使いません。上限と再確認の手順は[検証方針](strategy.md)を参照してください。
+
+標準ComfyUIの未作成の任意ファイルは、固定版の[APIの空結果への変換](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/src/scripts/api.ts)、[テンプレート読取](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/src/extensions/core/nodeTemplates.ts)、[追加スタイルの読込](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/vite.config.mts)に従い、画面起動中だけ接続元・経路・GET・404・最大件数を指定して判定します。他のHTTP失敗やアプリケーションのconsole.errorは除外しません。成功した空本文の応答を受信した後の本文キャンセルは、受付前の送信中断と分けて記録します。本文のある応答や受付を確認できないPOSTの中断は失敗です。
 
 会話画像は自動生成せず、「今の場面を描く」で受付時の現在状態を描く。キャラクターとストーリーの保存後は代表画像とバナーを作成する。
 
@@ -77,13 +79,13 @@ AIは最初に`run.json`で対象版・実接続の有無・入力変更の有�
 日常のテストと実機の収集を分ける。次の操作は実4Bを使い、日本語と英語それぞれで履歴枠を超える会話を保存する。
 
 ```powershell
-node scripts/python.mjs -m scripts.review_roleplay --allow-real-llm --phase conversations
+node tools/runtime/python.mjs -m scripts.evaluation.images.roleplay --allow-real-llm --phase conversations
 ```
 
-画像の確認は、上記で出力されたworkspaceを明示指定する。T4を起動し、WAIで代表画像・バナー・会話画像・単発画像を生成して終了する。上限は[実機確認の設定](../../scripts/roleplay-review.toml)を使う。
+画像の確認は、上記で出力されたworkspaceを明示指定する。T4を起動し、WAIで代表画像・バナー・会話画像・単発画像を生成して終了する。上限は[実機確認の設定](../../scripts/evaluation/images/budget.toml)を使う。
 
 ```powershell
-node scripts/python.mjs -m scripts.review_roleplay --allow-real-llm --phase images --workspace <workspace>
+node tools/runtime/python.mjs -m scripts.evaluation.images.roleplay --allow-real-llm --allow-gpu --phase images --workspace <workspace>
 ```
 
 収集結果のfunctional_statusは保存・処理の成否であり、review_statusは別に扱う。台詞、場面説明、状態、要約、英訳、PNGを実際に照合し、評価は元のevidence.jsonを変更せず別の記録へ保存する。使用モデル・対象版・入力ハッシュ・使用量・時間・GPU終了確認と、期待との差を残す。

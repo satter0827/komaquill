@@ -7,13 +7,14 @@ from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict
 
-from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.artifacts import LocalArtifactStore
 from komaquill.adapters.llm.language import JAPANESE_TEXT
+from komaquill.adapters.paths import WorkspacePaths
 from komaquill.adapters.storage_errors import stored
+from komaquill.application.library.service import ImageDescriber
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import PromptSource
 from komaquill.domain.workflow import digest
-from komaquill.library.service import ImageDescriber
 
 
 class PreparedDescriptions(BaseModel):
@@ -52,9 +53,10 @@ class ImageTextPreparation:
                 negative=negative,
                 sources=(),
             )
-        path = self.workspace / ".artifacts/data/image-preparations" / f"{identity}.json"
-        if path.exists():
-            value = PreparedDescriptions.model_validate_json(path.read_bytes())
+        store = LocalArtifactStore(WorkspacePaths(self.workspace))
+        key = f"image-preparations/{identity}.json"
+        if store.repository.reference(key) is not None:
+            value = PreparedDescriptions.model_validate_json(store.read(key))
             if value.fingerprint != fingerprint:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             return value
@@ -84,5 +86,5 @@ class ImageTextPreparation:
             negative=translated[-1] if negative is not None else None,
             sources=tuple(sources),
         )
-        atomic_json(path, result.model_dump(mode="json"))
+        store.write(key, result.model_dump_json().encode())
         return result

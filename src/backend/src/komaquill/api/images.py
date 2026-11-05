@@ -11,19 +11,24 @@ if TYPE_CHECKING:
     from komaquill.adapters.image_text import ImageTextPreparation
 from uuid import UUID
 
+from komaquill.adapters.compute.connection import connected
 from komaquill.adapters.diagnostics import operation_scope
 from komaquill.adapters.materials import MaterialCollector
 from komaquill.adapters.preparation import capabilities
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
+from komaquill.application.images.generation import (
+    Collection,
+    collect,
+    submit_generation,
+    wait_generation,
+)
+from komaquill.application.library.service import ImageDescriber
 from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.images import ImagePurpose, PromptSource
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import Run
-from komaquill.images.generation import Collection, collect, submit_generation, wait_generation
-from komaquill.library.service import ImageDescriber
-from komaquill.runtime.connection import connected
 
 
 class ImageService:
@@ -96,7 +101,7 @@ class ImageService:
 
         from filelock import FileLock
 
-        from komaquill.adapters.image_repository import reserve
+        from komaquill.adapters.persistence.images import reserve
         from komaquill.domain.workflow import digest
 
         identity = run_id or uuid4()
@@ -196,7 +201,7 @@ class ImageService:
                         parameters=parameters,
                     )
             except Exception:
-                from komaquill.adapters.image_repository import cancel_unsubmitted
+                from komaquill.adapters.persistence.images import cancel_unsubmitted
 
                 with suppress(KomaquillError):
                     cancel_unsubmitted(self._generation_workspace, identity)

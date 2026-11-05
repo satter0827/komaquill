@@ -12,27 +12,24 @@ import {
   Users,
 } from 'lucide-react'
 import { useRef, useState } from 'react'
-import { Dialog, Modal } from '../components/ui/popup'
-import { useMediaQuery } from './viewport'
+import { Dialog, Modal } from '../shared/ui/popup'
+import { useMediaQuery } from '../shared/viewport'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router'
 import * as q from '../api/generated/@tanstack/react-query.gen'
-import { Button } from '../components/ui/button'
+import { Button } from '../shared/ui/button'
 import {
   ArchivedConversationPage,
   ArchivedConversations,
-} from '../features/archive'
-import { ConversationPage } from '../features/conversations'
-import { ImagesPage } from '../features/images'
-import { LibraryPage, PlayerPage, PresetCard } from '../features/library'
-import { PreferencesPage } from '../features/preferences'
-import { ImageActivityProvider } from '../features/image-activity'
-import {
-  ConnectionSummary,
-  useConnectionSummary,
-} from '../features/availability'
-import { RuntimePage } from '../features/runtime'
-import { NewConversation } from '../features/start'
-import { useFailure, useMessages, usePreferences } from './preferences'
+} from '../features/archive/index'
+import { ConversationPage } from '../features/conversations/index'
+import { ImagesPage } from '../features/images/index'
+import { LibraryPage, PlayerPage, PresetCard } from '../features/library/index'
+import { PreferencesPage } from '../features/preferences/index'
+import { ImageActivityProvider } from '../shared/image-activity'
+import { ConnectionSummary, useConnectionSummary } from '../shared/availability'
+import { RuntimePage } from '../features/runtime/index'
+import { NewConversation } from '../features/conversations/start'
+import { useFailure, useMessages, usePreferences } from '../shared/preferences'
 
 export function App() {
   return (
@@ -115,7 +112,12 @@ function Application() {
                   />
                 </Route>
               ))}
-              <Route path="/settings" element={<PreferencesPage />} />
+              <Route
+                path="/settings"
+                element={
+                  <PreferencesPage connections={<RuntimePage embedded />} />
+                }
+              />
               <Route path="/images" element={<ImagesPage />} />
               <Route path="/runtime" element={<RuntimePage />} />
               <Route path="*" element={<Home />} />

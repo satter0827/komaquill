@@ -20,7 +20,7 @@ from komaquill.adapters.file_users import file_users
 from komaquill.adapters.monitor_state import alive, read_monitor
 from komaquill.adapters.provenance import code_sha256, source_revision
 from komaquill.adapters.workspace import RuntimeWorkspace
-from komaquill.application.cleanup import exclusion
+from komaquill.application.runtime.cleanup import exclusion
 from komaquill.domain.cleanup import CleanupItem
 from komaquill.domain.errors import KomaquillError, failure_info
 

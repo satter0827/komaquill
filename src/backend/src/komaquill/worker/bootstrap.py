@@ -1,15 +1,15 @@
 """Prepare uv and pinned dependencies on the GPU runtime."""
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
 import tarfile
 import tomllib
-import urllib.request
 from pathlib import Path
 
-from komaquill.messages import message
+from komaquill.resources.messages import message
 from komaquill.worker.progress import progress
 
 
@@ -23,25 +23,21 @@ def main(credentials: bytes = b"{}\n") -> None:
     config = tomllib.loads((root / "komaquill/resources/runtime/versions.toml").read_text())
     uv = tools / "uv"
     print(message("text.preparing_the_runtime_environment"), flush=True)
-    if not uv.is_file():
-        asset = "uv-x86_64-unknown-linux-gnu.tar.gz"
-        base = f"https://github.com/astral-sh/uv/releases/download/{config['uv_version']}/{asset}"
-        archive = tools / asset
-        with urllib.request.urlopen(base, timeout=60) as response:
-            archive.write_bytes(response.read())
-        with urllib.request.urlopen(base + ".sha256", timeout=60) as response:
-            expected = response.read().decode().split()[0]
-        if hashlib.sha256(archive.read_bytes()).hexdigest() != expected:
-            raise RuntimeError(message("text.the_uv_archive_failed_sha256_verification"))
-        with tarfile.open(archive) as bundle:
-            member = "uv-x86_64-unknown-linux-gnu/uv"
-            if member not in bundle.getnames():
-                raise RuntimeError(message("text.the_uv_executable_is_missing_from_the_archive"))
-            source = bundle.extractfile(member)
-            if source is None:
-                raise RuntimeError(message("text.the_uv_executable_is_missing_from_the_archive"))
-            uv.write_bytes(source.read())
-        uv.chmod(0o700)
+    archive = root / "runtime-tools/uv.tar.gz"
+    manifest = json.loads((root / "manifest.json").read_bytes())
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != manifest["bootstrap_sha256"]:
+        raise RuntimeError(message("text.the_uv_archive_failed_sha256_verification"))
+    with tarfile.open(archive) as bundle:
+        member = "uv-x86_64-unknown-linux-gnu/uv"
+        if member not in bundle.getnames():
+            raise RuntimeError(message("text.the_uv_executable_is_missing_from_the_archive"))
+        source = bundle.extractfile(member)
+        if source is None:
+            raise RuntimeError(message("text.the_uv_executable_is_missing_from_the_archive"))
+        temporary = uv.with_suffix(".tmp")
+        temporary.write_bytes(source.read())
+        temporary.chmod(0o700)
+        temporary.replace(uv)
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root)
     for key, relative in {

@@ -407,5 +407,15 @@
   "chat.export_conditions": "Include saved generation conditions.",
   "chat.resume_operation": "Resume a retained operation after checking its state.",
   "error.image_composition_unavailable": "Two-person images require the WAI image model. Select WAI before drawing both people.",
-  "chat.proposal_id": "Identifier of the action proposal attached to this message."
+  "chat.proposal_id": "Identifier of the action proposal attached to this message.",
+  "error.execution_budget_exceeded": "The approved call or time allowance is exhausted. Review the saved result before authorizing another run.",
+  "http.device_pending": "Device approval is required. On this computer, approve device {identity}, then reload this page.",
+  "web.proxy": "Write the HTTPS reverse proxy configuration.",
+  "web.devices": "List pending and approved devices.",
+  "web.approve": "Approve a pending device.",
+  "web.revoke": "Revoke a device.",
+  "web.device_id": "Device identifier shown on the pending device.",
+  "web.approved": "Device approved. Reload the page on that device.",
+  "web.revoked": "Device revoked.",
+  "images.saved_file": "Saved image: {path}"
 }

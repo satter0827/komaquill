@@ -1,5 +1,6 @@
 comfy_revision = "63be2f9b82ad0dac88a7ceaa28a9cf3154125a18" # pragma: allowlist secret Public immutable revision.
 frontend_version = "1.55.18"
 uv_version = "0.13.5"
+uv_linux_sha256 = "f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f" # pragma: allowlist secret Public immutable release SHA256.
 
 python_version = "3.12.15"

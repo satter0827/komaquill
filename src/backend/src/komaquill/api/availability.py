@@ -14,11 +14,11 @@ from komaquill.adapters.llm.execution import StructuredExecution
 from komaquill.adapters.llm.images import needs_image_llm
 from komaquill.adapters.llm_credentials import api_key
 from komaquill.adapters.workspace import RuntimeWorkspace
-from komaquill.availability import Availability, AvailabilityRequest, ConnectionObservation
-from komaquill.conversations.models import Conversation, Operation
+from komaquill.domain.availability import Availability, AvailabilityRequest, ConnectionObservation
+from komaquill.domain.conversations.models import Conversation, Operation
 from komaquill.domain.errors import ErrorCode, KomaquillError
+from komaquill.domain.library.models import CreationRequest
 from komaquill.domain.models import Run
-from komaquill.library.models import CreationRequest
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,12 @@ class AvailabilityService:
             required.append(("llm", conversation.definition.llm_profile))
         elif request.kind == "creation":
             assert request.creation is not None
-            source, _ = self.creation_source(request.creation)
+            try:
+                source, _ = self.creation_source(request.creation)
+            except KomaquillError as error:
+                if error.code == ErrorCode.VISUAL_REVIEW_REQUIRED:
+                    return Availability(ready=False, reason=error.code)
+                raise
             required = self.creation_dependencies(request.creation, source)
         elif request.kind == "image":
             required.append(("comfy", "current"))
@@ -86,6 +91,8 @@ class AvailabilityService:
 
     def require(self, request: AvailabilityRequest) -> None:
         result = self.check(request)
+        if result.reason is not None:
+            raise KomaquillError(code=result.reason, retryable=False)
         for connection in result.connections:
             if connection.state != "ready":
                 raise KomaquillError(
@@ -208,9 +215,9 @@ class AvailabilityService:
                     raise KomaquillError(code="identity_mismatch", retryable=False)
 
     def _comfy(self, target: str, timeout: float) -> None:
+        from komaquill.adapters.compute.connection import connected
         from komaquill.adapters.storage import stop_request
-        from komaquill.images.generation import verify_runtime
-        from komaquill.runtime.connection import connected
+        from komaquill.application.images.generation import verify_runtime
 
         with connected(self.project) as (backend, session):
             if target == "current" and stop_request(self.project, session) is not None:

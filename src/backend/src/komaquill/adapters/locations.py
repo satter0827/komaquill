@@ -43,9 +43,9 @@ class Locations:
 
     def __init__(self, project: WorkspacePaths) -> None:
         self.project = project
-        self.root = project.data
+        self.root = project.data / "archive"
         self.index_file = self.root / "locations.json"
-        self.migration_file = project.state / "story-storage-migration.json"
+        self.migration_file = project.state / "archive-migration.json"
 
     def path(self, key: str) -> Path:
         return artifact_path(self.root, key)
@@ -70,6 +70,8 @@ class Locations:
                 if row.images:
                     self.path(row.images)
             return value
+        if (self.project.data / "locations.json").exists():
+            raise KomaquillError(code="migration_required", stage="storage")
         if any(self.project.runs.glob("*/run.json")) or any(
             (self.root / "stories").glob("*/request.json")
         ):

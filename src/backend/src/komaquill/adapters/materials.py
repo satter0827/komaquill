@@ -37,20 +37,26 @@ def records(project: RuntimeWorkspace, kind: str) -> list[Material]:
     """Return immutable revisions without changing previously saved metadata."""
     return sorted(
         (
-            Material.model_validate_json(p.read_bytes())
-            for p in (project.data / kind / "records").glob("*.json")
+            Material.model_validate_json(project.artifacts_store.read(key))
+            for key in project.artifacts_store.repository.keys(kind + "/records/")
         ),
         key=lambda r: r.observed_at,
     )
 
 
 def blob(project: RuntimeWorkspace, row: Material) -> Path:
-    return (
-        project.data
-        / row.kind
-        / row.sha256
-        / ("workflow.json" if row.kind == "workflows" else "content")
-    )
+    return project.artifacts_store.path(blob_key(row))
+
+
+def blob_key(row: Material) -> str:
+    return f"{row.kind}/{row.sha256}/" + ("workflow.json" if row.kind == "workflows" else "content")
+
+
+def present(project: RuntimeWorkspace, key: str) -> bool:
+    try:
+        return project.artifacts_store.path(key).is_file()
+    except FileNotFoundError:
+        return False
 
 
 class MaterialCollector:
@@ -79,14 +85,18 @@ class MaterialCollector:
             except ValueError:
                 failures.append(f"material-index:{index}")
                 continue
-            path = self.project.data / row.kind / "records" / f"{row.material_id}.json"
-            if row.state == "saved" and path.is_file() and blob(self.project, row).is_file():
-                continue
+            key = f"{row.kind}/records/{row.material_id}.json"
             operational = self.project.state / "preservation" / f"{row.material_id}.json"
             claim = FileLock(
                 str(self.project.state / f".material-{row.material_id}.lock"), timeout=0
             )
             try:
+                if (
+                    row.state == "saved"
+                    and present(self.project, key)
+                    and present(self.project, blob_key(row))
+                ):
+                    continue
                 with claim:
                     with FileLock(str(self.project.state / ".materials.lock")):
                         if session is not None and not self.project.accepts_results(session):
@@ -101,7 +111,7 @@ class MaterialCollector:
                             row.runtime_id = session.runtime_id
                         atomic_json(operational, row.model_dump(mode="json"))
                     content = None
-                    if not path.is_file() or not blob(self.project, row).is_file():
+                    if not present(self.project, key) or not present(self.project, blob_key(row)):
                         content = self.client.request(
                             "GET", PREFIX + f"/files/{row.material_id}"
                         ).content
@@ -117,11 +127,10 @@ class MaterialCollector:
                         ):
                             continue
                         if content is not None:
-                            key = blob(self.project, row).relative_to(self.project.data).as_posix()
-                            self.project.artifacts_store.write(key, content)
+                            self.project.artifacts_store.write(blob_key(row), content)
                         row.state = "saved"
-                        if not path.is_file():
-                            atomic_json(path, row.model_dump(mode="json"))
+                        if self.project.artifacts_store.repository.reference(key) is None:
+                            self.project.artifacts_store.write(key, row.model_dump_json().encode())
                         atomic_json(operational, row.model_dump(mode="json"))
                     self.client.request(
                         "POST",

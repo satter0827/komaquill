@@ -6,7 +6,7 @@
 
 着手時の変更95ファイルの内容ハッシュ、原本、差分を非公開の`.artifacts/records/reports/library-implementation/3729e905de2b46c38e47b7c7db57334e/`へ保全した。最終対象の入力ハッシュ、環境、使用したライブラリ版、検査ごとの対象版と結果は、同じ場所の`final-summary.json`と参照先の機械記録を正本とする。Pythonのパッケージ内容ハッシュはe14f4ad6565e373d160c13139b27b4a20b04c5f1da4848a77448a69f674ba5e6である。画面のソースと生成物は別に検査記録へ関連付ける。
 
-環境はWindows 11、Python 3.12である。依存の定義と固定版は[Python](../../../src/backend/pyproject.toml)・[uv.lock](../../../src/backend/uv.lock)・[JavaScript](../../../pnpm-lock.yaml)を参照する。日常検査ではFake、擬似HTTP、隔離SQLite、ローカルの検査用画像を使用した。
+環境はWindows 11、Python 3.12である。依存の定義と固定版は[Python](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/pyproject.toml)・[uv.lock](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/uv.lock)・[JavaScript](../../../pnpm-lock.yaml)を参照する。日常検査ではFake、擬似HTTP、隔離SQLite、ローカルの検査用画像を使用した。
 
 ## 検証範囲
 

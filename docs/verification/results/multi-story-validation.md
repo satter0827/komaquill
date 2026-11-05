@@ -2,7 +2,7 @@
 
 ## 対象と判定
 
-2026年10月27日に、8題材の構造検査と、代表4題材のローカル4B計画を実施した。対象要件はREQ-STORY-SUITE、REQ-STORY-VISUALS、REQ-STORY-COMPLETIONである。題材、原文、期待条件、Fake応答は[題材定義](../../../tests/fixtures/story-suite/cases.json)、上限の既定値は[検証設定](../../../tests/fixtures/story-suite/suite.toml)を正本とする。
+2026年10月27日に、8題材の構造検査と、代表4題材のローカル4B計画を実施した。対象要件はREQ-STORY-SUITE、REQ-STORY-VISUALS、REQ-STORY-COMPLETIONである。題材、原文、期待条件、Fake応答は[題材定義](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/tests/fixtures/story-suite/cases.json)、上限の既定値は[検証設定](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/tests/fixtures/story-suite/suite.toml)を正本とする。
 
 構造検査の成功と実モデルの原文理解を区別する。代表4題材の初回計画は意味の評価で0/4、共通修正とレビュー理由を加えた再計画後は1/4が画像生成へ進める状態になった。「赤い本と青い鞄」以外の3題材は未達であり、Fakeで置き換えていない。採用した計画にも補足説明の言語と小物の保持者に確認事項が残るため、計画の全項目が達成されたとは扱わない。
 

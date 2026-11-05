@@ -19,7 +19,7 @@
 
 基点はコミット997417550afcff4f53df729bacda0d44ca249eb9。未コミット差分を含む対象であり、基点だけを検証対象とみなさない。最終の品質ゲートと実画像の入力内容ハッシュはe845646ce5752f3d424498b6a6227a5dcc4f3dc9a0101a4f7051aefa7db1f339。以後の変更はこの結果と設計判断、索引、要件の注記である。
 
-環境はWindows、Python 3.12、LM Studioに登録済みのQwen3.5 4BのQ4_K_M、公式Colab経路のT4。モデルの識別、実行設定、指示、要求、可視出力、使用量、時間、画像、SHA256は非公開の.artifacts/recordsに保持した。ライブラリとモデル設定の正本は[依存定義](../../../src/backend/pyproject.toml)、[会話設定](../../../src/backend/src/komaquill/resources/conversations/defaults.toml)、[生成セット](../../../src/backend/src/komaquill/resources/presets/wai-illustrious/preset.toml)である。
+環境はWindows、Python 3.12、LM Studioに登録済みのQwen3.5 4BのQ4_K_M、公式Colab経路のT4。モデルの識別、実行設定、指示、要求、可視出力、使用量、時間、画像、SHA256は非公開の.artifacts/recordsに保持した。ライブラリとモデル設定の正本は[依存定義](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/pyproject.toml)、[会話設定](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/src/komaquill/resources/conversations/defaults.toml)、[生成セット](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/src/komaquill/resources/presets/wai-illustrious/preset.toml)である。
 
 | 証跡 | 記録ディレクトリ・ファイル |
 |---|---|

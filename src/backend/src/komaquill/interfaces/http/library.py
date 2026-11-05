@@ -5,11 +5,10 @@ from uuid import UUID
 
 from fastapi import BackgroundTasks, FastAPI, Response
 
-from komaquill.adapters.conversation_archive import ArchivedConversation
+from komaquill.adapters.persistence.conversation_archive import ArchivedConversation
 from komaquill.api import Client
-from komaquill.conversations.models import Conversation
-from komaquill.interfaces.http.background import execute_retained
-from komaquill.library.models import (
+from komaquill.domain.conversations.models import Conversation
+from komaquill.domain.library.models import (
     CharacterPreset,
     CharacterSaveRequest,
     ConversationImageRequest,
@@ -24,6 +23,7 @@ from komaquill.library.models import (
     StoryPreset,
     StorySaveRequest,
 )
+from komaquill.interfaces.http.background import execute_retained
 
 
 def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:

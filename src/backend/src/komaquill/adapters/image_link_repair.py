@@ -13,22 +13,21 @@ from PIL import Image
 from pydantic import Field
 
 from komaquill.adapters.atomic import atomic_json
-from komaquill.adapters.database_migration import database_in_use, inventory
 from komaquill.adapters.paths import artifact_path
-from komaquill.adapters.storage import run_dir
+from komaquill.adapters.persistence.migrate import database_in_use, inventory
 from komaquill.adapters.storage_errors import stored
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.models import Run
-from komaquill.domain.roleplay import Record
-from komaquill.library.models import CharacterPreset, CreationJob, StoryPreset
-from komaquill.library.recovery import (
+from komaquill.domain.library.models import CharacterPreset, CreationJob, StoryPreset
+from komaquill.domain.library.recovery import (
     ImageLinkFinding,
     ImageLinkInspection,
     ImageLinkRepairResult,
     RepairReason,
     matches_image_input,
 )
+from komaquill.domain.models import Run
+from komaquill.domain.roleplay import Record
 
 
 class Change(Record):
@@ -72,7 +71,14 @@ def _files(
         return {}
     result = {}
     for name in run.images:
-        path = artifact_path(run_dir(project, run.run_id), name)
+        try:
+            path = project.artifacts_store.path(f"runs/{run.run_id}/{name}")
+        except FileNotFoundError:
+            return {}
+        except KomaquillError as error:
+            if error.code == "identity_mismatch":
+                return {}
+            raise
         data = path.read_bytes()
         metadata = run.image_metadata.get(name)
         digest = hashlib.sha256(data).hexdigest()

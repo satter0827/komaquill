@@ -2,7 +2,7 @@
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ErrorCode(StrEnum):
@@ -27,6 +27,7 @@ class ErrorCode(StrEnum):
     LLM_UNAVAILABLE = "llm_unavailable"
     LLM_REQUEST_INVALID = "llm_request_invalid"
     CONTEXT_LIMIT_EXCEEDED = "context_limit_exceeded"
+    EXECUTION_BUDGET_EXCEEDED = "execution_budget_exceeded"
     STORY_PLAN_INVALID = "story_plan_invalid"
     STORY_REPLAN_REQUIRED = "story_replan_required"
     INVALID_STORY_COUNT = "invalid_story_count"
@@ -96,6 +97,12 @@ class OperationStage(StrEnum):
     SUMMARY = "summary"
 
 
+class CodeLocation(BaseModel):
+    path: str
+    line: int
+    function: str
+
+
 class FailureInfo(BaseModel):
     """Describe a failure without copying exception messages or response bodies."""
 
@@ -104,6 +111,7 @@ class FailureInfo(BaseModel):
     exception_type: str
     http_status: int | None = None
     retryable: bool = True
+    locations: list[CodeLocation] = Field(default_factory=list)
 
 
 class KomaquillError(Exception):
@@ -158,7 +166,56 @@ def failure_info(error: BaseException, stage: OperationStage | str) -> "FailureI
         stage=error.stage
         if isinstance(error, KomaquillError) and error.stage != OperationStage.OPERATION
         else OperationStage(stage),
-        exception_type=type(error.__cause__ or error.__context__ or error).__name__,
+        exception_type=type(
+            error.__cause__
+            or (error.__context__ if isinstance(error, KomaquillError) else None)
+            or error
+        ).__name__,
         http_status=error.http_status if isinstance(error, KomaquillError) else None,
         retryable=retryable,
+        locations=code_locations(error),
     )
+
+
+MAX_FAILURE_LOCATIONS = 12
+
+
+def code_locations(error: BaseException) -> list[CodeLocation]:
+    """Read static code positions without source text, messages or frame variables."""
+    result = []
+    current = (
+        error.__cause__
+        or (error.__context__ if isinstance(error, KomaquillError) else None)
+        or error
+    )
+    trace = current.__traceback__
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        filename = code.co_filename.replace("\\", "/")
+        matches = [
+            (filename.rfind("/" + name + "/"), name)
+            for name in ("komaquill", "tools", "scripts", "bootstrap")
+        ]
+        position, package = max(matches)
+        relative = filename[position + 1 :]
+        product = relative.removeprefix("komaquill/")
+        if position >= 0 and (
+            package != "komaquill"
+            or product.startswith(
+                (
+                    "api/",
+                    "adapters/",
+                    "application/",
+                    "domain/",
+                    "composition/",
+                    "interfaces/",
+                    "worker/",
+                    "resources/",
+                    "__main__.py",
+                    "__init__.py",
+                )
+            )
+        ):
+            result.append(CodeLocation(path=relative, line=trace.tb_lineno, function=code.co_name))
+        trace = trace.tb_next
+    return result[-MAX_FAILURE_LOCATIONS:]

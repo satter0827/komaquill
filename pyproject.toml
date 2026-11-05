@@ -20,13 +20,13 @@ module = ["detect_secrets.*", "langmem.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration", "tests/structure", "tests/e2e"]
+testpaths = ["tests"]
 cache_dir = ".artifacts/cache/pytest"
 addopts = ["-ra", "--tb=short", "--strict-config", "--strict-markers", "-p", "no:langsmith_plugin"]
 xfail_strict = true
 
 [tool.coverage.run]
-source = ["src/backend/src", "scripts", "bootstrap"]
+source = ["src/backend/src", "tools", "scripts", "bootstrap"]
 omit = ["*/tests/*"]
 relative_files = true
 patch = ["subprocess"]
@@ -41,7 +41,7 @@ line_minimum = 90
 branch_minimum = 80
 
 [tool.importlinter]
-root_package = "komaquill"
+root_packages = ["komaquill", "tools", "scripts", "bootstrap"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -52,20 +52,20 @@ ancestors = ["komaquill", "komaquill.domain", "komaquill.application"]
 [[tool.importlinter.contracts]]
 name = "Application and domain do not import concrete adapters or presentation"
 type = "forbidden"
-source_modules = ["komaquill.application", "komaquill.domain", "komaquill.conversations", "komaquill.images", "komaquill.archive", "komaquill.library"]
-forbidden_modules = ["komaquill.adapters", "komaquill.interfaces", "komaquill.worker", "komaquill.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli", "langchain_core", "langchain_openai", "langgraph", "langmem", "langsmith"]
+source_modules = ["komaquill.application", "komaquill.domain", "komaquill.domain.conversations", "komaquill.application.images", "komaquill.domain.archive", "komaquill.domain.library"]
+forbidden_modules = ["komaquill.adapters", "komaquill.interfaces", "komaquill.worker", "komaquill.resources.messages", "httpx", "filelock", "PIL", "keyring", "colab_cli", "langchain_core", "langchain_openai", "langgraph", "langmem", "langsmith", "sqlalchemy", "sqlite3", "subprocess", "psutil", "requests", "aiohttp"]
 
 [[tool.importlinter.contracts]]
 name = "GPU code does not import local interfaces or control"
 type = "forbidden"
 source_modules = ["komaquill.worker"]
-forbidden_modules = ["komaquill.cli.main", "komaquill.runtime.worker", "komaquill.adapters.colab", "komaquill.runtime", "komaquill.adapters.colab_entry", "komaquill.conversations", "komaquill.archive", "komaquill.adapters.database", "sqlalchemy", "langchain_core", "langchain_openai", "langgraph", "langmem", "langsmith"]
+forbidden_modules = ["komaquill.interfaces.cli.main", "komaquill.adapters.compute.worker", "komaquill.adapters.colab", "komaquill.adapters.compute", "komaquill.adapters.colab_entry", "komaquill.domain.conversations", "komaquill.domain.archive", "komaquill.adapters.persistence.connection", "sqlalchemy", "langchain_core", "langchain_openai", "langgraph", "langmem", "langsmith"]
 
 [[tool.importlinter.contracts]]
 name = "Product code does not import development dependencies"
 type = "forbidden"
 source_modules = ["komaquill"]
-forbidden_modules = ["tests", "scripts", "pytest", "debugpy"]
+forbidden_modules = ["tests", "scripts", "tools", "bootstrap", "pytest", "debugpy"]
 
 [tool.uv]
 required-version = ">=0.13.5,<0.14"
@@ -82,3 +82,15 @@ torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 
 [tool.komaquill.quality]
 step_timeout = 900
+
+[[tool.importlinter.contracts]]
+name = "Live verification does not import test fixtures"
+type = "forbidden"
+source_modules = ["scripts"]
+forbidden_modules = ["tests"]
+
+[[tool.importlinter.contracts]]
+name = "Execution tools do not import product code"
+type = "forbidden"
+source_modules = ["tools.checks", "tools.testing", "tools.reporting", "bootstrap"]
+forbidden_modules = ["komaquill"]

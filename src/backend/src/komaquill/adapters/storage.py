@@ -9,7 +9,8 @@ from uuid import UUID
 
 from filelock import FileLock, Timeout
 
-from komaquill.adapters.atomic import atomic_json, read_bytes
+from komaquill.adapters.artifacts import LocalArtifactStore
+from komaquill.adapters.atomic import read_bytes
 from komaquill.adapters.paths import WorkspacePaths, artifact_path
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.models import JsonObject, Run, Session
@@ -23,14 +24,14 @@ def run_dir(project: WorkspacePaths, run_id: UUID) -> Path:
 
 def save_run(project: WorkspacePaths, run: Run) -> None:
     """Commit new image metadata without rewriting archived files."""
-    from komaquill.adapters.image_repository import save
+    from komaquill.adapters.persistence.images import save
 
     save(project, run)
 
 
 def load_runs(project: WorkspacePaths, *, unreadable: list[UUID | str] | None = None) -> list[Run]:
     """Load current image requests from the shared database."""
-    from komaquill.adapters.image_repository import load
+    from komaquill.adapters.persistence.images import load
 
     return load(project, unreadable)
 
@@ -53,15 +54,18 @@ def stop_request(project: WorkspacePaths, session: Session) -> bool | None:
 
 def save_conditions(project: WorkspacePaths, run: Run, prompt: list[Any]) -> None:
     """Record observed conditions before generation completes."""
-    folder = run_dir(project, run.run_id)
+    store = LocalArtifactStore(project)
+    prefix = f"runs/{run.run_id}/"
     graph = prompt[2]
     if not isinstance(graph, dict):
         raise KomaquillError(display_key="text.generation_conditions_are_invalid")
-    observed = folder / "workflow-api.json"
-    if not observed.is_file():
-        atomic_json(observed, graph)
     try:
-        recorded = json.loads(observed.read_bytes())
+        try:
+            content = store.read(prefix + "workflow-api.json")
+        except FileNotFoundError:
+            content = json.dumps(graph, ensure_ascii=False).encode()
+            store.write(prefix + "workflow-api.json", content)
+        recorded = json.loads(content)
     except (OSError, ValueError) as error:
         raise KomaquillError(code="storage_failed", stage="storage", retryable=False) from error
     if (
@@ -106,8 +110,8 @@ def save_conditions(project: WorkspacePaths, run: Run, prompt: list[Any]) -> Non
             run.input_sha256.update(observed_inputs)
         metadata = extra.get("extra_pnginfo", {})
         ui = metadata.get("workflow") if isinstance(metadata, dict) else None
-        if isinstance(ui, dict) and not (folder / "workflow.json").is_file():
-            atomic_json(folder / "workflow.json", ui)
+        if isinstance(ui, dict):
+            store.write(prefix + "workflow.json", json.dumps(ui, ensure_ascii=False).encode())
 
 
 class ImageRepository:
@@ -128,7 +132,7 @@ class ImageRepository:
         return load_runs(self.project, unreadable=unreadable)
 
     def read(self, run_id: UUID) -> Run:
-        from komaquill.adapters.image_repository import read
+        from komaquill.adapters.persistence.images import read
 
         return read(self.project, run_id)
 
@@ -139,9 +143,12 @@ class ImageRepository:
         save_conditions(self.project, run, prompt)
 
     def prepare(self, run: Run, graph: JsonObject, ui: JsonObject) -> None:
-        folder = run_dir(self.project, run.run_id)
-        atomic_json(folder / "submitted-workflow-api.json", graph)
-        atomic_json(folder / "submitted-workflow.json", ui)
+        store = LocalArtifactStore(self.project)
+        prefix = f"runs/{run.run_id}/"
+        store.write(
+            prefix + "submitted-workflow-api.json", json.dumps(graph, ensure_ascii=False).encode()
+        )
+        store.write(prefix + "submitted-workflow.json", json.dumps(ui, ensure_ascii=False).encode())
 
     @contextmanager
     def claim(self, run_id: UUID) -> Iterator[bool]:

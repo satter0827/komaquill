@@ -5,10 +5,10 @@ import sys
 
 def main() -> None:
     """Keep catalog and import failures free of credential-bearing tracebacks."""
-    from komaquill.messages import MessageCatalogError
+    from komaquill.resources.messages import MessageCatalogError
 
     try:
-        from komaquill.cli.main import app
+        from komaquill.interfaces.cli.main import app
 
         app()
     except MessageCatalogError:

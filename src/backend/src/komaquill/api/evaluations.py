@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from komaquill.adapters.archive_associations import story_associations
-from komaquill.adapters.evaluations import EvaluationRepository, export_evidence, select
+from komaquill.adapters.evaluation_export import export_evidence, select
+from komaquill.adapters.persistence.archive_associations import story_associations
+from komaquill.adapters.persistence.evaluations import EvaluationRepository
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
-from komaquill.application.evaluations import register
+from komaquill.application.evaluations.service import register
 from komaquill.domain.errors import OperationStage
 from komaquill.domain.evaluations import Evaluation
 from komaquill.domain.models import JsonObject

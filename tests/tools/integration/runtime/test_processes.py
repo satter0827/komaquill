@@ -81,15 +81,22 @@ def test_normal_parent_exit_does_not_leave_an_owned_child(tmp_path):
         pid, started = json.loads(child.read_text())
         with suppress(psutil.NoSuchProcess):
             owned = psutil.Process(pid)
-            assert owned.create_time() != started or owned.status() == psutil.STATUS_ZOMBIE
+            if owned.create_time() == started and (
+                sys.platform == "win32" or owned.status() != psutil.STATUS_ZOMBIE
+            ):
+                owned.wait(timeout=0)
     finally:
         if child.is_file():
             pid, started = json.loads(child.read_text())
             with suppress(psutil.NoSuchProcess):
                 owned = psutil.Process(pid)
-                if owned.create_time() == started and owned.status() != psutil.STATUS_ZOMBIE:
-                    owned.kill()
-                    owned.wait(timeout=10)
+                if owned.create_time() == started:
+                    try:
+                        owned.wait(timeout=0)
+                    except psutil.TimeoutExpired:
+                        if owned.status() != psutil.STATUS_ZOMBIE:
+                            owned.kill()
+                            owned.wait(timeout=10)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object contract")

@@ -74,17 +74,28 @@ def owned_process(
                 yield process
             finally:
                 if sys.platform == "win32":
-                    win32job.TerminateJobObject(job, 1)
-                    if process.poll() is None:
-                        process.kill()
-                    process.wait(timeout=TERMINATION_TIMEOUT_SECONDS)
-                    deadline = time.monotonic() + TERMINATION_TIMEOUT_SECONDS
-                    while win32job.QueryInformationJobObject(
-                        job, win32job.JobObjectBasicAccountingInformation
-                    )["ActiveProcesses"]:
-                        if time.monotonic() >= deadline:
+                    owned = []
+                    try:
+                        for identity in win32job.QueryInformationJobObject(
+                            job, win32job.JobObjectBasicProcessIdList
+                        ):
+                            with suppress(psutil.NoSuchProcess):
+                                owned.append(psutil.Process(identity))
+                    finally:
+                        win32job.TerminateJobObject(job, 1)
+                        if process.poll() is None:
+                            process.kill()
+                        process.wait(timeout=TERMINATION_TIMEOUT_SECONDS)
+                        deadline = time.monotonic() + TERMINATION_TIMEOUT_SECONDS
+                        while win32job.QueryInformationJobObject(
+                            job, win32job.JobObjectBasicAccountingInformation
+                        )["ActiveProcesses"]:
+                            if time.monotonic() >= deadline:
+                                raise RuntimeError(message("quality.termination_failed")) from None
+                            time.sleep(TERMINATION_POLL_SECONDS)
+                        _, remaining = psutil.wait_procs(owned, timeout=TERMINATION_TIMEOUT_SECONDS)
+                        if remaining:
                             raise RuntimeError(message("quality.termination_failed")) from None
-                        time.sleep(TERMINATION_POLL_SECONDS)
                 else:
                     # The process group remains owned after the initial parent exits.
                     with suppress(ProcessLookupError):

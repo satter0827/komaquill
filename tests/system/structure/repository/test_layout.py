@@ -73,18 +73,25 @@ def test_pipeline_deadline_outlives_python_and_browser_suite_deadlines(tmp_path)
     from tools.runtime.processes import run_owned
 
     output = tmp_path / "web-config.json"
-    with output.open("w", encoding="utf-8") as stream:
+    with (tmp_path / "web-config.log").open("w", encoding="utf-8") as stream:
         assert (
             run_owned(
                 [
                     "node",
                     "--input-type=module",
                     "-e",
+                    "import {writeFileSync} from 'node:fs'; "
                     "import {webConfig} from './tools/testing/web/config.mjs'; "
-                    "console.log(JSON.stringify(webConfig()))",
+                    "writeFileSync(process.argv[1], JSON.stringify(webConfig()), {flag: 'wx'})",
+                    str(output),
                 ],
                 cwd=ROOT,
-                env={**os.environ, "KOMAQUILL_WEB_EVIDENCE_DIR": str(tmp_path / "browser")},
+                env={
+                    **os.environ,
+                    "KOMAQUILL_WEB_EVIDENCE_DIR": str(tmp_path / "browser"),
+                    "NO_COLOR": "1",
+                    "FORCE_COLOR": "1",
+                },
                 stdout=stream,
                 timeout=10,
             )

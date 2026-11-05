@@ -20,7 +20,6 @@ export const test = base.extend<{
     const request = await playwright.request.newContext({
       baseURL,
       extraHTTPHeaders: { Connection: 'close' },
-      maxRetries: 0,
     })
     try {
       await use(request)

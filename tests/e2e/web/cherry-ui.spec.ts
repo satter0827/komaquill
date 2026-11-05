@@ -50,6 +50,35 @@ for (const [locale, m] of [
     await expect(dialog).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(trigger).toBeFocused()
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.getByRole('button', { name: m.showState, exact: true }).click()
+    await page.getByRole('button', { name: m.hideScreen, exact: true }).click()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const restore = page.getByRole('button', {
+      name: m.showScreen,
+      exact: true,
+    })
+    await expect(restore).toBeVisible()
+    await expect(restore).toBeFocused()
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Tab')
+    await expect(restore).toBeFocused()
+    await restore.click()
+    await expect(dialog).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(trigger).toBeFocused()
+    await expect(input).toHaveValue('A retained message')
+    await page.getByRole('button', { name: m.showNavigation }).click()
+    await page.getByRole('button', { name: m.hideScreen, exact: true }).click()
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await expect(restore).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(restore).toBeVisible()
+    await expect(restore).toBeFocused()
+    await restore.click()
+    await expect(
+      page.getByRole('button', { name: m.hideScreen, exact: true }),
+    ).toBeFocused()
   })
 }
 

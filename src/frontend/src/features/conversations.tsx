@@ -105,12 +105,28 @@ function AcceptedTurn({ operation }: { operation: OperationView }) {
   )
 }
 
-export function ConversationPage() {
+export function ConversationPage({
+  screenHidden = false,
+}: {
+  screenHidden?: boolean
+}) {
   const { identity = '' } = useParams()
-  return <ConversationView key={identity} identity={identity} />
+  return (
+    <ConversationView
+      key={identity}
+      identity={identity}
+      screenHidden={screenHidden}
+    />
+  )
 }
 
-function ConversationView({ identity }: { identity: string }) {
+function ConversationView({
+  identity,
+  screenHidden,
+}: {
+  identity: string
+  screenHidden: boolean
+}) {
   const cache = useQueryClient()
   const messages = useMessages()
   const failure = useFailure()
@@ -120,6 +136,7 @@ function ConversationView({ identity }: { identity: string }) {
   const [actionOpen, setActionOpen] = useState(false)
   const actionEditor = useRef<HTMLDivElement>(null)
   const messageInput = useRef<HTMLTextAreaElement>(null)
+  const stateTrigger = useRef<HTMLButtonElement>(null)
   const composerOptions = useRef<HTMLDivElement>(null)
   const { scrollRef, contentRef, scrollToBottom, isAtBottom } =
     useStickToBottom({ initial: 'instant', resize: 'instant' })
@@ -518,6 +535,7 @@ function ConversationView({ identity }: { identity: string }) {
             </Popup>
           </Popover.Root>
           <Button
+            ref={stateTrigger}
             aria-label={showState ? messages.closeState : messages.showState}
             onClick={() => setShowState(!showState)}
           >
@@ -933,11 +951,15 @@ function ConversationView({ identity }: { identity: string }) {
         </div>
       </section>
       {narrow ? (
-        <Dialog.Root open={showState} onOpenChange={setShowState}>
+        <Dialog.Root
+          open={showState && !screenHidden}
+          onOpenChange={setShowState}
+        >
           <Modal
             label={messages.currentState}
             closeLabel={messages.closeState}
             className="state-dialog"
+            finalFocus={stateTrigger}
           >
             {statePanel}
           </Modal>

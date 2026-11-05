@@ -51,7 +51,10 @@ function Application() {
   const navigationTrigger = useRef<HTMLButtonElement>(null)
   const narrow = useMediaQuery('(max-width: 850px)')
   return (
-    <Dialog.Root open={navigation && narrow} onOpenChange={setNavigation}>
+    <Dialog.Root
+      open={navigation && narrow && !privateScreen}
+      onOpenChange={setNavigation}
+    >
       <div className="application">
         <div className="workspace">
           {!narrow && (
@@ -93,7 +96,7 @@ function Application() {
               <Route path="/new" element={<NewConversation />} />
               <Route
                 path="/conversations/:identity"
-                element={<ConversationPage />}
+                element={<ConversationPage screenHidden={privateScreen} />}
               />
               <Route
                 path="/archive/conversations/:identity"

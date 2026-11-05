@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from contextlib import suppress
 
 import psutil
 import pytest
@@ -48,8 +49,74 @@ def test_timeout_terminates_owned_child_without_touching_other_processes(tmp_pat
                     timeout=3,
                 )
             assert child.is_file()
-            assert not psutil.pid_exists(int(child.read_text()))
+            with suppress(psutil.NoSuchProcess):
+                psutil.Process(int(child.read_text())).wait(timeout=1)
             assert unrelated.poll() is None
         finally:
             unrelated.terminate()
             unrelated.wait(timeout=10)
+
+
+def test_normal_parent_exit_does_not_leave_an_owned_child(tmp_path):
+    import json
+
+    child = tmp_path / "child.json"
+    source = (
+        "import subprocess,sys,json,psutil; from pathlib import Path; "
+        "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+        "Path(sys.argv[1]).write_text(json.dumps([p.pid,psutil.Process(p.pid).create_time()]))"
+    )
+    try:
+        with (tmp_path / "output.log").open("w") as output:
+            assert (
+                run_owned(
+                    [sys.executable, "-c", source, str(child)],
+                    cwd=tmp_path,
+                    env=os.environ,
+                    stdout=output,
+                    timeout=10,
+                )
+                == 0
+            )
+        pid, started = json.loads(child.read_text())
+        with suppress(psutil.NoSuchProcess):
+            owned = psutil.Process(pid)
+            assert owned.create_time() != started or owned.status() == psutil.STATUS_ZOMBIE
+    finally:
+        if child.is_file():
+            pid, started = json.loads(child.read_text())
+            with suppress(psutil.NoSuchProcess):
+                owned = psutil.Process(pid)
+                if owned.create_time() == started and owned.status() != psutil.STATUS_ZOMBIE:
+                    owned.kill()
+                    owned.wait(timeout=10)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Object contract")
+def test_job_assignment_failure_terminates_the_suspended_parent(tmp_path, monkeypatch):
+    import win32job
+
+    observed = []
+    popen = subprocess.Popen
+
+    def start(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        observed.append(process)
+        return process
+
+    def fail(*_):
+        raise RuntimeError("Injected job assignment failure")
+
+    monkeypatch.setattr(subprocess, "Popen", start)
+    monkeypatch.setattr(win32job, "AssignProcessToJobObject", fail)
+    marker = tmp_path / "executed"
+    with (tmp_path / "output.log").open("w") as output, pytest.raises(RuntimeError):
+        run_owned(
+            [sys.executable, "-c", "from pathlib import Path; Path('executed').touch()"],
+            cwd=tmp_path,
+            env=os.environ,
+            stdout=output,
+            timeout=10,
+        )
+    assert observed and all(process.poll() is not None for process in observed)
+    assert not marker.exists()

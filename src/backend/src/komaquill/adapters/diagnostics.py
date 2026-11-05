@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from komaquill.domain.usage import AccountUsage
 
 _OPERATION: ContextVar[UUID | None] = ContextVar("komaquill_operation", default=None)
+LOG_LOCK_TIMEOUT_SECONDS = 1
 
 
 @contextmanager
@@ -105,7 +106,10 @@ def record_event(
     }
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        with FileLock(str(path) + ".lock"), path.open("a", encoding="utf-8") as handle:
+        with (
+            FileLock(str(path) + ".lock", timeout=LOG_LOCK_TIMEOUT_SECONDS),
+            path.open("a", encoding="utf-8") as handle,
+        ):
             handle.write(json.dumps(data, ensure_ascii=False) + "\n")
             handle.flush()
         return True

@@ -32,10 +32,12 @@ def stopped_database(monkeypatch):
 @pytest.fixture
 def project(tmp_path, monkeypatch):
     from komaquill.adapters import deployment
+    from komaquill.adapters.persistence.connection import Database
 
     from tests.backend.support.runtime_tools import archive
 
     monkeypatch.setattr(deployment, "runtime_archive", lambda _: archive())
+    Database(tmp_path / ".artifacts/data/komaquill.sqlite3", create=True).engine.dispose()
     (tmp_path / "komaquill.toml").write_text(
         'models = ["klein-4b"]\npoll_interval = 0.001\ngeneration_timeout = 1.0\n'
         "story_max_in_flight = 1\n"

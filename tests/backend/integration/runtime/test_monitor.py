@@ -365,7 +365,7 @@ def test_progress_is_allowlisted_and_temporary_copies_are_removed(project, monke
 
 
 def test_corrupt_monitor_does_not_block_provider_shutdown(project):
-    project.state.mkdir(parents=True)
+    project.state.mkdir(parents=True, exist_ok=True)
     (project.state / "monitor.json").write_text("{broken")
     assert supervisor.stop(project, False, lambda _: None) is False
 

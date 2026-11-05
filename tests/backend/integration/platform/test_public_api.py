@@ -49,7 +49,7 @@ def test_client_initialization_is_explicit_and_does_not_overwrite(tmp_path):
 
 
 def test_operation_ids_do_not_inherit_a_stopped_session(project):
-    project.state.mkdir(parents=True)
+    project.state.mkdir(parents=True, exist_ok=True)
     identity = uuid4()
     (project.state / "monitor.json").write_text(
         json.dumps({"operation_id": str(uuid4()), "phase": "stopped", "runtime_id": str(identity)})

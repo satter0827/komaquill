@@ -107,6 +107,7 @@ def test_migration_failure_is_recorded_without_rewriting_existing_data(
         monkeypatch.setattr(database_migration, "database_in_use", lambda *_, **__: True)
         expected = "operation_busy"
     elif case == "missing":
+        (tmp_path / ".artifacts/data/komaquill.sqlite3").unlink()
         expected = "request_not_found"
     else:
         api.conversations.create(ConversationInput(locale="en", llm_profile="fake", title="Kept"))

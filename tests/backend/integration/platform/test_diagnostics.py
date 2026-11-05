@@ -31,6 +31,21 @@ from tests.backend.support.session_controls import patch_session
 from tests.backend.support.storage import artifact
 
 
+def test_busy_diagnostic_log_cannot_block_the_operation(project):
+    from filelock import FileLock
+
+    project.logs.mkdir(parents=True, exist_ok=True)
+    lock = FileLock(str(project.logs / "cli.jsonl") + ".lock")
+    lock.acquire()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(record_event, project, "fixture", "failed")
+        try:
+            assert future.result(timeout=2) is False
+        finally:
+            lock.release()
+    assert not (project.logs / "cli.jsonl").exists()
+
+
 def test_saved_images_record_integrity_and_server_times(project, client, session, stub):
     prompt_id = client.submit(resource_json("presets/klein-4b/workflow-api.json"), {}, "browser")
     stub.history[prompt_id]["status"]["messages"] = [

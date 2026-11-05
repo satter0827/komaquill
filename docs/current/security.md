@@ -18,6 +18,8 @@
 
 端末CookieはSecure・HttpOnly・SameSite=Strictとし、DBにはトークンのハッシュだけを保存します。未承認・期限切れ・失効後はAPI、画像、画面資源を拒否します。端末の承認・失効はローカルの操作に限定します。ComfyUIとWebSocketもCaddyの`forward_auth`で同じ判定を通します。
 
+未承認端末の登録件数を制限します。登録上限や端末記録の保存失敗も、APIと同じ安全なエラー形式で返し、応答にセキュリティヘッダーを付けます。失敗した登録でCookieを発行しません。
+
 端末の登録・承認・失効は追記する履歴に残します。CaddyはOSの信頼ストアを自動変更しません。CAの信頼登録は利用端末で明示的に行ってください。Pythonはpip-audit、Nodeはpnpm auditで固定依存の既知の脆弱性を検査し、CIにJSONの結果を保持します。
 
 Pythonは全extrasと全dependency groupsのハッシュ付きexportを監査します。CUDA版のようにPyPIにないビルド名も照合するため、[pip-auditの標準OSV接続](https://github.com/pypa/pip-audit)を使います。GPU依存や開発依存を除外せず、監査不能も失敗とします。OSVでの監査はハッシュの存在を要求し、配布物の実体のハッシュ照合はuvによる固定依存の導入時に行います。

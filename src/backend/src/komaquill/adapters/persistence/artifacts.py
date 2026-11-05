@@ -135,7 +135,7 @@ class ArtifactRepository:
             # A recorded response cannot be replaced by another response or an earlier state.
             if previous and previous["status"] == "response_received":
                 prior = json.loads(
-                    self.objects.path(
+                    self.objects.read(
                         ObjectRef(
                             sha256=previous["sha256"],
                             size_bytes=connection.execute(
@@ -144,7 +144,7 @@ class ArtifactRepository:
                                 )
                             ).scalar_one(),
                         )
-                    ).read_bytes()
+                    )
                 )
                 if payload.get("status") != "response_received" or any(
                     payload.get(name) != prior.get(name)

@@ -22,6 +22,7 @@ def test_legacy_archived_operations_are_preserved_with_their_original_owner(tmp_
 
     Client.initialize(tmp_path).close()
     path = tmp_path / ".artifacts/data/komaquill.sqlite3"
+    path.unlink()
     # Initialize an actual preceding schema, rather than weakening the new constraints.
     config = Config()
     config.set_main_option("script_location", str(Path(storage.__file__).with_name("migrations")))

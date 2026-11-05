@@ -203,7 +203,7 @@ def test_concurrent_initialization_and_backup_restore_preserve_saved_data(tmp_pa
     )
     path = tmp_path / "concurrent # database.sqlite3"
     with ThreadPoolExecutor(max_workers=4) as pool:
-        engines = list(pool.map(lambda _: Database(path), range(4)))
+        engines = list(pool.map(lambda _: Database(path, create=True), range(4)))
     for storage in engines:
         with storage.engine.connect() as connection:
             assert (
@@ -388,14 +388,17 @@ def test_failed_migration_rolls_back_ddl_before_retry(tmp_path, monkeypatch):
         raise ValueError("Injected migration failure")
 
     monkeypatch.setattr(command, "upgrade", fail)
-    with pytest.raises(ValueError):
-        Database(path)
+    with pytest.raises(KomaquillError, match="storage_failed"):
+        Database(path, create=True)
     with closing(sqlite3.connect(path)) as connection:
         assert (
             connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == []
         )
     monkeypatch.setattr(command, "upgrade", original)
-    Database(path).engine.dispose()
+    with pytest.raises(KomaquillError, match="storage_failed"):
+        Database(path)
+    path.unlink()
+    Database(path, create=True).engine.dispose()
 
 
 @pytest.mark.parametrize("phase", ["prepared", "queued"])

@@ -69,6 +69,8 @@ dev = [
   "types-setuptools>=80",
   "websockets>=15,<17",
   "types-psutil>=7,<8",
+  "types-pywin32>=312,<313",
+  "pywin32>=312,<313; sys_platform == 'win32'",
   "aiohttp>=3.11.8,<4",
   "detect-secrets>=1.5,<2",
   "unidiff>=0.7.5,<1",

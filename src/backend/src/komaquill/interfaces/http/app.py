@@ -179,24 +179,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
                     return response
                 return JSONResponse({"code": "device_not_approved"}, status_code=403)
         request.state.local_device_administrator = local
-        try:
-            return await call_next(request)
-        except Exception as error:
-            if client is not None:
-                record_event(
-                    WorkspacePaths(client.workspace),
-                    "http",
-                    "failed",
-                    failure=failure_info(error, "operation"),
-                )
-            return JSONResponse(
-                ErrorView(
-                    code="operation_failed",
-                    stage=OperationStage.OPERATION,
-                    message=message("http.failed"),
-                ).model_dump(mode="json"),
-                status_code=500,
-            )
+        return await call_next(request)
 
     app.add_middleware(
         TrustedHostMiddleware,
@@ -209,7 +192,19 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
     async def protect_response(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except KomaquillError as error:
+            response = await failure(request, error)
+        except Exception as error:
+            if client is not None:
+                record_event(
+                    WorkspacePaths(client.workspace),
+                    "http",
+                    "failed",
+                    failure=failure_info(error, "operation"),
+                )
+            response = await unexpected(request, error)
         response.headers.update(
             {
                 "Content-Security-Policy": (

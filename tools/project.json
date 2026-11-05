@@ -48,7 +48,7 @@
         "{workspaceRoot}/pyproject.toml"
       ],
       "options": {
-        "command": "node tools/runtime/python.mjs -m mypy tools"
+        "command": "node tools/runtime/python.mjs -m mypy tools --cache-dir .artifacts/cache/mypy/tools"
       }
     }
   }

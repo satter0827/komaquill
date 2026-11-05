@@ -35,7 +35,7 @@ def test_test_paths_declare_target_scope_and_feature():
         if not (
             name.startswith("test_")
             and path.suffix == ".py"
-            or name.endswith((".test.mjs", ".test.tsx", ".spec.ts"))
+            or name.endswith((".test.mjs", ".test.ts", ".test.tsx", ".spec.ts"))
         ):
             continue
         target, scope, *rest = path.relative_to(ROOT / "tests").parts

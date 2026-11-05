@@ -16,6 +16,18 @@ export const test = base.extend<{
   baseURL: async ({}, use, info) => {
     await isolatedServer(use, info)
   },
+  request: async ({ playwright, baseURL }, use) => {
+    const request = await playwright.request.newContext({
+      baseURL,
+      extraHTTPHeaders: { Connection: 'close' },
+      maxRetries: 0,
+    })
+    try {
+      await use(request)
+    } finally {
+      await request.dispose()
+    }
+  },
   auditAccessibility: async ({ page }, use, info) => {
     let audit = 0
     await use(async () => {

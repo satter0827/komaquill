@@ -90,3 +90,43 @@ def test_proxy_configuration_protects_comfy_and_uses_private_storage(tmp_path):
     assert "handle_path /comfy/*" in config and "admin off" in config
     assert "header_up -Connection" in config and "header_up -Upgrade" in config
     assert "stream_timeout 60s" in config and "skip_install_trust" in config
+
+
+def test_http_enrollment_limit_returns_a_safe_typed_failure(tmp_path):
+    api = Client.initialize(tmp_path)
+    (tmp_path / "komaquill.toml").write_text(
+        '[web]\npending_limit=1\norigin="https://komaquill.home"\n'
+    )
+    with TestClient(
+        create_app(api), base_url="https://komaquill.home", client=("192.168.1.50", 52310)
+    ) as lan:
+        assert lan.get("/").status_code == 403
+        lan.cookies.clear()
+        response = lan.get("/")
+        assert response.status_code == 409
+        assert response.json()["code"] == "operation_busy"
+        assert response.headers["cache-control"] == "no-store"
+        assert "set-cookie" not in response.headers
+        assert len(api.devices.list()) == 1
+
+
+@pytest.mark.parametrize("known", [False, True])
+def test_device_storage_failures_keep_the_safe_http_boundary(tmp_path, monkeypatch, known):
+    api = Client.initialize(tmp_path)
+    (tmp_path / "komaquill.toml").write_text('[web]\norigin="https://komaquill.home"\n')
+
+    def fail(_):
+        if known:
+            raise KomaquillError(code="storage_failed", stage="storage")
+        raise RuntimeError("private token and response body")
+
+    monkeypatch.setattr(api.devices, "state", fail)
+    with TestClient(
+        create_app(api), base_url="https://komaquill.home", client=("192.168.1.50", 52310)
+    ) as lan:
+        response = lan.get("/")
+        assert response.status_code == (400 if known else 500)
+        assert response.json()["code"] == ("storage_failed" if known else "operation_failed")
+        assert "private token" not in response.text
+        assert response.headers["cache-control"] == "no-store"
+        assert "Content-Security-Policy" in response.headers

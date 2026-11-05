@@ -16,7 +16,9 @@
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "options": { "command": "node tools/runtime/python.mjs -m mypy scripts" }
+      "options": {
+        "command": "node tools/runtime/python.mjs -m mypy scripts --cache-dir .artifacts/cache/mypy/scripts"
+      }
     }
   }
 }

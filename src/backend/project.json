@@ -20,20 +20,15 @@
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "inputs": [
-        "python"
-      ],
+      "inputs": ["python"],
       "options": {
-        "command": "node tools/runtime/python.mjs -m mypy src/backend/src"
+        "command": "node tools/runtime/python.mjs -m mypy src/backend/src --cache-dir .artifacts/cache/mypy/backend"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "cache": false,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/tests/backend/**/*.test.mjs"
-      ],
+      "inputs": ["default", "{workspaceRoot}/tests/backend/**/*.test.mjs"],
       "options": {
         "command": "node --test tests/backend/unit/comfyui/preparation.test.mjs"
       }
@@ -43,9 +38,7 @@
       "cache": true,
       "dependsOn": [
         {
-          "projects": [
-            "frontend"
-          ],
+          "projects": ["frontend"],
           "target": "build"
         }
       ],
@@ -77,9 +70,7 @@
     "package": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "options": {
         "command": "node tools/runtime/python.mjs -m tools.checks.installed_wheel --dist-dir .artifacts/dist --report-dir .artifacts/records/reports/package"
       }

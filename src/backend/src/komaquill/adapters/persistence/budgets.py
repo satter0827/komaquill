@@ -1,7 +1,9 @@
 """Reserve calls before submission across processes and explicit restarts."""
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from komaquill.adapters.persistence.connection import Database
@@ -10,15 +12,28 @@ from komaquill.adapters.storage_errors import stored
 from komaquill.domain.errors import KomaquillError
 
 
+class BudgetBinding(BaseModel):
+    """Validate private connection metadata before restoring an existing allowance."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    ledger: Path
+    max_calls: int = Field(gt=0, strict=True)
+    max_seconds: int = Field(gt=0, strict=True)
+
+
 class CallBudget:
     @stored
-    def __init__(self, database: Database, max_calls: int, max_seconds: int) -> None:
+    def __init__(
+        self, database: Database, max_calls: int, max_seconds: int, *, create: bool = False
+    ) -> None:
         if max_calls < 1 or max_seconds < 1:
             raise KomaquillError(code="invalid_request")
         self.database = database
         with database.transaction() as connection:
             previous = connection.execute(select(execution_budgets)).mappings().first()
             if previous is None:
+                if not create:
+                    raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
                 connection.execute(
                     execution_budgets.insert().values(
                         id="calls",

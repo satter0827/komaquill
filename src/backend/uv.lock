@@ -1179,9 +1179,11 @@ dev = [
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "ruff" },
     { name = "tomli-w" },
     { name = "types-psutil" },
+    { name = "types-pywin32" },
     { name = "types-setuptools" },
     { name = "unidiff" },
     { name = "websockets" },
@@ -1264,9 +1266,11 @@ dev = [
     { name = "pip-audit", specifier = ">=2.10.1,<3" },
     { name = "pytest", specifier = ">=8.4,<10" },
     { name = "pytest-cov", specifier = ">=7,<8" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=312,<313" },
     { name = "ruff", specifier = ">=0.14,<1" },
     { name = "tomli-w", specifier = ">=1.2,<2" },
     { name = "types-psutil", specifier = ">=7,<8" },
+    { name = "types-pywin32", specifier = ">=312,<313" },
     { name = "types-setuptools", specifier = ">=80" },
     { name = "unidiff", specifier = ">=0.7.5,<1" },
     { name = "websockets", specifier = ">=15,<17" },
@@ -2999,6 +3003,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/97/0a/f48b9b0ab5ba8599fd117309e345152bf82c756c72be2ff0f635780c2792/types_psutil-7.2.2.20260906.tar.gz", hash = "sha256:93abf22cf9a62b915f724e433bde702995ac274865425fd4a76d1d9b5828da1a", size = 27396, upload-time = "2026-09-06T06:35:24.499Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/8d/81a86107486e1c23f5ca21bea1e9e5b18a50754242e7a0b82f41f9ae8384/types_psutil-7.2.2.20260906-py3-none-any.whl", hash = "sha256:db00baf7f96c3f63421c4d3d68d373923094a0dfddf13e922c5c5fbc42488159", size = 33383, upload-time = "2026-09-06T06:35:23.575Z" },
+]
+
+[[package]]
+name = "types-pywin32"
+version = "312.0.0.20261104"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/41/61c0dd54dba24b80a8f6326a38cd9c80fd250225a027f88fe6931929f9d5/types_pywin32-312.0.0.20261104.tar.gz", hash = "sha256:2944bdb1ce11397eb78c4a0ff031d18c9871730aed111b1cc1c872e6c854eccc", size = 358795, upload-time = "2026-11-04T08:14:13.826Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/e1/3ca417219f3be15e8c9111c4dd6f3ea9335e6722ab5a53f7c5ab46674e46/types_pywin32-312.0.0.20261104-py3-none-any.whl", hash = "sha256:1652e70149c9febdaaab1d0224354d6be51cab2e2963ba5e0f34c758a17e5a5a", size = 419941, upload-time = "2026-11-04T08:14:12.493Z" },
 ]
 
 [[package]]

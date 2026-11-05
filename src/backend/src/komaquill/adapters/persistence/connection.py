@@ -53,11 +53,12 @@ class Database:
 
         return Checkpoints(self.path)
 
-    def __init__(self, path: Path, *, migrate: bool = False) -> None:
+    def __init__(self, path: Path, *, create: bool = False, migrate: bool = False) -> None:
         self.path = path.resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
+        if create:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(
-            URL.create("sqlite", database=str(path.resolve())),
+            URL.create("sqlite", database=self.path.as_uri() + "?mode=rw", query={"uri": "true"}),
             connect_args={"timeout": SQLITE_LOCK_TIMEOUT_SECONDS},
             poolclass=NullPool,
         )
@@ -96,6 +97,10 @@ class Database:
                 "BEGIN IMMEDIATE" if connection.info.get("immediate") else "BEGIN"
             )
 
+        self._initialize_schema(create=create, migrate=migrate)
+
+    @stored
+    def _initialize_schema(self, *, create: bool, migrate: bool) -> None:
         from alembic import command
         from alembic.config import Config
         from alembic.script import ScriptDirectory
@@ -103,29 +108,44 @@ class Database:
         config = Config()
         config.set_main_option("script_location", str(Path(__file__).with_name("migrations")))
         with (
-            FileLock(str(path.with_suffix(".migration.lock")), timeout=SQLITE_LOCK_TIMEOUT_SECONDS),
+            FileLock(
+                str(self.path.with_suffix(".migration.lock")), timeout=SQLITE_LOCK_TIMEOUT_SECONDS
+            ),
             _MIGRATION_LOCK,
-            self.engine.connect() as connection,
         ):
-            connection.info["immediate"] = True
-            connection.begin()
-            if connection.exec_driver_sql(
-                "SELECT name FROM sqlite_master WHERE name='alembic_version'"
-            ).first():
-                current = connection.exec_driver_sql(
-                    "SELECT version_num FROM alembic_version"
-                ).scalar()
-                if (
-                    current
-                    and current != ScriptDirectory.from_config(config).get_current_head()
-                    and not migrate
-                ):
-                    raise KomaquillError(
-                        code="migration_required", stage="storage", retryable=False
-                    )
-            config.attributes["connection"] = connection
-            command.upgrade(config, "head")
-            connection.commit()
+            fresh = False
+            if create:
+                try:
+                    self.path.touch(exist_ok=False)
+                    fresh = True
+                except FileExistsError:
+                    pass
+            with self.engine.connect() as connection:
+                connection.info["immediate"] = True
+                connection.begin()
+                versioned = connection.exec_driver_sql(
+                    "SELECT name FROM sqlite_master WHERE name='alembic_version'"
+                ).first()
+                if not versioned and not fresh:
+                    raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
+                if versioned:
+                    current = connection.exec_driver_sql(
+                        "SELECT version_num FROM alembic_version"
+                    ).scalar()
+                    if not current:
+                        raise KomaquillError(
+                            code="storage_failed", stage="storage", retryable=False
+                        )
+                    if (
+                        current != ScriptDirectory.from_config(config).get_current_head()
+                        and not migrate
+                    ):
+                        raise KomaquillError(
+                            code="migration_required", stage="storage", retryable=False
+                        )
+                config.attributes["connection"] = connection
+                command.upgrade(config, "head")
+                connection.commit()
 
     @contextmanager
     def write(self) -> Iterator[Connection]:

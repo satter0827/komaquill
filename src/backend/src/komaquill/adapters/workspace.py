@@ -163,6 +163,10 @@ def initialize(directory: Path) -> RuntimeWorkspace:
     root = directory.resolve()
     root.mkdir(parents=True, exist_ok=True)
     config = root / "komaquill.toml"
+    if (root / ".artifacts/data").exists() and not (
+        root / ".artifacts/data/komaquill.sqlite3"
+    ).is_file():
+        raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
     if not config.exists():
         with config.open("x", encoding="utf-8") as handle:
             handle.write(
@@ -188,4 +192,7 @@ def initialize(directory: Path) -> RuntimeWorkspace:
             encoding="utf-8",
         )
     project.settings()
+    from komaquill.adapters.persistence.connection import Database
+
+    Database(project.data / "komaquill.sqlite3", create=True).engine.dispose()
     return project

@@ -91,15 +91,13 @@ class Client:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
             execution = StructuredExecution(self.workspace, lambda: self._configuration)
             binding = self.workspace / ".artifacts/state/llm-budget.json"
-            if binding.is_file():
-                import json
-
-                from komaquill.adapters.persistence.budgets import CallBudget
+            if binding.exists():
+                from komaquill.adapters.persistence.budgets import BudgetBinding, CallBudget
                 from komaquill.adapters.persistence.connection import database
 
-                value = json.loads(binding.read_bytes())
+                value = BudgetBinding.model_validate_json(binding.read_bytes())
                 execution.call_budget = CallBudget(
-                    database(Path(value["ledger"])), value["max_calls"], value["max_seconds"]
+                    database(value.ledger), value.max_calls, value.max_seconds
                 )
             return execution
 
@@ -161,17 +159,22 @@ class Client:
     def limit_llm_calls(self, ledger: Path, *, max_calls: int, max_seconds: int) -> None:
         """Attach a persistent allowance without resetting previous reservations."""
         from komaquill.adapters.atomic import atomic_json
-        from komaquill.adapters.persistence.budgets import CallBudget
-        from komaquill.adapters.persistence.connection import database
+        from komaquill.adapters.persistence.budgets import BudgetBinding, CallBudget
+        from komaquill.adapters.persistence.connection import Database
 
-        with api_operation(OperationStage.CHECK):
-            self._execution.call_budget = CallBudget(database(ledger), max_calls, max_seconds)
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_REQUEST):
+            limits = BudgetBinding(ledger=ledger, max_calls=max_calls, max_seconds=max_seconds)
+            ledger = limits.ledger.resolve()
+            create = not (self.workspace / ".artifacts/state/llm-budget.json").exists()
+            self._execution.call_budget = CallBudget(
+                Database(ledger, create=create), limits.max_calls, limits.max_seconds, create=create
+            )
             atomic_json(
                 self.workspace / ".artifacts/state/llm-budget.json",
                 {
                     "ledger": str(ledger.resolve()),
-                    "max_calls": max_calls,
-                    "max_seconds": max_seconds,
+                    "max_calls": limits.max_calls,
+                    "max_seconds": limits.max_seconds,
                 },
             )
 

@@ -580,13 +580,27 @@ tests = ["tests/system/structure/repository/test_layout.py", "tests/tools/integr
 [requirements.REQ-STORAGE-BOUNDARIES]
 summary = "DBの関係と不変の生成物を分け、原本を保全して変換する"
 status = "implemented"
-acceptance = ["状態と関係をSQLiteで検査する", "内容ハッシュで画像と実要求・応答を識別する", "論理キーを物理パスとして扱わない", "使用中の切り替えを拒否する", "移動途中の停止から再開できる", "アーカイブ操作を原本のまま保持する"]
+acceptance = ["状態と関係をSQLiteで検査する", "内容ハッシュで画像と実要求・応答を識別する", "論理キーを物理パスとして扱わない", "公式Saverを含む使用中の全接続で切り替えを拒否する", "DBの喪失と版情報の欠損を空の状態へ置き換えない", "移動途中の停止から再開できる", "アーカイブ操作を原本のまま保持する"]
 sources = ["src/backend/src/komaquill/adapters/persistence/schema.py", "src/backend/src/komaquill/adapters/object_store.py", "src/backend/src/komaquill/adapters/persistence/migrate.py"]
-tests = ["tests/backend/integration/platform/test_storage_migration.py", "tests/backend/integration/platform/test_objects.py"]
+tests = ["tests/backend/integration/platform/test_storage_migration.py", "tests/backend/integration/platform/test_objects.py", "tests/backend/integration/storage/test_missing_database.py", "tests/backend/integration/storage/test_checkpoint_access.py", "tests/backend/integration/storage/test_call_record_integrity.py"]
 
 [requirements.REQ-WEB-DEVICE-ACCESS]
 summary = "localhostを既定とし、HTTPSで承認した端末だけにLANアクセスを許可する"
 status = "implemented"
-acceptance = ["不正なHost・Origin・本文を拒否する", "端末承認は再起動後も維持する", "失効後はAPI・画面・画像を拒否する", "端末トークンはハッシュだけを保存する", "承認と失効の履歴を追記する", "管理操作はローカルに限定する"]
+acceptance = ["不正なHost・Origin・本文を拒否する", "端末承認は再起動後も維持する", "失効後はAPI・画面・画像を拒否する", "端末トークンはハッシュだけを保存する", "承認と失効の履歴を追記する", "管理操作はローカルに限定する", "登録上限と登録時の保存失敗を安全なエラー応答にする"]
 sources = ["src/backend/src/komaquill/interfaces/http/app.py", "src/backend/src/komaquill/adapters/persistence/devices.py", "src/backend/src/komaquill/adapters/web_proxy.py"]
 tests = ["tests/backend/integration/http/test_security.py", "tests/backend/integration/http/test_devices.py"]
+
+[requirements.REQ-LLM-DURABLE-ALLOWANCE]
+summary = "送信前の予約と期限を再起動後も保持し、記録喪失で上限を復活させない"
+status = "implemented"
+acceptance = ["並行予約で上限を超えない", "再起動と上限の再指定で消費と期限を戻さない", "接続済み台帳のファイルや行の喪失を保存失敗にする", "接続情報の欠損や型の不正を安全な設定失敗へ変換する"]
+sources = ["src/backend/src/komaquill/adapters/persistence/budgets.py", "src/backend/src/komaquill/api/client.py"]
+tests = ["tests/backend/integration/llm/test_call_budget.py", "tests/scripts/integration/llm/test_llm_comparison.py"]
+
+[requirements.REQ-CHECK-PROCESS-OWNERSHIP]
+summary = "検査の終了と中断で所有プロセスを回収し、別の実行を終了しない"
+status = "implemented"
+acceptance = ["正常終了とタイムアウトで所有する子プロセスを終了する", "親の終了後も所有境界を維持する", "別の実行のプロセスを終了しない"]
+sources = ["tools/runtime/processes.py"]
+tests = ["tests/tools/integration/runtime/test_processes.py"]

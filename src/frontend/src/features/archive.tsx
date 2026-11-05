@@ -57,7 +57,9 @@ export function ArchivedConversationPage() {
           </div>
           <div className="assistant-message">
             <p className="scene-narration">{turn.narration}</p>
-            <p>{turn.assistant}</p>
+            <div className="dialogue">
+              <p>{turn.assistant}</p>
+            </div>
           </div>
         </article>
       ))}

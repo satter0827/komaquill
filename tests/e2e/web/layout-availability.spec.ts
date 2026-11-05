@@ -83,7 +83,7 @@ for (const locale of ['ja', 'en'] as const) {
             }
             if (route === '/player') {
               const input = await page
-                .getByLabel(m.name, { exact: true })
+                .getByLabel(m.requiredName, { exact: true })
                 .boundingBox()
               expect(input!.width).toBeGreaterThan(size.width < 600 ? 250 : 400)
             }
@@ -94,10 +94,7 @@ for (const locale of ['ja', 'en'] as const) {
               await expect(
                 page.getByText(m.newChapter, { exact: true }),
               ).not.toBeVisible()
-              if (viewport === 'mobile')
-                await page
-                  .getByRole('button', { name: m.showState, exact: true })
-                  .click()
+              await page.getByText(m.addAction, { exact: true }).click()
               const destination = page.getByRole('textbox', {
                 name: m.destination,
                 exact: true,
@@ -115,7 +112,9 @@ for (const locale of ['ja', 'en'] as const) {
                 `${locale} ${viewport} ${density} ${font_size} action controls`,
               )
               await actionButton.click()
-              if (viewport === 'mobile') await page.keyboard.press('Escape')
+              await expect(
+                page.getByRole('textbox', { name: m.messageLabel }),
+              ).toBeFocused()
               await expect(
                 page.getByRole('button', {
                   name: m.removeQueuedAction,
@@ -178,13 +177,14 @@ test('unconfirmed services disable generation and sending while text remains edi
   ).toBeDisabled()
   await evidence.capture('Disconnected conversation retains editable input')
   await page.goto('/images')
+  await page.getByRole('button', { name: ja.generate, exact: true }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet coast')
   await expect(
-    page.getByRole('button', { name: ja.generate, exact: true }),
+    page.getByRole('button', { name: ja.drawRequestedScene, exact: true }),
   ).toBeDisabled()
   await page.goto('/characters/new')
   await page
-    .getByLabel(ja.name, { exact: true })
+    .getByLabel(ja.requiredName, { exact: true })
     .fill(`Saved offline ${randomUUID().slice(0, 8)}`)
   await expect(
     page.getByRole('button', { name: ja.save, exact: true }),
@@ -225,7 +225,7 @@ test('mobile privacy restores the navigation focus and preserves the message dra
   await evidence.capture('Mobile privacy restored focus and the unsent message')
 })
 
-test('opens and downloads original image bytes through native browser links', async ({
+test('opens original image bytes and leaves saving to the native context menu', async ({
   page,
   request,
   evidence,
@@ -237,20 +237,66 @@ test('opens and downloads original image bytes through native browser links', as
   expect(submitted.status()).toBe(202)
   await request.post(`/api/v1/images/${identity}/collect`)
   await page.goto('/images')
+  await expect(page.locator('.album-days img')).toHaveCount(0)
+  await page.locator('.album-days summary').first().click()
   const image = page.locator('.image-result').filter({
     has: page.locator(`img[src="/api/v1/images/${identity}/files/0"]`),
   })
   await expect(image.locator('img')).toHaveJSProperty('naturalWidth', 8)
   const opened = page.waitForEvent('popup')
-  await image.getByRole('link', { name: ja.openOriginal, exact: true }).click()
+  await image.getByRole('link').click()
   const original = await opened
   await expect(original).toHaveURL(
     new RegExp(`/api/v1/images/${identity}/files/0$`),
   )
   await expect(original.locator('img')).toHaveJSProperty('naturalWidth', 8)
   await original.close()
-  const downloaded = page.waitForEvent('download')
-  await image.getByRole('link', { name: ja.downloadImage, exact: true }).click()
-  expect((await downloaded).suggestedFilename()).toBe('0001.png')
-  await evidence.capture('Native original-image and download links')
+  await image.locator('img').click({ button: 'right' })
+  await page.keyboard.press('Escape')
+  await expect(image.locator('a[download]')).toHaveCount(0)
+  await evidence.capture('Original image link with native context menu support')
+})
+
+test('album keeps collapsed files unloaded and reopens the accepted result without collecting twice', async ({
+  page,
+  evidence,
+}) => {
+  const readIds: string[] = []
+  const collections: string[] = []
+  const files: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (/^\/api\/v1\/images\/[^/]+$/.test(path) && request.method() === 'GET')
+      readIds.push(path)
+    if (path.endsWith('/collect')) collections.push(path)
+    if (path.includes('/files/')) files.push(path)
+  })
+  await page.goto('/images')
+  await expect(page.locator('.album-days img')).toHaveCount(0)
+  expect(files).toHaveLength(0)
+  await page.getByRole('button', { name: ja.generate, exact: true }).click()
+  await page.getByLabel(ja.imagePrompt).fill('A quiet coast.')
+  const accepted = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/images' &&
+      response.request().method() === 'POST',
+  )
+  await page
+    .getByRole('button', { name: ja.drawRequestedScene, exact: true })
+    .click()
+  const run = await (await accepted).json()
+  const result = page.locator(`#image-${run.run_id}`)
+  await expect(result.locator('img')).toHaveJSProperty('naturalWidth', 8)
+  await expect(page.getByText(ja.albumAdded, { exact: true })).toBeVisible()
+  const input = page.getByLabel(ja.imagePrompt)
+  await expect(input).not.toBeFocused()
+  const day = page.locator('.album-days > details').filter({ has: result })
+  await day.locator('summary').click()
+  await expect(result).toHaveCount(0)
+  const count = collections.length
+  await page.getByRole('link', { name: ja.viewLatestImage }).click()
+  await expect(result).toBeFocused()
+  expect(collections).toHaveLength(count)
+  expect(readIds.filter((path) => path.endsWith(run.run_id))).toHaveLength(1)
+  await evidence.capture('Album result remains reachable after closing its day')
 })

@@ -6,6 +6,7 @@ import type { CreationJob, CreationRequest } from '../api/generated/types.gen'
 import { useFailure, useMessages } from '../app/preferences'
 import { Button } from '../components/ui/button'
 import { recheckAvailability, useAvailabilityRecovery } from './availability'
+import { useTrackCreation } from './image-activity'
 import {
   creationOptions,
   keepTerminal,
@@ -14,6 +15,7 @@ import {
 } from './operations'
 
 export function useCreation() {
+  const trackCreation = useTrackCreation()
   const cache = useQueryClient()
   const [prepared, setPrepared] = useState<CreationRequest | null>(null)
   const [identity, setIdentity] = useState<string | null>(null)
@@ -30,6 +32,7 @@ export function useCreation() {
         q.getJobQueryKey({ path: { identity: data.id ?? '' } }),
         (current) => keepTerminal(current, data),
       )
+      trackCreation(data.id)
       setIdentity(data.id)
       setPrepared(null)
       void refreshPresets(cache)
@@ -48,12 +51,13 @@ export function useCreation() {
       q.getJobQueryKey({ path: { identity: prepared.operation_id } }),
       prepared.operation_id,
       (confirmed: CreationJob) => {
+        trackCreation(confirmed.id)
         setIdentity(confirmed.id)
         setPrepared(null)
         reset()
       },
     )
-  }, [cache, mutation.isError, prepared, reset])
+  }, [cache, mutation.isError, prepared, reset, trackCreation])
 
   useEffect(() => {
     if (job.data?.state === 'complete') void refreshPresets(cache)
@@ -94,6 +98,9 @@ export function CreationStatus({
     return null
   return (
     <div aria-live="polite">
+      {creation.mutation.isPending && (
+        <p className="subtle">{m.requestSending}</p>
+      )}
       {data && (
         <p className={data.error ? 'error' : 'subtle'}>
           {data.error ? failure({ code: data.error }) : m[`job_${data.state}`]}

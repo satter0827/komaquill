@@ -36,7 +36,7 @@ test('REVIEW-SINGLE-PLAYER: Your profile opens directly for editing', async ({
     page.getByRole('heading', { name: player.name, exact: true }),
   ).toBeVisible()
   await expect(
-    page.getByRole('textbox', { name: ja.name, exact: true }),
+    page.getByRole('textbox', { name: ja.requiredName, exact: true }),
   ).toBeVisible()
 })
 
@@ -46,6 +46,7 @@ for (const route of ['/player', '/characters/new']) {
   }) => {
     await page.goto(route)
     await expect(page.locator('main h1')).toBeVisible()
+    await page.getByText(ja.basicDetails, { exact: true }).click()
     await expect(page.getByLabel(/年齢/)).toBeVisible()
     await expect(page.getByLabel(/性別/)).toBeVisible()
   })

@@ -1,5 +1,5 @@
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
@@ -100,7 +100,7 @@ it.each(['player', 'character'] as const)(
     )
     const items = await screen.findByLabelText(m.initial_held_objects)
     expect(items).toHaveValue('Cup\nBook')
-    await userEvent.type(screen.getByLabelText(m.name), ' Updated')
+    await userEvent.type(screen.getByLabelText(m.requiredName), ' Updated')
     await userEvent.click(screen.getByRole('button', { name: m.save }))
     await waitFor(() => expect(requests).toHaveLength(1))
     expect(requests[0]).toMatchObject({
@@ -236,9 +236,9 @@ it('applies draft text without changing the selected counterpart or claiming it 
   expect(screen.getByText(m.saved)).toBeVisible()
   await userEvent.click(button)
   await userEvent.click(await screen.findByRole('button', { name: m.useDraft }))
-  expect(screen.getByLabelText(m.name)).toHaveValue('New story')
+  expect(screen.getByLabelText(m.requiredName)).toHaveValue('New story')
   expect(screen.getByLabelText(m.defaultCharacter)).toHaveValue('chosen')
-  expect(screen.getByRole('status')).toBeEmptyDOMElement()
+  expect(screen.getByRole('status')).toHaveTextContent(m.unsavedChanges)
 })
 
 it('resolves a lost creation response with the original ID and input', async () => {
@@ -375,7 +375,7 @@ it('saves text without requesting generation or authorizing an LLM', async () =>
     }),
   )
   await draftEditor()
-  await userEvent.type(screen.getByLabelText(m.name), 'Casey')
+  await userEvent.type(screen.getByLabelText(m.requiredName), 'Casey')
   await userEvent.type(screen.getByLabelText(m.age), '60')
   await userEvent.type(screen.getByLabelText(m.gender), 'man')
   await userEvent.click(screen.getByRole('button', { name: m.save }))
@@ -385,7 +385,129 @@ it('saves text without requesting generation or authorizing an LLM', async () =>
     value: { name: 'Casey', age: '60', gender: 'man' },
   })
   expect(requests[0].operation_id).toBeTruthy()
-  expect(screen.getByLabelText(m.name)).toHaveValue('Casey')
+  expect(screen.getByLabelText(m.requiredName)).toHaveValue('Casey')
   expect(requests[0]).not.toHaveProperty('image_policy')
   expect(requests[0]).not.toHaveProperty('allow_real_llm')
+})
+
+it('reads an older unfinished portrait once without starting a polling or collection loop', async () => {
+  let reads = 0
+  server.use(
+    http.get(`${base}/api/v1/characters`, () =>
+      HttpResponse.json([
+        {
+          id: 'past',
+          name: 'Past portrait',
+          revision: 0,
+          image_job_id: 'old-job',
+        },
+      ]),
+    ),
+    http.get(`${base}/api/v1/creation-jobs/old-job`, () => {
+      reads++
+      return HttpResponse.json({
+        id: 'old-job',
+        state: 'accepted',
+        image_id: null,
+      })
+    }),
+  )
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+  const cache = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  const view = render(
+    <QueryClientProvider client={cache}>
+      <MemoryRouter initialEntries={['/characters']}>
+        <LibraryPage kind="character" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  try {
+    await screen.findByText(m.job_accepted)
+    await act(async () => {
+      vi.advanceTimersByTime(6000)
+    })
+    await waitFor(() => expect(cache.isFetching()).toBe(0))
+    expect(reads).toBe(1)
+  } finally {
+    view.unmount()
+    cache.clear()
+    vi.useRealTimers()
+  }
+})
+
+it('uses the save receipt to reach stable drawing controls before a slow list refresh', async () => {
+  let stored = false
+  let release: () => void = () => {}
+  const refreshed = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const record = {
+    id: 'saved-receipt',
+    name: 'Stable companion',
+    revision: 0,
+    description: '',
+  }
+  const requests: CreationRequest[] = []
+  server.use(
+    http.get(`${base}/api/v1/characters`, async () => {
+      if (stored) {
+        await refreshed
+        return HttpResponse.json([record])
+      }
+      return HttpResponse.json([])
+    }),
+    http.post(`${base}/api/v1/characters/save`, () => {
+      stored = true
+      return HttpResponse.json({ preset: record })
+    }),
+    http.post(`${base}/api/v1/creation-jobs`, async ({ request }) => {
+      const body = (await request.json()) as CreationRequest
+      requests.push(body)
+      return HttpResponse.json(
+        { id: body.operation_id, request: body, state: 'accepted' },
+        { status: 202 },
+      )
+    }),
+    http.get(`${base}/api/v1/creation-jobs/:id`, ({ params }) =>
+      HttpResponse.json({ id: params.id, state: 'accepted' }),
+    ),
+  )
+  const cache = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  const view = render(
+    <QueryClientProvider client={cache}>
+      <MemoryRouter initialEntries={['/characters/new']}>
+        <Routes>
+          <Route
+            path="/characters/:identity"
+            element={<LibraryPage kind="character" />}
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+  try {
+    await userEvent.type(
+      await screen.findByLabelText(m.requiredName),
+      record.name,
+    )
+    await userEvent.click(screen.getByRole('button', { name: m.save }))
+    const draw = await screen.findByRole('button', { name: m.createImage })
+    await waitFor(() => expect(draw).toBeEnabled())
+    await userEvent.click(draw)
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0]).toMatchObject({
+      target_id: record.id,
+      expected_revision: 0,
+      kind: 'portrait',
+    })
+    expect(screen.getByRole('button', { name: m.createImage })).toBeDisabled()
+  } finally {
+    release()
+    view.unmount()
+    cache.clear()
+  }
 })

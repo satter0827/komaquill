@@ -64,9 +64,12 @@ export function PreferencesPage() {
           {failure(preferences.error)}
         </p>
       )}
+      <p className="subtle">{m.responseLengthScope}</p>
       <details className="connection-details">
         <summary>{m.connectionSettings}</summary>
-        <RuntimePage embedded />
+        <div className="details-content">
+          <RuntimePage embedded />
+        </div>
       </details>
     </section>
   )

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
@@ -146,6 +146,9 @@ describe('conversation workflow', () => {
         expect(screen.getByLabelText(m.chooseCharacter)).toHaveValue(
           'recommended',
         ),
+      )
+      await userEvent.click(
+        document.querySelector('.start-selection > summary')!,
       )
       expect(screen.getByText('A saved opening')).toBeVisible()
       expect(screen.queryByText(m.noPresets)).not.toBeInTheDocument()
@@ -571,13 +574,8 @@ describe('conversation workflow', () => {
       )
       await userEvent.selectOptions(
         screen.getByLabelText(m.chooseAction),
-        next === 'pose' ? 'prepare' : 'intention',
+        next === 'pose' ? 'pose' : 'intention',
       )
-      if (next === 'pose')
-        await userEvent.selectOptions(
-          screen.getByLabelText(m.choosePreparation),
-          'pose',
-        )
       await userEvent.type(
         screen.getByLabelText(
           next === 'pose' ? m.preparationValue : m.currentIntention,
@@ -925,4 +923,97 @@ it('shows the current character condition without internal state values', async 
   expect(screen.getByText('Blue shirt')).toBeInTheDocument()
   expect(screen.getAllByText('Garden').length).toBeGreaterThan(0)
   expect(screen.queryByText('{"age":"28"}')).not.toBeInTheDocument()
+})
+
+it('edits multiple held objects without dropping other queued preparation fields', async () => {
+  const requests: Array<{
+    action: {
+      kind: string
+      clothing: string
+      held_objects: Array<{ id: string; name: string }>
+    }
+    proposal_id?: string
+  }> = []
+  server.use(
+    http.get(`${base}/api/v1/conversations/one`, () =>
+      HttpResponse.json({
+        id: 'one',
+        definition: { title: 'Preparation', llm_profile: 'fake' },
+        state: { player: { held_objects: [] } },
+        revision: 0,
+        turns: [],
+        proposals: [
+          {
+            id: 'proposal',
+            turn_id: 'source',
+            state: 'pending',
+            revision: 0,
+            action: {
+              kind: 'prepare',
+              clothing: 'Blue coat',
+              held_objects: [
+                { id: 'book', name: 'Book' },
+                { id: 'key', name: 'Key' },
+              ],
+            },
+          },
+        ],
+      }),
+    ),
+    http.post(`${base}/api/v1/conversations/one/turns`, async ({ request }) => {
+      requests.push((await request.json()) as (typeof requests)[number])
+      return HttpResponse.json(
+        { id: 'op', conversation_id: 'one', state: 'accepted' },
+        { status: 202 },
+      )
+    }),
+  )
+  app('/conversations/one')
+  await userEvent.click(await screen.findByText(m.addAction, { exact: true }))
+  const proposal = document.querySelector('.action-proposal')! as HTMLElement
+  await userEvent.click(
+    within(proposal).getByRole('button', { name: m.queueAction }),
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: m.editQueuedAction }),
+  )
+  await userEvent.selectOptions(
+    screen.getByLabelText(m.chooseAction),
+    'held_objects',
+  )
+  const objects = screen.getByLabelText(m.heldObjectsInput)
+  expect(objects.tagName).toBe('TEXTAREA')
+  expect(objects).toHaveValue('Book\nKey')
+  await userEvent.type(objects, '{End}{Enter}Map')
+  await userEvent.click(
+    within(
+      document.querySelector('.player-actions form')! as HTMLElement,
+    ).getByRole('button', { name: m.queueAction }),
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: m.editQueuedAction }),
+  )
+  const clothing = screen.getByLabelText(m.preparationValue)
+  await userEvent.clear(clothing)
+  await userEvent.type(clothing, 'Red coat')
+  await userEvent.click(
+    within(
+      document.querySelector('.player-actions form')! as HTMLElement,
+    ).getByRole('button', { name: m.queueAction }),
+  )
+  const message = screen.getByRole('textbox', { name: m.messageLabel })
+  await waitFor(() => expect(message).toHaveFocus())
+  await userEvent.type(message, 'Let us go.')
+  await userEvent.click(screen.getByRole('button', { name: m.send }))
+  await waitFor(() => expect(requests).toHaveLength(1))
+  expect(requests[0].action).toMatchObject({
+    kind: 'prepare',
+    clothing: 'Red coat',
+    held_objects: [
+      { id: 'book', name: 'Book' },
+      { id: 'key', name: 'Key' },
+      { name: 'Map' },
+    ],
+  })
+  expect(requests[0].proposal_id).toBeUndefined()
 })

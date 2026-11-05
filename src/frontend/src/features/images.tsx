@@ -1,9 +1,9 @@
-import { isRejectedRequest } from '../api/client'
+import { isRejectedRequest, POLL_INTERVAL_MS } from '../api/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Image } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
-import type { ImageInput } from '../api/generated/types.gen'
+import { getImage } from '../api/generated/sdk.gen'
+import type { ImageInput, Run } from '../api/generated/types.gen'
 import {
   useFailure,
   useFormatMessage,
@@ -11,51 +11,28 @@ import {
   usePreferences,
 } from '../app/preferences'
 import { Button } from '../components/ui/button'
-import { imageOptions, operationOptions } from './operations'
 import {
-  AvailabilityNotice,
-  recheckAvailability,
-  useAvailability,
-  useAvailabilityRecovery,
-} from './availability'
+  imageOptions,
+  isTerminal,
+  retainImage,
+  retainImageList,
+} from './operations'
+import { recheckAvailability, useAvailability } from './availability'
+import { imageMonitorKey, useTrackImage } from './image-activity'
 
-export function ImageLinks({
+export function OriginalImage({
   identity,
   index = 0,
-  filename,
+  alt,
+  className,
 }: {
   identity: string
   index?: number
-  filename?: string
+  alt?: string
+  className?: string
 }) {
   const m = useMessages()
-  const url = `/api/v1/images/${identity}/files/${index}`
-  return (
-    <div className="image-actions">
-      <a href={url} target="_blank" rel="noopener noreferrer">
-        {m.openOriginal}
-      </a>
-      <a
-        href={url}
-        download={filename?.split('/').at(-1) ?? `${identity}-${index + 1}.png`}
-      >
-        {m.downloadImage}
-      </a>
-    </div>
-  )
-}
-
-function ImageFile({
-  identity,
-  index,
-  filename,
-}: {
-  identity: string
-  index: number
-  filename: string
-}) {
-  const messages = useMessages()
-  const formatMessage = useFormatMessage()
+  const format = useFormatMessage()
   const [failed, setFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const url = `/api/v1/images/${identity}/files/${index}`
@@ -65,30 +42,29 @@ function ImageFile({
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        aria-label={formatMessage('openImageLabel', { index: index + 1 })}
+        aria-label={alt || format('openImageLabel', { index: index + 1 })}
       >
         <img
           key={attempt}
+          className={className}
           src={url}
-          alt={formatMessage('imageAlt', { index: index + 1 })}
+          alt={alt || format('imageAlt', { index: index + 1 })}
           onError={() => setFailed(true)}
+          onLoad={() => setFailed(false)}
         />
       </a>
-      <ImageLinks identity={identity} index={index} filename={filename} />
       {failed && (
-        <>
-          <p role="alert" className="error">
-            {messages.imageDisplayFailed}
-          </p>
+        <div className="image-error" role="alert">
+          <p>{m.imageDisplayFailed}</p>
           <Button
             onClick={() => {
               setFailed(false)
-              setAttempt(attempt + 1)
+              setAttempt((value) => value + 1)
             }}
           >
-            {messages.retryCollection}
+            {m.retryCollection}
           </Button>
-        </>
+        </div>
       )}
     </div>
   )
@@ -96,161 +72,320 @@ function ImageFile({
 
 export function ImageResult({
   identity,
-  operationId,
+  run,
 }: {
   identity: string
-  operationId?: string
+  run?: Run
 }) {
-  const messages = useMessages()
+  const m = useMessages()
   const failure = useFailure()
   const cache = useQueryClient()
-  const operation = useQuery({
-    ...operationOptions(operationId ?? ''),
-    enabled: !!operationId,
+  const track = useTrackImage()
+  const read = useQuery({ ...imageOptions(identity), enabled: !run })
+  const monitor = useQuery<Run>({
+    queryKey: imageMonitorKey(identity),
+    enabled: false,
   })
-
-  const image = useQuery({
-    enabled: !operationId || operation.data?.image_state === 'submitted',
-    ...imageOptions(identity),
-  })
-  const collect = useMutation({
-    ...q.collectImageMutation(),
-    onError: () => {
-      void recheckAvailability(cache)
-    },
-    onSuccess: () =>
-      cache.invalidateQueries({
-        queryKey: q.getImageQueryKey({ path: { identity: identity ?? '' } }),
-      }),
-  })
-  useAvailabilityRecovery(
-    image.error ?? image.data?.collection_failure ?? image.data?.failure,
-  )
-  const collectionAvailability = useAvailability(
-    image.error || collect.error || image.data?.collection_failure
-      ? { kind: 'collection', identity }
-      : undefined,
+  const value = run ?? read.data
+  const collectionFailed =
+    value?.collection_failure ||
+    monitor.error ||
+    (value?.error === 'collection_failed' ? value.failure : null)
+  const availability = useAvailability(
+    collectionFailed ? { kind: 'collection', identity } : undefined,
   )
   return (
-    <div className="image-result">
-      {image.data?.images?.map((filename, index) => (
-        <ImageFile
-          key={index}
-          identity={identity}
-          index={index}
-          filename={filename}
-        />
+    <div className="image-result" id={`image-${identity}`} tabIndex={-1}>
+      {value?.images?.map((filename, index) => (
+        <OriginalImage key={filename} identity={identity} index={index} />
       ))}
-      <p className="subtle">
-        {operation.data?.image_state === 'failed'
-          ? failure({ code: operation.data.image_error })
-          : image.data?.collection_failure
-            ? failure(image.data.collection_failure)
-            : image.data?.state === 'saved'
-              ? messages.imageReady
-              : image.data?.state === 'failed'
-                ? failure({ code: image.data.error ?? 'generation_failed' })
-                : messages.imagePreparing}
-      </p>
-      {(image.error || collect.error || image.data?.collection_failure) && (
-        <Button
-          onClick={() => collect.mutate({ path: { identity } })}
-          disabled={collect.isPending || !collectionAvailability.ready}
-        >
-          {messages.retryCollection}
-        </Button>
-      )}
-      {(image.error || collect.error || image.data?.collection_failure) && (
-        <AvailabilityNotice status={collectionAvailability} />
-      )}
-      {image.error && (
+      {value &&
+        !value.images?.length &&
+        !value.failure &&
+        !isTerminal(value.state) && (
+          <p className="subtle">{m.imagePreparing}</p>
+        )}
+      {(value?.failure || value?.state === 'failed') && (
         <p role="alert" className="error">
-          {failure(image.error)}
+          {failure(
+            value?.failure ?? { code: value?.error ?? 'generation_failed' },
+          )}
         </p>
       )}
-      {collect.error && (
+      {value?.state === 'lost' && (
         <p role="alert" className="error">
-          {failure(collect.error)}
+          {m.drawingResultUnknown}
         </p>
       )}
-      {image.data?.failure && (
-        <p className="error">{failure(image.data.failure)}</p>
+      {collectionFailed && (
+        <div role="alert" className="image-error">
+          <p>{failure(collectionFailed)}</p>
+          <Button
+            disabled={!availability.ready}
+            onClick={() => {
+              track(identity)
+              void cache.invalidateQueries({
+                queryKey: imageMonitorKey(identity),
+              })
+            }}
+          >
+            {m.retryCollection}
+          </Button>
+        </div>
+      )}
+      {read.error && !run && (
+        <div role="alert" className="image-error">
+          <p>{failure(read.error)}</p>
+          <Button onClick={() => void read.refetch()}>
+            {m.retryCollection}
+          </Button>
+        </div>
       )}
     </div>
   )
 }
 
+export function groupImageDays(runs: Run[], locale: string) {
+  const groups = new Map<
+    string,
+    { key: string; label: string; order: number; runs: Run[] }
+  >()
+  for (const run of [...runs].sort(
+    (a, b) =>
+      (Date.parse(b.created_at ?? '') || 0) -
+        (Date.parse(a.created_at ?? '') || 0) ||
+      a.run_id.localeCompare(b.run_id),
+  )) {
+    const date = new Date(run.created_at ?? '')
+    const known = Number.isFinite(date.getTime())
+    const key = known
+      ? `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+      : 'undated'
+    const group = groups.get(key) ?? {
+      key,
+      label: known
+        ? new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(date)
+        : '',
+      order: known ? date.getTime() : 0,
+      runs: [],
+    }
+    group.runs.push(run)
+    groups.set(key, group)
+  }
+  return [...groups.values()].sort((a, b) => b.order - a.order)
+}
+
 export function ImagesPage() {
+  const [open, setOpen] = useState(false)
   const [prompt, setPrompt] = useState('')
   const [prepared, setPrepared] = useState<ImageInput | null>(null)
-  const messages = useMessages()
+  const [latestId, setLatestId] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const announced = useRef<string | null>(null)
+  const m = useMessages()
+  const format = useFormatMessage()
   const failure = useFailure()
   const preferences = usePreferences()
   const cache = useQueryClient()
+  const track = useTrackImage()
   const images = useQuery({
     ...q.listImagesOptions(),
+    structuralSharing: (previous, next) =>
+      retainImageList(previous as Run[] | undefined, next as Run[]),
   })
-  const availability = useAvailability({
-    kind: 'image',
-    prompt,
-    llm_profile: preferences.value.llm_profile,
+  const latest = useQuery({
+    ...imageOptions(latestId ?? ''),
+    enabled: false,
   })
+  const latestMonitor = useQuery<Run>({
+    queryKey: imageMonitorKey(latestId ?? ''),
+    enabled: false,
+  })
+  const collectionError =
+    latest.data?.collection_failure ??
+    latestMonitor.error ??
+    (latest.data?.error === 'collection_failed' ? latest.data.failure : null)
+  const recovery = useAvailability(
+    collectionError && latestId
+      ? { kind: 'collection', identity: latestId }
+      : undefined,
+  )
+  const availability = useAvailability(
+    open
+      ? { kind: 'image', prompt, llm_profile: preferences.value.llm_profile }
+      : undefined,
+  )
+  const accept = useCallback(
+    (run: Run) => {
+      cache.setQueryData<Run>(
+        q.getImageQueryKey({ path: { identity: run.run_id } }),
+        (current) => retainImage(current, run),
+      )
+      cache.setQueryData<Run[]>(q.listImagesQueryKey(), (values) => [
+        run,
+        ...(values ?? []).filter((item) => item.run_id !== run.run_id),
+      ])
+      setLatestId(run.run_id)
+      setPrepared(null)
+      track(run.run_id)
+      void cache.invalidateQueries({ queryKey: q.listImagesQueryKey() })
+    },
+    [cache, track],
+  )
   const submit = useMutation({
     ...q.submitImageMutation(),
     onError: (error) => {
       void recheckAvailability(cache)
-      if (isRejectedRequest(error)) {
-        setPrepared(null)
-      }
+      if (isRejectedRequest(error)) setPrepared(null)
     },
-    onSuccess: () => {
-      setPrepared(null)
-      return cache.invalidateQueries({ queryKey: q.listImagesQueryKey() })
-    },
+    onSuccess: accept,
   })
+  const receipt = useQuery({
+    queryKey: ['image-receipt', prepared?.request_id],
+    enabled: !!prepared && submit.isError,
+    queryFn: async () =>
+      (await getImage({ path: { identity: prepared!.request_id } })).data!,
+    retry: false,
+    refetchInterval: submit.isError && prepared ? POLL_INTERVAL_MS : false,
+  })
+  const reset = submit.reset
+  useEffect(() => {
+    if (!prepared || !submit.isError) return
+    const unsubscribe = cache.getQueryCache().subscribe((event) => {
+      if (
+        event.type !== 'updated' ||
+        event.action.type !== 'success' ||
+        event.query.queryKey[0] !== 'image-receipt' ||
+        event.query.queryKey[1] !== prepared.request_id
+      )
+        return
+      const value = event.query.state.data as Run | undefined
+      if (value?.run_id !== prepared.request_id) return
+      unsubscribe()
+      accept(value)
+      reset()
+    })
+    return unsubscribe
+  }, [cache, prepared, submit.isError, accept, reset])
+  const days = groupImageDays(images.data ?? [], preferences.value.locale)
+  useEffect(() => {
+    if (
+      latest.data?.state !== 'saved' ||
+      announced.current === latest.data.run_id
+    )
+      return
+    const day = groupImageDays([latest.data], preferences.value.locale)[0]
+    setExpanded((values) => new Set([...values, day.key]))
+    announced.current = latest.data.run_id
+  }, [latest.data, preferences.value.locale])
+  const waiting = submit.isPending || (!!prepared && submit.isError)
   return (
-    <section className="page">
-      <div className="eyebrow">{messages.imageEyebrow}</div>
-      <h1>{messages.images}</h1>
-      <p className="subtle">{messages.imageDescription}</p>
-      <form
-        className="image-form"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (!availability.ready) return
-          const body = prepared ?? {
-            request_id: crypto.randomUUID(),
-            prompt,
-            llm_profile: preferences.value.llm_profile,
-            allow_real_llm: true,
-          }
-          setPrepared(body)
-          submit.mutate({ body })
-        }}
-      >
-        <label>
-          {messages.imagePrompt}
-          <textarea
-            required
-            rows={4}
-            value={prompt}
-            disabled={submit.isPending || (submit.isError && prepared !== null)}
-            onChange={(event) => setPrompt(event.target.value)}
-          />
-        </label>
+    <section className="page album-page">
+      <div className="page-heading">
+        <h1>{m.images}</h1>
         <Button
           className="primary"
-          type="submit"
-          disabled={submit.isPending || !prompt.trim() || !availability.ready}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
         >
-          <Image size={17} />
-          {submit.isError && prepared
-            ? messages.retryRequest
-            : messages.generate}
+          {m.generate}
         </Button>
-      </form>
-      <AvailabilityNotice status={availability} />
-      {submit.error && (
+      </div>
+      <p className="subtle">{m.imageDescription}</p>
+      {open && (
+        <form
+          className="image-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!availability.ready || waiting) return
+            const body: ImageInput = {
+              request_id: crypto.randomUUID(),
+              prompt,
+              llm_profile: preferences.value.llm_profile,
+              allow_real_llm: true,
+            }
+            setPrepared(body)
+            setLatestId(null)
+            submit.mutate({ body })
+          }}
+        >
+          <label>
+            {m.imagePrompt}
+            <textarea
+              required
+              rows={4}
+              value={prompt}
+              disabled={waiting}
+              onChange={(event) => setPrompt(event.target.value)}
+            />
+          </label>
+          <Button
+            className="primary"
+            type="submit"
+            disabled={waiting || !prompt.trim() || !availability.ready}
+          >
+            {m.drawRequestedScene}
+          </Button>
+        </form>
+      )}
+      {(submit.isPending || prepared || latestId) && (
+        <div className="creation-progress" role="status">
+          <p>
+            {submit.isPending
+              ? m.requestSending
+              : prepared
+                ? m.drawingReceiptUnknown
+                : latest.data?.state === 'saved'
+                  ? m.albumAdded
+                  : collectionError
+                    ? failure(collectionError)
+                    : latest.data?.state === 'lost'
+                      ? m.drawingResultUnknown
+                      : latest.data?.failure
+                        ? failure(latest.data.failure)
+                        : m.imagePreparing}
+          </p>
+          {!!latest.data?.images?.length && (
+            <a
+              href={`#image-${latestId}`}
+              onClick={(event) => {
+                event.preventDefault()
+                const day = groupImageDays(
+                  [latest.data!],
+                  preferences.value.locale,
+                )[0]
+                setExpanded((values) => new Set([...values, day.key]))
+                requestAnimationFrame(() => {
+                  const image = document.getElementById(`image-${latestId}`)
+                  image?.scrollIntoView({ block: 'start' })
+                  image?.focus({ preventScroll: true })
+                })
+              }}
+            >
+              {m.viewLatestImage}
+            </a>
+          )}
+          {prepared && submit.isError && (
+            <Button onClick={() => void receipt.refetch()}>
+              {m.retryRequest}
+            </Button>
+          )}
+          {collectionError && latestId && (
+            <Button
+              disabled={!recovery.ready}
+              onClick={() => {
+                track(latestId)
+                void cache.invalidateQueries({
+                  queryKey: imageMonitorKey(latestId),
+                })
+              }}
+            >
+              {m.retryCollection}
+            </Button>
+          )}
+        </div>
+      )}
+      {submit.error && !prepared && (
         <p role="alert" className="error">
           {failure(submit.error)}
         </p>
@@ -260,9 +395,46 @@ export function ImagesPage() {
           {failure(images.error)}
         </p>
       )}
-      <div className="image-grid">
-        {images.data?.map((image) => (
-          <ImageResult key={image.run_id} identity={image.run_id} />
+      {days.length === 0 && !images.isPending && <p>{m.albumEmpty}</p>}
+      <div className="album-days">
+        {days.map((day) => (
+          <details
+            key={day.key}
+            open={expanded.has(day.key)}
+            onToggle={(event) => {
+              const isOpen = event.currentTarget.open
+              setExpanded((values) => {
+                if (values.has(day.key) === isOpen) return values
+                const next = new Set(values)
+                if (isOpen) next.add(day.key)
+                else next.delete(day.key)
+                return next
+              })
+            }}
+          >
+            <summary>
+              {day.label || m.undatedImages}
+              <span className="subtle">
+                {format('albumDayCount', {
+                  count: day.runs.reduce(
+                    (count, run) => count + (run.images?.length ?? 0),
+                    0,
+                  ),
+                })}
+              </span>
+            </summary>
+            {expanded.has(day.key) && (
+              <div className="details-content image-grid">
+                {day.runs.map((run) => (
+                  <ImageResult
+                    key={run.run_id}
+                    identity={run.run_id}
+                    run={run}
+                  />
+                ))}
+              </div>
+            )}
+          </details>
         ))}
       </div>
     </section>

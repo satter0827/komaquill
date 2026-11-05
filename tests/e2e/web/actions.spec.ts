@@ -57,6 +57,7 @@ for (const locale of ['ja', 'en'] as const) {
     await page.getByRole('button', { name: m.confirmAppearance }).focus()
     await page.keyboard.press('Enter')
     expect((await saved).ok()).toBe(true)
+    await page.getByText(m.addAction, { exact: true }).click()
     await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
     await expect(
       page.getByRole('textbox', { name: m.messageLabel }),
@@ -70,6 +71,7 @@ for (const locale of ['ja', 'en'] as const) {
     expect(confirmed.definition.character.initial_clothing).toBeNull()
     expect(confirmed.state.character.clothing).toBeNull()
     await page.reload()
+    await page.getByText(m.addAction, { exact: true }).click()
     await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
     await expect(appearance).toHaveCount(0)
     await evidence.capture(
@@ -90,6 +92,7 @@ for (const locale of ['ja', 'en'] as const) {
     await page.getByRole('button', { name: m.create, exact: true }).click()
     await expect(page).toHaveURL(/\/conversations\//)
     const identity = page.url().split('/').at(-1)!
+    await page.getByText(m.addAction, { exact: true }).click()
     await page.getByLabel(m.destination, { exact: true }).fill('Beach')
     const receipt = page.waitForResponse(
       (response) =>
@@ -157,6 +160,7 @@ test('a chat action remains a proposal until the player confirms it', async ({
     .getByRole('textbox', { name: ja.messageLabel })
     .fill('I head to the beach.')
   await page.getByRole('button', { name: ja.send, exact: true }).click()
+  await page.getByText(ja.addAction, { exact: true }).click()
   const proposal = page.locator('.action-proposal')
   await expect(proposal).toHaveCount(1)
   const pending = await (
@@ -209,4 +213,77 @@ test('a chat action remains a proposal until the player confirms it', async ({
   await evidence.capture(
     'Confirmation applies the action once before the next reaction',
   )
+})
+
+test('edits combined preparation on a narrow screen without losing fields or object identities', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const scene = await (
+    await request.post('/api/v1/conversations', {
+      data: { title: 'Combined preparation', llm_profile: 'fake' },
+    })
+  ).json()
+  const action = {
+    kind: 'prepare',
+    clothing: 'Blue coat',
+    held_objects: [
+      { id: 'book', name: 'Book' },
+      { id: 'key', name: 'Key' },
+    ],
+  }
+  await page.route(`**/api/v1/conversations/${scene.id}`, (route) =>
+    route.fulfill({
+      json: {
+        ...scene,
+        proposals: [
+          {
+            id: 'proposal',
+            turn_id: 'source',
+            state: 'pending',
+            revision: scene.revision,
+            action,
+          },
+        ],
+      },
+    }),
+  )
+  await page.goto(`/conversations/${scene.id}`)
+  await page.getByText(ja.addAction, { exact: true }).click()
+  await page
+    .locator('.action-proposal')
+    .getByRole('button', { name: ja.queueAction, exact: true })
+    .click()
+  await page.getByRole('button', { name: ja.editQueuedAction }).click()
+  await expect(page.getByLabel(ja.chooseAction)).toBeFocused()
+  await page.getByLabel(ja.chooseAction).selectOption('held_objects')
+  const objects = page.getByRole('textbox', { name: ja.heldObjectsInput })
+  await expect(objects).toHaveValue('Book\nKey')
+  await objects.fill('Book\nKey\nMap')
+  await expect(
+    page.getByText(ja.additionalActionChanges, { exact: true }),
+  ).toBeVisible()
+  await evidence.capture(
+    'Multiline objects and retained clothing in the action editor',
+  )
+  await page
+    .locator('.player-actions form')
+    .getByRole('button', { name: ja.queueAction, exact: true })
+    .click()
+  await expect(
+    page.getByRole('textbox', { name: ja.messageLabel }),
+  ).toBeFocused()
+  await page.getByRole('button', { name: ja.editQueuedAction }).click()
+  await page.getByLabel(ja.preparationValue).fill('Red coat')
+  await page
+    .locator('.player-actions form')
+    .getByRole('button', { name: ja.queueAction, exact: true })
+    .click()
+  await expect(page.locator('.queued-action')).toContainText('Red coat')
+  await expect(page.locator('.queued-action')).toContainText('Book, Key, Map')
+  await expect(
+    page.getByRole('textbox', { name: ja.messageLabel }),
+  ).toBeFocused()
 })

@@ -10,7 +10,7 @@ import type {
   Run,
 } from '../api/generated/types.gen'
 import * as q from '../api/generated/@tanstack/react-query.gen'
-import { collectImage, getImage, getJob } from '../api/generated/sdk.gen'
+import { getImage } from '../api/generated/sdk.gen'
 
 export function isTerminal(state?: string) {
   return ['complete', 'failed', 'interrupted', 'saved', 'lost'].includes(
@@ -56,13 +56,6 @@ export function watchReceipt<T extends { id: string }>(
   return unsubscribe
 }
 
-export async function observeImage(identity: string) {
-  const current = (await getImage({ path: { identity } })).data!
-  return isTerminal(current.state)
-    ? current
-    : (await collectImage({ path: { identity } })).data!
-}
-
 export function operationOptions(identity: string) {
   return queryOptions({
     ...q.getOperationOptions({ path: { identity } }),
@@ -94,35 +87,36 @@ export function creationOptions(identity: string) {
     ...q.getJobOptions({ path: { identity } }),
     structuralSharing: (previous, next) =>
       keepTerminal(previous as CreationJob | undefined, next as CreationJob),
-    queryFn: async () => {
-      const current = (await getJob({ path: { identity } })).data!
-      if (current.state === 'submitted' && current.image_id) {
-        await observeImage(current.image_id)
-        return (await getJob({ path: { identity } })).data!
-      }
-      return current
-    },
     refetchInterval: (query) =>
       isTerminal(query.state.data?.state) ? false : POLL_INTERVAL_MS,
   })
 }
 
+export function retainImage(current: Run | undefined, next: Run): Run {
+  const retained = keepTerminal(current, next)
+  return current &&
+    (current.images?.length ?? 0) > (retained.images?.length ?? 0)
+    ? { ...retained, images: current.images }
+    : retained
+}
+
+export function retainImageList(
+  current: Run[] | undefined,
+  next: Run[],
+): Run[] {
+  const values = new Map((current ?? []).map((run) => [run.run_id, run]))
+  for (const run of next)
+    values.set(run.run_id, retainImage(values.get(run.run_id), run))
+  return [...values.values()]
+}
+
 export function imageOptions(identity: string) {
   return queryOptions({
     ...q.getImageOptions({ path: { identity } }),
-    structuralSharing: (previous, next) => {
-      const current = previous as Run | undefined
-      const value = keepTerminal(current, next as Run)
-      return current &&
-        (current.images?.length ?? 0) > (value.images?.length ?? 0)
-        ? current
-        : value
-    },
-    queryFn: () => observeImage(identity),
-    refetchInterval: (query) =>
-      query.state.error || isTerminal(query.state.data?.state)
-        ? false
-        : POLL_INTERVAL_MS,
+    structuralSharing: (previous, next) =>
+      retainImage(previous as Run | undefined, next as Run),
+    queryFn: async () => (await getImage({ path: { identity } })).data!,
+    staleTime: (query) => (isTerminal(query.state.data?.state) ? Infinity : 0),
   })
 }
 

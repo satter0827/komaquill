@@ -22,12 +22,26 @@ import { ConversationPage } from '../features/conversations'
 import { ImagesPage } from '../features/images'
 import { LibraryPage, PlayerPage, PresetCard } from '../features/library'
 import { PreferencesPage } from '../features/preferences'
+import { ImageActivityProvider } from '../features/image-activity'
+import {
+  ConnectionSummary,
+  useConnectionSummary,
+} from '../features/availability'
 import { RuntimePage } from '../features/runtime'
 import { NewConversation } from '../features/start'
 import { useFailure, useMessages, usePreferences } from './preferences'
 
 export function App() {
+  return (
+    <ImageActivityProvider>
+      <Application />
+    </ImageActivityProvider>
+  )
+}
+
+function Application() {
   const m = useMessages()
+  const connectionSummary = useConnectionSummary()
   const [navigation, setNavigation] = useState(false)
   const [privateScreen, setPrivateScreen] = useState(false)
   const hiddenFocus = useRef<HTMLElement | null>(null)
@@ -100,6 +114,7 @@ export function App() {
               </NavLink>
             ))}
           </div>
+          <ConnectionSummary />
           <nav
             className="secondary-navigation"
             onClick={() => setNavigation(false)}
@@ -132,6 +147,10 @@ export function App() {
               onClick={() => setNavigation(!navigation)}
             >
               <Menu size={19} />
+              <span
+                className="connection-indicator"
+                data-warning={connectionSummary.failed || undefined}
+              />
             </Button>
             <span>{m.brand}</span>
           </header>
@@ -186,10 +205,6 @@ function Home() {
         <div className="eyebrow">{m.welcomeEyebrow}</div>
         <h1>{m.emptyTitle}</h1>
         <p>{m.emptyBody}</p>
-        <Link className="button primary" to="/new">
-          <Plus size={17} />
-          {m.newConversation}
-        </Link>
       </div>
       {[stories, conversations].map(
         (query, index) =>
@@ -225,6 +240,7 @@ function Home() {
           </div>
         </div>
       )}
+      <NewConversation compact />
       <div className="home-section">
         <div className="eyebrow">{m.yourStories}</div>
         {visibleStories?.length === 0 && (

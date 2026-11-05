@@ -51,10 +51,9 @@ def test_native_counter_uses_the_loaded_model_template_and_closes(monkeypatch):
     counter = NativeTokens(profile())
     assert counter.window_tokens == 8192
     assert counter([SystemMessage(content="Policy"), HumanMessage(content="Hello")]) == 15
-    assert calls[0] == {
+    assert [item for item in calls if isinstance(item, dict)][0] == {
         "messages": [{"role": "system", "content": "Policy"}, {"role": "user", "content": "Hello"}]
     }
-    counter.close()
     assert calls[-1] == "closed"
 
 
@@ -68,12 +67,11 @@ def test_missing_model_is_not_loaded_and_client_is_closed(monkeypatch):
 def test_native_counter_handles_empty_trim_candidates_without_rendering(monkeypatch):
     calls = native(monkeypatch)
     counter = NativeTokens(profile())
-    assert counter([]) == 0 and calls == []
+    assert counter([]) == 0 and calls == ["closed"]
     messages = [SystemMessage(content="Policy"), HumanMessage(content="Hello")]
     budget = ContextBudget(1000, 8192, 100, 100, "schema", count=counter)
     assert budget.select(messages, trim=True) == messages
-    assert all(history["messages"] for history in calls)
-    counter.close()
+    assert all(history["messages"] for history in calls if isinstance(history, dict))
 
 
 def test_native_counter_adapts_system_only_candidates_without_mutating_input(monkeypatch):
@@ -81,11 +79,10 @@ def test_native_counter_adapts_system_only_candidates_without_mutating_input(mon
     counter = NativeTokens(profile())
     system = [SystemMessage(content="Policy")]
     assert counter(system) == 15
-    assert calls == [
+    assert [item for item in calls if isinstance(item, dict)] == [
         {"messages": [{"role": "system", "content": "Policy"}, {"role": "user", "content": ""}]}
     ]
     assert len(system) == 1 and system[0].content == "Policy"
-    counter.close()
 
 
 def test_counting_failures_do_not_expose_sdk_details(monkeypatch):
@@ -95,7 +92,6 @@ def test_counting_failures_do_not_expose_sdk_details(monkeypatch):
         counter([HumanMessage(content="Hello")])
     with pytest.raises(KomaquillError, match="invalid_request"):
         counter([HumanMessage(content=[{"type": "text", "text": "Hello"}])])
-    counter.close()
 
 
 def test_grammar_schema_is_not_counted_as_prompt_but_keeps_payload_limits():
@@ -154,3 +150,71 @@ def test_native_call_record_accounts_for_the_configured_schema_context(
     assert record["input_tokens_counted"] == (30 if schema_in_context else 15)
     assert record["input_tokens_estimated"] is None and record["usage"] is None
     api.close()
+
+
+def test_native_counter_renews_sdk_sessions_after_server_restart(monkeypatch):
+    import lmstudio
+
+    generation = [0]
+    clients = []
+
+    def create(**_):
+        current = generation[0]
+        closed = []
+
+        def count(text):
+            assert not closed and current == generation[0]
+            return len(text)
+
+        model = SimpleNamespace(
+            identifier="fixture",
+            get_context_length=lambda: 8192,
+            apply_prompt_template=lambda _: "prompt",
+            count_tokens=count,
+        )
+        client = SimpleNamespace(
+            llm=SimpleNamespace(list_loaded=lambda: [model]), close=lambda: closed.append(True)
+        )
+        clients.append(closed)
+        return client
+
+    monkeypatch.setattr(lmstudio, "Client", create)
+    counter = NativeTokens(profile())
+    assert counter([HumanMessage(content="First")]) == 6
+    generation[0] += 1
+    assert counter([HumanMessage(content="After restart")]) == 6
+    assert len(clients) == 3 and all(closed for closed in clients)
+
+
+def test_native_budget_refreshes_loaded_context_without_invalidating_previous_budget(
+    tmp_path, monkeypatch
+):
+    import lmstudio
+    from komaquill.api import Client
+
+    window = [8192]
+    models = []
+
+    def create(**_):
+        closed = []
+        model = SimpleNamespace(
+            identifier="fixture",
+            get_context_length=lambda: window[0],
+            apply_prompt_template=lambda _: "prompt",
+            count_tokens=lambda text: len(text),
+        )
+        models.append(closed)
+        return SimpleNamespace(
+            llm=SimpleNamespace(list_loaded=lambda: [model]), close=lambda: closed.append(True)
+        )
+
+    monkeypatch.setattr(lmstudio, "Client", create)
+    with Client.initialize(tmp_path) as api:
+        execution = api.library.creator.execution
+        execution.settings.llm_profiles["lmstudio-4b"] = profile()
+        first = execution.budget("{}", "lmstudio-4b")
+        window[0] = 4096
+        second = execution.budget("{}", "lmstudio-4b")
+        assert first.window_tokens == 8192 and second.window_tokens == 4096
+        assert first.count([HumanMessage(content="Retained")]) == 6
+    assert all(closed for closed in models)

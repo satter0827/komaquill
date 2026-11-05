@@ -164,7 +164,7 @@ def test_absent_companion_uses_environment_conditions_before_submission(tmp_path
 
 @pytest.mark.parametrize("choice", ["selected", "unique", "ambiguous", "busy"])
 def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_work(
-    tmp_path, choice
+    tmp_path, choice, stopped_database
 ):
     import sqlite3
 
@@ -230,7 +230,7 @@ def test_profile_migration_preserves_history_and_refuses_ambiguous_or_pending_wo
     assert report.with_name("before.sqlite3").is_file()
 
 
-def test_repeated_migration_retains_explicit_current_preferences(tmp_path):
+def test_repeated_migration_retains_explicit_current_preferences(tmp_path, stopped_database):
     import sqlite3
 
     from komaquill.adapters import database_migration

@@ -166,7 +166,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
           </div>
         </details>
         <Button
-          className="primary"
+          variant="primary"
           type="submit"
           disabled={
             !preferences.ready ||

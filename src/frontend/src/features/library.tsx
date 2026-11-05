@@ -603,7 +603,7 @@ function PresetEditor({
             )}
             <div className="actions editor-actions">
               <Button
-                className="primary"
+                variant="primary"
                 type="submit"
                 disabled={!value.name?.trim()}
               >
@@ -618,7 +618,7 @@ function PresetEditor({
                     {m.duplicate}
                   </Button>
                   <Button
-                    className="danger"
+                    variant="danger"
                     onClick={() => setConfirmDelete(true)}
                   >
                     {m.delete}

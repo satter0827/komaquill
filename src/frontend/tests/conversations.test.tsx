@@ -111,6 +111,15 @@ function app(path: string, cache?: QueryClient) {
   )
 }
 
+async function actionDestination() {
+  const trigger = await screen.findByRole('button', {
+    name: m.addAction,
+  })
+  if (trigger.getAttribute('aria-expanded') !== 'true')
+    await userEvent.click(trigger)
+  return screen.findByLabelText(m.destination)
+}
+
 describe('conversation workflow', () => {
   it.each(['/new', '/new?story=stories'])(
     'uses the story counterpart on first entry at %s',
@@ -214,7 +223,7 @@ describe('conversation workflow', () => {
         }),
       )
       app('/conversations/one')
-      await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
+      await userEvent.type(await actionDestination(), 'Beach')
       await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
       const input = screen.getByRole('textbox', { name: m.messageLabel })
       await userEvent.type(input, 'Keep this message')
@@ -421,7 +430,7 @@ describe('conversation workflow', () => {
     await userEvent.click(screen.getByRole('button', { name: m.send }))
     await screen.findByRole('button', { name: m.retryRequest })
     expect(screen.getByRole('button', { name: m.drawScene })).toBeDisabled()
-    expect(screen.getByLabelText(m.destination)).toBeDisabled()
+    expect(await actionDestination()).toBeDisabled()
     received = true
     await userEvent.click(
       await screen.findByRole('button', { name: m.retryRequest }),
@@ -512,7 +521,7 @@ describe('conversation workflow', () => {
       ),
     )
     app('/conversations/one', cache)
-    await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
+    await userEvent.type(await actionDestination(), 'Beach')
     act(() =>
       cache.setQueryData(
         getConversationQueryKey({ path: { identity: 'one' } }),
@@ -563,10 +572,7 @@ describe('conversation workflow', () => {
         ),
       )
       app('/conversations/one', cache)
-      await userEvent.type(
-        await screen.findByLabelText(m.destination),
-        'Discarded',
-      )
+      await userEvent.type(await actionDestination(), 'Discarded')
       act(() =>
         cache.setQueryData(
           getConversationQueryKey({ path: { identity: 'one' } }),
@@ -670,8 +676,9 @@ describe('conversation workflow', () => {
       ),
     )
     app('/conversations/one', cache)
-    await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
+    await userEvent.type(await actionDestination(), 'Beach')
     await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+    await userEvent.click(screen.getByRole('button', { name: m.showState }))
     await userEvent.click(screen.getByRole('button', { name: m.closeState }))
     const input = screen.getByRole('textbox', { name: m.messageLabel })
     await userEvent.type(input, 'Go together?')
@@ -715,7 +722,7 @@ describe('conversation workflow', () => {
       }),
     )
     app('/conversations/one')
-    await userEvent.type(await screen.findByLabelText(m.destination), 'Beach')
+    await userEvent.type(await actionDestination(), 'Beach')
     await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
     await userEvent.type(
       screen.getByRole('textbox', { name: m.messageLabel }),
@@ -803,7 +810,7 @@ describe('conversation workflow', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: m.checkAction }),
     )
-    expect(await screen.findByLabelText(m.destination)).toBeEnabled()
+    expect(await actionDestination()).toBeEnabled()
   })
   it('reviews only the unconfirmed person and keeps unspecified clothes as null', async () => {
     let submitted: unknown
@@ -937,6 +944,7 @@ it('shows the current character condition without internal state values', async 
       screen.getAllByText('Wearing a blue shirt in the garden.'),
     ).toHaveLength(1),
   )
+  await userEvent.click(screen.getByRole('button', { name: m.showState }))
   expect(screen.getByText('Blue shirt')).toBeInTheDocument()
   expect(screen.getAllByText(m.currentState)).toHaveLength(1)
   expect(screen.getAllByText('Garden').length).toBeGreaterThan(0)

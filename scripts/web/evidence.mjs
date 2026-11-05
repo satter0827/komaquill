@@ -1,8 +1,9 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { writeFile as atomicWriteFile } from 'atomically'
 
 export const hash = (value) => createHash('sha256').update(value).digest('hex')
 const time = () => new Date().toISOString()
@@ -73,12 +74,7 @@ export function contained(root, name) {
 }
 
 export async function jsonFile(file, value) {
-  await mkdir(path.dirname(file), { recursive: true })
-  const temporary = file + '.' + randomUUID() + '.tmp'
-  await writeFile(temporary, JSON.stringify(value, null, 2) + '\n', {
-    flag: 'wx',
-  })
-  await rename(temporary, file)
+  await atomicWriteFile(file, JSON.stringify(value, null, 2) + '\n')
 }
 
 export function sourceIdentity(root) {

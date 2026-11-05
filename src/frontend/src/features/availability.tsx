@@ -202,7 +202,7 @@ export function ConnectionSummary() {
         />
         <span className="subtle">
           {status.failed
-            ? m.connectionRequired
+            ? m.connectionCheckNeeded
             : status.connections.length
               ? m.connectionReady
               : m.notObserved}
@@ -230,7 +230,7 @@ export function ConnectionSummary() {
                   {!values.length
                     ? m.notObserved
                     : unavailable
-                      ? m.connectionRequired
+                      ? m.connectionCheckNeeded
                       : m.connectionReady}
                 </dd>
               </div>

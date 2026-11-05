@@ -4,14 +4,15 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { ArrowUp, ImagePlus, PanelRight, Sparkles } from 'lucide-react'
+import { Send, Feather, PanelRight, Sparkles } from 'lucide-react'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react'
+import { useStickToBottom } from 'use-stick-to-bottom'
 import { Link, useParams } from 'react-router'
 import { isRejectedRequest, POLL_INTERVAL_MS } from '../api/client'
 import * as q from '../api/generated/@tanstack/react-query.gen'
@@ -30,6 +31,9 @@ import {
   usePreferences,
 } from '../app/preferences'
 import { Button } from '../components/ui/button'
+import { Dialog, Modal, Popover, Popup } from '../components/ui/popup'
+import { useMediaQuery } from '../app/viewport'
+import { StoryReply } from './conversation-message'
 import { CreationStatus, useCreation } from './creation'
 import {
   recheckAvailability,
@@ -52,14 +56,6 @@ import {
   operationPending,
   watchReceipt,
 } from './operations'
-
-const narrowQuery = '(max-width: 850px)'
-function subscribeViewport(listener: () => void) {
-  const media = window.matchMedia(narrowQuery)
-  media.addEventListener('change', listener)
-  return () => media.removeEventListener('change', listener)
-}
-const narrowViewport = () => window.matchMedia(narrowQuery).matches
 
 function Drawing({ job }: { job: CreationJob }) {
   const messages = useMessages()
@@ -122,8 +118,11 @@ function ConversationView({ identity }: { identity: string }) {
   const preferences = usePreferences()
   const [text, setText] = useState('')
   const [actionOpen, setActionOpen] = useState(false)
-  const actionEditor = useRef<HTMLDetailsElement>(null)
+  const actionEditor = useRef<HTMLDivElement>(null)
   const messageInput = useRef<HTMLTextAreaElement>(null)
+  const composerOptions = useRef<HTMLDivElement>(null)
+  const { scrollRef, contentRef, scrollToBottom, isAtBottom } =
+    useStickToBottom({ initial: 'instant', resize: 'instant' })
   const [subjects, setSubjects] = useState<
     'character' | 'pair' | 'environment'
   >('character')
@@ -135,12 +134,8 @@ function ConversationView({ identity }: { identity: string }) {
   } | null>(null)
   const [operationId, setOperationId] = useState<string | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
-  const narrow = useSyncExternalStore(
-    subscribeViewport,
-    narrowViewport,
-    () => false,
-  )
-  const [wideOpen, setWideOpen] = useState(true)
+  const narrow = useMediaQuery('(max-width: 1279px)')
+  const [wideOpen, setWideOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const showState = narrow ? mobileOpen : wideOpen
   const setShowState = narrow ? setMobileOpen : setWideOpen
@@ -151,6 +146,10 @@ function ConversationView({ identity }: { identity: string }) {
     identity,
     conversation: detail.data,
   })
+  useLayoutEffect(() => {
+    if (actionControls.queued && composerOptions.current)
+      composerOptions.current.scrollTop = 0
+  }, [actionControls.queued])
   const sendAvailability = useAvailability(
     detail.data ? { kind: 'conversation', identity } : undefined,
   )
@@ -285,15 +284,10 @@ function ConversationView({ identity }: { identity: string }) {
         queryKey: q.listConversationImagesQueryKey({ path: { identity } }),
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
-  const dialog = useRef<HTMLDialogElement>(null)
   const reviewControls = useVisualReview({
     identity,
     conversation: detail.data,
   })
-  useEffect(() => {
-    if (narrow && showState) dialog.current?.showModal()
-    else dialog.current?.close()
-  }, [narrow, showState])
   if (detail.error)
     return (
       <p role="alert" className="error">
@@ -388,12 +382,6 @@ function ConversationView({ identity }: { identity: string }) {
   const sampleDrawing = conversation.definition.llm_profile === 'fake'
   const statePanel = (
     <aside className="state-panel">
-      {narrow && (
-        <Button onClick={() => setShowState(false)}>
-          {messages.closeState}
-        </Button>
-      )}
-
       {snapshots?.character?.image_id && (
         <OriginalImage
           className="character-portrait"
@@ -401,7 +389,7 @@ function ConversationView({ identity }: { identity: string }) {
           alt={snapshots.character.name}
         />
       )}
-      <h2>{messages.currentState}</h2>
+      {!narrow && <h2>{messages.currentState}</h2>}
       <div className="state-items">
         {visibleState.map(([key, label, value]) => (
           <div key={key}>
@@ -456,13 +444,6 @@ function ConversationView({ identity }: { identity: string }) {
           </p>
         )}
       </div>
-      {needsReview || reviewControls.prepared ? (
-        <VisualReviewForm
-          conversation={conversation}
-          busy={!!busy}
-          controls={reviewControls}
-        />
-      ) : null}
       <details>
         <summary>{messages.actionHistory}</summary>
         <div className="details-content">
@@ -531,12 +512,14 @@ function ConversationView({ identity }: { identity: string }) {
             <span className="eyebrow">{messages.conversationLabel}</span>
             <h2>{conversation.definition.title}</h2>
           </div>
-          <details className="conversation-menu">
-            <summary>{messages.conversationMenu}</summary>
-            <div className="details-content">
+          <Popover.Root>
+            <Popover.Trigger render={<Button variant="ghost" />}>
+              {messages.conversationMenu}
+            </Popover.Trigger>
+            <Popup label={messages.conversationMenu} keepMounted>
               <ConversationNotes conversation={conversation} />
-            </div>
-          </details>
+            </Popup>
+          </Popover.Root>
           <Button
             aria-label={showState ? messages.closeState : messages.showState}
             onClick={() => setShowState(!showState)}
@@ -544,324 +527,362 @@ function ConversationView({ identity }: { identity: string }) {
             <PanelRight size={18} />
           </Button>
         </header>
-        {snapshots?.story?.image_id && (
-          <div className="conversation-banner">
-            <OriginalImage
-              identity={snapshots.story.image_id}
-              alt={snapshots.story.name}
-            />
-          </div>
-        )}
-
         <div
           className="turns"
           role="log"
           aria-label={messages.conversationHistory}
           tabIndex={0}
+          ref={scrollRef}
         >
-          {conversation.state?.character_place !==
-            conversation.state?.place && (
-            <p className="presence-notice">
-              {formatMessage('companionAway', {
-                place:
-                  conversation.state?.character_place || messages.notSpecified,
-              })}
-            </p>
-          )}
-          {(drawings.data ?? [])
-            .filter((job) => !job.turn_id)
-            .map((job) => (
-              <div className="turn" key={job.id}>
-                <Drawing job={job} />
+          <div ref={contentRef}>
+            {snapshots?.story?.image_id && (
+              <div className="conversation-banner">
+                <OriginalImage
+                  identity={snapshots.story.image_id}
+                  alt={snapshots.story.name}
+                />
               </div>
-            ))}
-          {timeline.length === 0 && (
-            <div className="conversation-empty">
-              <Sparkles size={30} />
-              <h2>{messages.newChapter}</h2>
-              <p>
-                {content(conversation.definition.scenario) ||
-                  messages.beginMessage}
+            )}
+            {conversation.state?.character_place !==
+              conversation.state?.place && (
+              <p className="presence-notice">
+                {formatMessage('companionAway', {
+                  place:
+                    conversation.state?.character_place ||
+                    messages.notSpecified,
+                })}
               </p>
-            </div>
-          )}
-          {history.hasNextPage && (
-            <Button
-              onClick={() => void history.fetchNextPage()}
-              disabled={history.isFetchingNextPage}
-            >
-              {messages.olderTurns}
-            </Button>
-          )}
-          {history.error && <p role="alert">{failure(history.error)}</p>}
-          {timeline.map((entry) => {
-            if (entry.kind === 'input')
+            )}
+            {(drawings.data ?? [])
+              .filter((job) => !job.turn_id)
+              .map((job) => (
+                <div className="turn" key={job.id}>
+                  <Drawing job={job} />
+                </div>
+              ))}
+            {timeline.length === 0 && (
+              <div className="conversation-empty">
+                <Sparkles size={30} />
+                <h2>{messages.newChapter}</h2>
+                <p>
+                  {content(conversation.definition.scenario) ||
+                    messages.beginMessage}
+                </p>
+              </div>
+            )}
+            {history.hasNextPage && (
+              <Button
+                onClick={() => void history.fetchNextPage()}
+                disabled={history.isFetchingNextPage}
+              >
+                {messages.olderTurns}
+              </Button>
+            )}
+            {history.error && <p role="alert">{failure(history.error)}</p>}
+            {timeline.map((entry) => {
+              if (entry.kind === 'input')
+                return (
+                  <AcceptedTurn key={entry.value.id} operation={entry.value} />
+                )
+              const turn = entry.value
               return (
-                <AcceptedTurn key={entry.value.id} operation={entry.value} />
-              )
-            const turn = entry.value
-            return (
-              <article className="turn" key={turn.operation_id}>
-                {turn.user && (
-                  <div className="user-message">
-                    <span className="message-label">{messages.you}</span>
-                    <p>{turn.user}</p>
-                  </div>
-                )}
-                {(conversation.proposals ?? [])
-                  .filter((proposal) => proposal.turn_id === turn.operation_id)
-                  .map((proposal) => (
-                    <div className="action-preview" key={proposal.id}>
-                      <ActionDescription action={proposal.action} />
-                      {proposal.state === 'pending' ? (
-                        <Button
-                          onClick={() => {
-                            setActionOpen(true)
-                            requestAnimationFrame(() =>
-                              actionEditor.current
-                                ?.querySelector('button')
-                                ?.focus(),
-                            )
-                          }}
-                        >
-                          {messages.reviewAction}
-                        </Button>
-                      ) : (
-                        <p className="subtle">
-                          {proposal.state === 'applied'
-                            ? messages.actionApplied
-                            : proposal.state === 'dismissed'
-                              ? messages.actionDismissed
-                              : messages.actionExpired}
-                        </p>
-                      )}
+                <article className="turn" key={turn.operation_id}>
+                  {turn.user && (
+                    <div className="user-message">
+                      <span className="message-label">{messages.you}</span>
+                      <p>{turn.user}</p>
                     </div>
-                  ))}
-                {turn.action && (
-                  <div className="user-action">
-                    <span className="message-label">{messages.myActions}</span>
-                    <ActionDescription action={turn.action} />
-                  </div>
-                )}
-                {!turn.action &&
-                  turn.action_id &&
-                  conversation.actions?.find(
-                    (record) => record.request.operation_id === turn.action_id,
-                  ) && (
+                  )}
+                  {(conversation.proposals ?? [])
+                    .filter(
+                      (proposal) => proposal.turn_id === turn.operation_id,
+                    )
+                    .map((proposal) => (
+                      <div className="action-preview" key={proposal.id}>
+                        <ActionDescription action={proposal.action} />
+                        {proposal.state === 'pending' ? (
+                          <Button
+                            onClick={() => {
+                              setActionOpen(true)
+                            }}
+                          >
+                            {messages.reviewAction}
+                          </Button>
+                        ) : (
+                          <p className="subtle">
+                            {proposal.state === 'applied'
+                              ? messages.actionApplied
+                              : proposal.state === 'dismissed'
+                                ? messages.actionDismissed
+                                : messages.actionExpired}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  {turn.action && (
                     <div className="user-action">
                       <span className="message-label">
                         {messages.myActions}
                       </span>
-                      <ActionDescription
-                        action={
-                          conversation.actions.find(
-                            (record) =>
-                              record.request.operation_id === turn.action_id,
-                          )!.request.action
-                        }
-                      />
+                      <ActionDescription action={turn.action} />
                     </div>
                   )}
-                <div className="assistant-message">
-                  {turn.narration && (
-                    <p className="scene-narration">{turn.narration}</p>
-                  )}
-                  {turn.action_narration && (
-                    <p className="action-narration">{turn.action_narration}</p>
-                  )}
-                  {turn.assistant && (
-                    <div className="dialogue">
-                      <span className="message-label">
-                        <Sparkles size={14} />
-                        {snapshots?.character?.name ??
-                          conversation.definition.character?.name ??
-                          messages.character}
-                      </span>
-                      <p>{turn.assistant}</p>
-                    </div>
-                  )}
-                  <SceneActions
-                    conversation={conversation}
-                    turnId={turn.operation_id}
-                  />
-                  {turn.image_id && <ImageResult identity={turn.image_id} />}
-                  {(drawings.data ?? [])
-                    .filter((job) => job.turn_id === turn.operation_id)
-                    .map((job) => (
-                      <Drawing key={job.id} job={job} />
-                    ))}
-                </div>
-              </article>
-            )
-          })}
-          {replyPending && (
-            <p className="pending" role="status">
-              {send.isPending
-                ? messages.requestSending
-                : prepared && send.isError
-                  ? messages.receiptUnknown
-                  : messages.pending}
-            </p>
-          )}
+                  {!turn.action &&
+                    turn.action_id &&
+                    conversation.actions?.find(
+                      (record) =>
+                        record.request.operation_id === turn.action_id,
+                    ) && (
+                      <div className="user-action">
+                        <span className="message-label">
+                          {messages.myActions}
+                        </span>
+                        <ActionDescription
+                          action={
+                            conversation.actions.find(
+                              (record) =>
+                                record.request.operation_id === turn.action_id,
+                            )!.request.action
+                          }
+                        />
+                      </div>
+                    )}
+                  <div className="assistant-message">
+                    <StoryReply
+                      narration={turn.narration}
+                      action={turn.action_narration}
+                      dialogue={turn.assistant}
+                      name={
+                        snapshots?.character?.name ??
+                        conversation.definition.character?.name ??
+                        messages.character
+                      }
+                    />
+                    <SceneActions
+                      conversation={conversation}
+                      turnId={turn.operation_id}
+                    />
+                    {turn.image_id && <ImageResult identity={turn.image_id} />}
+                    {(drawings.data ?? [])
+                      .filter((job) => job.turn_id === turn.operation_id)
+                      .map((job) => (
+                        <Drawing key={job.id} job={job} />
+                      ))}
+                  </div>
+                </article>
+              )
+            })}
+            <div className="visual-review">
+              {needsReview || reviewControls.prepared ? (
+                <VisualReviewForm
+                  conversation={conversation}
+                  busy={!!busy}
+                  controls={reviewControls}
+                />
+              ) : null}
+            </div>
+            {replyPending && (
+              <p className="pending" role="status">
+                {send.isPending
+                  ? messages.requestSending
+                  : prepared && send.isError
+                    ? messages.receiptUnknown
+                    : messages.pending}
+              </p>
+            )}
+          </div>
         </div>
         <div className="composer-area">
-          {send.error && (
-            <p role="alert" className="error">
-              {failure(send.error)}
-              {prepared && (
-                <Button
-                  onClick={() => void operation.refetch()}
-                  disabled={operation.isFetching}
-                >
-                  {messages.retryRequest}
-                </Button>
-              )}
-            </p>
-          )}
-          {latestOperation?.error && !latestOperation.input && (
-            <p role="alert" className="error">
-              <span>{messages.replyFailedAfterAcceptance}</span>{' '}
-              <span>{failure({ code: latestOperation.error })}</span>
-            </p>
-          )}
-          {latestOperation?.can_resume && (
+          {!isAtBottom && (conversation.turn_count ?? 0) > 0 && (
             <Button
-              disabled={resume.isPending || !!busy}
-              onClick={() =>
-                resume.mutate({
-                  path: { identity: latestOperation.id },
-                  query: { allow_real_llm: true },
-                })
-              }
+              className="latest-reply"
+              onClick={() => void scrollToBottom('instant')}
             >
-              {messages.resumeOperation}
+              {messages.latestReply}
             </Button>
           )}
-          {resume.error && (
-            <p role="alert" className="error">
-              {failure(resume.error)}
-            </p>
-          )}
-          {sampleDrawing && (
-            <p className="subtle">
-              {messages.sampleDrawingUnavailable}{' '}
-              <Link to="/new">{messages.newConversation}</Link>
-            </p>
-          )}
-          <CreationStatus creation={drawing} />
-          <div className="composer-tools">
-            <details className="drawing-menu">
-              <summary>{messages.drawingSettings}</summary>
-              <div className="details-content">
-                <label>
-                  {messages.drawingSubjects}
-                  <select
-                    value={subjects}
-                    onChange={(event) => {
-                      setSubjects(event.target.value as typeof subjects)
-                      if (event.target.value === 'pair')
-                        setViewpoint('observer')
-                    }}
+          <div className="composer-options" ref={composerOptions}>
+            {send.error && (
+              <p role="alert" className="error">
+                {failure(send.error)}
+                {prepared && (
+                  <Button
+                    onClick={() => void operation.refetch()}
+                    disabled={operation.isFetching}
                   >
-                    <option value="character">{messages.partnerOnly}</option>
-                    <option value="pair">{messages.bothPeople}</option>
-                    <option value="environment">
-                      {messages.environmentOnly}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  {messages.viewpoint}
-                  <select
-                    value={viewpoint}
-                    onChange={(event) =>
-                      setViewpoint(event.target.value as typeof viewpoint)
-                    }
-                  >
-                    <option value="player">{messages.playerView}</option>
-                    <option value="observer">{messages.observerView}</option>
-                  </select>
-                </label>
-              </div>
-            </details>
-            <Button
-              className="draw-button"
-              aria-label={messages.drawScene}
-              title={messages.drawScene}
-              disabled={
-                !!busy ||
-                needsReview ||
-                drawing.busy ||
-                sampleDrawing ||
-                !drawAvailability.ready
-              }
-              onClick={() =>
-                drawing.start({
-                  kind: 'conversation_image',
-                  subjects,
-                  viewpoint,
-                  target_id: identity,
-                  expected_revision: conversation.revision,
-                  locale: preferences.value.locale,
-                  llm_profile: conversation.definition.llm_profile,
-                  allow_real_llm: true,
-                })
-              }
-            >
-              <ImagePlus size={18} aria-hidden="true" />
-              <span>{messages.drawScene}</span>
-            </Button>
-            <details
-              className="action-editor"
-              ref={actionEditor}
-              open={actionOpen}
-              onToggle={(event) => setActionOpen(event.currentTarget.open)}
-            >
-              <summary>{messages.addAction}</summary>
-              <div className="details-content">
-                <PlayerActions
-                  conversation={conversation}
-                  busy={!!busy || needsReview}
-                  controls={actionControls}
-                  onQueued={() => {
-                    setActionOpen(false)
-                    requestAnimationFrame(() => messageInput.current?.focus())
-                  }}
-                />
-              </div>
-            </details>
-          </div>
-          {actionControls.queued && (
-            <div className="queued-action">
-              <ActionDescription action={actionControls.queued.action} />
-              <Button
-                disabled={!!busy}
-                onClick={() => {
-                  actionControls.edit()
-                  setActionOpen(true)
-                  requestAnimationFrame(() =>
-                    actionEditor.current?.querySelector('select')?.focus(),
-                  )
-                }}
-              >
-                {messages.editQueuedAction}
-              </Button>
-              <Button disabled={!!busy} onClick={actionControls.clear}>
-                {messages.removeQueuedAction}
-              </Button>
-            </div>
-          )}
-
-          {actionControls.queued && (
-            <p className="subtle composer-hint">
-              {messages.actionWithMessage} {messages.unsentDrawing}
-            </p>
-          )}
-          {!busy &&
-            (conversation.turn_count ?? 0) > 0 &&
-            !latestOperation?.error && (
-              <p className="saved-indicator">{messages.conversationSaved}</p>
+                    {messages.retryRequest}
+                  </Button>
+                )}
+              </p>
             )}
+            {latestOperation?.error && !latestOperation.input && (
+              <p role="alert" className="error">
+                <span>{messages.replyFailedAfterAcceptance}</span>{' '}
+                <span>{failure({ code: latestOperation.error })}</span>
+              </p>
+            )}
+            {latestOperation?.can_resume && (
+              <Button
+                disabled={resume.isPending || !!busy}
+                onClick={() =>
+                  resume.mutate({
+                    path: { identity: latestOperation.id },
+                    query: { allow_real_llm: true },
+                  })
+                }
+              >
+                {messages.resumeOperation}
+              </Button>
+            )}
+            {resume.error && (
+              <p role="alert" className="error">
+                {failure(resume.error)}
+              </p>
+            )}
+            {sampleDrawing && (
+              <p className="subtle">
+                {messages.sampleDrawingUnavailable}{' '}
+                <Link to="/new">{messages.newConversation}</Link>
+              </p>
+            )}
+            <CreationStatus creation={drawing} />
+            {actionControls.queued && (
+              <div className="queued-action">
+                <ActionDescription action={actionControls.queued.action} />
+                {actionControls.queued.revision !== conversation.revision && (
+                  <div role="alert">
+                    <p>{messages.reviewAction}</p>
+                    <Button
+                      disabled={!!busy}
+                      onClick={actionControls.confirmRevision}
+                    >
+                      {messages.confirmCurrentAction}
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  disabled={!!busy}
+                  aria-label={messages.editQueuedAction}
+                  onClick={() => {
+                    actionControls.edit()
+                    setActionOpen(true)
+                  }}
+                >
+                  {messages.edit}
+                </Button>
+                <Button
+                  disabled={!!busy}
+                  aria-label={messages.removeQueuedAction}
+                  onClick={actionControls.clear}
+                >
+                  {messages.cancel}
+                </Button>
+              </div>
+            )}
+
+            {actionControls.queued && (
+              <p className="subtle composer-hint">
+                {messages.actionWithMessage}
+              </p>
+            )}
+            <div className="composer-tools">
+              <Popover.Root>
+                <Popover.Trigger render={<Button />}>
+                  {messages.drawingSettings}
+                </Popover.Trigger>
+                <Popup label={messages.drawingSettings}>
+                  {actionControls.queued && (
+                    <p className="subtle">{messages.unsentDrawing}</p>
+                  )}
+                  <label>
+                    {messages.drawingSubjects}
+                    <select
+                      value={subjects}
+                      onChange={(event) => {
+                        setSubjects(event.target.value as typeof subjects)
+                        if (event.target.value === 'pair')
+                          setViewpoint('observer')
+                      }}
+                    >
+                      <option value="character">{messages.partnerOnly}</option>
+                      <option value="pair">{messages.bothPeople}</option>
+                      <option value="environment">
+                        {messages.environmentOnly}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    {messages.viewpoint}
+                    <select
+                      value={viewpoint}
+                      onChange={(event) =>
+                        setViewpoint(event.target.value as typeof viewpoint)
+                      }
+                    >
+                      <option value="player">{messages.playerView}</option>
+                      <option value="observer">{messages.observerView}</option>
+                    </select>
+                  </label>
+                </Popup>
+              </Popover.Root>
+              <Button
+                className="draw-button"
+                aria-label={messages.drawScene}
+                title={messages.drawScene}
+                disabled={
+                  !!busy ||
+                  needsReview ||
+                  drawing.busy ||
+                  sampleDrawing ||
+                  !drawAvailability.ready
+                }
+                onClick={() =>
+                  drawing.start({
+                    kind: 'conversation_image',
+                    subjects,
+                    viewpoint,
+                    target_id: identity,
+                    expected_revision: conversation.revision,
+                    locale: preferences.value.locale,
+                    llm_profile: conversation.definition.llm_profile,
+                    allow_real_llm: true,
+                  })
+                }
+              >
+                <Feather size={18} aria-hidden="true" />
+                <span>{messages.drawScene}</span>
+              </Button>
+              <Popover.Root open={actionOpen} onOpenChange={setActionOpen}>
+                <Popover.Trigger render={<Button className="action-editor" />}>
+                  {messages.addAction}
+                </Popover.Trigger>
+                <Popup
+                  label={messages.addAction}
+                  ref={actionEditor}
+                  initialFocus={() =>
+                    actionEditor.current?.querySelector('select') ?? true
+                  }
+                  finalFocus={messageInput}
+                >
+                  <PlayerActions
+                    conversation={conversation}
+                    busy={!!busy || needsReview}
+                    controls={actionControls}
+                    onQueued={() => {
+                      setActionOpen(false)
+                    }}
+                  />
+                </Popup>
+              </Popover.Root>
+              {!busy &&
+                (conversation.turn_count ?? 0) > 0 &&
+                !latestOperation?.error && (
+                  <p className="saved-indicator">
+                    {messages.conversationSaved}
+                  </p>
+                )}
+            </div>
+          </div>
           <form
             className="composer"
             onSubmit={(event) => {
@@ -884,6 +905,7 @@ function ConversationView({ identity }: { identity: string }) {
                   version: draftVersion.current,
                 }
                 setPrepared(body)
+                void scrollToBottom('instant')
                 send.mutate({ path: { identity }, body })
               }
             }}
@@ -903,25 +925,26 @@ function ConversationView({ identity }: { identity: string }) {
             <Button
               type="submit"
               className="send-button"
+              variant="primary"
               aria-label={messages.send}
               disabled={!canSend}
             >
-              <ArrowUp size={18} />
+              <Send size={18} />
               <span>{messages.send}</span>
             </Button>
           </form>
         </div>
       </section>
       {narrow ? (
-        <dialog
-          className="state-dialog"
-          ref={dialog}
-          aria-label={messages.currentState}
-          onCancel={() => setMobileOpen(false)}
-          onClose={() => setMobileOpen(false)}
-        >
-          {statePanel}
-        </dialog>
+        <Dialog.Root open={mobileOpen} onOpenChange={setMobileOpen}>
+          <Modal
+            label={messages.currentState}
+            closeLabel={messages.closeState}
+            className="state-dialog"
+          >
+            {statePanel}
+          </Modal>
+        </Dialog.Root>
       ) : (
         showState && statePanel
       )}

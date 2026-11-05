@@ -11,3 +11,13 @@ Object.defineProperty(window, 'matchMedia', {
     removeEventListener: vi.fn(),
   })),
 })
+
+// jsdom has no layout engine; browser tests exercise real resize observation.
+vi.stubGlobal(
+  'ResizeObserver',
+  class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+)

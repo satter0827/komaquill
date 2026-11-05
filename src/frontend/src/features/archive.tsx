@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import * as q from '../api/generated/@tanstack/react-query.gen'
+import { StoryReply } from './conversation-message'
 import { useFailure, useMessages } from '../app/preferences'
 
 export function ArchivedConversations() {
@@ -56,10 +57,11 @@ export function ArchivedConversationPage() {
             <p>{turn.user}</p>
           </div>
           <div className="assistant-message">
-            <p className="scene-narration">{turn.narration}</p>
-            <div className="dialogue">
-              <p>{turn.assistant}</p>
-            </div>
+            <StoryReply
+              narration={turn.narration}
+              dialogue={turn.assistant}
+              name={m.character}
+            />
           </div>
         </article>
       ))}

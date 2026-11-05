@@ -3,6 +3,8 @@ import { test, expect } from './fixtures'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 
+const SCROLL_EDGE_TOLERANCE_PX = 1
+
 for (const locale of ['ja', 'en'] as const) {
   const messages = locale === 'ja' ? ja : en
   test(`${locale}: primary pages and editor errors expose accessible controls`, async ({
@@ -80,10 +82,14 @@ for (const locale of ['ja', 'en'] as const) {
     })
     await state.focus()
     await page.keyboard.press('Enter')
-    await expect(page.locator('dialog')).toBeVisible()
+    await expect(
+      page.getByRole('dialog', { name: messages.currentState, exact: true }),
+    ).toBeVisible()
     await auditAccessibility()
     await page.keyboard.press('Escape')
-    await expect(page.locator('dialog')).not.toBeVisible()
+    await expect(
+      page.getByRole('dialog', { name: messages.currentState, exact: true }),
+    ).not.toBeVisible()
     await expect(state).toBeFocused()
     await page.route('**/api/v1/conversations', (route) =>
       route.fulfill({
@@ -95,6 +101,108 @@ for (const locale of ['ja', 'en'] as const) {
     await page.goto('/')
     await expect(page.getByRole('alert')).toBeVisible()
     await auditAccessibility()
+  })
+
+  test(`${locale}: disconnected navigation keeps errors readable`, async ({
+    page,
+    request,
+    evidence,
+    auditAccessibility,
+  }) => {
+    const preferences = await (await request.get('/api/v1/preferences')).json()
+    await request.put('/api/v1/preferences', {
+      data: { ...preferences, locale },
+    })
+    await page.route('**/api/v1/availability*', (route) =>
+      route.fulfill({
+        json: {
+          ready: false,
+          connections: [
+            {
+              kind: 'llm',
+              target: 'fixture',
+              state: 'unavailable',
+              reason: 'llm_unavailable',
+              observed_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 60_000).toISOString(),
+            },
+          ],
+        },
+      }),
+    )
+    const scene = await (
+      await request.post('/api/v1/conversations', {
+        data: { title: 'Disconnected navigation', llm_profile: 'fake' },
+      })
+    ).json()
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      await page.goto(`/conversations/${scene.id}`)
+      if (width === 390)
+        await page
+          .getByRole('button', { name: messages.showNavigation })
+          .click()
+      const navigation = page.locator('.navigation')
+      await navigation.locator('.connection-summary summary').click()
+      const errorText = navigation.getByText(messages.errors.llm_unavailable, {
+        exact: true,
+      })
+      await errorText.scrollIntoViewIfNeeded()
+      const errorBox = (await errorText.boundingBox())!
+      await expect(errorText).toBeInViewport({
+        ratio: 1 - SCROLL_EDGE_TOLERANCE_PX / errorBox.height,
+      })
+      const contrast = await navigation.evaluate((element) => {
+        const luminance = (color: string) => {
+          const values = color
+            .match(/[\d.]+/g)!
+            .slice(0, 3)
+            .map(Number)
+          const [r, g, b] = values.map((value) => {
+            const channel = value / 255
+            return channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4
+          })
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b
+        }
+        const backgrounds =
+          getComputedStyle(element).backgroundImage.match(/rgb\([^)]+\)/g)!
+        const minimum = (color: string) =>
+          Math.min(
+            ...backgrounds.map((background) => {
+              const values = [luminance(color), luminance(background)]
+              return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05)
+            }),
+          )
+        return {
+          backgrounds: backgrounds.length,
+          error: minimum(
+            getComputedStyle(element.querySelector('.error')!).color,
+          ),
+          warning: minimum(
+            getComputedStyle(element.querySelector('[data-warning]')!)
+              .backgroundColor,
+          ),
+        }
+      })
+      expect(contrast.backgrounds).toBeGreaterThanOrEqual(2)
+      expect(contrast.error).toBeGreaterThanOrEqual(4.5)
+      expect(contrast.warning).toBeGreaterThanOrEqual(3)
+      const refresh = navigation.getByRole('button', {
+        name: messages.refresh,
+        exact: true,
+      })
+      await refresh.scrollIntoViewIfNeeded()
+      const refreshBox = (await refresh.boundingBox())!
+      await expect(refresh).toBeInViewport({
+        ratio: 1 - SCROLL_EDGE_TOLERANCE_PX / refreshBox.height,
+      })
+      await evidence.capture(
+        `${locale} ${width} disconnected navigation: text contrast ${contrast.error.toFixed(2)}, warning contrast ${contrast.warning.toFixed(2)}`,
+      )
+      await auditAccessibility()
+    }
   })
 
   test.describe(`${locale}: enlarged layout`, () => {
@@ -135,7 +243,9 @@ for (const locale of ['ja', 'en'] as const) {
       })
       await state.focus()
       await page.keyboard.press('Enter')
-      await expect(page.locator('dialog')).toBeVisible()
+      await expect(
+        page.getByRole('dialog', { name: messages.currentState, exact: true }),
+      ).toBeVisible()
       await evidence.capture('Enlarged scene details')
       await auditAccessibility()
       await page.keyboard.press('Escape')

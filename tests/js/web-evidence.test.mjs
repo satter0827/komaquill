@@ -1,7 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { EventEmitter } from 'node:events'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { EventEmitter, once } from 'node:events'
+import { spawn } from 'node:child_process'
+import { mkdtemp, readFile, rename, writeFile } from 'node:fs/promises'
+import { setTimeout } from 'node:timers/promises'
 import path from 'node:path'
 import {
   Evidence,
@@ -20,6 +22,63 @@ import { webConfig } from '../../scripts/web/config.mjs'
 async function directory() {
   return mkdtemp(path.resolve('.artifacts/tmp/web-evidence-'))
 }
+
+test(
+  'atomic checkpoints survive a temporary Windows replacement lock',
+  {
+    skip: process.platform !== 'win32',
+    timeout: 15000,
+  },
+  async (t) => {
+    const root = await directory()
+    const target = path.join(root, 'scenario.json')
+    const probe = path.join(root, 'probe.json')
+    await jsonFile(target, { state: 'previous' })
+    await writeFile(probe, 'probe')
+    const holder = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `
+    $handle = [IO.File]::Open($env:KOMAQUILL_LOCK_TARGET, 'Open', 'Read', 'ReadWrite')
+    try { [Console]::WriteLine('locked'); [Console]::ReadLine() | Out-Null }
+    finally { $handle.Dispose() }
+  `,
+      ],
+      {
+        env: { ...process.env, KOMAQUILL_LOCK_TARGET: target },
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    )
+    t.after(() => holder.kill())
+    const [ready] = await once(holder.stdout, 'data', {
+      signal: AbortSignal.timeout(5000),
+    })
+    assert.match(String(ready), /locked/)
+    await assert.rejects(rename(probe, target), (error) =>
+      ['EPERM', 'EACCES', 'EBUSY'].includes(error.code),
+    )
+    let settled = false
+    const saving = jsonFile(target, { state: 'complete' }).finally(() => {
+      settled = true
+    })
+    await setTimeout(150)
+    assert.equal(settled, false)
+    assert.deepEqual(JSON.parse(await readFile(target, 'utf8')), {
+      state: 'previous',
+    })
+    const exited = once(holder, 'exit')
+    holder.stdin.end('\n')
+    await exited
+    await saving
+    assert.deepEqual(JSON.parse(await readFile(target, 'utf8')), {
+      state: 'complete',
+    })
+  },
+)
 
 class Page extends EventEmitter {
   url() {

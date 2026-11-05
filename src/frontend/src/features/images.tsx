@@ -280,7 +280,7 @@ export function ImagesPage() {
       <div className="page-heading">
         <h1>{m.images}</h1>
         <Button
-          className="primary"
+          variant="primary"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
@@ -316,7 +316,7 @@ export function ImagesPage() {
             />
           </label>
           <Button
-            className="primary"
+            variant="primary"
             type="submit"
             disabled={waiting || !prompt.trim() || !availability.ready}
           >

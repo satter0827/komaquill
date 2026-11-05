@@ -146,6 +146,11 @@ export function usePlayerActions({
     refresh,
     cache,
     unresolved: !!dismissal,
+    confirmRevision: () => {
+      if (!queued) return
+      draftRevisionRef.current = conversation?.revision ?? 0
+      setQueued({ ...queued, revision: conversation?.revision ?? 0 })
+    },
   }
 }
 
@@ -171,8 +176,6 @@ export function PlayerActions({
     setEditingAction,
     prepareField,
     setPrepareField,
-    queued,
-    setQueued,
     draftRevisionRef,
     queue: queueAction,
     dismiss,
@@ -338,20 +341,6 @@ export function PlayerActions({
           <Button type="submit">{m.queueAction}</Button>
         </fieldset>
       </form>
-      {queued && queued.revision !== conversation.revision && (
-        <div role="alert">
-          <p>{m.reviewAction}</p>
-          <Button
-            disabled={blocked}
-            onClick={() => {
-              draftRevisionRef.current = conversation.revision ?? 0
-              setQueued({ ...queued, revision: conversation.revision ?? 0 })
-            }}
-          >
-            {m.confirmCurrentAction}
-          </Button>
-        </div>
-      )}
       {dismiss.error && (
         <p className="error" role="alert">
           {failure(dismiss.error)}

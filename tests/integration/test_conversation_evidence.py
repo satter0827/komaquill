@@ -57,7 +57,7 @@ def test_memory_passage_is_checked_against_immutable_source(tmp_path, monkeypatc
     assert operation.error == "storage_failed" and len(calls) == count
 
 
-def test_source_memory_migration_preserves_original_header_and_turns(tmp_path):
+def test_source_memory_migration_preserves_original_header_and_turns(tmp_path, stopped_database):
     import sqlite3
 
     from komaquill.adapters.database import database

@@ -213,12 +213,12 @@
     "invalid_evaluation": "Invalid evaluation. Check the referenced runs, evaluation mode and reviewer provenance.",
     "real_llm_not_allowed": "Generation is not ready. Check Settings and try again.",
     "llm_dependencies_missing": "Conversation setup is incomplete. Check the setup instructions.",
-    "llm_unavailable": "The language model request failed. Check the selected model, endpoint, timeout and API compatibility. No fallback model was used.",
+    "llm_unavailable": "Could not get a reply from the model. Check that it is running and connected.",
     "llm_request_invalid": "The selected language model rejected the request format. Check the model profile and API compatibility before trying again.",
     "story_plan_invalid": "The model did not return a valid complete story plan. Inspect the saved planning attempts and revise the input or model settings.",
     "fake_story_mismatch": "The fake profile only supports the packaged rainy-cat sample and supported image counts. Use that sample or explicitly enable a real model.",
     "invalid_story_count": "Image count is outside the configured range. Check --images and story.max_images.",
-    "image_backend_unavailable": "An image GPU is not available. Start a prepared image session before generating a story. Planning alone does not need an image GPU.",
+    "image_backend_unavailable": "Illustration is unavailable. Connect an image session, then try again.",
     "migration_required": "Workspace storage requires migration. Stop the session and run komaquill migrate.",
     "story_replan_required": "This plan has no frozen structured image inputs. Plan its saved source.txt again before rendering; existing images and history are retained.",
     "unsupported_batch": "This preset has no declared candidate output and batch binding. Add them or omit --candidates.",
@@ -287,7 +287,7 @@
   "saveScene": "Bookmark this moment",
   "forkScene": "Start a new path from here",
   "olderTurns": "Load earlier messages",
-  "drawingSettings": "Image settings",
+  "drawingSettings": "Illustration options",
   "drawingSubjects": "People to draw",
   "partnerOnly": "Partner only",
   "bothPeople": "Player and partner",
@@ -348,5 +348,8 @@
   "drawingResultUnknown": "The illustration result could not be confirmed. Check the connection and processing status in settings.",
   "heldObjectsInput": "My held objects (one per line)",
   "additionalActionChanges": "Other changes in this action",
-  "requestSending": "Sending…"
+  "requestSending": "Sending…",
+  "closePanel": "Close",
+  "latestReply": "Latest reply",
+  "connectionCheckNeeded": "Check"
 }

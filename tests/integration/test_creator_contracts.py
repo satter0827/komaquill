@@ -53,12 +53,6 @@ def test_migration_stop_check_distinguishes_database_use_from_editor_tools(
     )
 
 
-@pytest.fixture
-def stopped_database(monkeypatch):
-    """Keep migration contracts independent of unrelated host processes."""
-    monkeypatch.setattr(database_migration, "file_users", lambda _: set())
-
-
 def test_upgrade_requires_an_explicit_backup_and_retains_existing_content(
     tmp_path, stopped_database
 ):

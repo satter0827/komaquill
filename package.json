@@ -17,6 +17,7 @@
     "@hey-api/openapi-ts": "^0.95.0",
     "@playwright/test": "^1.56.0",
     "@types/node": "26.6.6",
+    "atomically": "^2.1.1",
     "nx": "24.0.2",
     "prettier": "^3.6.2"
   },

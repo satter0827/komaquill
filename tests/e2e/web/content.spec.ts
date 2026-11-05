@@ -41,7 +41,9 @@ test('retains drafts when hidden and branches from saved scene notes without gen
     })
   ).json()
   await page.goto(`/conversations/${scene.id}`)
-  await page.getByText(ja.conversationMenu, { exact: true }).click()
+  await page
+    .getByRole('button', { name: ja.conversationMenu, exact: true })
+    .click()
   await page.getByText(ja.pinnedNotes, { exact: true }).click()
   await page.getByLabel(ja.notesDescription).fill('Keep the blue envelope.')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
@@ -76,17 +78,18 @@ test('retains drafts when hidden and branches from saved scene notes without gen
     .click()
   await page.getByLabel(ja.sceneName).fill('Saved branch')
   await page.getByRole('button', { name: ja.saveScene, exact: true }).click()
-  await page.getByText(ja.conversationMenu, { exact: true }).click()
+  await page
+    .getByRole('button', { name: ja.conversationMenu, exact: true })
+    .click()
   await expect(page.getByText('Saved branch', { exact: true })).toBeVisible()
-  await page.getByText(ja.conversationMenu, { exact: true }).click()
+  await page
+    .getByRole('button', { name: ja.conversationMenu, exact: true })
+    .click()
   await page
     .locator('article.turn')
     .getByRole('button', { name: ja.sceneActions })
     .click()
-  await page
-    .locator('article.turn')
-    .getByRole('button', { name: ja.forkScene, exact: true })
-    .click()
+  await page.getByRole('button', { name: ja.forkScene, exact: true }).click()
   await expect(page).not.toHaveURL(new RegExp(scene.id))
   const branchId = page.url().split('/').at(-1)!
   const branch = await (

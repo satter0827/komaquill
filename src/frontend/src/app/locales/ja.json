@@ -287,7 +287,7 @@
   "saveScene": "しおりを付ける",
   "forkScene": "ここから別の展開を始める",
   "olderTurns": "以前の会話を表示",
-  "drawingSettings": "描画設定",
+  "drawingSettings": "絵の描き方",
   "drawingSubjects": "描く人物",
   "partnerOnly": "相手のみ",
   "bothPeople": "自分と相手",
@@ -348,5 +348,8 @@
   "drawingResultUnknown": "描画の結果を確認できません。設定で接続先と処理の状態を確認してください。",
   "heldObjectsInput": "自分の持ち物（1行に1つ）",
   "additionalActionChanges": "一緒に変えること",
-  "requestSending": "送信しています…"
+  "requestSending": "送信しています…",
+  "closePanel": "閉じる",
+  "latestReply": "新しい返答へ",
+  "connectionCheckNeeded": "要確認"
 }

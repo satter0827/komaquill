@@ -261,7 +261,7 @@ def test_saved_collection_and_local_resume_have_no_connection_dependency(tmp_pat
     assert client.availability.check(AvailabilityRequest(kind="resume", identity=uuid4())).ready
 
 
-def test_fixed_content_migration_preserves_history_policy_and_artifacts(tmp_path):
+def test_fixed_content_migration_preserves_history_policy_and_artifacts(tmp_path, stopped_database):
     import hashlib
     import json
     import sqlite3

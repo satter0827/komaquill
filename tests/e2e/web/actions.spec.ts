@@ -130,6 +130,7 @@ for (const locale of ['ja', 'en'] as const) {
       'Confirmed player movement with an independent companion location',
     )
     await page.reload()
+    await page.getByRole('button', { name: m.showState, exact: true }).click()
     await expect(page.getByText('Beach', { exact: true }).first()).toBeVisible()
     const resumed = await (
       await request.get(`/api/v1/conversations/${identity}`)

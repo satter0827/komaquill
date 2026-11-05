@@ -90,6 +90,22 @@ def owned_process(
                     with suppress(ProcessLookupError):
                         os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=TERMINATION_TIMEOUT_SECONDS)
+                    deadline = time.monotonic() + TERMINATION_TIMEOUT_SECONDS
+                    while True:
+                        remaining = False
+                        for child in psutil.process_iter(["status"]):
+                            with suppress(ProcessLookupError, psutil.NoSuchProcess):
+                                if (
+                                    os.getpgid(child.pid) == process.pid
+                                    and child.info["status"] != psutil.STATUS_ZOMBIE
+                                ):
+                                    remaining = True
+                                    break
+                        if not remaining:
+                            break
+                        if time.monotonic() >= deadline:
+                            raise RuntimeError(message("quality.termination_failed")) from None
+                        time.sleep(TERMINATION_POLL_SECONDS)
 
 
 def run_owned(

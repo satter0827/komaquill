@@ -59,7 +59,9 @@ def legacy(tmp_path, *, state=None, corrupt=False):
     return api, identity, payload
 
 
-def test_structured_old_fields_are_mapped_without_using_prose_and_original_is_retained(tmp_path):
+def test_structured_old_fields_are_mapped_without_using_prose_and_original_is_retained(
+    tmp_path, stopped_database
+):
     api, identity, payload = legacy(tmp_path)
     with pytest.raises(KomaquillError, match="migration_required"):
         Client(tmp_path).conversations.list()
@@ -86,7 +88,7 @@ def test_structured_old_fields_are_mapped_without_using_prose_and_original_is_re
 
 @pytest.mark.parametrize("corrupt", [False, True])
 def test_ambiguous_or_unreadable_state_is_preserved_as_read_only_instead_of_guessed(
-    tmp_path, corrupt
+    tmp_path, corrupt, stopped_database
 ):
     api, identity, payload = legacy(tmp_path, state={"unknown_owner": "red coat"}, corrupt=corrupt)
     api.migrate()
@@ -109,7 +111,9 @@ def test_ambiguous_or_unreadable_state_is_preserved_as_read_only_instead_of_gues
         api.archive.conversation(uuid4())
 
 
-def test_explicit_fake_preference_is_not_changed_by_later_state_migration(tmp_path):
+def test_explicit_fake_preference_is_not_changed_by_later_state_migration(
+    tmp_path, stopped_database
+):
     api, _, _ = legacy(tmp_path)
     with api.conversations.repository.database.engine.begin() as connection:
         connection.exec_driver_sql(

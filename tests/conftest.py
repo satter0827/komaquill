@@ -51,6 +51,14 @@ def offline_network(monkeypatch):
 
 
 @pytest.fixture
+def stopped_database(monkeypatch):
+    """Isolate migration data contracts from unrelated host processes."""
+    from komaquill.adapters import database_migration
+
+    monkeypatch.setattr(database_migration, "file_users", lambda _: set())
+
+
+@pytest.fixture
 def project(tmp_path):
     (tmp_path / "komaquill.toml").write_text(
         'models = ["klein-4b"]\npoll_interval = 0.001\ngeneration_timeout = 1.0\n'

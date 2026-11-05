@@ -4,6 +4,8 @@
 
 要件から再確認した受付確認と画像失敗時の復旧は[会話とアルバムの再レビュー](verification/results/zero-base-conversation-album-review.md)を参照してください。
 
+受付応答を失った後の画面遷移と、監視の診断ログを再確認した結果は[描画の受付確認と画面遷移](verification/results/drawing-receipt-lifecycle-review.md)を参照してください。
+
 発言と行動の同時送信、生成に必要な接続確認、本文保存と画像生成の分離、固定NSFWへの移行は[操作と接続確認](current/operations-and-availability.md)を参照してください。
 
 確認範囲と未確認事項は[会話・描画・画面構成の検証](verification/results/conversation-ui-operations.md)に記録しています。

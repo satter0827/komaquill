@@ -21,11 +21,11 @@ export function useCreation() {
   const [identity, setIdentity] = useState<string | null>(null)
   const mutation = useMutation({
     ...q.createJobMutation(),
-    onError: (error) => {
+    onError: (error, submitted) => {
       void recheckAvailability(cache)
       if (isRejectedRequest(error)) {
         setPrepared(null)
-      }
+      } else trackCreation(submitted.body.operation_id)
     },
     onSuccess: (data) => {
       cache.setQueryData<CreationJob>(

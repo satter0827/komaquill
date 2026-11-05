@@ -34,13 +34,21 @@ export function keepTerminal<T extends { state?: string }>(
     : next
 }
 
-export function watchReceipt<T extends { id: string }>(
+export function watchReceipt<T extends { id: string } | { run_id: string }>(
   cache: QueryClient,
   queryKey: QueryKey,
   identity: string,
   confirm: (value: T) => void,
 ) {
   const queries = cache.getQueryCache()
+  let waiting = true
+  const confirmMatching = (value: T | undefined) => {
+    if (!waiting || !value) return
+    if (('id' in value ? value.id : value.run_id) !== identity) return
+    waiting = false
+    unsubscribe()
+    confirm(value)
+  }
   const unsubscribe = queries.subscribe((event) => {
     if (
       event.type !== 'updated' ||
@@ -48,12 +56,13 @@ export function watchReceipt<T extends { id: string }>(
       event.query !== queries.find({ queryKey, exact: true })
     )
       return
-    const value = event.query.state.data as T | undefined
-    if (value?.id !== identity) return
-    unsubscribe()
-    confirm(value)
+    confirmMatching(event.query.state.data as T | undefined)
   })
-  return unsubscribe
+  confirmMatching(cache.getQueryData<T>(queryKey))
+  return () => {
+    waiting = false
+    unsubscribe()
+  }
 }
 
 export function operationOptions(identity: string) {

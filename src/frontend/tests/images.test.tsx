@@ -23,6 +23,7 @@ import { PreferencesProvider, defaultPreferences } from '../src/app/preferences'
 import { client } from '../src/api/generated/client.gen'
 import type { ImageInput, Run } from '../src/api/generated/types.gen'
 import { getImageQueryKey } from '../src/api/generated/@tanstack/react-query.gen'
+import { CreationStatus, useCreation } from '../src/features/creation'
 import m from '../src/app/locales/ja.json'
 
 const base = 'http://localhost'
@@ -281,6 +282,65 @@ it('continues accepted collection after leaving the album', async () => {
   expect(requests).toHaveLength(1)
   cache.clear()
 })
+it('confirms a lost receipt after leaving the album and collects only that request', async () => {
+  let receiptAvailable = false
+  server.use(
+    http.post(`${base}/api/v1/images`, async ({ request }) => {
+      const body = (await request.json()) as ImageInput
+      requests.push(body)
+      records.set(body.request_id, saved(body.request_id, 'queued'))
+      return HttpResponse.error()
+    }),
+    http.get(`${base}/api/v1/images/:id`, ({ params }) => {
+      reads++
+      return receiptAvailable
+        ? HttpResponse.json(records.get(String(params.id)))
+        : HttpResponse.json({ code: 'request_not_found' }, { status: 404 })
+    }),
+  )
+  const cache = images()
+  await userEvent.type(await compose(), 'A bookshop')
+  await userEvent.click(
+    screen.getByRole('button', { name: m.drawRequestedScene }),
+  )
+  await screen.findByText(m.receiptUnknown)
+  await userEvent.click(screen.getByRole('button', { name: 'Switch page' }))
+  receiptAvailable = true
+  await waitFor(() => expect(collections).toBe(1), { timeout: 3000 })
+  expect(requests).toHaveLength(1)
+  expect(
+    cache.getQueryData<Run>(
+      getImageQueryKey({ path: { identity: requests[0].request_id } }),
+    )?.state,
+  ).toBe('saved')
+  cache.clear()
+})
+it('retains the request when its failed response arrives after the album unmounts', async () => {
+  let fail!: () => void
+  const delayedFailure = new Promise<void>((resolve) => {
+    fail = resolve
+  })
+  server.use(
+    http.post(`${base}/api/v1/images`, async ({ request }) => {
+      const body = (await request.json()) as ImageInput
+      requests.push(body)
+      records.set(body.request_id, saved(body.request_id, 'queued'))
+      await delayedFailure
+      return HttpResponse.error()
+    }),
+  )
+  const cache = images()
+  await userEvent.type(await compose(), 'A bookshop')
+  await userEvent.click(
+    screen.getByRole('button', { name: m.drawRequestedScene }),
+  )
+  await waitFor(() => expect(requests).toHaveLength(1))
+  await userEvent.click(screen.getByRole('button', { name: 'Switch page' }))
+  fail()
+  await waitFor(() => expect(collections).toBe(1))
+  expect(requests).toHaveLength(1)
+  cache.clear()
+})
 it('groups local calendar dates and counts actual files while retaining terminal observations', () => {
   const first = saved('first')
   const second = { ...saved('second'), images: ['one.png', 'two.png'] }
@@ -367,6 +427,78 @@ it('keeps accepted creation jobs alive before an image ID exists', async () => {
     expect(
       cache.getQueryData<Run>(
         getImageQueryKey({ path: { identity: 'created-image' } }),
+      )?.state,
+    ).toBe('saved'),
+  )
+  cache.clear()
+})
+
+it('retains an unconfirmed creation across navigation before its image ID exists', async () => {
+  let available = false
+  let identity = ''
+  let submissions = 0
+  server.use(
+    http.post(`${base}/api/v1/creation-jobs`, async ({ request }) => {
+      identity = ((await request.json()) as { operation_id: string })
+        .operation_id
+      submissions++
+      return HttpResponse.error()
+    }),
+    http.get(`${base}/api/v1/creation-jobs/:id`, () =>
+      available
+        ? HttpResponse.json({
+            id: identity,
+            state: 'submitted',
+            image_id: 'portrait',
+          })
+        : HttpResponse.json({ code: 'request_not_found' }, { status: 404 }),
+    ),
+  )
+  records.set('portrait', saved('portrait', 'queued'))
+  const cache = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  function Editor() {
+    const creation = useCreation()
+    return (
+      <>
+        <button
+          onClick={() =>
+            creation.start({ kind: 'portrait', target_id: 'character' })
+          }
+        >
+          Draw portrait
+        </button>
+        <CreationStatus creation={creation} />
+      </>
+    )
+  }
+  function Pages() {
+    const [visible, setVisible] = useState(true)
+    return (
+      <>
+        <button onClick={() => setVisible(!visible)}>Switch editor</button>
+        {visible ? <Editor /> : <p>Another page</p>}
+      </>
+    )
+  }
+  render(
+    <QueryClientProvider client={cache}>
+      <ImageActivityProvider>
+        <Pages />
+      </ImageActivityProvider>
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Draw portrait' }))
+  await screen.findByText(m.receiptUnknown)
+  await userEvent.click(screen.getByRole('button', { name: 'Switch editor' }))
+  available = true
+  await waitFor(() => expect(collections).toBe(1), { timeout: 3000 })
+  expect(submissions).toBe(1)
+  await waitFor(() =>
+    expect(
+      cache.getQueryData<Run>(
+        getImageQueryKey({ path: { identity: 'portrait' } }),
       )?.state,
     ).toBe('saved'),
   )

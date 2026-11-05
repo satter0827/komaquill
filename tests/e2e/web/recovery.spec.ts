@@ -2,6 +2,65 @@ import { test, expect } from './fixtures'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 
+test('confirms an album receipt across navigation without submitting again', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  let receiptAvailable = false
+  const submitted: string[] = []
+  let collections = 0
+  await page.route('**/api/v1/runtime', (route) =>
+    route.fulfill({ json: { connection: 'disconnected', pending: [] } }),
+  )
+  await page.route('**/api/v1/images/*', async (route) => {
+    if (!receiptAvailable)
+      return route.fulfill({ status: 404, json: { code: 'request_not_found' } })
+    return route.continue()
+  })
+  await page.route('**/api/v1/images', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    submitted.push(route.request().postDataJSON().request_id)
+    const response = await route.fetch()
+    expect(response.status()).toBe(202)
+    await route.abort('failed')
+  })
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().endsWith('/collect')) collections++
+  })
+  await page.goto('/images')
+  await page.getByRole('button', { name: ja.generate, exact: true }).click()
+  await page.getByLabel(ja.imagePrompt).fill('A quiet bookshop')
+  await page
+    .getByRole('button', { name: ja.drawRequestedScene, exact: true })
+    .click()
+  await expect(page.getByText(ja.receiptUnknown, { exact: true })).toBeVisible()
+  await evidence.capture(
+    'Lost album receipt retains the original request before navigation',
+  )
+  await page.getByRole('link', { name: ja.play, exact: true }).click()
+  receiptAvailable = true
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(`/api/v1/images/${submitted[0]}`)).json())
+          .state,
+    )
+    .toBe('saved')
+  expect(submitted).toHaveLength(1)
+  expect(collections).toBe(1)
+  await page.getByRole('link', { name: ja.images, exact: true }).click()
+  await page.locator('.album-days summary').first().click()
+  await expect(page.locator(`#image-${submitted[0]} img`)).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
+  expect(submitted).toHaveLength(1)
+  await evidence.capture(
+    'The same request was saved while another page was open',
+  )
+})
+
 for (const [locale, messages] of [
   ['ja', ja],
   ['en', en],

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,10 +23,50 @@ import { useAvailability, useAvailabilityRecovery } from './availability'
 
 const Tracking = createContext<(identity: string) => void>(() => {})
 const CreationTracking = createContext<(identity: string) => void>(() => {})
+const ReceiptTracking = createContext<(identity: string) => void>(() => {})
 export const useTrackImage = () => useContext(Tracking)
 export const useTrackCreation = () => useContext(CreationTracking)
+export const useTrackImageReceipt = () => useContext(ReceiptTracking)
 export const imageMonitorKey = (identity: string) =>
   ['image-monitor', identity] as const
+
+export function useImageMonitorError(identity: string) {
+  const queries = useQueryClient().getQueryCache()
+  const subscribe = useCallback(
+    (notify: () => void) => queries.subscribe(notify),
+    [queries],
+  )
+  const snapshot = useCallback(
+    () =>
+      queries.find({ queryKey: imageMonitorKey(identity), exact: true })?.state
+        .error ?? null,
+    [identity, queries],
+  )
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
+function ImageReceiptMonitor({
+  identity,
+  onFinish,
+}: {
+  identity: string
+  onFinish: (identity: string) => void
+}) {
+  const track = useTrackImage()
+  const receipt = useQuery({
+    ...imageOptions(identity),
+    refetchInterval: (query) =>
+      query.state.data?.run_id === identity ? false : POLL_INTERVAL_MS,
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  useEffect(() => {
+    if (receipt.data?.run_id !== identity) return
+    track(identity)
+    onFinish(identity)
+  }, [identity, onFinish, receipt.data, track])
+  return null
+}
 
 function ImageMonitor({
   identity,
@@ -120,6 +161,7 @@ function PendingImageMonitor({
 export function ImageActivityProvider({ children }: { children: ReactNode }) {
   const [tracked, setTracked] = useState<string[]>([])
   const [creations, setCreations] = useState<string[]>([])
+  const [receipts, setReceipts] = useState<string[]>([])
   const [finishedImages, setFinishedImages] = useState<Set<string>>(
     () => new Set(),
   )
@@ -151,6 +193,14 @@ export function ImageActivityProvider({ children }: { children: ReactNode }) {
       values.includes(identity) ? values : [...values, identity],
     )
   }, [])
+  const trackReceipt = useCallback((identity: string) => {
+    setReceipts((values) =>
+      values.includes(identity) ? values : [...values, identity],
+    )
+  }, [])
+  const finishReceipt = useCallback((identity: string) => {
+    setReceipts((values) => values.filter((value) => value !== identity))
+  }, [])
   const pending =
     runtime.data?.connection === 'connected'
       ? (runtime.data.pending ?? []).filter(
@@ -161,32 +211,41 @@ export function ImageActivityProvider({ children }: { children: ReactNode }) {
   return (
     <Tracking.Provider value={track}>
       <CreationTracking.Provider value={trackCreation}>
-        {creations
-          .filter((identity) => !finishedCreations.has(identity))
-          .map((identity) => (
-            <CreationMonitor
+        <ReceiptTracking.Provider value={trackReceipt}>
+          {receipts.map((identity) => (
+            <ImageReceiptMonitor
               key={identity}
               identity={identity}
-              onFinish={finishCreation}
+              onFinish={finishReceipt}
             />
           ))}
-        {tracked
-          .filter((identity) => !finishedImages.has(identity))
-          .map((identity) => (
-            <ImageMonitor
+          {creations
+            .filter((identity) => !finishedCreations.has(identity))
+            .map((identity) => (
+              <CreationMonitor
+                key={identity}
+                identity={identity}
+                onFinish={finishCreation}
+              />
+            ))}
+          {tracked
+            .filter((identity) => !finishedImages.has(identity))
+            .map((identity) => (
+              <ImageMonitor
+                key={identity}
+                identity={identity}
+                onFinish={finishImage}
+              />
+            ))}
+          {pending.map((identity) => (
+            <PendingImageMonitor
               key={identity}
               identity={identity}
               onFinish={finishImage}
             />
           ))}
-        {pending.map((identity) => (
-          <PendingImageMonitor
-            key={identity}
-            identity={identity}
-            onFinish={finishImage}
-          />
-        ))}
-        {children}
+          {children}
+        </ReceiptTracking.Provider>
       </CreationTracking.Provider>
     </Tracking.Provider>
   )

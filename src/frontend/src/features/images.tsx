@@ -2,7 +2,6 @@ import { isRejectedRequest, POLL_INTERVAL_MS } from '../api/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as q from '../api/generated/@tanstack/react-query.gen'
-import { getImage } from '../api/generated/sdk.gen'
 import type { ImageInput, Run } from '../api/generated/types.gen'
 import {
   useFailure,
@@ -16,9 +15,15 @@ import {
   isTerminal,
   retainImage,
   retainImageList,
+  watchReceipt,
 } from './operations'
 import { recheckAvailability, useAvailability } from './availability'
-import { imageMonitorKey, useTrackImage } from './image-activity'
+import {
+  imageMonitorKey,
+  useImageMonitorError,
+  useTrackImage,
+  useTrackImageReceipt,
+} from './image-activity'
 
 export function OriginalImage({
   identity,
@@ -85,14 +90,11 @@ export function ImageResult({
   const cache = useQueryClient()
   const track = useTrackImage()
   const read = useQuery({ ...imageOptions(identity), enabled: !run })
-  const monitor = useQuery<Run>({
-    queryKey: imageMonitorKey(identity),
-    enabled: false,
-  })
+  const monitorError = useImageMonitorError(identity)
   const value = run ?? read.data
   const collectionFailed =
     value?.collection_failure ||
-    monitor.error ||
+    monitorError ||
     (value?.error === 'collection_failed' ? value.failure : null)
   const availability = useAvailability(
     collectionFailed ? { kind: 'collection', identity } : undefined,
@@ -191,6 +193,7 @@ export function ImagesPage() {
   const preferences = usePreferences()
   const cache = useQueryClient()
   const track = useTrackImage()
+  const trackReceipt = useTrackImageReceipt()
   const images = useQuery({
     ...q.listImagesOptions(),
     structuralSharing: (previous, next) =>
@@ -200,13 +203,10 @@ export function ImagesPage() {
     ...imageOptions(latestId ?? ''),
     enabled: false,
   })
-  const latestMonitor = useQuery<Run>({
-    queryKey: imageMonitorKey(latestId ?? ''),
-    enabled: false,
-  })
+  const monitorError = useImageMonitorError(latestId ?? '')
   const collectionError =
     latest.data?.collection_failure ??
-    latestMonitor.error ??
+    monitorError ??
     (latest.data?.error === 'collection_failed' ? latest.data.failure : null)
   const recovery = useAvailability(
     collectionError && latestId
@@ -237,38 +237,31 @@ export function ImagesPage() {
   )
   const submit = useMutation({
     ...q.submitImageMutation(),
-    onError: (error) => {
+    onError: (error, submitted) => {
       void recheckAvailability(cache)
       if (isRejectedRequest(error)) setPrepared(null)
+      else trackReceipt(submitted.body.request_id)
     },
     onSuccess: accept,
   })
   const receipt = useQuery({
-    queryKey: ['image-receipt', prepared?.request_id],
+    ...imageOptions(prepared?.request_id ?? ''),
     enabled: !!prepared && submit.isError,
-    queryFn: async () =>
-      (await getImage({ path: { identity: prepared!.request_id } })).data!,
     retry: false,
     refetchInterval: submit.isError && prepared ? POLL_INTERVAL_MS : false,
   })
   const reset = submit.reset
   useEffect(() => {
     if (!prepared || !submit.isError) return
-    const unsubscribe = cache.getQueryCache().subscribe((event) => {
-      if (
-        event.type !== 'updated' ||
-        event.action.type !== 'success' ||
-        event.query.queryKey[0] !== 'image-receipt' ||
-        event.query.queryKey[1] !== prepared.request_id
-      )
-        return
-      const value = event.query.state.data as Run | undefined
-      if (value?.run_id !== prepared.request_id) return
-      unsubscribe()
-      accept(value)
-      reset()
-    })
-    return unsubscribe
+    return watchReceipt<Run>(
+      cache,
+      imageOptions(prepared.request_id).queryKey,
+      prepared.request_id,
+      (confirmed) => {
+        accept(confirmed)
+        reset()
+      },
+    )
   }, [cache, prepared, submit.isError, accept, reset])
   const days = groupImageDays(images.data ?? [], preferences.value.locale)
   useEffect(() => {

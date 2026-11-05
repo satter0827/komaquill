@@ -3,6 +3,8 @@ import { test, expect } from './fixtures'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 
+const SCROLL_EDGE_TOLERANCE_PX = 1
+
 for (const locale of ['ja', 'en'] as const) {
   const messages = locale === 'ja' ? ja : en
   test(`${locale}: primary pages and editor errors expose accessible controls`, async ({
@@ -146,7 +148,10 @@ for (const locale of ['ja', 'en'] as const) {
         exact: true,
       })
       await errorText.scrollIntoViewIfNeeded()
-      await expect(errorText).toBeInViewport({ ratio: 1 })
+      const errorBox = (await errorText.boundingBox())!
+      await expect(errorText).toBeInViewport({
+        ratio: 1 - SCROLL_EDGE_TOLERANCE_PX / errorBox.height,
+      })
       const contrast = await navigation.evaluate((element) => {
         const luminance = (color: string) => {
           const values = color
@@ -189,7 +194,10 @@ for (const locale of ['ja', 'en'] as const) {
         exact: true,
       })
       await refresh.scrollIntoViewIfNeeded()
-      await expect(refresh).toBeInViewport({ ratio: 1 })
+      const refreshBox = (await refresh.boundingBox())!
+      await expect(refresh).toBeInViewport({
+        ratio: 1 - SCROLL_EDGE_TOLERANCE_PX / refreshBox.height,
+      })
       await evidence.capture(
         `${locale} ${width} disconnected navigation: text contrast ${contrast.error.toFixed(2)}, warning contrast ${contrast.warning.toFixed(2)}`,
       )

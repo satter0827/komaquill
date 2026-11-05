@@ -21,6 +21,8 @@
 
 lint、型検査、テスト、ビルドをNxの別タスクとして定義します。入力と出力は各project.jsonを正本とします。API契約は`pnpm contracts`でOpenAPIとTypeScriptクライアントを生成します。
 
+画面テストは`frontend-tests:test`を担当とし、`frontend`の変更から依存で選択します。[Nxの標準設定](https://nx.dev/docs/reference/project-configuration)でpackage.jsonのスクリプト推論を制限し、同じVitestの範囲を複数のtargetで実行しません。構造検査は設定ファイルだけでなく、Nxが解決した実効グラフで担当と依存を確認します。
+
 ## 結果を確認する
 
 検証全体の対象範囲、基準版、入力ハッシュ、時刻、終了結果、出力ログは`.artifacts/records/reports/checks/`、Pythonの選択とJUnitは`.artifacts/records/reports/affected/`へ保存します。Nxのタスクキャッシュは`.artifacts/cache/nx/`です。キャッシュは静的検査、画面の単体テスト、契約、ビルドに使用します。画面E2Eとレビュー用収集は毎回新しい操作証跡を残し、Pythonの関連テストは実行範囲を毎回記録するためタスクキャッシュから復元しません。現在のGPU・プロバイダー観測にもキャッシュを使用しません。

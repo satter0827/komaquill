@@ -574,7 +574,7 @@ tests = ["tests/system/e2e/web/interaction-controls.spec.ts", "tests/system/e2e/
 summary = "対象・検査範囲・機能が一致する構成と依存方向を維持する"
 status = "implemented"
 acceptance = ["製品から開発用コードへ依存しない", "業務処理から具体的な保存・通信・表示へ依存しない", "実機検証を通常ゲートへ含めない", "テストは対象・範囲・機能の階層に置く"]
-sources = ["src/frontend/eslint.config.js", "tools/testing/affected.py", "tools/testing/dependencies.py"]
+sources = ["src/frontend/eslint.config.js", "src/frontend/package.json", "tools/testing/affected.py", "tools/testing/dependencies.py"]
 tests = ["tests/system/structure/repository/test_layout.py", "tests/tools/integration/selection/test_affected.py"]
 
 [requirements.REQ-STORAGE-BOUNDARIES]

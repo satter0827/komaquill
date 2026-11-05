@@ -43,6 +43,28 @@ def test_test_paths_declare_target_scope_and_feature():
         assert len(rest) >= 2, path
 
 
+def test_frontend_test_execution_has_one_owner_in_the_effective_nx_graph():
+    import json
+    import os
+    import subprocess
+
+    projects = {}
+    for name in ("frontend", "frontend-tests"):
+        result = subprocess.run(
+            ["node", "tools/runtime/nx.mjs", "show", "project", name, "--json"],
+            cwd=ROOT,
+            env={**os.environ, "NX_DAEMON": "false"},
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=45,
+        )
+        projects[name] = json.loads(result.stdout)
+    assert "test" not in projects["frontend"]["targets"]
+    assert "test" in projects["frontend-tests"]["targets"]
+    assert "frontend" in projects["frontend-tests"]["implicitDependencies"]
+
+
 def test_frozen_migration_does_not_import_current_business_or_schema():
     import ast
 

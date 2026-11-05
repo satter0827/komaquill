@@ -2,6 +2,9 @@
   "name": "@komaquill/frontend",
   "private": true,
   "type": "module",
+  "nx": {
+    "includedScripts": []
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",

@@ -100,8 +100,8 @@ jobs:
           version: '11.25.0'
       - name: Audit locked Python dependencies
         run: |
-          uv export --project src/backend --locked --all-extras --all-groups --no-emit-project --output-file .artifacts/records/reports/security/dependencies.txt
-          uv run --project src/backend --locked --group dev python -m pip_audit --require-hashes --disable-pip --strict --cache-dir .artifacts/cache/pip-audit -r .artifacts/records/reports/security/dependencies.txt --format json --output .artifacts/records/reports/security/python-audit.json
+          uv export --quiet --project src/backend --locked --all-extras --all-groups --no-emit-project --output-file .artifacts/records/reports/security/dependencies.txt
+          uv run --project src/backend --locked --group dev python -m pip_audit --vulnerability-service osv --require-hashes --disable-pip --strict --cache-dir .artifacts/cache/pip-audit -r .artifacts/records/reports/security/dependencies.txt --format json --output .artifacts/records/reports/security/python-audit.json
       - name: Audit locked Node dependencies
         run: |
           pnpm install --frozen-lockfile --ignore-scripts

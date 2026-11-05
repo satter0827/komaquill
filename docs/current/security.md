@@ -20,6 +20,8 @@
 
 端末の登録・承認・失効は追記する履歴に残します。CaddyはOSの信頼ストアを自動変更しません。CAの信頼登録は利用端末で明示的に行ってください。Pythonはpip-audit、Nodeはpnpm auditで固定依存の既知の脆弱性を検査し、CIにJSONの結果を保持します。
 
+Pythonは全extrasと全dependency groupsのハッシュ付きexportを監査します。CUDA版のようにPyPIにないビルド名も照合するため、[pip-auditの標準OSV接続](https://github.com/pypa/pip-audit)を使います。GPU依存や開発依存を除外せず、監査不能も失敗とします。OSVでの監査はハッシュの存在を要求し、配布物の実体のハッシュ照合はuvによる固定依存の導入時に行います。
+
 WebSocketの接続時も承認を確認します。接続済みのストリームはweb.tomlの`websocket_seconds`で期限を設け、失効後に接続を保持し続けないようにします。認証照会ではUpgradeヘッダーを除き、許可後の転送で標準のWebSocket接続を確立します。
 
 アプリケーションはloopbackのCaddyだけを信頼するプロキシとして扱います。Caddyはクライアントが渡した転送元情報を採用せず、接続元から転送情報を作成します。[Caddyの標準仕様](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)と[forward_auth](https://caddyserver.com/docs/caddyfile/directives/forward_auth)を参照してください。インターネット公開はこの構成の対象外です。

@@ -2,13 +2,16 @@
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from langchain_core.messages import BaseMessage
 
 from komaquill.adapters.llm_configuration import LLMProfile
 from komaquill.domain.errors import KomaquillError
+
+if TYPE_CHECKING:
+    from lmstudio import LLM
 
 
 class NativeTokens:
@@ -29,7 +32,7 @@ class NativeTokens:
             ) from None
 
     @contextmanager
-    def _loaded_model(self) -> Iterator[Any]:
+    def _loaded_model(self) -> Iterator["LLM"]:
         client = None
         try:
             client = self._client(api_host=self._api_host)

@@ -22,7 +22,9 @@ def test_check_plan_preserves_scope_without_running_tasks(tmp_path, monkeypatch,
     assert not (tmp_path / ".artifacts").exists()
 
 
-@pytest.mark.parametrize("case", ["success", "failed", "missing", "interrupted", "changed"])
+@pytest.mark.parametrize(
+    "case", ["success", "failed", "missing", "interrupted", "changed", "unexpected"]
+)
 def test_check_records_failure_and_never_promotes_changed_inputs(tmp_path, monkeypatch, case):
     monkeypatch.setattr(check, "ROOT", tmp_path)
     monkeypatch.setattr(check, "source_revision", lambda _: "fixture")
@@ -38,6 +40,8 @@ def test_check_records_failure_and_never_promotes_changed_inputs(tmp_path, monke
             raise FileNotFoundError
         if case == "interrupted":
             raise KeyboardInterrupt
+        if case == "unexpected":
+            raise Exception("private process payload")
         return 1 if case == "failed" else 0
 
     monkeypatch.setattr(check, "run_owned", run)
@@ -51,3 +55,5 @@ def test_check_records_failure_and_never_promotes_changed_inputs(tmp_path, monke
         if case in {"missing", "interrupted"}
         else "failed"
     )
+    assert report["finished_at"]
+    assert "private process payload" not in json.dumps(report)

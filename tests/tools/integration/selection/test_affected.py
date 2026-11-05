@@ -157,7 +157,7 @@ def test_base_includes_committed_staged_unstaged_new_and_deleted_changes(tmp_pat
     }
 
 
-@pytest.mark.parametrize("mode", ["run", "plan", "selection-hash", "missing-base"])
+@pytest.mark.parametrize("mode", ["run", "plan", "selection-hash", "missing-base", "unexpected"])
 def test_selector_records_scope_and_never_forwards_live_flags(tmp_path, monkeypatch, mode):
     monkeypatch.setattr(affected, "ROOT", tmp_path)
     path = tmp_path / "tests/backend/unit/test_feature.py"
@@ -188,11 +188,13 @@ def test_selector_records_scope_and_never_forwards_live_flags(tmp_path, monkeypa
     def run(command, **kwargs):
         assert not any(key.startswith(("KOMAQUILL_LIVE", "LANGSMITH_")) for key in kwargs["env"])
         assert "PYTEST_ADDOPTS" not in kwargs["env"]
+        if mode == "unexpected":
+            raise Exception("private process payload")
         return 0
 
     monkeypatch.setattr(affected, "related", lambda *args: ["tests/backend/unit/test_feature.py"])
     monkeypatch.setattr(affected, "run_owned", run)
-    if mode in {"run", "missing-base"}:
+    if mode in {"run", "missing-base", "unexpected"}:
         with pytest.raises(SystemExit) as result:
             affected.main()
         assert (result.value.code == 0) == (mode == "run")
@@ -201,6 +203,8 @@ def test_selector_records_scope_and_never_forwards_live_flags(tmp_path, monkeypa
         )
         assert record["base"] == "fixture"
         assert record["status"] == ("passed" if mode == "run" else "failed")
+        assert record["finished_at"]
+        assert "private process payload" not in json.dumps(record)
     else:
         affected.main()
         assert not (tmp_path / ".artifacts").exists()

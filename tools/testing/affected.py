@@ -15,7 +15,7 @@ import psutil
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tools.reporting import comparison_base, message, policy
+from tools.reporting import atomic_json, comparison_base, message, policy
 from tools.runtime.processes import run_owned
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -108,21 +108,22 @@ def main() -> None:
     if args.coverage and not args.all:
         parser.error("--coverage requires --all")
     record = ROOT / ".artifacts/records/reports/affected" / (uuid4().hex + ".json")
+    started_at = datetime.now(UTC).isoformat()
     try:
         changes = changed(ROOT, args.base)
     except (OSError, subprocess.SubprocessError) as error:
         if not args.plan and not args.selection_hash:
             record.parent.mkdir(parents=True, exist_ok=True)
-            record.write_text(
-                json.dumps(
-                    {
-                        "scope": "python-all" if args.all else "python-related",
-                        "base": args.base,
-                        "status": "failed",
-                        "failure_type": type(error).__name__,
-                    }
-                ),
-                encoding="utf-8",
+            atomic_json(
+                record,
+                {
+                    "scope": "python-all" if args.all else "python-related",
+                    "base": args.base,
+                    "status": "failed",
+                    "failure_type": type(error).__name__,
+                    "started_at": started_at,
+                    "finished_at": datetime.now(UTC).isoformat(),
+                },
             )
         raise SystemExit(message("quality.selection_failed")) from None
     selected = list(TEST_ROOTS) if args.all else related(ROOT, changes)
@@ -136,7 +137,7 @@ def main() -> None:
         "changes": sorted(changes),
         "selected": selected,
         "selection_sha256": selection_sha256,
-        "started_at": datetime.now(UTC).isoformat(),
+        "started_at": started_at,
         "status": "planned",
     }
     if args.plan:
@@ -146,7 +147,7 @@ def main() -> None:
     payload.update(
         status="running", owner_pid=os.getpid(), owner_started=psutil.Process().create_time()
     )
-    record.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic_json(record, payload)
     env = {
         key: value
         for key, value in os.environ.items()
@@ -166,8 +167,12 @@ def main() -> None:
     if (ROOT / "tests/system/e2e/package/test_installed_wheel.py").is_file():
         wheels = list((ROOT / ".artifacts/dist").glob("komaquill-*.whl"))
         if len(wheels) != 1:
-            payload.update(status="blocked", failure_code="wheel_unavailable")
-            record.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            payload.update(
+                status="blocked",
+                failure_code="wheel_unavailable",
+                finished_at=datetime.now(UTC).isoformat(),
+            )
+            atomic_json(record, payload)
             raise SystemExit(message("quality.select_one_wheel"))
         env["KOMAQUILL_WHEEL"] = str(wheels[0].resolve())
         env["KOMAQUILL_ACCEPTANCE_REPORT_DIR"] = str(record.parent / record.stem / "package")
@@ -216,8 +221,11 @@ def main() -> None:
     except (OSError, KeyboardInterrupt, RuntimeError):
         result = 1
         payload.update(status="interrupted", exit_code=result)
+    except Exception as error:
+        result = 1
+        payload.update(status="failed", exit_code=result, failure_type=type(error).__name__)
     payload["finished_at"] = datetime.now(UTC).isoformat()
-    record.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    atomic_json(record, payload)
     raise SystemExit(result)
 
 

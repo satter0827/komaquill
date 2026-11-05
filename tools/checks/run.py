@@ -71,6 +71,9 @@ def main(scope: str = "daily", *, plan: bool = False) -> bool:
     except (OSError, subprocess.SubprocessError, RuntimeError, KeyboardInterrupt):
         success = False
         payload.update(status="interrupted", exit_code=None)
+    except Exception as error:
+        success = False
+        payload.update(status="failed", exit_code=None, failure_type=type(error).__name__)
     payload["finished_at"] = datetime.now(UTC).isoformat()
     atomic_json(report / "checks.json", payload)
     print(str(report / "checks.json"))

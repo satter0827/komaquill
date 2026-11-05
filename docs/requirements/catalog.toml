@@ -559,6 +559,7 @@ status = "implemented"
 implementation_note = "既存Base UIへ小窓とモーダルを委譲し、共通の配色・文字サイズ・操作部品を全画面で使う。末尾追従は専用ライブラリーを使い、公開APIと保存形式は変更しない。"
 acceptance = [
     "日英、文字拡大、通常とコンパクト、広い画面と狭い画面で本文と操作が読め、横にはみ出さない",
+    "短い画面と文字200%でも発言欄と送信操作を表示し、送信待ちの行動を補助操作より先に確認・編集できる",
     "入力を含む小窓は下書きを保持し、閉じる操作と行動追加後のフォーカス復帰を確認する",
     "場面画像は履歴と同じ領域をスクロールし、本文とアルバムの画像の縦横比を保つ",
     "新しい返答と画像の読み込みで過去を読む位置を奪わず、明示操作で末尾へ戻れる",
@@ -566,4 +567,4 @@ acceptance = [
     "行動の版確認と必要な外見確認を閉じた小窓へ隠さず、保存・接続・受付・回収の契約を維持する",
 ]
 sources = ["src/frontend/src/app/styles.css", "src/frontend/src/app/shell.tsx", "src/frontend/src/components/ui/popup.tsx", "src/frontend/src/features/conversations.tsx"]
-tests = ["tests/e2e/web/cherry-ui.spec.ts", "tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/layout-availability.spec.ts", "src/frontend/tests/conversations.test.tsx"]
+tests = ["tests/e2e/web/cherry-ui.spec.ts", "tests/e2e/web/reflow.spec.ts", "tests/e2e/web/accessibility.spec.ts", "tests/e2e/web/layout-availability.spec.ts", "src/frontend/tests/conversations.test.tsx"]

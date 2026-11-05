@@ -110,7 +110,7 @@ h3 {
   --focus-ring: #ffc5db;
 }
 .navigation {
-  width: 248px;
+  width: 15.5rem;
   min-height: 0;
   overflow-y: auto;
   color: #fff6f7;
@@ -125,6 +125,8 @@ h3 {
 }
 .brand {
   display: flex;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   gap: var(--space-field);
   align-items: center;
   font-size: 1.75rem;
@@ -374,19 +376,26 @@ textarea {
   padding: var(--space-group) var(--space-page);
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
+  min-height: var(--control-height);
+  overflow-y: auto;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-group);
   background: var(--canvas);
 }
 .conversation-header > div {
-  min-width: 0;
+  min-width: min(100%, 8em);
   flex: 1;
+}
+.conversation-header > button {
+  flex-shrink: 0;
 }
 .conversation-header h2 {
   margin: 0;
   font-size: clamp(1.25rem, 2vw, 1.75rem);
   font-weight: 750;
+  overflow-wrap: anywhere;
 }
 .turns {
   padding: var(--space-section) var(--space-page);
@@ -454,9 +463,21 @@ textarea {
   margin-inline: auto;
   padding: var(--space-group) var(--space-section);
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  max-height: 55%;
+  min-height: 0;
   gap: var(--space-field);
   flex-shrink: 0;
   border-top: 1px solid var(--line);
+  background: var(--canvas);
+}
+.composer-options {
+  display: grid;
+  gap: var(--space-field);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-field);
+  margin: calc(-1 * var(--space-field));
 }
 .composer {
   display: grid;
@@ -688,7 +709,8 @@ dd {
     width: 100%;
   }
   .mobile-header {
-    height: 58px;
+    min-height: 58px;
+    flex-shrink: 0;
     display: flex;
     gap: var(--space-group);
     align-items: center;
@@ -1422,7 +1444,7 @@ details > .details-content {
   top: 0;
   left: 0;
   transform: none;
-  width: min(300px, calc(100vw - 24px));
+  width: min(18.75rem, calc(100vw - 24px));
   height: 100dvh;
   max-height: 100dvh;
   border-radius: 0 24px 24px 0;
@@ -1469,9 +1491,15 @@ html[data-density='compact'] {
   }
 }
 @media (max-height: 550px) {
+  .turns {
+    padding-block: var(--space-field);
+  }
   .composer-area,
   .conversation-header {
     padding: var(--space-field) var(--space-group);
+  }
+  .composer-area {
+    max-height: calc(100% - 2 * var(--control-height));
   }
   .composer textarea {
     min-height: 44px;

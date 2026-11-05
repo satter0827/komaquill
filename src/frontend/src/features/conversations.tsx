@@ -690,182 +690,188 @@ function ConversationView({ identity }: { identity: string }) {
               {messages.latestReply}
             </Button>
           )}
-          {send.error && (
-            <p role="alert" className="error">
-              {failure(send.error)}
-              {prepared && (
-                <Button
-                  onClick={() => void operation.refetch()}
-                  disabled={operation.isFetching}
-                >
-                  {messages.retryRequest}
-                </Button>
-              )}
-            </p>
-          )}
-          {latestOperation?.error && !latestOperation.input && (
-            <p role="alert" className="error">
-              <span>{messages.replyFailedAfterAcceptance}</span>{' '}
-              <span>{failure({ code: latestOperation.error })}</span>
-            </p>
-          )}
-          {latestOperation?.can_resume && (
-            <Button
-              disabled={resume.isPending || !!busy}
-              onClick={() =>
-                resume.mutate({
-                  path: { identity: latestOperation.id },
-                  query: { allow_real_llm: true },
-                })
-              }
-            >
-              {messages.resumeOperation}
-            </Button>
-          )}
-          {resume.error && (
-            <p role="alert" className="error">
-              {failure(resume.error)}
-            </p>
-          )}
-          {sampleDrawing && (
-            <p className="subtle">
-              {messages.sampleDrawingUnavailable}{' '}
-              <Link to="/new">{messages.newConversation}</Link>
-            </p>
-          )}
-          <CreationStatus creation={drawing} />
-          <div className="composer-tools">
-            <Popover.Root>
-              <Popover.Trigger render={<Button />}>
-                {messages.drawingSettings}
-              </Popover.Trigger>
-              <Popup label={messages.drawingSettings}>
-                {actionControls.queued && (
-                  <p className="subtle">{messages.unsentDrawing}</p>
-                )}
-                <label>
-                  {messages.drawingSubjects}
-                  <select
-                    value={subjects}
-                    onChange={(event) => {
-                      setSubjects(event.target.value as typeof subjects)
-                      if (event.target.value === 'pair')
-                        setViewpoint('observer')
-                    }}
-                  >
-                    <option value="character">{messages.partnerOnly}</option>
-                    <option value="pair">{messages.bothPeople}</option>
-                    <option value="environment">
-                      {messages.environmentOnly}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  {messages.viewpoint}
-                  <select
-                    value={viewpoint}
-                    onChange={(event) =>
-                      setViewpoint(event.target.value as typeof viewpoint)
-                    }
-                  >
-                    <option value="player">{messages.playerView}</option>
-                    <option value="observer">{messages.observerView}</option>
-                  </select>
-                </label>
-              </Popup>
-            </Popover.Root>
-            <Button
-              className="draw-button"
-              aria-label={messages.drawScene}
-              title={messages.drawScene}
-              disabled={
-                !!busy ||
-                needsReview ||
-                drawing.busy ||
-                sampleDrawing ||
-                !drawAvailability.ready
-              }
-              onClick={() =>
-                drawing.start({
-                  kind: 'conversation_image',
-                  subjects,
-                  viewpoint,
-                  target_id: identity,
-                  expected_revision: conversation.revision,
-                  locale: preferences.value.locale,
-                  llm_profile: conversation.definition.llm_profile,
-                  allow_real_llm: true,
-                })
-              }
-            >
-              <Feather size={18} aria-hidden="true" />
-              <span>{messages.drawScene}</span>
-            </Button>
-            <Popover.Root open={actionOpen} onOpenChange={setActionOpen}>
-              <Popover.Trigger render={<Button className="action-editor" />}>
-                {messages.addAction}
-              </Popover.Trigger>
-              <Popup
-                label={messages.addAction}
-                ref={actionEditor}
-                initialFocus={() =>
-                  actionEditor.current?.querySelector('select') ?? true
-                }
-                finalFocus={messageInput}
-              >
-                <PlayerActions
-                  conversation={conversation}
-                  busy={!!busy || needsReview}
-                  controls={actionControls}
-                  onQueued={() => {
-                    setActionOpen(false)
-                  }}
-                />
-              </Popup>
-            </Popover.Root>
-            {!busy &&
-              (conversation.turn_count ?? 0) > 0 &&
-              !latestOperation?.error && (
-                <p className="saved-indicator">{messages.conversationSaved}</p>
-              )}
-          </div>
-          {actionControls.queued && (
-            <div className="queued-action">
-              <ActionDescription action={actionControls.queued.action} />
-              {actionControls.queued.revision !== conversation.revision && (
-                <div role="alert">
-                  <p>{messages.reviewAction}</p>
+          <div className="composer-options">
+            {send.error && (
+              <p role="alert" className="error">
+                {failure(send.error)}
+                {prepared && (
                   <Button
-                    disabled={!!busy}
-                    onClick={actionControls.confirmRevision}
+                    onClick={() => void operation.refetch()}
+                    disabled={operation.isFetching}
                   >
-                    {messages.confirmCurrentAction}
+                    {messages.retryRequest}
                   </Button>
-                </div>
-              )}
+                )}
+              </p>
+            )}
+            {latestOperation?.error && !latestOperation.input && (
+              <p role="alert" className="error">
+                <span>{messages.replyFailedAfterAcceptance}</span>{' '}
+                <span>{failure({ code: latestOperation.error })}</span>
+              </p>
+            )}
+            {latestOperation?.can_resume && (
               <Button
-                disabled={!!busy}
-                aria-label={messages.editQueuedAction}
-                onClick={() => {
-                  actionControls.edit()
-                  setActionOpen(true)
-                }}
+                disabled={resume.isPending || !!busy}
+                onClick={() =>
+                  resume.mutate({
+                    path: { identity: latestOperation.id },
+                    query: { allow_real_llm: true },
+                  })
+                }
               >
-                {messages.edit}
+                {messages.resumeOperation}
               </Button>
-              <Button
-                disabled={!!busy}
-                aria-label={messages.removeQueuedAction}
-                onClick={actionControls.clear}
-              >
-                {messages.cancel}
-              </Button>
-            </div>
-          )}
+            )}
+            {resume.error && (
+              <p role="alert" className="error">
+                {failure(resume.error)}
+              </p>
+            )}
+            {sampleDrawing && (
+              <p className="subtle">
+                {messages.sampleDrawingUnavailable}{' '}
+                <Link to="/new">{messages.newConversation}</Link>
+              </p>
+            )}
+            <CreationStatus creation={drawing} />
+            {actionControls.queued && (
+              <div className="queued-action">
+                <ActionDescription action={actionControls.queued.action} />
+                {actionControls.queued.revision !== conversation.revision && (
+                  <div role="alert">
+                    <p>{messages.reviewAction}</p>
+                    <Button
+                      disabled={!!busy}
+                      onClick={actionControls.confirmRevision}
+                    >
+                      {messages.confirmCurrentAction}
+                    </Button>
+                  </div>
+                )}
+                <Button
+                  disabled={!!busy}
+                  aria-label={messages.editQueuedAction}
+                  onClick={() => {
+                    actionControls.edit()
+                    setActionOpen(true)
+                  }}
+                >
+                  {messages.edit}
+                </Button>
+                <Button
+                  disabled={!!busy}
+                  aria-label={messages.removeQueuedAction}
+                  onClick={actionControls.clear}
+                >
+                  {messages.cancel}
+                </Button>
+              </div>
+            )}
 
-          {actionControls.queued && (
-            <p className="subtle composer-hint">{messages.actionWithMessage}</p>
-          )}
+            {actionControls.queued && (
+              <p className="subtle composer-hint">
+                {messages.actionWithMessage}
+              </p>
+            )}
+            <div className="composer-tools">
+              <Popover.Root>
+                <Popover.Trigger render={<Button />}>
+                  {messages.drawingSettings}
+                </Popover.Trigger>
+                <Popup label={messages.drawingSettings}>
+                  {actionControls.queued && (
+                    <p className="subtle">{messages.unsentDrawing}</p>
+                  )}
+                  <label>
+                    {messages.drawingSubjects}
+                    <select
+                      value={subjects}
+                      onChange={(event) => {
+                        setSubjects(event.target.value as typeof subjects)
+                        if (event.target.value === 'pair')
+                          setViewpoint('observer')
+                      }}
+                    >
+                      <option value="character">{messages.partnerOnly}</option>
+                      <option value="pair">{messages.bothPeople}</option>
+                      <option value="environment">
+                        {messages.environmentOnly}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    {messages.viewpoint}
+                    <select
+                      value={viewpoint}
+                      onChange={(event) =>
+                        setViewpoint(event.target.value as typeof viewpoint)
+                      }
+                    >
+                      <option value="player">{messages.playerView}</option>
+                      <option value="observer">{messages.observerView}</option>
+                    </select>
+                  </label>
+                </Popup>
+              </Popover.Root>
+              <Button
+                className="draw-button"
+                aria-label={messages.drawScene}
+                title={messages.drawScene}
+                disabled={
+                  !!busy ||
+                  needsReview ||
+                  drawing.busy ||
+                  sampleDrawing ||
+                  !drawAvailability.ready
+                }
+                onClick={() =>
+                  drawing.start({
+                    kind: 'conversation_image',
+                    subjects,
+                    viewpoint,
+                    target_id: identity,
+                    expected_revision: conversation.revision,
+                    locale: preferences.value.locale,
+                    llm_profile: conversation.definition.llm_profile,
+                    allow_real_llm: true,
+                  })
+                }
+              >
+                <Feather size={18} aria-hidden="true" />
+                <span>{messages.drawScene}</span>
+              </Button>
+              <Popover.Root open={actionOpen} onOpenChange={setActionOpen}>
+                <Popover.Trigger render={<Button className="action-editor" />}>
+                  {messages.addAction}
+                </Popover.Trigger>
+                <Popup
+                  label={messages.addAction}
+                  ref={actionEditor}
+                  initialFocus={() =>
+                    actionEditor.current?.querySelector('select') ?? true
+                  }
+                  finalFocus={messageInput}
+                >
+                  <PlayerActions
+                    conversation={conversation}
+                    busy={!!busy || needsReview}
+                    controls={actionControls}
+                    onQueued={() => {
+                      setActionOpen(false)
+                    }}
+                  />
+                </Popup>
+              </Popover.Root>
+              {!busy &&
+                (conversation.turn_count ?? 0) > 0 &&
+                !latestOperation?.error && (
+                  <p className="saved-indicator">
+                    {messages.conversationSaved}
+                  </p>
+                )}
+            </div>
+          </div>
           <form
             className="composer"
             onSubmit={(event) => {

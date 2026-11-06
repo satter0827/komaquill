@@ -71,6 +71,14 @@ test('exercises the conversation runner with a scripted provider and safe failur
     (error: { code: number }) => error,
   )
   expect(inventoryFailure?.code).toBe(1)
+  const inventoryDiagnostic = JSON.parse(
+    await readFile(
+      info.outputPath('inventory-mismatch/browser-failure.json'),
+      'utf8',
+    ),
+  )
+  expect(inventoryDiagnostic.check).toBe('inventory_unchanged')
+  expect(inventoryDiagnostic.operation_id).toBeNull()
   const marker = 'private-order-marker'
   const rejected = await run('mismatch', [marker, messages[1]]).then(
     () => null,

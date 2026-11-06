@@ -46,6 +46,8 @@ function inspectInventory(saved) {
   }
 }
 let status = 'failed'
+let check = 'open_conversation'
+let operationId = null
 try {
   await page.goto(`/conversations/${config.conversation}`)
   await page.getByRole('textbox', { name: ja.messageLabel }).waitFor()
@@ -66,6 +68,7 @@ try {
         await page
           .getByRole('textbox', { name: ja.messageLabel })
           .fill(config.messages[index])
+        check = 'accept_input'
         const [response] = await Promise.all([
           page.waitForResponse(
             (response) =>
@@ -76,6 +79,8 @@ try {
         ])
         assert.equal(response.status(), 202)
         const operation = await response.json()
+        operationId = operation.id
+        check = 'operation_complete'
         let complete = false
         while (Date.now() < Date.parse(config.expires_at)) {
           const observed = await api.get(`/api/v1/operations/${operation.id}`)
@@ -101,11 +106,15 @@ try {
         const turn = page
           .locator('article.turn')
           .filter({ hasText: config.messages[index] })
+        check = 'reply_visible'
         await turn.locator('.assistant-message').waitFor()
         saved = await (await api.get(apiPath)).json()
+        check = 'inventory_unchanged'
         inspectInventory(saved)
+        check = 'turn_saved'
         assert.equal(saved.turn_count, index + 1)
         const latest = await (await api.get(apiPath + '/turns?limit=1')).json()
+        check = 'reply_content'
         assert(latest.items[0].assistant.trim().length > 0)
         if (config.expected_character_name && (index === 0 || index === 18))
           assert(
@@ -113,9 +122,12 @@ try {
           )
         assert(!Object.hasOwn(saved.state, 'character_place'))
         const expectedPlace = config.expected_places?.[String(index)]
+        check = 'shared_place'
         if (expectedPlace) assert.equal(saved.state.place, expectedPlace)
+        check = 'recalled_password'
         if (index === 16)
           assert(latest.items[0].assistant.includes('銀のコンパス'))
+        check = 'corrected_appointment'
         if (index === 17) {
           assert(/四時|4時|４時|16時|１６時/.test(latest.items[0].assistant))
           assert(latest.items[0].assistant.includes('土曜'))
@@ -128,7 +140,9 @@ try {
     }
   }
   await page.reload()
+  check = 'inventory_unchanged'
   inspectInventory(saved)
+  check = 'restored_turn_order'
   await page
     .locator('.assistant-message')
     .nth(config.target_turns - 1)
@@ -143,13 +157,16 @@ try {
       restored.every((text, index) => text === config.messages[index]),
     'The saved message order differs from the scenario.',
   )
+  check = 'unexpected_images'
   assert.equal((await (await api.get(apiPath + '/images')).json()).length, 0)
   status = 'passed'
 } catch (error) {
-  await jsonFile(
-    path.join(directory, 'browser-failure.json'),
-    diagnostic(error),
-  )
+  await jsonFile(path.join(directory, 'browser-failure.json'), {
+    format_version: 1,
+    ...diagnostic(error),
+    check,
+    operation_id: operationId,
+  })
 } finally {
   await evidence.capture('Final long conversation after reload')
   const result = await evidence.finish(status, 'passed')

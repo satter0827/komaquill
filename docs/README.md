@@ -12,7 +12,7 @@
 | モデルの実行・来歴・評価 | [モデル運用](current/model-operations.md) |
 | 機能別の設計 | [会話と画像](current/web.md)、[操作と接続確認](current/operations-and-availability.md)、[状態と記憶](current/execution-and-content.md) |
 | テストの範囲と実行 | [検証方針](verification/strategy.md)、[検証資料](verification/README.md) |
-| 再設計の確認結果 | [基本動作・保存・検証基盤](verification/results/reliability-redesign.md)、[保存と障害境界の再レビュー](verification/results/reliability-review.md)、[T4標準画面の最終確認](verification/results/standard-ui-final.md) |
+| 再設計の確認結果 | [基本動作・保存・検証基盤](verification/results/reliability-redesign.md)、[保存と障害境界の再レビュー](verification/results/reliability-review.md)、[会話の継続と表示](verification/results/conversation-continuity.md)、[T4標準画面の最終確認](verification/results/standard-ui-final.md) |
 | 設計判断 | [再設計の判断](decisions/0022-reliability-and-storage.md) |
 | 未完了の作業 | [今後の対象](plans/future.md) |
 

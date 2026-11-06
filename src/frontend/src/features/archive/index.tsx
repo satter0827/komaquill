@@ -2,23 +2,27 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import { StoryReply } from '../../shared/story/reply'
-import { useFailure, useMessages } from '../../shared/preferences'
+import { useMessages } from '../../shared/preferences'
+import { QueryNotice } from '../../shared/ui/query-notice'
 
 export function ArchivedConversations() {
   const m = useMessages()
-  const failure = useFailure()
   const query = useQuery({
     ...q.listArchivedConversationsOptions(),
   })
-  if (query.error)
-    return (
-      <p role="alert" className="error">
-        {failure(query.error)}
-      </p>
-    )
-  if (!query.data?.length) return null
+  const notice = (
+    <QueryNotice
+      error={query.error}
+      retained={!!query.data}
+      pending={query.isFetching}
+      onRetry={() => void query.refetch()}
+    />
+  )
+  if (query.error && !query.data) return notice
+  if (!query.data?.length) return notice
   return (
     <section>
+      {notice}
       <h2>{m.archivedTitle}</h2>
       <div className="recent-cards">
         {query.data.map((item) => (
@@ -34,19 +38,22 @@ export function ArchivedConversations() {
 export function ArchivedConversationPage() {
   const { identity = '' } = useParams()
   const m = useMessages()
-  const failure = useFailure()
   const query = useQuery({
     ...q.getArchivedConversationOptions({ path: { identity } }),
   })
-  if (query.error)
-    return (
-      <p role="alert" className="error">
-        {failure(query.error)}
-      </p>
-    )
+  const notice = (
+    <QueryNotice
+      error={query.error}
+      retained={!!query.data}
+      pending={query.isFetching}
+      onRetry={() => void query.refetch()}
+    />
+  )
+  if (query.error && !query.data) return notice
   if (!query.data) return <p>{m.loading}</p>
   return (
     <section className="page">
+      {notice}
       <h1>{query.data.title}</h1>
       <p>{m.archivedNotice}</p>
       <Link to="/new">{m.newConversation}</Link>

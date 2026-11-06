@@ -31,6 +31,7 @@ import {
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { QueryNotice } from '../../shared/ui/query-notice'
 import { Dialog, Modal, Popover, Popup } from '../../shared/ui/popup'
 import { useMediaQuery } from '../../shared/viewport'
 import { StoryReply } from '../../shared/story/reply'
@@ -303,11 +304,13 @@ function ConversationView({
     identity,
     conversation: detail.data,
   })
-  if (detail.error)
+  if (detail.error && !detail.data)
     return (
-      <p role="alert" className="error">
-        {failure(detail.error)}
-      </p>
+      <QueryNotice
+        error={detail.error}
+        pending={detail.isFetching}
+        onRetry={() => void detail.refetch()}
+      />
     )
   if (!detail.data) return <p className="loading">{messages.loading}</p>
   const conversation = {
@@ -316,6 +319,7 @@ function ConversationView({
       ? [...history.data.pages].reverse().flatMap((page) => page.items)
       : (detail.data.turns ?? []),
   }
+  const companionPlace = conversation.state?.character_place
   const replyPending =
     send.isPending ||
     (send.isError && prepared !== null) ||
@@ -324,12 +328,16 @@ function ConversationView({
       ['accepted', 'running'].includes(value.state),
     )
   const busy =
-    actionControls.unresolved || !!reviewControls.prepared || replyPending
+    actionControls.unresolved ||
+    !!reviewControls.prepared ||
+    replyPending ||
+    !!detail.error
   const needsReview = !!(
     conversation.definition.user?.visual_review_required ||
     conversation.definition.character?.visual_review_required
   )
   const canSend =
+    !detail.error &&
     !needsReview &&
     sendAvailability.ready &&
     (!actionControls.queued ||
@@ -528,11 +536,16 @@ function ConversationView({
             <h2>{conversation.definition.title}</h2>
           </div>
           <Popover.Root>
-            <Popover.Trigger render={<Button variant="ghost" />}>
+            <Popover.Trigger
+              render={<Button variant="ghost" disabled={!!detail.error} />}
+            >
               {messages.conversationMenu}
             </Popover.Trigger>
             <Popup label={messages.conversationMenu} keepMounted>
-              <ConversationNotes conversation={conversation} />
+              <ConversationNotes
+                conversation={conversation}
+                canMutate={!detail.error}
+              />
             </Popup>
           </Popover.Root>
           <Button
@@ -543,6 +556,12 @@ function ConversationView({
             <PanelRight size={18} />
           </Button>
         </header>
+        <QueryNotice
+          error={detail.error}
+          retained
+          pending={detail.isFetching}
+          onRetry={() => void detail.refetch()}
+        />
         <div
           className="turns"
           role="log"
@@ -559,16 +578,6 @@ function ConversationView({
                 />
               </div>
             )}
-            {conversation.state?.character_place !==
-              conversation.state?.place && (
-              <p className="presence-notice">
-                {formatMessage('companionAway', {
-                  place:
-                    conversation.state?.character_place ||
-                    messages.notSpecified,
-                })}
-              </p>
-            )}
             {(drawings.data ?? [])
               .filter((job) => !job.turn_id)
               .map((job) => (
@@ -576,7 +585,7 @@ function ConversationView({
                   <Drawing job={job} />
                 </div>
               ))}
-            {timeline.length === 0 && (
+            {timeline.length === 0 && !conversation.turn_count && (
               <div className="conversation-empty">
                 <Sparkles size={30} />
                 <h2>{messages.newChapter}</h2>
@@ -594,7 +603,15 @@ function ConversationView({
                 {messages.olderTurns}
               </Button>
             )}
-            {history.error && <p role="alert">{failure(history.error)}</p>}
+            {!!conversation.turn_count && history.isPending && (
+              <p role="status">{messages.loading}</p>
+            )}
+            <QueryNotice
+              error={history.error}
+              retained={!!history.data}
+              pending={history.isFetching}
+              onRetry={() => void history.refetch()}
+            />
             {timeline.map((entry) => {
               if (entry.kind === 'input')
                 return (
@@ -676,6 +693,7 @@ function ConversationView({
                     />
                     <SceneActions
                       conversation={conversation}
+                      canMutate={!detail.error}
                       turnId={turn.operation_id}
                     />
                     {turn.image_id && <ImageResult identity={turn.image_id} />}
@@ -718,6 +736,32 @@ function ConversationView({
             </Button>
           )}
           <div className="composer-options" ref={composerOptions}>
+            {conversation.state?.character_place !==
+              conversation.state?.place && (
+              <div className="presence-notice" role="status">
+                <p>
+                  {formatMessage('companionAway', {
+                    place:
+                      conversation.state?.character_place ||
+                      messages.notSpecified,
+                  })}
+                </p>
+                {!!companionPlace && !actionControls.queued && (
+                  <Button
+                    disabled={!!busy}
+                    onClick={() => {
+                      actionControls.clear()
+                      actionControls.queue({
+                        kind: 'move',
+                        destination: companionPlace,
+                      })
+                    }}
+                  >
+                    {messages.joinCompanion}
+                  </Button>
+                )}
+              </div>
+            )}
             {send.error && (
               <p role="alert" className="error">
                 {failure(send.error)}
@@ -850,7 +894,8 @@ function ConversationView({
                   needsReview ||
                   drawing.busy ||
                   sampleDrawing ||
-                  !drawAvailability.ready
+                  !drawAvailability.ready ||
+                  !!detail.error
                 }
                 onClick={() =>
                   drawing.start({

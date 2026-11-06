@@ -37,7 +37,7 @@
         "{workspaceRoot}/pnpm-lock.yaml"
       ],
       "options": {
-        "command": "node --test tests/tools/integration/web/evidence.test.mjs"
+        "command": "node --test tests/tools/integration/web/evidence.test.mjs tests/tools/integration/web/readiness.test.mjs"
       }
     },
     "typecheck": {

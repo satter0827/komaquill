@@ -27,6 +27,7 @@ import {
   useFormatMessage,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { QueryNotice } from '../../shared/ui/query-notice'
 import { CreationStatus, useCreation } from '../../shared/creation'
 import {
   creationOptions,
@@ -249,22 +250,28 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
 
 export function PlayerPage() {
   const m = useMessages()
-  const failure = useFailure()
   const [search] = useSearchParams()
   const query = useQuery(q.getPlayerOptions())
-  if (query.error)
-    return (
-      <p className="error" role="alert">
-        {failure(query.error)}
-      </p>
-    )
+  const notice = (
+    <QueryNotice
+      error={query.error}
+      retained={!!query.data}
+      pending={query.isFetching}
+      onRetry={() => void query.refetch()}
+    />
+  )
+  if (query.error && !query.data) return notice
   if (!query.data) return <p className="page">{m.loading}</p>
   return (
-    <PresetEditor
-      kind="player"
-      preset={query.data}
-      returnTo={search.get('returnTo')}
-    />
+    <>
+      {notice}
+      <PresetEditor
+        kind="player"
+        canMutate={!query.error}
+        preset={query.data}
+        returnTo={search.get('returnTo')}
+      />
+    </>
   )
 }
 
@@ -283,12 +290,15 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
   })
   const query = kind === 'character' ? characters : stories
   const [search] = useSearchParams()
-  if (query.error)
-    return (
-      <p className="error" role="alert">
-        {failure(query.error)}
-      </p>
-    )
+  const notice = (
+    <QueryNotice
+      error={query.error}
+      retained={!!query.data}
+      pending={query.isFetching}
+      onRetry={() => void query.refetch()}
+    />
+  )
+  if (query.error && !query.data) return notice
   if (!query.data) return <p className="page">{m.loading}</p>
   if (identity) {
     const preset =
@@ -298,12 +308,16 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
     if (identity !== 'new' && !preset)
       return <p className="page">{failure({ code: 'request_not_found' })}</p>
     return (
-      <PresetEditor
-        key={`${kind}:${identity}`}
-        kind={kind}
-        preset={preset}
-        returnTo={search.get('returnTo')}
-      />
+      <>
+        {notice}
+        <PresetEditor
+          key={`${kind}:${identity}`}
+          kind={kind}
+          preset={preset}
+          canMutate={!query.error}
+          returnTo={search.get('returnTo')}
+        />
+      </>
     )
   }
   const eyebrow =
@@ -318,6 +332,7 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
   )
   return (
     <section className="page library-page">
+      {notice}
       <div className="page-heading">
         <div>
           <div className="eyebrow">{eyebrow}</div>
@@ -343,10 +358,12 @@ function PresetEditor({
   kind,
   preset,
   returnTo,
+  canMutate,
 }: {
   kind: Kind
   preset?: Preset
   returnTo: string | null
+  canMutate: boolean
 }) {
   const m = useMessages()
   const failure = useFailure()
@@ -555,7 +572,7 @@ function PresetEditor({
         <form
           onSubmit={(event) => {
             event.preventDefault()
-            saveCurrent()
+            if (canMutate) saveCurrent()
           }}
         >
           <fieldset
@@ -602,7 +619,7 @@ function PresetEditor({
               <Button
                 variant="primary"
                 type="submit"
-                disabled={!value.name?.trim()}
+                disabled={!canMutate || !value.name?.trim()}
               >
                 {mutation.isPending ? m.saving : m.save}
               </Button>
@@ -610,12 +627,13 @@ function PresetEditor({
                 <>
                   <Button
                     onClick={() => duplicateAction.mutate()}
-                    disabled={duplicateAction.isPending}
+                    disabled={!canMutate || duplicateAction.isPending}
                   >
                     {m.duplicate}
                   </Button>
                   <Button
                     variant="danger"
+                    disabled={!canMutate}
                     onClick={() => setConfirmDelete(true)}
                   >
                     {m.delete}
@@ -630,7 +648,7 @@ function PresetEditor({
           {mutation.isError && pendingSave && (
             <Button
               onClick={() => mutation.mutate(pendingSave)}
-              disabled={mutation.isPending}
+              disabled={!canMutate || mutation.isPending}
             >
               {m.retrySave}
             </Button>
@@ -652,7 +670,7 @@ function PresetEditor({
               <p>{m.removeNotice}</p>
               <Button
                 onClick={() => deletion.mutate()}
-                disabled={deletion.isPending}
+                disabled={!canMutate || deletion.isPending}
               >
                 {m.delete}
               </Button>
@@ -688,6 +706,7 @@ function PresetEditor({
                       imageCreation.start(imageRequest)
                   }}
                   disabled={
+                    !canMutate ||
                     mutation.isPending ||
                     imageCreation.busy ||
                     !!pendingSave ||
@@ -739,7 +758,10 @@ function PresetEditor({
                       })
                     }}
                     disabled={
-                      draft.busy || !idea.trim() || !draftAvailability.ready
+                      !canMutate ||
+                      draft.busy ||
+                      !idea.trim() ||
+                      !draftAvailability.ready
                     }
                   >
                     {m.createDraft}

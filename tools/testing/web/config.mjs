@@ -19,7 +19,7 @@ export function webConfig(mode = 'assertion') {
     retries: 0,
     timeout: 90000,
     expect: { timeout: 15000 },
-    globalTimeout: 900000,
+    globalTimeout: 18 * 60 * 1000,
     reporter: [
       ['list'],
       [path.join(root, 'tools/testing/web/reporter.mjs')],

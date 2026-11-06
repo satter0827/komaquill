@@ -74,7 +74,7 @@ def history_messages(
     schema: str,
     read_history_hash: Callable[[int], str],
 ) -> tuple[list[tuple[str, str]], ConversationMemory | None]:
-    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.messages import HumanMessage, SystemMessage, convert_to_messages
 
     memory = conversation.memory
     offset = conversation.turn_offset
@@ -99,23 +99,30 @@ def history_messages(
             (tuple(memory_sources(turn).items()), turn.state, turn.notes)
             for turn in conversation.turns[begin:]
         ]
-        projected = []
+        projected: list[tuple[str, str]] = []
         position = begin + offset
         for (fields, _, _), repeated in groupby(original):
             count = sum(1 for _ in repeated)
             values = dict(fields)
             if "action" in values:
                 values["action"] = json.loads(values["action"])
-            projected.append({"turn": position, "consecutive_turns": count, **values})
+            for role, names in (
+                ("user", ("user", "action")),
+                ("assistant", ("assistant", "narration", "action_narration")),
+            ):
+                record = {
+                    "turn": position,
+                    "consecutive_turns": count,
+                    **{name: values[name] for name in names if name in values},
+                }
+                projected.append((role, json.dumps({"history": [record]}, ensure_ascii=False)))
             position += count
-        return (
-            [("user", json.dumps({"history": projected}, ensure_ascii=False))] if projected else []
-        )
+        return projected
 
     def context(begin: int, retained: ConversationMemory | None) -> list[BaseMessage]:
         return [
             SystemMessage(content=responder.system_text(request.operation_id, system(retained))),
-            *[HumanMessage(content=text) for _, text in pairs(begin)],
+            *convert_to_messages(pairs(begin)),
             HumanMessage(content=latest),
         ]
 

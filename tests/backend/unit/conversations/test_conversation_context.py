@@ -99,7 +99,6 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     from komaquill.adapters.llm.conversation import (
         DialogueResult,
         ExpressionPoseChange,
-        MovementChange,
         NarrativeReply,
         ObjectsChange,
         resolve_scene,
@@ -108,7 +107,6 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     for model in (
         DialogueResult,
         ExpressionPoseChange,
-        MovementChange,
         ObjectsChange,
         NarrativeReply,
     ):
@@ -122,6 +120,7 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
             Conversation(definition=ConversationInput(title="Limits")),
             DialogueResult(
                 kind="companion",
+                movement="stay",
                 changes=[ExpressionPoseChange(field="pose", value="x" * 1001)],
                 action_narration="",
                 text="Hello",
@@ -158,9 +157,17 @@ def test_history_projection_preserves_repetitions_and_distinct_state_boundaries(
     conversation = Conversation(
         definition=ConversationInput(title="Repeated turns"), turns=rows, turn_count=len(rows)
     )
+    counted_roles = []
     responder = SimpleNamespace(
         settings=SimpleNamespace(recent_turns=1, memory_max_batches=1),
-        budget=lambda *_: ContextBudget(32768, 32768, 512, 128, "{}"),
+        budget=lambda *_: ContextBudget(
+            32768,
+            32768,
+            512,
+            128,
+            "{}",
+            count=lambda entries: counted_roles.append([entry.type for entry in entries]) or 0,
+        ),
         system_text=lambda _, value: value,
     )
     messages, memory = history_messages(
@@ -172,7 +179,17 @@ def test_history_projection_preserves_repetitions_and_distinct_state_boundaries(
         "{}",
         lambda _: "",
     )
-    projected = json.loads(messages[0][1])["history"]
-    assert [(p["turn"], p["consecutive_turns"]) for p in projected] == [(0, 2), (2, 1), (3, 1)]
-    assert all(p["user"] == "Again" and p["assistant"] == "Yes" for p in projected)
+    assert [role for role, _ in messages] == ["user", "assistant"] * 3
+    for role, field, text in (("user", "user", "Again"), ("assistant", "assistant", "Yes")):
+        projected = [
+            entry
+            for kind, body in messages
+            if kind == role
+            for entry in json.loads(body)["history"]
+        ]
+        assert [(p["turn"], p["consecutive_turns"]) for p in projected] == [(0, 2), (2, 1), (3, 1)]
+        assert all(p[field] == text for p in projected)
+        other = "assistant" if role == "user" else "user"
+        assert all(other not in p for p in projected)
+    assert ["system", "human", "ai", "human", "ai", "human", "ai", "human"] in counted_roles
     assert memory is None and conversation.turns == rows

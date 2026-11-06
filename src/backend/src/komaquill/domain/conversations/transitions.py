@@ -2,37 +2,34 @@
 
 from komaquill.domain.conversations.models import Conversation, Reply
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.roleplay import ConversationState, StatePatch
+from komaquill.domain.roleplay import ConversationState
 
 
-def published_reply(conversation: Conversation, reply: Reply) -> Reply:
-    if reply.action_proposals:
-        return reply.model_copy(
-            update={
-                "text": "",
-                "narration": "",
-                "action_narration": "",
-                "state_patch": StatePatch(),
-            }
-        )
-    state = reply.state_patch.apply(conversation.state)
-    if state.character_place != state.place:
-        return reply.model_copy(
-            update={"text": "", "action_narration": "", "narration": state.scenery or state.place}
-        )
-    return reply.model_copy(update={"narration": state.scenery or state.place})
+def require_visible_reply(
+    before: ConversationState, state: ConversationState, text: str, action_narration: str
+) -> None:
+    content = bool(text.strip() or action_narration.strip())
+    present = state.character_place == state.place
+    new_scenery = bool(state.scenery.strip() and state.scenery != before.scenery)
+    if (not present and content) or (present and not content and not new_scenery):
+        raise KomaquillError(code="invalid_response", retryable=False)
 
 
 def apply_reply(conversation: Conversation, reply: Reply) -> ConversationState:
     before = conversation.state
     state = reply.state_patch.apply(before)
+    if not reply.action_proposals:
+        require_visible_reply(before, state, reply.text, reply.action_narration)
     if (
-        state.player != before.player
+        (
+            reply.action_proposals
+            and (reply.text or reply.narration or reply.action_narration or state != before)
+        )
+        or state.player != before.player
         or state.place != before.place
         or state.goal != before.goal
         or state.time != before.time
         or state.character.appearance != before.character.appearance
-        or (state.character_place != state.place and reply.text)
         or {item.id for item in state.character.held_objects or []}.intersection(
             item.id for item in state.player.held_objects or []
         )

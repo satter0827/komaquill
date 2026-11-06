@@ -443,7 +443,7 @@ def test_drawing_pair_requires_presence_and_wai(tmp_path, monkeypatch):
 
 def test_visible_companion_gestures_do_not_require_a_persistent_state_change(tmp_path):
     from komaquill.domain.conversations.models import Reply
-    from komaquill.domain.conversations.transitions import published_reply
+    from komaquill.domain.conversations.transitions import apply_reply
 
     api = Client.initialize(tmp_path)
     scene = create(api)
@@ -452,13 +452,13 @@ def test_visible_companion_gestures_do_not_require_a_persistent_state_change(tmp
         action_narration="The companion briefly nods.",
         state_patch={"character": {"held_objects": []}},
     )
-    assert published_reply(scene, unsupported).action_narration == unsupported.action_narration
+    apply_reply(scene, unsupported)
     supported = Reply(
         text="Hello.",
         action_narration="The companion smiles.",
         state_patch={"character": {"expression": "smiling"}},
     )
-    assert published_reply(scene, supported).action_narration == supported.action_narration
+    apply_reply(scene, supported)
 
 
 def test_operation_polling_and_current_actions_do_not_load_full_history(tmp_path, monkeypatch):

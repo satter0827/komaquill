@@ -20,7 +20,7 @@ from komaquill.domain.conversations.models import (
     SendInput,
     TurnRequest,
 )
-from komaquill.domain.conversations.transitions import apply_reply, published_reply
+from komaquill.domain.conversations.transitions import apply_reply
 from komaquill.domain.conversations.visuals import VisualReview
 from komaquill.domain.errors import FailureInfo, KomaquillError, OperationStage, failure_info
 
@@ -176,7 +176,7 @@ class ConversationService:
                 return self.repository.operation(identity)
             try:
                 conversation, request = self.repository.request(identity)
-                reply = published_reply(conversation, self.responder.reply(conversation, request))
+                reply = self.responder.reply(conversation, request)
                 apply_reply(conversation, reply)
             except KomaquillError as error:
                 if self.report_failure:

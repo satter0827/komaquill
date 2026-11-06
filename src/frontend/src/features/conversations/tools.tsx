@@ -14,8 +14,10 @@ import { Popover, Popup } from '../../shared/ui/popup'
 
 export function ConversationNotes({
   conversation,
+  canMutate,
 }: {
   conversation: Conversation
+  canMutate: boolean
 }) {
   const m = useMessages()
   const failure = useFailure()
@@ -73,6 +75,7 @@ export function ConversationNotes({
           <form
             onSubmit={(event) => {
               event.preventDefault()
+              if (!canMutate) return
               save.mutate({
                 path: { identity: conversation.id ?? '' },
                 body: {
@@ -89,7 +92,7 @@ export function ConversationNotes({
                 onChange={(event) => setDraft(event.target.value)}
               />
             </label>
-            <Button type="submit" disabled={save.isPending}>
+            <Button type="submit" disabled={!canMutate || save.isPending}>
               {prepared ? m.retrySave : m.save}
             </Button>
             {save.error && <p role="alert">{failure(save.error)}</p>}
@@ -131,6 +134,7 @@ export function ConversationNotes({
           <p>{bookmark.name}</p>
           <SceneActions
             conversation={conversation}
+            canMutate={canMutate}
             turnId={bookmark.turn_id}
             defaultName={bookmark.name}
           />
@@ -142,10 +146,12 @@ export function ConversationNotes({
 
 export function SceneActions({
   conversation,
+  canMutate,
   turnId,
   defaultName = '',
 }: {
   conversation: Conversation
+  canMutate: boolean
   turnId: string
   defaultName?: string
 }) {
@@ -211,7 +217,13 @@ export function SceneActions({
     <div className="scene-menu">
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger
-          render={<Button variant="ghost" aria-label={m.sceneActions} />}
+          render={
+            <Button
+              variant="ghost"
+              aria-label={m.sceneActions}
+              disabled={!canMutate}
+            />
+          }
         >
           <MoreHorizontal size={18} />
         </Popover.Trigger>
@@ -227,7 +239,10 @@ export function SceneActions({
           </label>
           <Button
             disabled={
-              save.isPending || fork.isPending || prepared?.kind === 'fork'
+              !canMutate ||
+              save.isPending ||
+              fork.isPending ||
+              prepared?.kind === 'fork'
             }
             onClick={() => save.mutate(request('save'))}
           >
@@ -235,7 +250,10 @@ export function SceneActions({
           </Button>
           <Button
             disabled={
-              save.isPending || fork.isPending || prepared?.kind === 'save'
+              !canMutate ||
+              save.isPending ||
+              fork.isPending ||
+              prepared?.kind === 'save'
             }
             onClick={() => fork.mutate(request('fork'))}
           >

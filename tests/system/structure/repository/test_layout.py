@@ -65,6 +65,24 @@ def test_frontend_test_execution_has_one_owner_in_the_effective_nx_graph():
     assert "frontend" in projects["frontend-tests"]["implicitDependencies"]
 
 
+def test_browser_tests_track_the_scripts_they_execute_in_the_effective_nx_graph():
+    import json
+    import os
+    import subprocess
+
+    result = subprocess.run(
+        ["node", "tools/runtime/nx.mjs", "show", "project", "e2e", "--json"],
+        cwd=ROOT,
+        env={**os.environ, "NX_DAEMON": "false"},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=45,
+    )
+    project = json.loads(result.stdout)
+    assert "scripts" in project["implicitDependencies"]
+
+
 def test_pipeline_deadline_outlives_python_and_browser_suite_deadlines(tmp_path):
     import json
     import os

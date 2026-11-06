@@ -1,6 +1,6 @@
 {
   "name": "e2e",
-  "implicitDependencies": ["frontend", "backend", "contracts"],
+  "implicitDependencies": ["frontend", "backend", "contracts", "scripts"],
   "targets": {
     "lint": {
       "executor": "nx:run-commands",

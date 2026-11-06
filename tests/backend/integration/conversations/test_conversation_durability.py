@@ -82,9 +82,9 @@ def test_historical_workflow_only_recovers_its_saved_result(tmp_path, monkeypatc
     checkpoint = empty_checkpoint()
     checkpoint["channel_values"] = {
         "version": 1,
-        "result": Reply(text="A retained reply", state_patch={}).model_dump(
-            mode="json", exclude_unset=True
-        )
+        "result": Reply(
+            text="A retained reply", state_patch={"character_place": "Garden"}
+        ).model_dump(mode="json", exclude_unset=True)
         if finished
         else None,
     }
@@ -137,6 +137,43 @@ def test_commit_failure_retains_reply_checkpoint_for_recovery(tmp_path, monkeypa
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))
     assert len(api.conversations.resume(conversation.id).turns) == 1
+
+
+def test_contradictory_retained_reply_is_isolated_without_resending(tmp_path, monkeypatch):
+    api = Client.initialize(tmp_path)
+    scene = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Retained contradiction")
+    )
+    request = SendInput(
+        expected_revision=0,
+        operation_id=uuid4(),
+        text="Continue.",
+        action=MoveAction(destination="Garden"),
+    )
+    api.conversations.accept(scene.id, request)
+    repository = api.conversations.repository
+    assert repository.running(request.operation_id)
+    reply = Reply(text="An absent companion speaks", state_patch={})
+    repository.checkpoint(request.operation_id, reply)
+    with repository.database.engine.begin() as connection:
+        connection.execute(operations.update().values(owner_started="0"))
+    monkeypatch.setattr(
+        api.conversations.responder, "reply", lambda *_: pytest.fail("Never resend retained input")
+    )
+    restored = api.conversations.resume(scene.id)
+    operation = api.operations.get(request.operation_id)
+    assert restored.turns == [] and restored.state.place == "Garden"
+    assert operation.state == "interrupted" and not operation.can_resume
+    assert operation.error == "invalid_response"
+    assert repository.database.checkpoints.load(
+        f"reply:{request.operation_id}"
+    ) == reply.model_dump(mode="json", exclude_unset=True)
+    with pytest.raises(KomaquillError, match="submission_unknown"):
+        api.conversations.resume_operation(request.operation_id)
+    healthy = api.conversations.create(
+        ConversationInput(locale="en", llm_profile="fake", title="Healthy")
+    )
+    assert api.conversations.overview(healthy.id).turn_count == 0
 
 
 @pytest.mark.parametrize(

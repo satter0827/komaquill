@@ -5,6 +5,7 @@ import { chromium } from '@playwright/test'
 import {
   Evidence,
   contained,
+  diagnostic,
   jsonFile,
 } from '../../tools/testing/web/evidence.mjs'
 
@@ -101,6 +102,11 @@ try {
     })
   }
   status = 'passed'
+} catch (error) {
+  await jsonFile(
+    path.join(directory, 'browser-failure.json'),
+    diagnostic(error),
+  )
 } finally {
   await evidence.capture('Final saved result')
   const result = await evidence.finish(status, 'passed')

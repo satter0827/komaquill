@@ -46,15 +46,16 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
                     for name, entry in item.items()
                     if entry is not None
                 )
-            else:
-                changes.append(
-                    {"field": "movement" if key == "companion_movement" else key, "value": item}
-                )
+            elif key != "companion_movement":
+                changes.append({"field": key, "value": item})
     else:
         changes = scene
     return {
         "response": {
             "kind": "companion",
+            "movement": scene.get("companion_movement", "stay")
+            if isinstance(scene, dict)
+            else "stay",
             "changes": changes,
             **{key: value[key] for key in ("action_narration", "text") if key in value},
         }

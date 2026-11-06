@@ -6,6 +6,7 @@ from pathlib import Path
 import uvicorn
 from komaquill.api import Client
 from komaquill.interfaces.http.app import create_app
+from komaquill.interfaces.http.serving import serve
 
 
 def main():
@@ -16,11 +17,15 @@ def main():
     target = args.workspace.resolve()
     if not target.is_relative_to(root / ".artifacts/records/reports"):
         raise ValueError("Live verification requires an isolated report workspace.")
-    uvicorn.run(
-        create_app(Client(target), ui_directory=root / ".artifacts/build/frontend"),
-        host="127.0.0.1",
-        port=8767,
-        access_log=False,
+    serve(
+        uvicorn.Server(
+            uvicorn.Config(
+                create_app(Client(target), ui_directory=root / ".artifacts/build/frontend"),
+                host="127.0.0.1",
+                port=8767,
+                access_log=False,
+            )
+        )
     )
 
 

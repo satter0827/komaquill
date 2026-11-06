@@ -14,8 +14,8 @@ from komaquill.adapters.persistence.access import acquire
 from komaquill.domain.errors import KomaquillError
 
 RESULT_VERSION = 1
-CONVERSATION_WORKFLOW_VERSION = 2
-HISTORICAL_CONVERSATION_WORKFLOW_VERSION = 1
+CONVERSATION_WORKFLOW_VERSION = 3
+HISTORICAL_CONVERSATION_WORKFLOW_VERSIONS = frozenset({1, 2})
 
 
 class Checkpoints:
@@ -81,7 +81,8 @@ class Checkpoints:
         values = saved.checkpoint["channel_values"]
         result = values.get("result")
         if values.get("version") != CONVERSATION_WORKFLOW_VERSION and not (
-            values.get("version") == HISTORICAL_CONVERSATION_WORKFLOW_VERSION and result is not None
+            values.get("version") in HISTORICAL_CONVERSATION_WORKFLOW_VERSIONS
+            and result is not None
         ):
             raise KomaquillError(code="operation_conflict", retryable=False)
         if result is not None and not isinstance(result, dict):

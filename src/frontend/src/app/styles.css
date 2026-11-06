@@ -31,9 +31,18 @@
   --warning: #825000;
   --error: #a41035;
   --shadow: 0 8px 28px #64223812;
+  --scroll-thumb: #ac7188;
 }
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+@media (forced-colors: active) {
+  * {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
 }
 body {
   margin: 0;
@@ -106,6 +115,7 @@ h3 {
 }
 .navigation,
 .navigation-modal {
+  --scroll-thumb: #d3a2b6;
   --surface-soft: #ffffff18;
   --focus-ring: #ffc5db;
   --error: #ffc5db;
@@ -1161,7 +1171,7 @@ details > .details-content {
   margin-block: 0;
 }
 .user-action {
-  margin: calc(-1 * var(--space-section)) 0 var(--space-section) auto;
+  margin: 0 0 var(--space-section) auto;
   max-width: 90%;
   width: fit-content;
   padding: var(--space-field) var(--space-group);
@@ -1223,9 +1233,27 @@ details > .details-content {
   gap: var(--space-group);
 }
 .presence-notice {
+  display: grid;
+  gap: var(--space-field);
   padding: var(--space-group);
   background: var(--surface-soft);
   border-radius: var(--radius-control);
+}
+.presence-notice p,
+.query-notice p {
+  margin: 0;
+}
+.presence-notice .button {
+  justify-self: start;
+}
+.query-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-group);
+  padding: var(--space-group);
+  color: var(--error);
+  background: var(--surface-soft);
 }
 .album-days {
   display: grid;

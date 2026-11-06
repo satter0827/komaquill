@@ -99,7 +99,6 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     from komaquill.adapters.llm.conversation import (
         DialogueResult,
         ExpressionPoseChange,
-        MovementChange,
         NarrativeReply,
         ObjectsChange,
         resolve_scene,
@@ -108,7 +107,6 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     for model in (
         DialogueResult,
         ExpressionPoseChange,
-        MovementChange,
         ObjectsChange,
         NarrativeReply,
     ):
@@ -122,6 +120,7 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
             Conversation(definition=ConversationInput(title="Limits")),
             DialogueResult(
                 kind="companion",
+                movement="stay",
                 changes=[ExpressionPoseChange(field="pose", value="x" * 1001)],
                 action_narration="",
                 text="Hello",

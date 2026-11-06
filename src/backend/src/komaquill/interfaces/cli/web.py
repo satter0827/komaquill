@@ -37,6 +37,7 @@ def bind(
             import uvicorn
 
             from komaquill.interfaces.http.app import create_app
+            from komaquill.interfaces.http.serving import serve
         except ImportError:
             typer.echo(message("web.dependencies"), err=True)
             raise typer.Exit(1) from None
@@ -75,7 +76,7 @@ def bind(
             )
         )
         try:
-            server.run(sockets=[listener])
+            serve(server, [listener])
         finally:
             listener.close()
 

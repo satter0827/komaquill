@@ -25,6 +25,7 @@ def test_wire_and_parser_reject_the_same_invalid_changes(field, value):
         "response": {
             "kind": "companion",
             "changes": [{"field": field, "value": value}],
+            "movement": "stay",
             "action_narration": "",
             "text": "Hello",
         }
@@ -47,6 +48,7 @@ def test_wire_text_limits_match_the_scene_state(field, extra):
         "response": {
             "kind": "companion",
             "changes": [{"field": field, "value": "x" * (limit + extra)}],
+            "movement": "stay",
             "action_narration": "",
             "text": "Hello",
         }

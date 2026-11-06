@@ -54,7 +54,7 @@ from komaquill.domain.conversations.models import (
     Turn,
     TurnRequest,
 )
-from komaquill.domain.conversations.transitions import apply_reply, published_reply
+from komaquill.domain.conversations.transitions import apply_reply
 from komaquill.domain.conversations.visuals import VisualReview, VisualReviewRecord
 from komaquill.domain.errors import KomaquillError, OperationStage
 from komaquill.domain.models import Run
@@ -782,7 +782,6 @@ class ConversationRepository:
         row = self._row(connection, identity)
         operation = self._operation(row)
         conversation = self._get(connection, operation.conversation_id, with_turns=False)
-        reply = published_reply(conversation, reply)
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
         request = RecordedTurnRequest.model_validate_json(str(row["request"]))
@@ -807,7 +806,7 @@ class ConversationRepository:
             else None,
             user=request.text,
             assistant=reply.text,
-            narration=reply.narration,
+            narration="" if reply.action_proposals else (state.scenery or state.place),
             state=state,
             action_narration=reply.action_narration,
             notes=conversation.notes,
@@ -989,10 +988,14 @@ class ConversationRepository:
                             assert saved_reply is not None
                             value = self._commit(connection, value.id, saved_reply)
                         except KomaquillError as error:
-                            if error.code != "operation_conflict":
+                            if error.code not in {"operation_conflict", "invalid_response"}:
                                 raise
                             value = value.model_copy(
-                                update={"state": "interrupted", "error": "operation_conflict"}
+                                update={
+                                    "state": "interrupted",
+                                    "error": error.code.value,
+                                    "can_resume": False,
+                                }
                             )
                         if value.image_state != "pending":
                             self._save(connection, value)

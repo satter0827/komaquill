@@ -217,7 +217,34 @@ def gpu(
 
 def observe(api: Client, output: Path, report: dict[str, Any], identities: list[UUID]) -> None:
     """Read saved results and standard views without submitting further work."""
+    browse(
+        api,
+        output,
+        report,
+        {
+            "conversations": [str(value) for value in identities],
+            "has_images": any(run.state == "saved" and run.images for run in api.images.list()),
+            "standard_views": report.get("gpu", {}).get("standard_views", []),
+        },
+    )
+
+
+def browse(
+    api: Client,
+    output: Path,
+    report: dict[str, Any],
+    scenario: dict[str, Any],
+    *,
+    script: str = "scripts/acceptance/web.mjs",
+    timeout: float = 240,
+) -> None:
+    """Own one isolated application and one explicitly selected browser scenario."""
     python = prepare()
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("LANGCHAIN_", "LANGSMITH_", "KOMAQUILL_ALLOW_"))
+    }
     endpoint_file = api.workspace / ".artifacts/state/web-listener.json"
     endpoint_file.unlink(missing_ok=True)
     with (
@@ -225,7 +252,7 @@ def observe(api: Client, output: Path, report: dict[str, Any], identities: list[
         owned_process(
             [str(python), "-m", "komaquill", "--project", str(api.workspace), "web", "--port", "0"],
             cwd=ROOT,
-            env=os.environ,
+            env=environment,
             stdout=log,
         ) as server,
     ):
@@ -239,17 +266,15 @@ def observe(api: Client, output: Path, report: dict[str, Any], identities: list[
             config,
             {
                 "endpoint": json.loads(endpoint_file.read_bytes())["endpoint"],
-                "conversations": [str(value) for value in identities],
-                "has_images": any(run.state == "saved" and run.images for run in api.images.list()),
-                "standard_views": report.get("gpu", {}).get("standard_views", []),
+                **scenario,
             },
         )
         result = run_owned(
-            ["node", "scripts/acceptance/web.mjs", str(config)],
+            ["node", script, str(config)],
             cwd=ROOT,
-            env=os.environ,
+            env=environment,
             stdout=log,
-            timeout=240,
+            timeout=timeout,
         )
         if result:
             raise KomaquillError(code="operation_failed")

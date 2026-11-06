@@ -61,8 +61,7 @@ def test_action_survives_failed_reaction_and_is_not_reapplied(story):
 def test_chat_proposes_then_player_confirms(story):
     _, service, conversation = story
     service.responder.reply = lambda *_: Reply(
-        text="Shall we go?",
-        narration="A quiet shop.",
+        text="",
         state_patch=StatePatch(),
         action_proposals=[MoveAction(destination="Beach")],
     )
@@ -151,7 +150,9 @@ def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
             )
         }
     )
-    generated = DialogueResult(kind="companion", changes=[], action_narration="", text="Hello")
+    generated = DialogueResult(
+        kind="companion", movement="stay", changes=[], action_narration="", text="Hello"
+    )
     result = resolve_scene(current, generated)
     assert result.character.clothing == "" and result.character.held_objects == []
 
@@ -159,7 +160,7 @@ def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
 def test_stale_proposal_and_dismissal(story):
     _, service, conversation = story
     service.responder.reply = lambda *_: Reply(
-        text="Hello", state_patch=StatePatch(), action_proposals=[WaitAction(minutes=5)]
+        text="", state_patch=StatePatch(), action_proposals=[WaitAction(minutes=5)]
     )
     service.send(
         conversation.id,

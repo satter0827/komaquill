@@ -26,7 +26,7 @@ from komaquill.domain.conversations.models import (
     Reply,
     TurnRequest,
 )
-from komaquill.domain.conversations.transitions import published_reply
+from komaquill.domain.conversations.transitions import require_visible_reply
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.library.models import CharacterInput, PlayerInput, StoryInput
 from komaquill.domain.roleplay import (
@@ -94,11 +94,6 @@ class ExpressionPoseChange(Record):
     value: str = Field(max_length=MAX_EXPRESSION_POSE_LENGTH)
 
 
-class MovementChange(Record):
-    field: Literal["movement"]
-    value: Literal["stay", "join_player"]
-
-
 class ObjectsChange(Record):
     field: Literal["held_objects"]
     value: PhysicalObjects = Field(
@@ -110,20 +105,18 @@ class ObjectsChange(Record):
 
 
 SceneChange = Annotated[
-    RelationshipChange
-    | SceneryChange
-    | ClothingChange
-    | ExpressionPoseChange
-    | MovementChange
-    | ObjectsChange,
+    RelationshipChange | SceneryChange | ClothingChange | ExpressionPoseChange | ObjectsChange,
     Field(discriminator="field"),
 ]
 
 
 class DialogueResult(Record):
     kind: Literal["companion"]
+    movement: Literal["stay", "join_player"] = Field(
+        description="Explicitly stay at the companion's current place or join the player."
+    )
     changes: list[SceneChange] = Field(
-        max_length=7,
+        max_length=6,
         description=(
             "Only actual new changes to assistant_character or the environment. "
             "A completed human_player action does not change the companion's clothing, "
@@ -161,12 +154,11 @@ class ReactionReply(NarrativeReply):
 
 
 def resolve_scene(conversation: Conversation, generated: DialogueResult) -> ConversationState:
-    changes: dict[str, Any] = {}
+    changes: dict[str, Any] = (
+        {"character_place": conversation.state.place} if generated.movement == "join_player" else {}
+    )
     for change in generated.changes:
-        if change.field == "movement":
-            if change.value == "join_player":
-                changes["character_place"] = conversation.state.place
-        elif change.field in {"relationship", "scenery"}:
+        if change.field in {"relationship", "scenery"}:
             changes[change.field] = change.value
         else:
             changes.setdefault("character", {})[change.field] = change.value
@@ -225,6 +217,10 @@ class ConversationResponder:
             latest = json.dumps(
                 {
                     "speaker": "human_player",
+                    "current_places": {
+                        "human_player": conversation.state.place,
+                        "assistant_character": conversation.state.character_place,
+                    },
                     "completed_action": {
                         "actor": "human_player",
                         **action.request.action.model_dump(mode="json", exclude_none=True),
@@ -381,6 +377,14 @@ class ConversationResponder:
                 + "\n"
                 + json.dumps(values, ensure_ascii=False, separators=(",", ":"))
                 + f"\nWrite text, action_narration and changes to scenery only in {language}."
+                + "\nThe observer is human_player at "
+                + json.dumps(conversation.state.place, ensure_ascii=False)
+                + ". Scenery can describe only what is visible from that place. "
+                + "The companion is currently at "
+                + json.dumps(conversation.state.character_place, ensure_ascii=False)
+                + ". If you stay elsewhere, do not describe your own surroundings. "
+                + "If no new visible detail is known, omit the scenery change; "
+                + "the confirmed player location will still be displayed."
             )
 
         language_contract = (
@@ -426,17 +430,19 @@ class ConversationResponder:
             value = reply.response
             desired = resolve_scene(conversation, value)
             proposed = StatePatch.between(conversation.state, desired).apply(conversation.state)
-            if (
-                action is None
-                and proposed.character_place == proposed.place
-                and not value.text.strip()
-                and not value.action_narration.strip()
-                and proposed == conversation.state
-            ):
-                raise ResponseConstraintError("empty_response")
+            try:
+                require_visible_reply(
+                    conversation.state, proposed, value.text, value.action_narration
+                )
+            except KomaquillError:
+                present = proposed.character_place == proposed.place
+                raise ResponseConstraintError(
+                    "empty_response" if present else "companion_presence",
+                    ("response", "text" if present else "movement"),
+                ) from None
             for field, content in (
                 ("action_narration", value.action_narration),
-                ("text", value.text if proposed.character_place == proposed.place else ""),
+                ("text", value.text),
                 (
                     "scenery",
                     desired.scenery if desired.scenery != conversation.state.scenery else "",
@@ -487,12 +493,9 @@ class ConversationResponder:
         if isinstance(value, ProposalResult):
             return Reply(text="", state_patch=StatePatch(), action_proposals=[value.action])
         desired = resolve_scene(conversation, value)
-        return published_reply(
-            conversation,
-            Reply(
-                narration=desired.scenery,
-                action_narration=value.action_narration,
-                text=value.text,
-                state_patch=StatePatch.between(conversation.state, desired),
-            ),
+        return Reply(
+            narration=desired.scenery or desired.place,
+            action_narration=value.action_narration,
+            text=value.text,
+            state_patch=StatePatch.between(conversation.state, desired),
         )

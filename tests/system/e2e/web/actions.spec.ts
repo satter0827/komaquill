@@ -116,6 +116,11 @@ for (const locale of ['ja', 'en'] as const) {
       )
       .toBe('complete')
     await expect(page.locator('.scene-narration')).toHaveCount(1)
+    const messageBounds = await page.locator('.user-message').boundingBox()
+    const actionBounds = await page.locator('.user-action').boundingBox()
+    expect(actionBounds!.y).toBeGreaterThan(
+      messageBounds!.y + messageBounds!.height,
+    )
     const saved = await (
       await request.get(`/api/v1/conversations/${identity}`)
     ).json()

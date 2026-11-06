@@ -146,12 +146,31 @@ def collect(
             status="failed", failure=describe_failure(error, "operation").model_dump(mode="json")
         )
     finally:
-        report.update(
-            finished_at=datetime.now(UTC).isoformat(),
-            inputs_unchanged=input_fingerprint(ROOT) == report["input_sha256"],
-        )
+        report["inputs_unchanged"] = input_fingerprint(ROOT) == report["input_sha256"]
         if report["status"] == "passed" and not report["inputs_unchanged"]:
             report["status"] = "inputs_changed"
+        if "conversation_id" in report:
+            try:
+                identity = UUID(report["conversation_id"])
+                operations = api.conversations.operations(identity)
+                report["final_state"] = {
+                    "observed_at": datetime.now(UTC).isoformat(),
+                    "saved_turns": api.conversations.overview(identity).turn_count,
+                    "operations": [
+                        {
+                            "id": str(operation.id),
+                            "state": operation.state,
+                            "error": operation.error,
+                            "can_resume": operation.can_resume,
+                        }
+                        for operation in operations
+                    ],
+                }
+            except Exception as error:
+                report.update(
+                    status="failed",
+                    final_state_failure=describe_failure(error, "storage").model_dump(mode="json"),
+                )
         try:
             report["budget"] = api.llm_usage()
         except Exception as error:
@@ -166,6 +185,7 @@ def collect(
                 status="failed",
                 cleanup_failure=describe_failure(error, "operation").model_dump(mode="json"),
             )
+        report["finished_at"] = datetime.now(UTC).isoformat()
         atomic_json(output / "run.json", report)
     return report["status"] == "passed" and bool(report["inputs_unchanged"])
 

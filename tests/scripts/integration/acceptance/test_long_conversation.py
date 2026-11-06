@@ -180,3 +180,47 @@ def test_close_failure_is_recorded_without_private_exception_text(prepared, monk
     assert result["status"] == "failed"
     assert result["cleanup_failure"]["exception_type"] == "RuntimeError"
     assert "private-cleanup-value" not in raw
+
+
+def test_browser_interruption_records_reconciled_operation_and_saved_turns(prepared, monkeypatch):
+    root, _ = prepared
+
+    def interrupt(api, output, report, scenario, **kwargs):
+        identity = UUID(scenario["conversation"])
+        request = SendInput(
+            text="private-unfinished-message", operation_id=uuid4(), expected_revision=0
+        )
+        api.conversations.repository.accept(identity, request)
+        assert api.conversations.repository.running(request.operation_id)
+        raise TimeoutError("private-browser-error")
+
+    monkeypatch.setattr(long, "browse", interrupt)
+    assert not long.collect(root / "interrupted")
+    raw = (root / "interrupted/run.json").read_text()
+    report = json.loads(raw)
+    final = report["final_state"]
+    assert report["status"] == "failed" and final["saved_turns"] == 0
+    assert final["observed_at"]
+    operation = final["operations"][0]
+    assert operation["state"] == "interrupted"
+    assert operation["error"] == "submission_unknown" and operation["can_resume"] is False
+    assert "private-unfinished-message" not in raw and "private-browser-error" not in raw
+    assert report["budget"]["reserved_calls"] == 0
+
+
+def test_final_state_read_failure_is_not_reported_as_success(prepared, monkeypatch):
+    root, _ = prepared
+
+    def lose_state(api, output, report, scenario, **kwargs):
+        def fail(*args):
+            raise OSError("private-state-read-error")
+
+        monkeypatch.setattr(api.conversations, "operations", fail)
+
+    monkeypatch.setattr(long, "browse", lose_state)
+    assert not long.collect(root / "state-unreadable")
+    raw = (root / "state-unreadable/run.json").read_text()
+    report = json.loads(raw)
+    assert report["status"] == "failed"
+    assert report["final_state_failure"]["exception_type"] == "OSError"
+    assert "final_state" not in report and "private-state-read-error" not in raw

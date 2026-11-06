@@ -12,12 +12,11 @@ from komaquill.adapters import cleanup
 
 @pytest.mark.skipif(os.name == "nt", reason="Linux venv executable resolves outside the workspace")
 @pytest.mark.parametrize("invocation", ["absolute", "path"])
-def test_cleanup_retains_files_used_by_a_symlink_venv(project, invocation):
+def test_cleanup_retains_files_used_by_a_symlink_venv(project, invocation, tmp_path_factory):
     environment_directory = project.runtime / "venv"
     venv.EnvBuilder(with_pip=False, symlinks=True).create(environment_directory)
     python = environment_directory / "bin/python"
-    outside = project.root.parent / (project.root.name + "-outside")
-    outside.mkdir()
+    outside = tmp_path_factory.mktemp("cleanup-outside")
     cache = project.cache / "ruff/in-use"
     temporary = project.temporary / "pytest-live/in-use"
     for path in (cache, temporary):

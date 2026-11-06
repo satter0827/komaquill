@@ -41,7 +41,7 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
-                assert set(wire["properties"]) == {"response"}
+                assert set(wire["properties"]) == {"player_move", "response"}
             return self
 
         def invoke(self, messages, config):
@@ -181,12 +181,13 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
         calls.append(args)
         return NarrativeReply.model_validate(
             {
+                "player_move": None,
                 "response": {
                     "kind": "companion",
                     "changes": [],
                     "action_narration": "",
                     "text": "Understood.",
-                }
+                },
             }
         )
 
@@ -233,7 +234,7 @@ def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkey
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
-                assert set(wire["properties"]) == {"response"}
+                assert set(wire["properties"]) == {"player_move", "response"}
             return self
 
         def invoke(self, messages, config):
@@ -672,7 +673,7 @@ def test_language_switch_schema_and_repair_target_narration(
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
-                assert set(wire["properties"]) == {"response"}
+                assert set(wire["properties"]) == {"player_move", "response"}
                 for field in ("text", "action_narration"):
                     assert (
                         language
@@ -767,6 +768,7 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
             return AIMessage(
                 content=json.dumps(
                     {
+                        "player_move": None,
                         "response": {
                             "kind": "companion",
                             "changes": [
@@ -779,7 +781,7 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                             else [],
                             "action_narration": "",
                             "text": "Hello, Akari.",
-                        }
+                        },
                     }
                 ),
                 response_metadata={"model_name": self.model},

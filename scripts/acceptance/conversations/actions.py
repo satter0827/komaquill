@@ -108,7 +108,11 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                 preparation_operation = client.conversations.send(
                     conversation.id,
                     SendInput(
-                        text="Continue.",
+                        text=(
+                            "あなたは緑のコートを着て、隣の椅子に座ってください。"
+                            if ja
+                            else "Please wear a green coat and sit in the chair beside me."
+                        ),
                         operation_id=uuid4(),
                         expected_revision=current.revision,
                         action=PrepareAction(
@@ -128,11 +132,6 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                 )
                 events.append(
                     {"kind": "confirmed_preparation", "record": prepared.model_dump(mode="json")}
-                )
-                send(
-                    "あなたは緑のコートを着て、隣の椅子に座ってください。"
-                    if ja
-                    else "Please wear a green coat and sit in the chair beside me."
                 )
                 # Reopen storage to exercise persisted summaries and actions.
                 from komaquill.api import Client
@@ -159,7 +158,7 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                         "shared_place_after_move": record.after.place == move.destination,
                         "player_clothing_preserved": final.state.player.clothing
                         == prepared.after.player.clothing,
-                        "history_available_after_restart": len(final.turns) == 4,
+                        "history_available_after_restart": len(final.turns) == 3,
                     },
                 }
                 result["status"] = "passed" if all(result["checks"].values()) else "failed"

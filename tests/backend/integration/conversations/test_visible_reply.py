@@ -52,14 +52,15 @@ def test_present_companion_must_produce_visible_content_even_after_an_action(
         ConversationInput(title="Empty reply", locale="en", initial_state={"place": "Shop"})
     )
     invalid = {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": [{"field": "pose", "value": "standing"}],
             "text": "",
             "action_narration": "",
-        }
+        },
     }
-    valid = {"response": {**invalid["response"], "text": "I am here."}}
+    valid = {"player_move": None, "response": {**invalid["response"], "text": "I am here."}}
     monkeypatch.setattr(
         api._execution,
         "_model",
@@ -90,12 +91,13 @@ def test_new_visible_scenery_is_a_valid_silent_response(tmp_path, monkeypatch):
     api = Client.initialize(tmp_path)
     scene = api.conversations.create(ConversationInput(title="Observe", locale="en"))
     response = {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": [{"field": "scenery", "value": "Sunlight fills the room."}],
             "text": "",
             "action_narration": "",
-        }
+        },
     }
     monkeypatch.setattr(api._execution, "_model", lambda _: model_for(api, [response]))
     result = api.conversations.send(

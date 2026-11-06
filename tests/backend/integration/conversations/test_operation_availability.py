@@ -22,12 +22,13 @@ from tests.backend.support.storage import sqlite_connection
 )
 def test_wire_and_parser_reject_the_same_invalid_changes(field, value):
     response = {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": [{"field": field, "value": value}],
             "action_narration": "",
             "text": "Hello",
-        }
+        },
     }
     assert not Draft202012Validator(NarrativeReply.model_json_schema()).is_valid(response)
     with pytest.raises(ValidationError):
@@ -44,12 +45,13 @@ def test_wire_text_limits_match_the_scene_state(field, extra):
     model = StatePatch if field in {"relationship", "scenery"} else PersonStatePatch
     limit = next(item.max_length for item in model.model_fields[field].metadata)
     response = {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": [{"field": field, "value": "x" * (limit + extra)}],
             "action_narration": "",
             "text": "Hello",
-        }
+        },
     }
     assert Draft202012Validator(NarrativeReply.model_json_schema()).is_valid(response) == (
         extra == 0

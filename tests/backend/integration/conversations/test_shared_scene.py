@@ -231,10 +231,13 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                 AIMessage(
                     content=json.dumps(
                         {
+                            "player_move": {"kind": "move", "destination": "Park"},
                             "response": {
-                                "kind": "player",
-                                "action": {"kind": "move", "destination": "Park"},
-                            }
+                                "kind": "companion",
+                                "changes": [],
+                                "action_narration": "",
+                                "text": "",
+                            },
                         }
                     ),
                     response_metadata={"model_name": name},
@@ -242,12 +245,13 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                 AIMessage(
                     content=json.dumps(
                         {
+                            "player_move": None,
                             "response": {
                                 "kind": "companion",
                                 "changes": [],
                                 "action_narration": "Opens the notebook beside you.",
                                 "text": "Let us plan the reading group here.",
-                            }
+                            },
                         }
                     ),
                     response_metadata={"model_name": name},

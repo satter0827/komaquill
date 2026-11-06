@@ -35,7 +35,18 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
     if "current_state" not in value:
         return value
     if value.get("requested_player_action") is not None:
-        return {"response": {"kind": "player", "action": value["requested_player_action"]}}
+        action = value["requested_player_action"]
+        if action["kind"] == "move":
+            return {
+                "player_move": action,
+                "response": {
+                    "kind": "companion",
+                    "changes": [],
+                    "action_narration": "",
+                    "text": "",
+                },
+            }
+        return {"player_move": None, "response": {"kind": "player", "action": action}}
     scene = value["current_state"]
     changes = []
     if isinstance(scene, dict):
@@ -51,11 +62,12 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
     else:
         changes = scene
     return {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": changes,
             **{key: value[key] for key in ("action_narration", "text") if key in value},
-        }
+        },
     }
 
 

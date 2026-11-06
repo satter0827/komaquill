@@ -63,7 +63,7 @@ class ProposedIntention(IntentionAction):
 
 
 GeneratedAction = Annotated[
-    ProposedMove | ProposedWait | ProposedPreparation | ProposedIntention,
+    ProposedWait | ProposedPreparation | ProposedIntention,
     Field(discriminator="kind"),
 ]
 
@@ -143,10 +143,24 @@ class ProposalResult(Record):
 
 
 class NarrativeReply(Record):
+    player_move: ProposedMove | None = Field(
+        description=(
+            "Required independent decision: the human player's explicit immediate destination, "
+            "including movement combined with dialogue or a question. Both people move together. "
+            "Null for questions about moving, conditional plans, future appointments or no move."
+        )
+    )
     response: Annotated[ProposalResult | DialogueResult, Field(discriminator="kind")]
+
+    @model_validator(mode="after")
+    def one_player_action(self) -> Self:
+        if self.player_move is not None and isinstance(self.response, ProposalResult):
+            raise ValueError("A movement cannot include another player action proposal.")
+        return self
 
 
 class ReactionReply(NarrativeReply):
+    player_move: None
     response: DialogueResult
 
 
@@ -377,7 +391,10 @@ class ConversationResponder:
 
         language_contract = (
             "Write dialogue, action_narration and scenery changes in " + language + ". "
-            "Use kind=player only for an explicit immediate change to the player's state or "
+            "Decide player_move independently of any spoken question: an explicit immediate "
+            "destination must be recorded even when the same message asks a question. "
+            "Use response.kind=player only for another explicit immediate change to player "
+            "state or "
             "currently adopted intention. Questions, conditional plans and appointments are "
             "dialogue with kind=companion. Both people always share the confirmed place."
         )
@@ -416,7 +433,7 @@ class ConversationResponder:
         ]
 
         def validate(reply: NarrativeReply) -> None:
-            if isinstance(reply.response, ProposalResult):
+            if reply.player_move is not None or isinstance(reply.response, ProposalResult):
                 return
             value = reply.response
             desired = resolve_scene(conversation, value)
@@ -477,6 +494,14 @@ class ConversationResponder:
                 field_language=field_language,
                 trim=False,
                 purpose=purpose,
+            )
+        if generated.player_move is not None:
+            return Reply(
+                text="",
+                state_patch=StatePatch(),
+                action_proposals=[
+                    MoveAction(kind="move", destination=generated.player_move.destination)
+                ],
             )
         value = generated.response
         if isinstance(value, ProposalResult):

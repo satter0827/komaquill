@@ -110,7 +110,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
     (tmp_path / "komaquill.toml").write_text("[conversation]\nrecent_turns=4\n", encoding="utf-8")
     results = collect(client, tmp_path)
     assert len(results) == 2
-    assert len(calls) == 10
+    assert len(calls) == 8
     for result in results:
         assert all(result["checks"].values())
         assert result["conversation"]["memory"] is None

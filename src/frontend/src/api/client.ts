@@ -1,7 +1,24 @@
 import { messageCatalog } from '../shared/messages'
 import type { Locale } from '../shared/messages'
 import { client } from './generated/client.gen'
+
+export const API_READ_TIMEOUT_MS = 30_000
+export const API_REQUEST_TIMEOUT_MS = 15 * 60_000
+
 client.setConfig({ baseUrl: '', throwOnError: true })
+client.interceptors.request.use(
+  (request) =>
+    new Request(request, {
+      signal: AbortSignal.any([
+        request.signal,
+        AbortSignal.timeout(
+          ['GET', 'HEAD'].includes(request.method)
+            ? API_READ_TIMEOUT_MS
+            : API_REQUEST_TIMEOUT_MS,
+        ),
+      ]),
+    }),
+)
 
 export function failure(error: unknown, locale: Locale = 'ja'): string {
   const messages = messageCatalog(locale)

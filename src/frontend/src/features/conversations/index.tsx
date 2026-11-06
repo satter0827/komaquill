@@ -55,7 +55,7 @@ import {
 import {
   creationOptions,
   conversationOperationsOptions,
-  keepTerminal,
+  retainOperation,
   operationOptions,
   watchReceipt,
 } from '../../shared/operations'
@@ -160,6 +160,10 @@ function ConversationView({
     version: number
   } | null>(null)
   const [operationId, setOperationId] = useState<string | null>(null)
+  const [pendingResume, setPendingResume] = useState<{
+    operationId: string
+    expectedCount: number
+  } | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const narrow = useMediaQuery('(max-width: 1279px)')
   const [showState, setShowState] = useState(false)
@@ -220,7 +224,12 @@ function ConversationView({
     ...conversationOperationsOptions(identity),
   })
   const operation = useQuery({
-    ...operationOptions(operationId ?? ''),
+    ...operationOptions(
+      operationId ?? '',
+      pendingResume?.operationId === operationId
+        ? pendingResume.expectedCount
+        : 0,
+    ),
     enabled: !!operationId,
   })
   useAvailabilityRecovery(
@@ -238,7 +247,7 @@ function ConversationView({
     (result: OperationView, submitted: SendInput) => {
       cache.setQueryData<OperationView>(
         q.getOperationQueryKey({ path: { identity: result.id } }),
-        (previous) => keepTerminal(previous, result),
+        (previous) => retainOperation(previous, result),
       )
       setOperationId(result.id)
       if (
@@ -290,12 +299,45 @@ function ConversationView({
   }, [cache, send.isError, prepared, confirmSend, resetSend])
   const resume = useMutation({
     ...q.resumeOperationMutation(),
-    onSuccess: async (value) => {
-      await cache.resetQueries({
-        queryKey: q.getOperationQueryKey({ path: { identity: value.id } }),
-        exact: true,
+    onMutate: ({ path }) => {
+      const previous = cache.getQueryData<OperationView>(
+        q.getOperationQueryKey({ path }),
+      )
+      const listed = savedOperations.data?.find(
+        (value) => value.id === path.identity,
+      )
+      const receipt = {
+        operationId: path.identity,
+        expectedCount:
+          Math.max(previous?.resume_count ?? 0, listed?.resume_count ?? 0) + 1,
+      }
+      setPendingResume(receipt)
+      setOperationId(path.identity)
+      return receipt
+    },
+    onError: (error, { path }, receipt) => {
+      if (isRejectedRequest(error))
+        setPendingResume((current) =>
+          current?.operationId === path.identity &&
+          current.expectedCount === receipt?.expectedCount
+            ? null
+            : current,
+        )
+      void cache.invalidateQueries({
+        queryKey: q.getOperationQueryKey({ path }),
       })
-      setOperationId(value.id)
+    },
+    onSuccess: (value, _submitted, receipt) => {
+      cache.setQueryData<OperationView>(
+        q.getOperationQueryKey({ path: { identity: value.id } }),
+        (previous) => retainOperation(previous, value),
+      )
+      setPendingResume((current) =>
+        current?.operationId === value.id &&
+        current.expectedCount === receipt?.expectedCount
+          ? null
+          : current,
+      )
       void cache.invalidateQueries({
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
       })
@@ -304,6 +346,28 @@ function ConversationView({
       })
     },
   })
+  const resetResume = resume.reset
+  useEffect(() => {
+    if (!resume.context) return
+    const receipt = resume.context
+    return watchReceipt<OperationView>(
+      cache,
+      q.getOperationQueryKey({ path: { identity: receipt.operationId } }),
+      receipt.operationId,
+      (confirmed) => {
+        setPendingResume((current) =>
+          current?.operationId === confirmed.id &&
+          current.expectedCount <= (confirmed.resume_count ?? 0)
+            ? null
+            : current,
+        )
+        if (resume.isError) resetResume()
+      },
+      (value) =>
+        value.state === 'complete' ||
+        (value.resume_count ?? 0) >= receipt.expectedCount,
+    )
+  }, [cache, resume.context, resume.isError, resetResume])
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
@@ -339,10 +403,14 @@ function ConversationView({
   if (operation.data)
     retainedOperations.set(
       operation.data.id,
-      keepTerminal(retainedOperations.get(operation.data.id), operation.data),
+      retainOperation(
+        retainedOperations.get(operation.data.id),
+        operation.data,
+      ),
     )
   const replyPending =
     send.isPending ||
+    pendingResume !== null ||
     (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
     [...retainedOperations.values()].some((value) =>
@@ -726,9 +794,10 @@ function ConversationView({
             </div>
             {replyPending && (
               <p className="pending" role="status">
-                {send.isPending
+                {send.isPending || (resume.isPending && pendingResume)
                   ? messages.requestSending
-                  : prepared && send.isError
+                  : (prepared && send.isError) ||
+                      (pendingResume && resume.isError)
                     ? messages.receiptUnknown
                     : messages.pending}
               </p>
@@ -766,7 +835,7 @@ function ConversationView({
             )}
             {latestOperation?.can_resume && (
               <Button
-                disabled={resume.isPending || !!busy}
+                disabled={!!busy}
                 onClick={() =>
                   resume.mutate({
                     path: { identity: latestOperation.id },
@@ -780,6 +849,14 @@ function ConversationView({
             {resume.error && (
               <p role="alert" className="error">
                 {failure(resume.error)}
+                {pendingResume && (
+                  <Button
+                    onClick={() => void operation.refetch()}
+                    disabled={operation.isFetching}
+                  >
+                    {messages.retryRequest}
+                  </Button>
+                )}
               </p>
             )}
             {sampleDrawing && (

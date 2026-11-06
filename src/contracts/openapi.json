@@ -7164,6 +7164,12 @@
       },
       "OperationView": {
         "properties": {
+          "resume_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Resume Count",
+            "default": 0
+          },
           "can_resume": {
             "type": "boolean",
             "title": "Can Resume",

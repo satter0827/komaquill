@@ -39,12 +39,14 @@ export function watchReceipt<T extends { id: string } | { run_id: string }>(
   queryKey: QueryKey,
   identity: string,
   confirm: (value: T) => void,
+  isConfirmed: (value: T) => boolean = () => true,
 ) {
   const queries = cache.getQueryCache()
   let waiting = true
   const confirmMatching = (value: T | undefined) => {
     if (!waiting || !value) return
     if (('id' in value ? value.id : value.run_id) !== identity) return
+    if (!isConfirmed(value)) return
     waiting = false
     unsubscribe()
     confirm(value)
@@ -65,12 +67,23 @@ export function watchReceipt<T extends { id: string } | { run_id: string }>(
   }
 }
 
-export function operationOptions(identity: string) {
+export function retainOperation(
+  current: OperationView | undefined,
+  next: OperationView,
+): OperationView {
+  const previousCount = current?.resume_count ?? 0
+  const nextCount = next.resume_count ?? 0
+  if (current && previousCount !== nextCount)
+    return previousCount > nextCount ? current : next
+  return keepTerminal(current, next)
+}
+
+export function operationOptions(identity: string, minimumResumeCount = 0) {
   return queryOptions({
     ...q.getOperationOptions({ path: { identity } }),
     structuralSharing: (previous, next) => {
       const current = previous as OperationView | undefined
-      const value = keepTerminal(current, next as OperationView)
+      const value = retainOperation(current, next as OperationView)
       return current &&
         ((current.image_state !== 'pending' &&
           value.image_state === 'pending') ||
@@ -85,7 +98,9 @@ export function operationOptions(identity: string) {
         : value
     },
     refetchInterval: (query) =>
-      query.state.data && !operationPending(query.state.data)
+      query.state.data &&
+      (query.state.data.resume_count ?? 0) >= minimumResumeCount &&
+      !operationPending(query.state.data)
         ? false
         : POLL_INTERVAL_MS,
   })
@@ -100,7 +115,7 @@ export function conversationOperationsOptions(identity: string) {
       const known = new Map((current ?? []).map((value) => [value.id, value]))
       const ids = new Set(incoming.map((value) => value.id))
       return [
-        ...incoming.map((value) => keepTerminal(known.get(value.id), value)),
+        ...incoming.map((value) => retainOperation(known.get(value.id), value)),
         ...(current ?? []).filter((value) => !ids.has(value.id)),
       ]
     },

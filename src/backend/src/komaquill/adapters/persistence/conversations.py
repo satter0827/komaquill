@@ -1168,7 +1168,13 @@ class ConversationRepository:
             if request.allow_real_llm and not allow_real_llm:
                 raise KomaquillError(code="real_llm_not_allowed", retryable=False)
             result = result.model_copy(
-                update={"state": "accepted", "error": None, "can_resume": False}
+                update={
+                    "state": "accepted",
+                    "error": None,
+                    "error_stage": None,
+                    "can_resume": False,
+                    "resume_count": result.resume_count + 1,
+                }
             )
             self._save(connection, result)
             connection.execute(

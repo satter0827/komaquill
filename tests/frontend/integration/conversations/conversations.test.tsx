@@ -539,27 +539,105 @@ describe('conversation workflow', () => {
     expect(observations.length).toBeGreaterThan(0)
     expect(new Set(observations)).toEqual(new Set([requests[0].operation_id]))
   })
-  it('clears an interrupted receipt when an explicit resume completes the same operation', async () => {
+  it.each([false, true])(
+    'confirms a resume with an already completed cached receipt: %s',
+    async (alreadyComplete) => {
+      const cache = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      let resumed = false
+      const interrupted = {
+        id: 'retained',
+        conversation_id: 'one',
+        state: 'interrupted',
+        error: 'operation_interrupted',
+        can_resume: true,
+        resume_count: 0,
+        input: { text: 'Accepted before interruption' },
+      }
+      const receipt = () =>
+        resumed
+          ? {
+              ...interrupted,
+              state: 'complete',
+              error: null,
+              can_resume: false,
+              resume_count: 1,
+              input: null,
+            }
+          : interrupted
+      cache.setQueryData(
+        getOperationQueryKey({ path: { identity: 'retained' } }),
+        alreadyComplete
+          ? {
+              ...interrupted,
+              state: 'complete',
+              resume_count: 1,
+              can_resume: false,
+            }
+          : interrupted,
+      )
+      server.use(
+        http.get(`${base}/api/v1/conversations/one/operations`, () =>
+          HttpResponse.json([receipt()]),
+        ),
+        http.get(`${base}/api/v1/operations/retained`, () =>
+          HttpResponse.json(receipt()),
+        ),
+        http.post(`${base}/api/v1/operations/retained/resume`, () => {
+          resumed = true
+          return HttpResponse.json(receipt())
+        }),
+      )
+      app('/conversations/one', cache)
+      await userEvent.click(
+        await screen.findByRole('button', { name: m.resumeOperation }),
+      )
+      await waitFor(() =>
+        expect(
+          cache.getQueryData(
+            getOperationQueryKey({ path: { identity: 'retained' } }),
+          ),
+        ).toMatchObject({ state: 'complete' }),
+      )
+      expect(
+        screen.queryByRole('button', { name: m.resumeOperation }),
+      ).not.toBeInTheDocument()
+      await userEvent.type(
+        screen.getByRole('textbox', { name: m.messageLabel }),
+        'Next draft',
+      )
+      expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
+    },
+  )
+  it('observes an accepted resume after losing its response without posting again', async () => {
     const cache = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
     })
     let resumed = false
+    let finished = false
+    let submissions = 0
     const interrupted = {
       id: 'retained',
       conversation_id: 'one',
       state: 'interrupted',
-      error: 'operation_interrupted',
+      error: 'operation_failed',
       can_resume: true,
+      resume_count: 0,
       input: { text: 'Accepted before interruption' },
     }
     const receipt = () =>
       resumed
         ? {
             ...interrupted,
-            state: 'complete',
+            state: finished ? 'complete' : 'running',
             error: null,
             can_resume: false,
-            input: null,
+            resume_count: 1,
+            input: finished ? null : interrupted.input,
           }
         : interrupted
     cache.setQueryData(
@@ -574,8 +652,9 @@ describe('conversation workflow', () => {
         HttpResponse.json(receipt()),
       ),
       http.post(`${base}/api/v1/operations/retained/resume`, () => {
+        submissions++
         resumed = true
-        return HttpResponse.json(receipt())
+        return HttpResponse.error()
       }),
     )
     app('/conversations/one', cache)
@@ -587,11 +666,122 @@ describe('conversation workflow', () => {
         cache.getQueryData(
           getOperationQueryKey({ path: { identity: 'retained' } }),
         ),
-      ).toMatchObject({ state: 'complete' }),
+      ).toMatchObject({ state: 'running', resume_count: 1 }),
     )
+    const input = screen.getByRole('textbox', { name: m.messageLabel })
+    await userEvent.type(input, 'Next unsent draft')
+    expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
+    finished = true
+    await waitFor(
+      () =>
+        expect(
+          cache.getQueryData(
+            getOperationQueryKey({ path: { identity: 'retained' } }),
+          ),
+        ).toMatchObject({ state: 'complete', resume_count: 1 }),
+      { timeout: 3000 },
+    )
+    expect(input).toHaveValue('Next unsent draft')
+    expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
     expect(
       screen.queryByRole('button', { name: m.resumeOperation }),
     ).not.toBeInTheDocument()
+    expect(submissions).toBe(1)
+  })
+  it('keeps observing a later send when an earlier resume acknowledgement arrives late', async () => {
+    const cache = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    let resumed = false
+    let nextComplete = false
+    let release!: () => void
+    const acknowledgement = new Promise<void>((done) => {
+      release = done
+    })
+    const interrupted = {
+      id: 'retained',
+      conversation_id: 'one',
+      state: 'interrupted',
+      error: 'operation_failed',
+      can_resume: true,
+      resume_count: 0,
+    }
+    const receipt = () =>
+      resumed
+        ? {
+            ...interrupted,
+            state: 'complete',
+            error: null,
+            can_resume: false,
+            resume_count: 1,
+          }
+        : interrupted
+    server.use(
+      http.get(`${base}/api/v1/conversations/one/operations`, () =>
+        HttpResponse.json([receipt()]),
+      ),
+      http.get(`${base}/api/v1/operations/retained`, () =>
+        HttpResponse.json(receipt()),
+      ),
+      http.post(`${base}/api/v1/operations/retained/resume`, async () => {
+        resumed = true
+        await acknowledgement
+        return HttpResponse.json({ ...receipt(), state: 'accepted' })
+      }),
+      http.get(`${base}/api/v1/operations/op`, () =>
+        HttpResponse.json({
+          id: 'op',
+          conversation_id: 'one',
+          state: nextComplete ? 'complete' : 'running',
+          resume_count: 0,
+        }),
+      ),
+    )
+    app('/conversations/one', cache)
+    try {
+      await userEvent.click(
+        await screen.findByRole('button', { name: m.resumeOperation }),
+      )
+      await waitFor(
+        () =>
+          expect(
+            cache.getQueryData(
+              getOperationQueryKey({ path: { identity: 'retained' } }),
+            ),
+          ).toMatchObject({ resume_count: 1, state: 'complete' }),
+        { timeout: 3000 },
+      )
+      const input = screen.getByRole('textbox', { name: m.messageLabel })
+      await userEvent.type(input, 'Next message')
+      await userEvent.click(screen.getByRole('button', { name: m.send }))
+      await waitFor(() =>
+        expect(
+          cache.getQueryData(
+            getOperationQueryKey({ path: { identity: 'op' } }),
+          ),
+        ).toMatchObject({ state: 'running' }),
+      )
+      await userEvent.type(input, 'Third unsent draft')
+      await act(async () => {
+        release()
+        await acknowledgement
+      })
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: m.send })).toBeDisabled(),
+      )
+      nextComplete = true
+      await waitFor(
+        () =>
+          expect(screen.getByRole('button', { name: m.send })).toBeEnabled(),
+        { timeout: 3000 },
+      )
+      expect(input).toHaveValue('Third unsent draft')
+    } finally {
+      release()
+    }
   })
   it('requires confirmation of a stale action draft and sends it with the message', async () => {
     const cache = new QueryClient({

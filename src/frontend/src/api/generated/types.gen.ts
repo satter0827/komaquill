@@ -1114,6 +1114,10 @@ export type OperationStage = 'model_discovery' | 'prompt_template' | 'tokenizati
  */
 export type OperationView = {
     /**
+     * Resume Count
+     */
+    resume_count?: number;
+    /**
      * Can Resume
      */
     can_resume?: boolean;

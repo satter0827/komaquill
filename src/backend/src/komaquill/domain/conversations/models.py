@@ -144,6 +144,7 @@ class AcceptedInput(Record):
 
 
 class Operation(Record):
+    resume_count: int = Field(default=0, ge=0)
     can_resume: bool = False
     nsfw_enabled: bool = False
     id: UUID

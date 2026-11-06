@@ -8,6 +8,8 @@ Reactの画面はFastAPIの `/api/v1` を呼び、CLIと同じ公開Python API�
 
 OpenAPIは [API契約](../../src/contracts/openapi.json)、TypeScriptの生成先は `src/frontend/src/api/generated`。識別子と保存形式は業務契約に置き、HTTPの失敗は安全なコードを返す。Reactはコードに対応する表示言語の説明を選ぶ。
 
+API要求は生成クライアントの標準フックで期限付きのAbortSignalを設定し、TanStack Queryや利用者のキャンセルと統合する。読み取りと、同期の英訳・接続・停止を含む更新要求は待機枠を分ける。期限の正本は[APIクライアント](../../src/frontend/src/api/client.ts)のAPI_READ_TIMEOUT_MSとAPI_REQUEST_TIMEOUT_MSとする。読み込みは失敗説明と再読込へ進み、更新の受付が不明な場合は同じ操作IDを照会する。通信期限から推論や画像生成の失敗を推測せず、更新要求を自動再送しない。
+
 Viteの開発画面はAPIへプロキシ接続する。配布版はビルド済みReactをwheelへ含め、FastAPIから配信する。配布版の実行にNode.jsは不要。生成・起動・検査の操作は [画面の使い方](../guides/web.md)、検査対象の選び方は [開発手順](../development/workflow.md) を参照する。
 
 ## 会話とアルバム

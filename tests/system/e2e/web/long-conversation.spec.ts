@@ -79,6 +79,37 @@ test('exercises the conversation runner with a scripted provider and safe failur
   )
   expect(inventoryDiagnostic.check).toBe('inventory_unchanged')
   expect(inventoryDiagnostic.operation_id).toBeNull()
+  const other = await (
+    await request.post('/api/v1/conversations', {
+      data: {
+        title: 'Operation diagnostics',
+        locale: 'ja',
+        llm_profile: 'lmstudio-4b',
+      },
+    })
+  ).json()
+  const liveFailure = await run('new-operation-mismatch', messages, {
+    conversation: other.id,
+    expected_inventory: {
+      player: [{ id: 'absent', name: 'Cup' }],
+      character: null,
+    },
+  }).then(
+    () => null,
+    (error: { code: number }) => error,
+  )
+  expect(liveFailure?.code).toBe(1)
+  const operationDiagnostic = JSON.parse(
+    await readFile(
+      info.outputPath('new-operation-mismatch/browser-failure.json'),
+      'utf8',
+    ),
+  )
+  expect(operationDiagnostic.check).toBe('inventory_unchanged')
+  const failedCheckOperation = await (
+    await request.get(`/api/v1/operations/${operationDiagnostic.operation_id}`)
+  ).json()
+  expect(failedCheckOperation.conversation_id).toBe(other.id)
   const marker = 'private-order-marker'
   const rejected = await run('mismatch', [marker, messages[1]]).then(
     () => null,

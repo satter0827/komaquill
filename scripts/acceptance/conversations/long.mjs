@@ -53,6 +53,8 @@ try {
   await page.getByRole('textbox', { name: ja.messageLabel }).waitFor()
   let saved = await (await api.get(apiPath)).json()
   for (let index = saved.turn_count; index < config.target_turns; index++) {
+    operationId = null
+    check = 'prepare_input'
     assert(Date.now() < Date.parse(config.expires_at))
     await evidence.step(
       `Send and display conversation turn ${index + 1}`,

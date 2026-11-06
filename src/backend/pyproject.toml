@@ -18,7 +18,8 @@ dependencies = [
 komaquill = "komaquill.__main__:main"
 
 [project.optional-dependencies]
-colab-client = ["google-colab-cli==0.7.5"]
+# Preserve the security floor in wheel metadata, including non-uv installations.
+colab-client = ["google-colab-cli==0.7.5", "oauthlib>=4.0.1,<5"]
 web = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "starlette>=1.10,<2"]
 llm = [
     "langchain-core>=1,<2",

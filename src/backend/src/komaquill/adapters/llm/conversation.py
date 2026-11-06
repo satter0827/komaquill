@@ -138,6 +138,9 @@ class DialogueResult(Record):
         description=(
             str(Reply.model_fields["text"].description)
             + " Answer the latest question directly before offering a follow-up question."
+            " Keep response-framing JSON outside the dialogue; include literal JSON only when "
+            "the player explicitly asks to discuss it. Do not derive future arrangements from "
+            "the current scene: preserve the latest user-stated time and meeting place."
         ),
     )
 

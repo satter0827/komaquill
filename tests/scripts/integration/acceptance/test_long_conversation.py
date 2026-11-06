@@ -21,7 +21,11 @@ def prepared(tmp_path, monkeypatch):
 
     def browser(api, output, report, scenario, **kwargs):
         assert api.llm_usage()["reserved_calls"] == 0
-        assert kwargs["timeout"] > 0 and kwargs["script"].endswith("long.mjs")
+        assert kwargs["script"].endswith("long.mjs")
+        if scenario["read_only"]:
+            assert "timeout" not in kwargs
+        else:
+            assert kwargs["timeout"] > 0
         assert len(scenario["messages"]) == scenario["target_turns"] <= 20
         assert scenario["format_version"] == 1 and scenario["real_llm"] is True
         calls.append(scenario)
@@ -96,6 +100,29 @@ def test_expired_allowance_does_not_launch_a_browser(prepared, monkeypatch):
     assert not long.collect(root / "expired")
     assert calls == []
     assert json.loads((root / "expired/run.json").read_bytes())["budget"]["reserved_calls"] == 0
+
+
+def test_saved_verification_can_read_an_expired_allowance_without_sending(prepared, monkeypatch):
+    root, calls = prepared
+    assert long.collect(root / "first")
+    with Client(root / "workspace") as api:
+        repository = api.conversations.repository
+        request = SendInput(
+            text=long.LIMITS["messages"][0], operation_id=uuid4(), expected_revision=0
+        )
+        repository.accept(UUID(calls[0]["conversation"]), request)
+        assert repository.running(request.operation_id)
+        repository.commit(request.operation_id, Reply(text="私の名前は栞です。", state_patch={}))
+
+    class Later(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(UTC) + timedelta(hours=2)
+
+    monkeypatch.setattr(long, "datetime", Later)
+    assert long.collect(root / "saved", through_turn=1)
+    report = json.loads((root / "saved/run.json").read_bytes())
+    assert report["read_only"] is True and report["budget"]["reserved_calls"] == 0
 
 
 def test_output_is_confined_to_artifacts(tmp_path, monkeypatch):

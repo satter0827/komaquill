@@ -63,6 +63,8 @@ def scripted_completion(body: dict) -> dict:
             value["action_narration"] = (
                 "Takes the compass." if english else "方位磁針を手に取ります。"
             )
+        if body["messages"][-1]["content"] == "Please summarize our preparation.":
+            value["text"] += "}}]}{"
     elif "personality" in schema:
         value = {
             "name": "Fixture character",

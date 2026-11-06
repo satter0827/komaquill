@@ -134,12 +134,13 @@ def collect(
         current = api.conversations.overview(UUID(identity))
         report["llm_profile"] = current.definition.llm_profile
         report["starting_turns"] = current.turn_count
+        report["read_only"] = current.turn_count == target
         if current.turn_count > target:
             raise KomaquillError(code="invalid_request")
         atomic_json(output / "run.json", report)
         expiry = datetime.fromisoformat(str(api.llm_usage()["expires_at"]))
         remaining = (expiry - datetime.now(UTC)).total_seconds()
-        if remaining <= 0:
+        if remaining <= 0 and not report["read_only"]:
             raise TimeoutError
         browse(
             api,
@@ -148,6 +149,7 @@ def collect(
             {
                 "format_version": 1,
                 "real_llm": True,
+                "read_only": report["read_only"],
                 "conversation": identity,
                 "messages": LIMITS["messages"][:target],
                 "target_turns": target,
@@ -156,9 +158,10 @@ def collect(
                 "expected_places": LIMITS["expected_places"],
                 "expected_character_name": current.definition.character.name,
                 "forbidden_held_objects": LIMITS["forbidden_held_objects"],
+                "forbidden_reply_fragments": LIMITS["forbidden_reply_fragments"],
             },
             script="scripts/acceptance/conversations/long.mjs",
-            timeout=remaining,
+            **({"timeout": remaining} if not report["read_only"] else {}),
         )
         report["status"] = "passed"
     except BaseException as error:

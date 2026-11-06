@@ -61,6 +61,14 @@ test('exercises the conversation runner with a scripted provider and safe failur
   expect(passed.status).toBe('passed')
   expect(passed.real_llm).toBe(false)
   expect(passed.unexpected_events).toEqual([])
+  await run('expired-saved', messages, {
+    read_only: true,
+    expires_at: new Date(Date.now() - 60_000).toISOString(),
+  })
+  const retainedOperations = await (
+    await request.get(`/api/v1/conversations/${scene.id}/operations`)
+  ).json()
+  expect(retainedOperations).toHaveLength(2)
   const inventoryFailure = await run('inventory-mismatch', messages, {
     expected_inventory: {
       player: [{ id: 'absent', name: 'Cup' }],
@@ -78,7 +86,10 @@ test('exercises the conversation runner with a scripted provider and safe failur
     ),
   )
   expect(inventoryDiagnostic.check).toBe('inventory_constraints')
-  expect(inventoryDiagnostic.operation_id).toBeNull()
+  const savedCheckOperation = await (
+    await request.get(`/api/v1/operations/${inventoryDiagnostic.operation_id}`)
+  ).json()
+  expect(savedCheckOperation.conversation_id).toBe(scene.id)
   const other = await (
     await request.post('/api/v1/conversations', {
       data: {
@@ -118,6 +129,34 @@ test('exercises the conversation runner with a scripted provider and safe failur
   expect(operationDiagnostic.operation_id).toBe(
     latestChecked.items[0].operation_id,
   )
+  const malformed = await (
+    await request.post('/api/v1/conversations', {
+      data: {
+        title: 'Dialogue diagnostics',
+        locale: 'ja',
+        llm_profile: 'lmstudio-4b',
+      },
+    })
+  ).json()
+  const dialogueFailure = await run(
+    'dialogue-fragment',
+    ['Please summarize our preparation.'],
+    {
+      conversation: malformed.id,
+      forbidden_reply_fragments: ['}}]}{'],
+    },
+  ).then(
+    () => null,
+    (error: { code: number }) => error,
+  )
+  expect(dialogueFailure?.code).toBe(1)
+  const dialogueDiagnostic = JSON.parse(
+    await readFile(
+      info.outputPath('dialogue-fragment/browser-failure.json'),
+      'utf8',
+    ),
+  )
+  expect(dialogueDiagnostic.check).toBe('reply_content')
   const marker = 'private-order-marker'
   const rejected = await run('mismatch', [marker, messages[1]]).then(
     () => null,

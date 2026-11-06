@@ -1,6 +1,6 @@
 # 検証記録を読む
 
-[基本動作・保存・検証基盤の再設計](results/reliability-redesign.md)は、構造とDB・生成物の整理、全体検査、既存データの変換、HTTPSの実接続、実LLM・T4と残る最終確認を扱います。
+[基本動作・保存・検証基盤の再設計](results/reliability-redesign.md)は、構造とDB・生成物の整理、全体検査、既存データの変換、HTTPSの実接続、実LLM・T4を扱います。[T4標準画面の最終確認](results/standard-ui-final.md)は、通信判定の修正後の4表示と追加推論なしでの終了確認を扱います。
 
 [実LLM・T4の再検証](results/live-ui-operations.md)は、4B・9Bの実応答、実画像、受付後の保存失敗とNative計数の修正、追加推論を伴わない復旧を扱います。
 

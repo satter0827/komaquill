@@ -577,6 +577,14 @@ acceptance = ["製品から開発用コードへ依存しない", "業務処理�
 sources = ["src/frontend/eslint.config.js", "src/frontend/package.json", "tools/testing/affected.py", "tools/testing/dependencies.py"]
 tests = ["tests/system/structure/repository/test_layout.py", "tests/tools/integration/selection/test_affected.py"]
 
+[requirements.REQ-REAL-ACCEPTANCE]
+summary = "実LLMとGPUの検査を明示許可と累積予算で分離し、保存結果から再検証する"
+status = "implemented"
+acceptance = ["通常ゲートは実LLMとGPUを使わない", "許可と回数・時間・費用の既使用分を再起動後も保持する", "保存結果の再検証で追加推論と画像要求を送らない", "標準画面の4表示と想定外の例外・通信失敗を記録する", "確保したGPUの終了と割当0件を確認する"]
+sources = ["scripts/acceptance/run.py", "scripts/acceptance/budget.py", "scripts/acceptance/web.mjs"]
+tests = ["tests/scripts/integration/acceptance/test_run.py", "tests/scripts/integration/budget/test_verification_budget.py", "tests/tools/integration/web/evidence.test.mjs"]
+implementation_note = "実LLMの2会話・各2ターンとT4の4画像を保存した。2026年11月6日に同じ台帳から標準画面4表示を追加推論・画像生成なしで再検証し、終了を確認した。対象版と未確認事項はdocs/verification/results/standard-ui-final.mdで管理する。"
+
 [requirements.REQ-STORAGE-BOUNDARIES]
 summary = "DBの関係と不変の生成物を分け、原本を保全して変換する"
 status = "implemented"

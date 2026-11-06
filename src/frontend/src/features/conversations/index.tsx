@@ -7,6 +7,7 @@ import {
 import { Send, Feather, PanelRight, Sparkles } from 'lucide-react'
 import {
   useCallback,
+  useId,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -14,7 +15,7 @@ import {
 } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
 import { Link, useParams } from 'react-router'
-import { isRejectedRequest, POLL_INTERVAL_MS } from '../../api/client'
+import { isRejectedRequest } from '../../api/client'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type {
   CreationJob,
@@ -53,11 +54,13 @@ import {
 } from './actions'
 import {
   creationOptions,
+  conversationOperationsOptions,
   keepTerminal,
   operationOptions,
-  operationPending,
   watchReceipt,
 } from '../../shared/operations'
+
+const MAX_DESTINATION_LENGTH = 1000
 
 function Drawing({ job }: { job: CreationJob }) {
   const messages = useMessages()
@@ -85,7 +88,7 @@ function AcceptedTurn({ operation }: { operation: OperationView }) {
   if (!accepted) return null
   return (
     <article className="turn" data-operation-id={operation.id}>
-      {accepted.text && (
+      {accepted.text?.trim() && (
         <div className="user-message">
           <span className="message-label">{messages.you}</span>
           <p>{accepted.text}</p>
@@ -136,6 +139,11 @@ function ConversationView({
   const preferences = usePreferences()
   const [text, setText] = useState('')
   const [actionOpen, setActionOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [destination, setDestination] = useState('')
+  const moveRevision = useRef<number | null>(null)
+  const destinationInput = useRef<HTMLInputElement>(null)
+  const sendFormId = useId()
   const actionEditor = useRef<HTMLDivElement>(null)
   const messageInput = useRef<HTMLTextAreaElement>(null)
   const stateTrigger = useRef<HTMLButtonElement>(null)
@@ -163,9 +171,14 @@ function ConversationView({
     conversation: detail.data,
   })
   useLayoutEffect(() => {
-    if (actionControls.queued && composerOptions.current)
+    if (actionControls.queued && moveOpen)
+      destinationInput.current?.scrollIntoView({ block: 'nearest' })
+    else if (actionControls.queued && composerOptions.current)
       composerOptions.current.scrollTop = 0
-  }, [actionControls.queued])
+  }, [actionControls.queued, moveOpen])
+  useLayoutEffect(() => {
+    if (moveOpen) destinationInput.current?.focus()
+  }, [moveOpen])
   const sendAvailability = useAvailability(
     detail.data ? { kind: 'conversation', identity } : undefined,
   )
@@ -204,9 +217,7 @@ function ConversationView({
       })
   }, [cache, identity, detail.data?.revision, detail.data?.turn_count])
   const savedOperations = useQuery({
-    ...q.getConversationOperationsOptions({ path: { identity } }),
-    refetchInterval: (query) =>
-      query.state.data?.some(operationPending) ? POLL_INTERVAL_MS : false,
+    ...conversationOperationsOptions(identity),
   })
   const operation = useQuery({
     ...operationOptions(operationId ?? ''),
@@ -237,6 +248,9 @@ function ConversationView({
         setText('')
       setPrepared(null)
       clearQueuedAction()
+      moveRevision.current = null
+      setDestination('')
+      setMoveOpen(false)
       void cache.invalidateQueries({
         queryKey: q.getConversationQueryKey({ path: { identity } }),
       })
@@ -319,12 +333,19 @@ function ConversationView({
       ? [...history.data.pages].reverse().flatMap((page) => page.items)
       : (detail.data.turns ?? []),
   }
-  const companionPlace = conversation.state?.character_place
+  const retainedOperations = new Map(
+    (savedOperations.data ?? []).map((value) => [value.id, value]),
+  )
+  if (operation.data)
+    retainedOperations.set(
+      operation.data.id,
+      keepTerminal(retainedOperations.get(operation.data.id), operation.data),
+    )
   const replyPending =
     send.isPending ||
     (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
-    savedOperations.data?.some((value) =>
+    [...retainedOperations.values()].some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
   const busy =
@@ -343,16 +364,8 @@ function ConversationView({
     (!actionControls.queued ||
       actionControls.queued.revision === conversation.revision) &&
     !busy &&
-    !!text.trim()
+    (!!text.trim() || !!actionControls.queued)
   const latestOperation = operation.data ?? savedOperations.data?.[0]
-  const retainedOperations = new Map(
-    (savedOperations.data ?? []).map((value) => [value.id, value]),
-  )
-  if (operation.data)
-    retainedOperations.set(
-      operation.data.id,
-      keepTerminal(retainedOperations.get(operation.data.id), operation.data),
-    )
   const completedIds = new Set(
     (conversation.turns ?? []).map((turn) => turn.operation_id),
   )
@@ -420,10 +433,6 @@ function ConversationView({
             <p>{value}</p>
           </div>
         ))}
-        <div>
-          <span>{messages.companionPlace}</span>
-          <p>{conversation.state?.character_place || messages.notSpecified}</p>
-        </div>
         <details>
           <summary>{messages.peopleDetails}</summary>
           <div className="details-content">
@@ -620,7 +629,7 @@ function ConversationView({
               const turn = entry.value
               return (
                 <article className="turn" key={turn.operation_id}>
-                  {turn.user && (
+                  {turn.user?.trim() && (
                     <div className="user-message">
                       <span className="message-label">{messages.you}</span>
                       <p>{turn.user}</p>
@@ -736,32 +745,6 @@ function ConversationView({
             </Button>
           )}
           <div className="composer-options" ref={composerOptions}>
-            {conversation.state?.character_place !==
-              conversation.state?.place && (
-              <div className="presence-notice" role="status">
-                <p>
-                  {formatMessage('companionAway', {
-                    place:
-                      conversation.state?.character_place ||
-                      messages.notSpecified,
-                  })}
-                </p>
-                {!!companionPlace && !actionControls.queued && (
-                  <Button
-                    disabled={!!busy}
-                    onClick={() => {
-                      actionControls.clear()
-                      actionControls.queue({
-                        kind: 'move',
-                        destination: companionPlace,
-                      })
-                    }}
-                  >
-                    {messages.joinCompanion}
-                  </Button>
-                )}
-              </div>
-            )}
             {send.error && (
               <p role="alert" className="error">
                 {failure(send.error)}
@@ -814,7 +797,11 @@ function ConversationView({
                     <p>{messages.reviewAction}</p>
                     <Button
                       disabled={!!busy}
-                      onClick={actionControls.confirmRevision}
+                      onClick={() => {
+                        actionControls.confirmRevision()
+                        if (actionControls.queued?.action.kind === 'move')
+                          moveRevision.current = conversation.revision ?? 0
+                      }}
                     >
                       {messages.confirmCurrentAction}
                     </Button>
@@ -824,8 +811,14 @@ function ConversationView({
                   disabled={!!busy}
                   aria-label={messages.editQueuedAction}
                   onClick={() => {
-                    actionControls.edit()
-                    setActionOpen(true)
+                    if (actionControls.queued?.action.kind === 'move') {
+                      moveRevision.current = actionControls.queued.revision
+                      setDestination(actionControls.queued.action.destination)
+                      setMoveOpen(true)
+                    } else {
+                      actionControls.edit()
+                      setActionOpen(true)
+                    }
                   }}
                 >
                   {messages.edit}
@@ -833,7 +826,12 @@ function ConversationView({
                 <Button
                   disabled={!!busy}
                   aria-label={messages.removeQueuedAction}
-                  onClick={actionControls.clear}
+                  onClick={() => {
+                    actionControls.clear()
+                    moveRevision.current = null
+                    setDestination('')
+                    setMoveOpen(false)
+                  }}
                 >
                   {messages.cancel}
                 </Button>
@@ -846,6 +844,13 @@ function ConversationView({
               </p>
             )}
             <div className="composer-tools">
+              <Button
+                aria-expanded={moveOpen}
+                disabled={!!busy || needsReview}
+                onClick={() => setMoveOpen(!moveOpen)}
+              >
+                {messages.changePlace}
+              </Button>
               <Popover.Root>
                 <Popover.Trigger render={<Button />}>
                   {messages.drawingSettings}
@@ -931,6 +936,7 @@ function ConversationView({
                     controls={actionControls}
                     onQueued={() => {
                       setActionOpen(false)
+                      setMoveOpen(false)
                     }}
                   />
                 </Popup>
@@ -943,8 +949,33 @@ function ConversationView({
                   </p>
                 )}
             </div>
+            {moveOpen && (
+              <label>
+                {messages.destination}
+                <input
+                  ref={destinationInput}
+                  form={sendFormId}
+                  value={destination}
+                  maxLength={MAX_DESTINATION_LENGTH}
+                  disabled={!!busy || needsReview}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setDestination(value)
+                    moveRevision.current ??= conversation.revision ?? 0
+                    if (value.trim())
+                      actionControls.queue(
+                        { kind: 'move', destination: value },
+                        undefined,
+                        moveRevision.current,
+                      )
+                    else actionControls.setQueued(null)
+                  }}
+                />
+              </label>
+            )}
           </div>
           <form
+            id={sendFormId}
             className="composer"
             onSubmit={(event) => {
               event.preventDefault()

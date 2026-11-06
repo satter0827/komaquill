@@ -39,8 +39,6 @@ test('exercises the conversation runner with a scripted provider and safe failur
         messages: expectedMessages,
         target_turns: expectedMessages.length,
         moves: {},
-        rejoin_index: -1,
-        away_indexes: [],
         expires_at: new Date(Date.now() + 60_000).toISOString(),
       }),
     )
@@ -76,7 +74,9 @@ test('exercises the conversation runner with a scripted provider and safe failur
     ).status,
   ).toBe('failed')
   await page.goto(`/conversations/${scene.id}`)
-  await expect(page.locator('.user-message p')).toHaveText(messages)
+  await expect(page.locator('.user-message p')).toHaveText(
+    messages.filter(Boolean),
+  )
   await expect(page.locator('.assistant-message')).toHaveCount(2)
 })
 
@@ -88,7 +88,8 @@ for (const [locale, m] of [
     page,
     request,
     evidence,
-  }) => {
+    baseURL,
+  }, info) => {
     test.setTimeout(LONG_TIMEOUT_MS)
     const response = await request.post('/api/v1/conversations', {
       data: {
@@ -112,15 +113,34 @@ for (const [locale, m] of [
       { length: LONG_TURNS },
       (_, i) => `Browser turn ${i + 1}: please continue.`,
     )
-    for (const message of messages) {
+    messages[0] = 'I head to the beach.'
+    messages[20] = ''
+    for (const [index, message] of messages.entries()) {
+      if (index === 10 || index === 20) {
+        await page
+          .getByRole('button', { name: m.changePlace, exact: true })
+          .click()
+        await page
+          .getByLabel(m.destination, { exact: true })
+          .fill(index === 10 ? 'Park' : 'Bookshop')
+      }
       await input.fill(message)
-      await page.getByRole('button', { name: m.send, exact: true }).click()
-      await expect(
-        page
-          .locator('article.turn')
-          .filter({ hasText: message })
-          .locator('.assistant-message'),
-      ).toHaveCount(1)
+      const [receipt] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname ===
+              `/api/v1/conversations/${scene.id}/turns`,
+        ),
+        page.getByRole('button', { name: m.send, exact: true }).click(),
+      ])
+      expect(receipt.status()).toBe(202)
+      const turn = message
+        ? page.locator('article.turn').filter({ hasText: message })
+        : page.locator('article.turn').filter({
+            has: page.locator('.user-action', { hasText: 'Bookshop' }),
+          })
+      await expect(turn.locator('.assistant-message')).toHaveCount(1)
     }
     expect(
       (await (await request.get(`/api/v1/conversations/${scene.id}`)).json())
@@ -130,7 +150,9 @@ for (const [locale, m] of [
     await expect(page.locator('.assistant-message')).toHaveCount(30)
     await page.getByRole('button', { name: m.olderTurns, exact: true }).click()
     await expect(page.locator('.assistant-message')).toHaveCount(LONG_TURNS)
-    await expect(page.locator('.user-message p')).toHaveText(messages)
+    await expect(page.locator('.user-message p')).toHaveText(
+      messages.filter(Boolean),
+    )
     expect(await page.locator('article.turn').count()).toBe(LONG_TURNS)
     expect(
       await (
@@ -155,6 +177,22 @@ for (const [locale, m] of [
     await expect(
       page.getByText(messages.at(-1)!, { exact: true }),
     ).toBeVisible()
+    const file = info.outputPath('saved-browser-input.json')
+    await writeFile(
+      file,
+      JSON.stringify({
+        format_version: 1,
+        real_llm: false,
+        endpoint: baseURL,
+        conversations: [scene.id],
+        conversation_turn_counts: { [scene.id]: LONG_TURNS },
+        has_images: false,
+        standard_views: [],
+      }),
+    )
+    await runFile(process.execPath, ['scripts/acceptance/web.mjs', file], {
+      timeout: 60_000,
+    })
   })
 }
 
@@ -208,7 +246,7 @@ test('retains the conversation and draft when refreshing fails, then recovers ex
   ).toBeEnabled()
 })
 
-test('explains a separated companion beside the composer and queues joining without sending', async ({
+test('sends a movement without an empty speech bubble', async ({
   page,
   request,
   evidence,
@@ -216,23 +254,34 @@ test('explains a separated companion beside the composer and queues joining with
   const scene = await (
     await request.post('/api/v1/conversations', {
       data: {
-        title: 'Apart',
-        initial_state: { place: 'Beach', character_place: 'Bookshop' },
+        title: 'Shared location',
+        llm_profile: 'lmstudio-4b',
+        initial_state: { place: 'Bookshop' },
       },
     })
   ).json()
+  await page.setViewportSize({ width: 390, height: 420 })
   await page.goto(`/conversations/${scene.id}`)
-  await expect(page.locator('.composer-options .presence-notice')).toBeVisible()
-  await page
-    .getByRole('button', { name: ja.joinCompanion, exact: true })
-    .click()
-  await expect(page.locator('.queued-action')).toContainText('Bookshop')
+  await page.getByRole('button', { name: ja.changePlace, exact: true }).click()
+  const destination = page.getByRole('textbox', {
+    name: ja.destination,
+    exact: true,
+  })
+  await destination.pressSequentially('Garden')
+  await expect(destination).toBeInViewport({ ratio: 1 })
+  await page.getByRole('textbox', { name: ja.messageLabel }).fill('  ')
+  await page.getByRole('button', { name: ja.send, exact: true }).click()
+  await expect(page.locator('.assistant-message')).toHaveCount(1)
+  await expect(page.locator('.user-message')).toHaveCount(0)
+  await expect(page.locator('.user-action')).toContainText('Garden')
+  await page.reload()
+  await expect(page.locator('.assistant-message')).toHaveCount(1)
   const saved = await (
     await request.get(`/api/v1/conversations/${scene.id}`)
   ).json()
-  expect(saved.state.place).toBe('Beach')
-  expect(saved.turn_count).toBe(0)
+  expect(saved.state.place).toBe('Garden')
+  expect(saved.turn_count).toBe(1)
   await evidence.capture(
-    'Joining is an unsent player action; the saved location is unchanged',
+    'Action-only movement survives reload without empty speech',
   )
 })

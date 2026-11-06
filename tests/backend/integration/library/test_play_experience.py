@@ -85,7 +85,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         api,
         conversation.id,
         ConversationState.model_validate(
-            {"place": "garden", "character_place": "garden", "character": {"clothing": "blue coat"}}
+            {"place": "garden", "character": {"clothing": "blue coat"}}
         ),
         0,
     )
@@ -129,7 +129,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
         api.library.accept(request.model_copy(update={"operation_id": uuid4()}))
 
 
-def test_absent_companion_uses_environment_conditions_before_submission(tmp_path):
+def test_explicit_environment_choice_uses_environment_conditions_before_submission(tmp_path):
     from komaquill.api import ConversationInput
 
     api = Client.initialize(tmp_path)
@@ -138,7 +138,6 @@ def test_absent_companion_uses_environment_conditions_before_submission(tmp_path
             title="Alone",
             initial_state={
                 "place": "Beach",
-                "character_place": "Bookshop",
                 "time": "Sunset",
             },
         )
@@ -154,6 +153,7 @@ def test_absent_companion_uses_environment_conditions_before_submission(tmp_path
         kind="conversation_image",
         target_id=conversation.id,
         expected_revision=0,
+        subjects="environment",
     )
     job, _ = api.library.accept(request)
     assert api.library.execute(job.id).state == "submitted"

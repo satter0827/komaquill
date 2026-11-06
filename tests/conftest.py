@@ -2,10 +2,7 @@
 
 import ipaddress
 import os
-import shutil
 import socket
-from contextlib import suppress
-from pathlib import Path
 
 import pytest
 
@@ -63,17 +60,9 @@ def offline_network(monkeypatch):
             monkeypatch.delenv(name)
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     if config.option.basetemp is None:
-        config.option.basetemp = config.rootpath / ".artifacts/tmp" / f"pytest-{os.getpid()}"
-
-
-def pytest_sessionfinish(session, exitstatus):
-    """Clean only the runner-owned successful workspace."""
-    if exitstatus or session.config.option.basetemp is None:
-        return
-    folder = Path(session.config.option.basetemp).resolve()
-    allowed = (session.config.rootpath / ".artifacts/tmp").resolve()
-    if folder != allowed and folder.is_relative_to(allowed):
-        with suppress(OSError):
-            shutil.rmtree(folder)
+        temporary = config.rootpath / ".artifacts/tmp"
+        temporary.mkdir(parents=True, exist_ok=True)
+        os.environ["PYTEST_DEBUG_TEMPROOT"] = str(temporary)

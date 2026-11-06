@@ -14,7 +14,7 @@
 | テストの範囲と実行 | [検証方針](verification/strategy.md)、[検証資料](verification/README.md) |
 | 再設計の確認結果 | [基本動作・保存・検証基盤](verification/results/reliability-redesign.md)、[保存と障害境界の再レビュー](verification/results/reliability-review.md)、[会話の継続と表示](verification/results/conversation-continuity.md)、[T4標準画面の最終確認](verification/results/standard-ui-final.md) |
 | 容量と削除候補 | [生成物・ログ・ワークツリーの整理前調査](verification/results/storage-review-20261106.md) |
-| 設計判断 | [再設計の判断](decisions/0022-reliability-and-storage.md) |
+| 設計判断 | [再設計の判断](decisions/0022-reliability-and-storage.md)、[現在地と検証生成物の保持](decisions/0023-shared-location-and-verification-retention.md) |
 | 未完了の作業 | [今後の対象](plans/future.md) |
 
 `current/`は現在の実装、`plans/`は未完了の作業、`verification/results/`は対象版と環境を限定した検証結果です。過去の成功は、現在のコードや接続先の成功を示しません。設定値・依存版・エラー文言はコードと設定ファイルを正本とします。

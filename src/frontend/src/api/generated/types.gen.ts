@@ -30,6 +30,10 @@ export type AcceptedInput = {
  * ActionRecord
  */
 export type ActionRecord = {
+    /**
+     * Origin
+     */
+    origin?: 'explicit' | 'conversation';
     request: RecordedActionRequest;
     before: ConversationState;
     after: ConversationState;
@@ -737,10 +741,6 @@ export type ConversationState = {
      * Relationship
      */
     relationship?: string;
-    /**
-     * Character Place
-     */
-    character_place?: string;
     /**
      * Scenery
      */
@@ -1967,7 +1967,7 @@ export type SendInput = {
     /**
      * Text
      */
-    text: string;
+    text?: string;
     /**
      * Action
      */

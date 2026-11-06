@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, writeFile, rm } from 'node:fs/promises'
 import { setTimeout } from 'node:timers/promises'
 import path from 'node:path'
 import {
@@ -19,8 +19,10 @@ import {
 import Reporter from '../../../../tools/testing/web/reporter.mjs'
 import { webConfig } from '../../../../tools/testing/web/config.mjs'
 
-async function directory() {
-  return mkdtemp(path.resolve('.artifacts/tmp/web-evidence-'))
+async function directory(context) {
+  const root = await mkdtemp(path.resolve('.artifacts/tmp/web-evidence-'))
+  context.after(() => rm(root, { recursive: true, force: true }))
+  return root
 }
 
 test(
@@ -30,7 +32,7 @@ test(
     timeout: 15000,
   },
   async (t) => {
-    const root = await directory()
+    const root = await directory(t)
     const target = path.join(root, 'scenario.json')
     const probe = path.join(root, 'probe.json')
     await jsonFile(target, { state: 'previous' })
@@ -135,15 +137,15 @@ test('expected failure, skip and exploration completion are distinct from passin
   assert.equal(classify('timedOut', 'failed', 'assertion'), 'failed')
 })
 
-test('artifact names cannot escape the scenario directory', async () => {
-  const root = await directory()
+test('artifact names cannot escape the scenario directory', async (t) => {
+  const root = await directory(t)
   assert.equal(contained(root, '001.png'), path.join(root, '001.png'))
   for (const name of ['../outside', path.resolve(root, '../outside'), '.'])
     assert.throws(() => contained(root, name))
 })
 
-test('each capture keeps images, semantics, events and integrity information together', async () => {
-  const root = await directory()
+test('each capture keeps images, semantics, events and integrity information together', async (t) => {
+  const root = await directory(t)
   const page = new Page()
   const evidence = new Evidence(page, root, { mode: 'assertion' })
   page.emit('request', {
@@ -184,8 +186,8 @@ test('each capture keeps images, semantics, events and integrity information tog
   ])
 })
 
-test('a failed action retains its last visible state without copying exception bodies', async () => {
-  const root = await directory()
+test('a failed action retains its last visible state without copying exception bodies', async (t) => {
+  const root = await directory(t)
   const evidence = new Evidence(new Page(), root, { mode: 'exploration' })
   await assert.rejects(
     evidence.step('Failed action', async () => {
@@ -202,9 +204,9 @@ test('a failed action retains its last visible state without copying exception b
   )
 })
 
-test('expected network faults are limited by request, status, count and lifetime', async () => {
+test('expected network faults are limited by request, status, count and lifetime', async (t) => {
   const page = new Page()
-  const evidence = new Evidence(page, await directory(), { mode: 'assertion' })
+  const evidence = new Evidence(page, await directory(t), { mode: 'assertion' })
   const response = (status = 503) => ({
     request: () => ({ method: () => 'POST' }),
     url: () => 'http://127.0.0.1/api/v1/images',
@@ -246,7 +248,7 @@ test('expected network faults are limited by request, status, count and lifetime
   assert.equal((await evidence.finish('passed', 'passed')).outcome, 'failed')
 })
 
-test('optional resources preserve public paths and reject foreign origins and unrelated console errors', async () => {
+test('optional resources preserve public paths and reject foreign origins and unrelated console errors', async (t) => {
   assert.equal(
     route('http://localhost/api/userdata/user.css'),
     '/api/userdata/user.css',
@@ -256,7 +258,7 @@ test('optional resources preserve public paths and reject foreign origins and un
     '/api/userdata/:value',
   )
   const page = new Page()
-  const evidence = new Evidence(page, await directory())
+  const evidence = new Evidence(page, await directory(t))
   evidence.expectFailure({
     kind: 'response',
     route: '/user.css',
@@ -288,9 +290,9 @@ test('optional resources preserve public paths and reject foreign origins and un
   )
 })
 
-test('only an accepted empty response can cancel its body without losing a write', async () => {
+test('only an accepted empty response can cancel its body without losing a write', async (t) => {
   const page = new Page()
-  const evidence = new Evidence(page, await directory())
+  const evidence = new Evidence(page, await directory(t))
   for (const [status, length] of [
     [200, '0'],
     [200, '12'],
@@ -333,9 +335,9 @@ test('only an accepted empty response can cancel its body without losing a write
   )
 })
 
-test('a declared connection fault permits only its matching browser resource error', async () => {
+test('a declared connection fault permits only its matching browser resource error', async (t) => {
   const page = new Page()
-  const evidence = new Evidence(page, await directory())
+  const evidence = new Evidence(page, await directory(t))
   evidence.expectFailure({
     kind: 'request_failed',
     route: '/api/v1/images',
@@ -364,8 +366,8 @@ test('a declared connection fault permits only its matching browser resource err
   )
 })
 
-test('capture failure is checkpointed and never counted as complete evidence', async () => {
-  const root = await directory()
+test('capture failure is checkpointed and never counted as complete evidence', async (t) => {
+  const root = await directory(t)
   const page = new Page()
   page.screenshot = async () => {
     throw new Error('private capture failure')
@@ -378,9 +380,9 @@ test('capture failure is checkpointed and never counted as complete evidence', a
   assert.equal(result.problems.length, 3)
 })
 
-test('cancelled reads remain visible while interrupted writes and network failures fail', async () => {
+test('cancelled reads remain visible while interrupted writes and network failures fail', async (t) => {
   const page = new Page()
-  const evidence = new Evidence(page, await directory(), { mode: 'assertion' })
+  const evidence = new Evidence(page, await directory(t), { mode: 'assertion' })
   const request = (method, error) => ({
     method: () => method,
     url: () => 'http://127.0.0.1/api/v1/conversations/private-id',
@@ -413,8 +415,8 @@ test('verification discards inherited provider credentials and live permissions'
   assert.equal(input.KOMAQUILL_REAL_LLM, '1')
 })
 
-test('unreadable, malformed and empty manifests are incomplete evidence', async () => {
-  const root = await directory()
+test('unreadable, malformed and empty manifests are incomplete evidence', async (t) => {
+  const root = await directory(t)
   assert.equal((await verifyBundle(root)).valid, false)
   await writeFile(path.join(root, 'scenario.json'), 'broken')
   assert.equal((await verifyBundle(root)).valid, false)
@@ -428,8 +430,8 @@ test('unreadable, malformed and empty manifests are incomplete evidence', async 
   assert.deepEqual((await verifyBundle(root)).problems, [{ code: 'no_steps' }])
 })
 
-test('reporter distinguishes known unmet requirements and rejects missing evidence', async () => {
-  const root = await directory()
+test('reporter distinguishes known unmet requirements and rejects missing evidence', async (t) => {
+  const root = await directory(t)
   await jsonFile(path.join(root, 'run.json'), {
     id: 'fixture',
     execution: 'browser',
@@ -467,8 +469,8 @@ test('reporter distinguishes known unmet requirements and rejects missing eviden
   assert.equal(index.evidence_complete, false)
 })
 
-test('reporter never treats discovery or skipped tests as executed evidence', async () => {
-  const root = await directory()
+test('reporter never treats discovery or skipped tests as executed evidence', async (t) => {
+  const root = await directory(t)
   const env = { KOMAQUILL_WEB_EVIDENCE_DIR: root }
   const reporter = new Reporter({}, env)
   await jsonFile(path.join(root, 'run.json'), {

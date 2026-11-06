@@ -286,7 +286,7 @@ def main() -> None:
     if not workspace.is_relative_to(ROOT / ".artifacts"):
         parser.error(message("review.workspace_required"))
     api = Client(workspace) if args.workspace else Client.initialize(workspace)
-    api.limit_llm_calls(workspace.parent / "allowance.sqlite3", **LIMITS["llm"])
+    api.limit_llm_calls(workspace.parent / "allowance.sqlite3", **LIMITS["llm"], create=True)
     if args.workspace is None:
         settings = Path(__file__).with_name("budget.toml").read_text(encoding="utf-8")
         tomllib.loads(settings)

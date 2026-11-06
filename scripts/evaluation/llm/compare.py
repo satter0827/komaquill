@@ -115,7 +115,10 @@ def child(source: Path, output: Path, variant: str) -> None:
             encoding="utf-8",
         )
         api.limit_llm_calls(
-            output / "allowance.sqlite3", max_calls=limits.max_calls, max_seconds=limits.max_seconds
+            output / "allowance.sqlite3",
+            max_calls=limits.max_calls,
+            max_seconds=limits.max_seconds,
+            create=True,
         )
         conversation = api.conversations.create(
             ConversationInput.model_validate(

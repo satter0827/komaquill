@@ -13,6 +13,7 @@ Object.defineProperty(window, 'matchMedia', {
 })
 
 // jsdom has no layout engine; browser tests exercise real resize observation.
+Element.prototype.scrollIntoView = vi.fn()
 vi.stubGlobal(
   'ResizeObserver',
   class {

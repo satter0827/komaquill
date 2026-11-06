@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import { mkdir, readFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { TestInfo } from '@playwright/test'
+import { message } from './evidence.mjs'
 
 export async function isolatedServer(
   use: (url: string) => Promise<void>,
@@ -76,8 +77,31 @@ export async function isolatedServer(
     ])
     if (!stopped) {
       child.kill()
+      await writeFile(
+        path.join(directory, 'cleanup.json'),
+        JSON.stringify({
+          format_version: 1,
+          server_stopped: false,
+          workspace: 'retained',
+        }),
+      )
       throw new Error('The isolated application did not confirm shutdown.')
     }
-    output.end()
+    await new Promise<void>((resolve) => output.end(resolve))
+    const passed = info.status === 'passed' && info.expectedStatus === 'passed'
+    if (passed) {
+      const relative = path.relative(directory, workspace)
+      if (relative !== 'workspace' || (await lstat(workspace)).isSymbolicLink())
+        throw new Error(message('web.workspace_cleanup_boundary'))
+      await rm(workspace, { recursive: true, maxRetries: 3, retryDelay: 100 })
+    }
+    await writeFile(
+      path.join(directory, 'cleanup.json'),
+      JSON.stringify({
+        format_version: 1,
+        server_stopped: true,
+        workspace: passed ? 'removed' : 'retained',
+      }),
+    )
   }
 }

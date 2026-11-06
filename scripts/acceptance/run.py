@@ -23,6 +23,7 @@ from komaquill.api import (
 )
 
 from scripts.acceptance import budget
+from tools.observations import owner
 from tools.reporting import atomic_json, input_fingerprint, message, source_revision
 from tools.runtime.processes import owned_process, run_owned
 from tools.testing.browser_environment import prepare
@@ -38,8 +39,20 @@ LIMITS["gpu"].update(
 )
 
 
-def attach(api: Client, output: Path) -> None:
-    api.limit_llm_calls(output.parent / "allowance.sqlite3", **LIMITS["llm"])
+def attach(
+    api: Client,
+    output: Path,
+    *,
+    ledger: Path | None = None,
+    max_calls: int | None = None,
+    max_seconds: int | None = None,
+) -> None:
+    api.limit_llm_calls(
+        ledger or output.parent / "allowance.sqlite3",
+        max_calls=LIMITS["llm"]["max_calls"] if max_calls is None else max_calls,
+        max_seconds=LIMITS["llm"]["max_seconds"] if max_seconds is None else max_seconds,
+        create=ledger is None,
+    )
 
 
 def conversations(api: Client, output: Path, report: dict[str, Any]) -> tuple[Client, list[UUID]]:
@@ -103,6 +116,7 @@ def gpu(
     *,
     saved_only: bool = False,
     time_extension: tuple[UUID, int] | None = None,
+    conversation_only: bool = False,
 ) -> None:
     before = api.runtime.status()
     account = api.runtime.usage()
@@ -133,36 +147,56 @@ def gpu(
         status = api.runtime.start(backend="colab", models=["wai-illustrious"], gpu="T4")
         report["gpu"]["started"] = status.gpu
         if not saved_only:
-            character = api.characters.create(
-                CharacterInput(name="Mira", age="32", appearance="Short silver hair, black apron")
-            )
-            story = api.stories.create(StoryInput(name="Bookshop", world="A quiet harbor bookshop"))
-            requests = [
-                CreationRequest(
-                    operation_id=uuid4(),
-                    kind="portrait",
-                    target_id=character.id,
-                    expected_revision=character.revision,
-                    locale="en",
-                    allow_real_llm=True,
-                ),
-                CreationRequest(
-                    operation_id=uuid4(),
-                    kind="banner",
-                    target_id=story.id,
-                    expected_revision=story.revision,
-                    locale="en",
-                    allow_real_llm=True,
-                ),
-                CreationRequest(
-                    operation_id=uuid4(),
-                    kind="conversation_image",
-                    target_id=identities[0],
-                    expected_revision=api.conversations.overview(identities[0]).revision,
-                    locale="ja",
-                    allow_real_llm=True,
-                ),
-            ]
+            if not conversation_only:
+                character = api.characters.create(
+                    CharacterInput(
+                        name="Mira", age="32", appearance="Short silver hair, black apron"
+                    )
+                )
+                story = api.stories.create(
+                    StoryInput(name="Bookshop", world="A quiet harbor bookshop")
+                )
+                requests = [
+                    CreationRequest(
+                        operation_id=uuid4(),
+                        kind="portrait",
+                        target_id=character.id,
+                        expected_revision=character.revision,
+                        locale="en",
+                        allow_real_llm=True,
+                    ),
+                    CreationRequest(
+                        operation_id=uuid4(),
+                        kind="banner",
+                        target_id=story.id,
+                        expected_revision=story.revision,
+                        locale="en",
+                        allow_real_llm=True,
+                    ),
+                    CreationRequest(
+                        operation_id=uuid4(),
+                        kind="conversation_image",
+                        target_id=identities[0],
+                        expected_revision=api.conversations.overview(identities[0]).revision,
+                        locale="ja",
+                        allow_real_llm=True,
+                    ),
+                ]
+            else:
+                subjects_to_check: tuple[Literal["character", "pair"], ...] = ("character", "pair")
+                requests = [
+                    CreationRequest(
+                        operation_id=uuid4(),
+                        kind="conversation_image",
+                        target_id=identities[0],
+                        expected_revision=api.conversations.overview(identities[0]).revision,
+                        subjects=subjects,
+                        viewpoint="observer",
+                        locale="ja",
+                        allow_real_llm=True,
+                    )
+                    for subjects in subjects_to_check
+                ]
             for request in requests:
                 budget.reserve(api.workspace, str(request.operation_id))
                 api.library.accept(request)
@@ -170,11 +204,12 @@ def gpu(
                 if job.image_id is None:
                     raise KomaquillError(code=job.error or "generation_failed")
                 save_image(api, job.image_id, request.kind, output, report)
-            budget.reserve(api.workspace, str(uuid4()))
-            image = api.images.submit(
-                "A quiet harbor at sunrise, watercolor", candidates=1, seed=101
-            )
-            save_image(api, image.run_id, "standalone", output, report)
+            if not conversation_only:
+                budget.reserve(api.workspace, str(uuid4()))
+                image = api.images.submit(
+                    "A quiet harbor at sunrise, watercolor", candidates=1, seed=101
+                )
+                save_image(api, image.run_id, "standalone", output, report)
         report["gpu"]["standard_views"] = api.runtime.views()
         observe(api, output, report, identities)
     except BaseException as error:
@@ -222,7 +257,12 @@ def observe(api: Client, output: Path, report: dict[str, Any], identities: list[
         output,
         report,
         {
+            "format_version": 1,
+            "real_llm": True,
             "conversations": [str(value) for value in identities],
+            "conversation_turn_counts": {
+                str(value): api.conversations.overview(value).turn_count for value in identities
+            },
             "has_images": any(run.state == "saved" and run.images for run in api.images.list()),
             "standard_views": report.get("gpu", {}).get("standard_views", []),
         },
@@ -303,12 +343,16 @@ def main() -> int:
     parser.add_argument("--allow-real-llm", action="store_true", required=True)
     parser.add_argument("--allow-gpu", action="store_true")
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--conversation-id", type=UUID)
+    parser.add_argument("--ledger", type=Path)
+    parser.add_argument("--max-calls", type=int)
+    parser.add_argument("--max-seconds", type=int)
     parser.add_argument("--extend-gpu-seconds", type=int)
     parser.add_argument("--authorization-id", type=UUID)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (args.extend_gpu_seconds is not None or args.authorization_id is not None) and not (
-        args.resume
+        (args.resume or args.conversation_id)
         and args.allow_gpu
         and args.authorization_id
         and args.extend_gpu_seconds is not None
@@ -325,6 +369,7 @@ def main() -> int:
     workspace = output.parent / "workspace"
     report: dict[str, Any] = {
         "format_version": 1,
+        **owner(),
         "started_at": datetime.now(UTC).isoformat(),
         "source_revision": source_revision(ROOT),
         "input_sha256": input_fingerprint(ROOT),
@@ -346,11 +391,16 @@ def main() -> int:
             )
             initialized.close()
         api = Client(workspace)
-        attach(api, output)
+        attach(
+            api, output, ledger=args.ledger, max_calls=args.max_calls, max_seconds=args.max_seconds
+        )
         opening_value = api.llm_usage()["reserved_calls"]
         assert isinstance(opening_value, int)
         opening_calls = opening_value
-        if args.resume:
+        if args.conversation_id:
+            api.conversations.overview(args.conversation_id)
+            identities = [args.conversation_id]
+        elif args.resume:
             previous = args.resume.resolve()
             if previous.parent.parent != output.parent or previous.name != "run.json":
                 raise KomaquillError(code="invalid_request")
@@ -377,6 +427,7 @@ def main() -> int:
                 identities,
                 saved_only=bool(args.resume),
                 time_extension=time_extension,
+                conversation_only=args.conversation_id is not None,
             )
         else:
             observe(api, output, report, identities)
@@ -391,16 +442,29 @@ def main() -> int:
     finally:
         report.update(
             finished_at=datetime.now(UTC).isoformat(),
-            budget=api.llm_usage() if api is not None else None,
+            budget=None,
             inputs_unchanged=input_fingerprint(ROOT) == report["input_sha256"],
         )
+        if api is not None:
+            try:
+                report["budget"] = api.llm_usage()
+            except Exception as error:
+                report.update(
+                    status="failed",
+                    budget_failure=describe_failure(error, "storage").model_dump(mode="json"),
+                )
+            try:
+                api.close()
+            except Exception as error:
+                report.update(
+                    status="failed",
+                    cleanup_failure=describe_failure(error, "operation").model_dump(mode="json"),
+                )
         report["new_llm_calls"] = (
             report["budget"]["reserved_calls"] - opening_calls
             if opening_calls is not None and report["budget"] is not None
             else None
         )
-        if api is not None:
-            api.close()
         atomic_json(output / "run.json", report)
     print(message("review.evidence_saved", path=output / "run.json"))
     return 0 if report["status"] == "passed" and report["inputs_unchanged"] else 1

@@ -24,6 +24,12 @@ if TYPE_CHECKING:
     pass
 
 from komaquill.adapters.persistence.connection import Database
+from komaquill.adapters.persistence.conversation_records import (
+    read_action,
+    read_bookmark,
+    read_conversation,
+    read_turn,
+)
 from komaquill.adapters.persistence.errors import conflict, missing
 from komaquill.adapters.persistence.schema import (
     command_receipts,
@@ -37,6 +43,7 @@ from komaquill.adapters.persistence.schema import (
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.actions import (
     ActionRecord,
+    MoveAction,
     ProposalDismissal,
     ProposedAction,
     RecordedActionRequest,
@@ -135,6 +142,12 @@ class ConversationRepository:
                 event_id = (
                     event.id if isinstance(event, ProposedAction) else event.request.operation_id
                 )
+                if kind == "actions":
+                    previous = self._event_payload(connection, value.id, kind, event_id)
+                    if previous is not None:
+                        if read_action(previous) != event:
+                            raise ValueError("A recorded action cannot change.")
+                        continue
                 statement = insert(conversation_events).values(
                     conversation_id=str(value.id),
                     kind=kind,
@@ -225,6 +238,80 @@ class ConversationRepository:
             )
         ).scalar_one_or_none()
 
+    def _bind_action(
+        self, connection: Connection, identity: UUID, request: RecordedTurnRequest
+    ) -> RecordedTurnRequest:
+        action_id = request.action_id or request.operation_id
+        payload = self._event_payload(connection, identity, "actions", action_id)
+        if payload is None:
+            if request.action is not None or request.action_id is not None:
+                raise ValueError("The accepted action record is missing.")
+            return request
+        recorded = read_action(payload)
+        if (
+            recorded.request.operation_id != action_id
+            or recorded.reaction_id != request.operation_id
+            or (request.action is not None and recorded.request.action != request.action)
+            or (request.action is not None and recorded.origin != "explicit")
+            or (
+                request.action is None
+                and request.action_id is None
+                and recorded.origin != "conversation"
+            )
+        ):
+            raise ValueError("The accepted action identity differs from its request.")
+        return request.model_copy(update={"action_id": action_id, "action_origin": recorded.origin})
+
+    @stored
+    def apply_inferred_move(self, identity: UUID, action: MoveAction) -> None:
+        """Apply a saved interpretation once without changing the accepted message."""
+        with self.database.transaction() as connection:
+            row = self._row(connection, identity)
+            operation = self._operation(row)
+            request = RecordedTurnRequest.model_validate_json(str(row["request"]))
+            previous = self._event_payload(
+                connection, operation.conversation_id, "actions", identity
+            )
+            if previous is not None:
+                recorded = read_action(previous)
+                if recorded.origin != "conversation" or recorded.request.action != action:
+                    raise conflict()
+                return
+            conversation = self._get(connection, operation.conversation_id, with_turns=False)
+            if (
+                operation.state != "running"
+                or row["base_revision"] != conversation.revision
+                or request.action is not None
+                or request.action_id is not None
+            ):
+                raise conflict()
+            updated = accept_input(
+                conversation,
+                SendInput(
+                    operation_id=identity,
+                    expected_revision=conversation.revision,
+                    text=request.text,
+                    action=action,
+                    locale=request.locale,
+                    allow_real_llm=request.allow_real_llm,
+                ),
+            )
+            updated = updated.model_copy(
+                update={
+                    "actions": [
+                        *updated.actions[:-1],
+                        updated.actions[-1].model_copy(update={"origin": "conversation"}),
+                    ]
+                }
+            )
+            self._store(connection, updated)
+            connection.execute(
+                operations.update()
+                .where(operations.c.id == str(identity))
+                .values(base_revision=updated.revision)
+            )
+            connection.commit()
+
     @stored
     def actions(self, identity: UUID) -> builtins.list[ActionRecord]:
         with self.database.engine.connect() as reader:
@@ -237,7 +324,7 @@ class ConversationRepository:
             )
             values = []
             for row in rows:
-                value = ActionRecord.model_validate_json(str(row.payload))
+                value = read_action(str(row.payload))
                 if str(value.request.operation_id) != row.id:
                     raise ValueError("Action identity mismatch.")
                 values.append(value)
@@ -298,7 +385,7 @@ class ConversationRepository:
         from_turn: int = 0,
         with_events: bool | None = None,
     ) -> Conversation:
-        value = Conversation.model_validate_json(payload)
+        value = read_conversation(payload)
         query = select(conversation_events).where(conversation_events.c.conversation_id == identity)
         if not (with_turns if with_events is None else with_events):
             query = query.where(conversation_events.c.pending == 1)
@@ -313,7 +400,11 @@ class ConversationRepository:
             "visual_reviews": VisualReviewRecord,
         }
         for row in reader.execute(query).mappings():
-            event = models[row["kind"]].model_validate_json(row["payload"])
+            event = (
+                read_action(row["payload"])
+                if row["kind"] == "actions"
+                else models[row["kind"]].model_validate_json(row["payload"])
+            )
             event_id = event.id if isinstance(event, ProposedAction) else event.request.operation_id
             if str(event_id) != row["id"]:
                 raise ValueError("Conversation event identity mismatch.")
@@ -374,7 +465,7 @@ class ConversationRepository:
         values = []
         for position, row in enumerate(rows, start):
             source = json.loads(row["payload"])
-            turn = Turn.model_validate(source)
+            turn = read_turn(source)
             prefix = advance_history(prefix, source)
             if (
                 row["position"] != position
@@ -651,8 +742,7 @@ class ConversationRepository:
                 else 0
             )
             request = RecordedTurnRequest.model_validate_json(str(row["request"]))
-            if request.action is not None:
-                request = request.model_copy(update={"action_id": request.operation_id})
+            request = self._bind_action(connection, header.id, request)
             if header.memory and header.memory.source_version == 5:
                 for passage in header.memory.passages:
                     position = connection.execute(
@@ -679,9 +769,7 @@ class ConversationRepository:
                         conversation_events.c.id == str(request.action_id),
                     )
                 ).scalar_one()
-                value = value.model_copy(
-                    update={"actions": [ActionRecord.model_validate_json(payload)]}
-                )
+                value = value.model_copy(update={"actions": [read_action(payload)]})
             return value, TurnRequest.model_validate_json(
                 request.model_copy(
                     update={
@@ -707,6 +795,7 @@ class ConversationRepository:
         with self.database.engine.connect() as connection:
             row = self._row(connection, identity)
             request = RecordedTurnRequest.model_validate_json(str(row["request"]))
+            request = self._bind_action(connection, UUID(str(row["conversation_id"])), request)
             action = request.action
             if action is None and request.action_id is not None:
                 payload: str = connection.execute(
@@ -716,7 +805,7 @@ class ConversationRepository:
                         conversation_events.c.id == str(request.action_id),
                     )
                 ).scalar_one()
-                action = ActionRecord.model_validate_json(payload).request.action
+                action = read_action(payload).request.action
             return AcceptedInput(text=request.text, action=action)
 
     @stored
@@ -785,9 +874,8 @@ class ConversationRepository:
         if operation.state != "running" or row["base_revision"] != conversation.revision:
             raise conflict()
         request = RecordedTurnRequest.model_validate_json(str(row["request"]))
-        if request.action is not None:
-            request = request.model_copy(update={"action_id": request.operation_id})
-        state = apply_reply(conversation, reply)
+        request = self._bind_action(connection, conversation.id, request)
+        state = apply_reply(conversation, reply, action_confirmed=request.action_id is not None)
         action_payload = (
             connection.execute(
                 select(conversation_events.c.payload).where(
@@ -801,9 +889,7 @@ class ConversationRepository:
         )
         turn = Turn(
             operation_id=identity,
-            action=ActionRecord.model_validate_json(action_payload).request.action
-            if action_payload
-            else None,
+            action=read_action(action_payload).request.action if action_payload else None,
             user=request.text,
             assistant=reply.text,
             narration="" if reply.action_proposals else (state.scenery or state.place),
@@ -923,9 +1009,20 @@ class ConversationRepository:
                 saved = self.database.checkpoints.load(f"reply:{identity}")
                 if saved is None:
                     saved = self.database.checkpoints.conversation_result(
+                        f"conversation:{identity}:move-response"
+                    )
+                if saved is None:
+                    saved = self.database.checkpoints.conversation_result(
                         f"conversation:{identity}"
                     )
-                retained[identity] = Reply.model_validate(saved) if saved is not None else None
+                candidate = Reply.model_validate(saved) if saved is not None else None
+                retained[identity] = (
+                    None
+                    if candidate
+                    and len(candidate.action_proposals) == 1
+                    and isinstance(candidate.action_proposals[0], MoveAction)
+                    else candidate
+                )
             except KomaquillError as error:
                 retention_errors[identity] = error.code.value
             except (OSError, ValueError):
@@ -1086,7 +1183,7 @@ class ConversationRepository:
     def bookmarks(self, identity: UUID) -> builtins.list[Bookmark]:
         with self.database.engine.connect() as reader:
             return [
-                Bookmark.model_validate_json(str(row[0]))
+                read_bookmark(str(row[0]))
                 for row in reader.execute(
                     select(conversation_bookmarks.c.payload).where(
                         conversation_bookmarks.c.conversation_id == str(identity)
@@ -1099,7 +1196,7 @@ class ConversationRepository:
         with self.database.transaction() as connection:
             known = self._known_command(connection, identity, "bookmark", request)
             if known:
-                return Bookmark.model_validate_json(
+                return read_bookmark(
                     connection.execute(
                         select(conversation_bookmarks.c.payload).where(
                             conversation_bookmarks.c.id == str(request.operation_id)
@@ -1117,7 +1214,7 @@ class ConversationRepository:
             ).scalar_one_or_none()
             if payload is None:
                 raise missing()
-            turn = Turn.model_validate_json(payload)
+            turn = read_turn(json.loads(payload))
             result = Bookmark(
                 id=request.operation_id,
                 conversation_id=identity,

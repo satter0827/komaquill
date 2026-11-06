@@ -19,7 +19,6 @@ def wire_state(value):
     state = ConversationState.model_validate(value)
     return {
         "relationship": state.relationship,
-        "companion_movement": "join_player" if state.place else "stay",
         "scenery": state.scenery,
         "character": state.character.model_dump(exclude={"appearance"}),
     }
@@ -185,7 +184,6 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
                 "response": {
                     "kind": "companion",
                     "changes": [],
-                    "movement": "stay",
                     "action_narration": "",
                     "text": "Understood.",
                 }
@@ -211,10 +209,7 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     latest = json.loads(calls[0][5][-1][1])
     assert latest == {
         "speaker": "human_player",
-        "current_places": {
-            "human_player": scene.state.place,
-            "assistant_character": scene.state.character_place,
-        },
+        "shared_place": scene.state.place,
         "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
         "text": text,
     }
@@ -782,7 +777,6 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                             ]
                             if len(calls) == 1
                             else [],
-                            "movement": "stay",
                             "action_narration": "",
                             "text": "Hello, Akari.",
                         }

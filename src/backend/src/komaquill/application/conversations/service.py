@@ -8,7 +8,7 @@ from contextlib import AbstractContextManager
 from typing import Protocol
 from uuid import UUID
 
-from komaquill.domain.conversations.actions import ActionRecord, ProposalDismissal
+from komaquill.domain.conversations.actions import ActionRecord, MoveAction, ProposalDismissal
 from komaquill.domain.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.domain.conversations.models import (
     AcceptedInput,
@@ -40,6 +40,7 @@ class Repository(Protocol):
     def fork(self, identity: UUID, request: SceneRequest) -> Conversation: ...
     def accept(self, identity: UUID, request: SendInput) -> tuple[Operation, bool]: ...
     def request(self, identity: UUID) -> tuple[Conversation, TurnRequest]: ...
+    def apply_inferred_move(self, identity: UUID, action: MoveAction) -> None: ...
     def operation(self, identity: UUID) -> Operation: ...
     def operation_snapshot(self, identity: UUID) -> Operation: ...
     def accepted_input(self, identity: UUID) -> AcceptedInput: ...
@@ -116,9 +117,6 @@ class ConversationService:
         )
         resolved = resolved.model_copy(
             update={
-                "character_place": resolved.character_place
-                if "character_place" in initial.model_fields_set
-                else resolved.place,
                 **{
                     role: getattr(resolved, role).model_copy(
                         update={
@@ -177,7 +175,15 @@ class ConversationService:
             try:
                 conversation, request = self.repository.request(identity)
                 reply = self.responder.reply(conversation, request)
-                apply_reply(conversation, reply)
+                if (
+                    request.action_id is None
+                    and len(reply.action_proposals) == 1
+                    and isinstance(reply.action_proposals[0], MoveAction)
+                ):
+                    self.repository.apply_inferred_move(identity, reply.action_proposals[0])
+                    conversation, request = self.repository.request(identity)
+                    reply = self.responder.reply(conversation, request)
+                apply_reply(conversation, reply, action_confirmed=request.action_id is not None)
             except KomaquillError as error:
                 if self.report_failure:
                     self.report_failure(identity, failure_info(error, "operation"))

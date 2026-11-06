@@ -46,7 +46,7 @@ def test_action_survives_failed_reaction_and_is_not_reapplied(story):
     assert client.operations.get(record.reaction_id).error == "llm_unavailable"
     resumed = Client(client.workspace).conversations.get(conversation.id)
     assert resumed.state.place == "Beach"
-    assert resumed.state.character_place == "Shop"
+    assert resumed.state.model_dump().get("character_place") is None
     assert resumed.revision == 1
     assert send_action(service, conversation.id, request) == record
     assert len(service.actions(conversation.id)) == 1
@@ -58,26 +58,26 @@ def test_action_survives_failed_reaction_and_is_not_reapplied(story):
         )
 
 
-def test_chat_proposes_then_player_confirms(story):
+def test_nonmovement_action_remains_a_proposal_until_confirmed(story):
     _, service, conversation = story
     service.responder.reply = lambda *_: Reply(
         text="",
         state_patch=StatePatch(),
-        action_proposals=[MoveAction(destination="Beach")],
+        action_proposals=[PrepareAction(clothing="Blue coat")],
     )
     service.send(
         conversation.id,
         SendInput(
             expected_revision=service.overview(conversation.id).revision,
             operation_id=uuid4(),
-            text="I head to the beach.",
+            text="I put on a blue coat.",
         ),
     )
     pending = service.get(conversation.id)
     assert pending.state.place == "Shop"
     proposal = pending.proposals[0]
     service.responder.reply = lambda *_: Reply(
-        text="", narration="The sea is quiet.", state_patch=StatePatch()
+        text="Ready.", narration="The sea is quiet.", state_patch=StatePatch()
     )
     send_action(
         service,
@@ -91,7 +91,8 @@ def test_chat_proposes_then_player_confirms(story):
         ),
     )
     result = service.get(conversation.id)
-    assert result.state.place == "Beach"
+    assert result.state.place == "Shop"
+    assert result.state.player.clothing == "Blue coat"
     assert result.proposals[0].state == "applied"
     assert result.turns[-1].action_id == result.actions[0].request.operation_id
 
@@ -150,9 +151,7 @@ def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
             )
         }
     )
-    generated = DialogueResult(
-        kind="companion", movement="stay", changes=[], action_narration="", text="Hello"
-    )
+    generated = DialogueResult(kind="companion", changes=[], action_narration="", text="Hello")
     result = resolve_scene(current, generated)
     assert result.character.clothing == "" and result.character.held_objects == []
 

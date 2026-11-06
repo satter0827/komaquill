@@ -198,8 +198,11 @@ class StructuredExecution:
             ).encode()
         ).hexdigest()
 
-    def has_response(self, operation: UUID) -> bool:
-        return any(path.stem.isdecimal() for path, _ in self.call_records(operation))
+    def has_response(self, operation: UUID, purpose: str = "") -> bool:
+        return any(
+            path.stem.startswith(purpose) and path.stem[len(purpose) :].isdecimal()
+            for path, _ in self.call_records(operation)
+        )
 
     def replay[T: BaseModel](
         self,
@@ -209,10 +212,15 @@ class StructuredExecution:
         system: str,
         validate: Callable[[T], None],
         field_language: str,
+        purpose: str = "",
     ) -> T:
         records = sorted(
-            ((p, value) for p, value in self.call_records(operation) if p.stem.isdecimal()),
-            key=lambda item: int(item[0].stem),
+            (
+                (p, value)
+                for p, value in self.call_records(operation)
+                if p.stem.startswith(purpose) and p.stem[len(purpose) :].isdecimal()
+            ),
+            key=lambda item: int(item[0].stem[len(purpose) :]),
         )
         if not records:
             raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
@@ -236,7 +244,9 @@ class StructuredExecution:
             raise KomaquillError(
                 code="invalid_response", stage="response_validation", retryable=False
             ) from None
-        self.record(operation, int(path.stem), {**record, "validation": "accepted"})
+        self.record(
+            operation, int(path.stem[len(purpose) :]), {**record, "validation": "accepted"}, purpose
+        )
         return result
 
     def invoke[T: BaseModel](

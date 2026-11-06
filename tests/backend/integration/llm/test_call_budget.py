@@ -41,6 +41,36 @@ def test_restart_cannot_refresh_an_expired_deadline(tmp_path):
     assert allowance.snapshot() == recreated.snapshot()
 
 
+def test_new_workspace_cannot_recreate_a_shared_allowance_after_loss(tmp_path):
+    from komaquill.api import Client
+
+    ledger = tmp_path / "shared.sqlite3"
+    with Client.initialize(tmp_path / "first") as first:
+        with pytest.raises(KomaquillError, match="storage_failed"):
+            first.limit_llm_calls(ledger, max_calls=1, max_seconds=60)
+        assert not ledger.exists()
+        first.limit_llm_calls(ledger, max_calls=1, max_seconds=60, create=True)
+        first._execution.call_budget.reserve()
+        before = first.llm_usage()
+    with Client.initialize(tmp_path / "second") as second:
+        second.limit_llm_calls(ledger, max_calls=1, max_seconds=60)
+        assert second.llm_usage() == before
+        with second._execution.call_budget.database.write() as connection:
+            connection.execute(execution_budgets.delete())
+    with (
+        Client.initialize(tmp_path / "third") as third,
+        pytest.raises(KomaquillError, match="storage_failed"),
+    ):
+        third.limit_llm_calls(ledger, max_calls=1, max_seconds=60, create=True)
+
+
+def test_allowance_creation_flag_is_strict(tmp_path):
+    from komaquill.api import Client
+
+    with Client.initialize(tmp_path) as api, pytest.raises(KomaquillError, match="invalid_request"):
+        api.limit_llm_calls(tmp_path / "calls.sqlite3", max_calls=1, max_seconds=60, create="yes")
+
+
 @pytest.mark.parametrize("loss", ["file", "row"])
 def test_attached_budget_loss_cannot_reset_the_allowance(tmp_path, loss):
     from komaquill.adapters.persistence.connection import database
@@ -48,7 +78,7 @@ def test_attached_budget_loss_cannot_reset_the_allowance(tmp_path, loss):
 
     api = Client.initialize(tmp_path / "workspace")
     ledger = tmp_path / "budget.sqlite3"
-    api.limit_llm_calls(ledger, max_calls=1, max_seconds=60)
+    api.limit_llm_calls(ledger, max_calls=1, max_seconds=60, create=True)
     api._execution.call_budget.reserve()
     api.close()
     if loss == "file":

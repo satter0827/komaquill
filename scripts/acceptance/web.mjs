@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { chromium } from '@playwright/test'
+import ja from '../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
+import en from '../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 import {
   Evidence,
   contained,
@@ -11,6 +13,8 @@ import {
 
 const configPath = contained(path.resolve('.artifacts'), process.argv[2])
 const config = JSON.parse(await readFile(configPath, 'utf8'))
+assert.equal(config.format_version, 1)
+assert.equal(typeof config.real_llm, 'boolean')
 const origin = new URL(config.endpoint)
 assert(['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname))
 assert(!origin.username && !origin.password && !origin.search && !origin.hash)
@@ -23,7 +27,7 @@ const page = await browser.newPage({
 page.setDefaultTimeout(30000)
 const evidence = new Evidence(page, path.join(directory, 'browser'), {
   mode: 'assertion',
-  real_llm: true,
+  real_llm: config.real_llm,
   real_images: config.has_images,
 })
 let status = 'failed'
@@ -31,8 +35,23 @@ try {
   for (const identity of config.conversations) {
     await evidence.step('Read a saved conversation after restart', async () => {
       await page.goto(`/conversations/${identity}`)
-      await page.locator('.assistant-message').first().waitFor()
-      assert.equal(await page.locator('.assistant-message').count(), 2)
+      const expected = config.conversation_turn_counts[identity]
+      assert(Number.isInteger(expected) && expected > 0)
+      await page
+        .locator('.assistant-message')
+        .nth(Math.min(expected, 30) - 1)
+        .waitFor()
+      while ((await page.locator('.assistant-message').count()) < expected) {
+        await page
+          .getByRole('button', { name: ja.olderTurns, exact: true })
+          .or(page.getByRole('button', { name: en.olderTurns, exact: true }))
+          .click()
+        await page
+          .locator('.assistant-message')
+          .nth(expected - 1)
+          .waitFor()
+      }
+      assert.equal(await page.locator('.assistant-message').count(), expected)
     })
   }
   if (config.has_images) {

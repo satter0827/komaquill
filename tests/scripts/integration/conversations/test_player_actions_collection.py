@@ -12,6 +12,38 @@ from tests.backend.support.conversations import wire_reply
 pytestmark = pytest.mark.usefixtures("scripted_services")
 
 
+def test_failed_operation_keeps_partial_evidence_and_closes_client(tmp_path):
+    from komaquill.api import KomaquillError
+
+    with Client.initialize(tmp_path) as client:
+
+        def failed(*args):
+            raise KomaquillError(code="llm_unavailable")
+
+        client.conversations.responder.reply = failed
+        with pytest.raises(KomaquillError):
+            collect(client, tmp_path)
+    result = json.loads((tmp_path / "ja.json").read_bytes())
+    assert result["status"] == "failed"
+    assert result["events"][0]["operation"]["state"] == "failed"
+    assert result["failure"]["code"] == "llm_unavailable"
+
+
+@pytest.mark.parametrize("passed", [True, False])
+def test_main_rejects_failed_checks(tmp_path, monkeypatch, passed):
+    from scripts.acceptance.conversations import actions
+
+    monkeypatch.setattr(actions, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        actions, "collect", lambda *args: [{"status": "passed" if passed else "failed"}]
+    )
+    output = tmp_path / ".artifacts/results"
+    assert actions.main(["--allow-real-llm", "--output", str(output)]) == (0 if passed else 1)
+    report = json.loads(next(output.glob("*/completion.json")).read_bytes())
+    assert report["status"] == ("passed" if passed else "failed")
+    assert report["inputs_unchanged"]
+
+
 def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch):
     import langchain_openai
 
@@ -41,19 +73,16 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                     for line in system.splitlines()
                     if line.startswith("{") and "current_state" in line
                 )
-                current = context["current_state"]
                 companion = {
                     key: value
                     for key, value in context["people"]["assistant_character"].items()
                     if key in {"clothing", "expression", "pose", "held_objects"}
                 }
                 latest = messages[-1].content
-                char_place = current["character_place"]
                 if latest.startswith("あなたは緑のコート") or latest.startswith(
                     "Please wear a green coat"
                 ):
                     companion["clothing"] = "Green coat"
-                    char_place = current["place"]
                 proposals = []
                 if latest.startswith("合言葉は銀のコンパスです。") or latest.startswith(
                     "The password is silver compass. I head"
@@ -62,9 +91,6 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                 value = {
                     "current_state": {
                         "relationship": "",
-                        "companion_movement": "join_player"
-                        if char_place == current["place"]
-                        else "stay",
                         "scenery": "海辺は静かだ。" if ja else "The beach is quiet.",
                         "character": companion,
                     },
@@ -72,9 +98,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                     "requested_player_action": proposals[0] if proposals else None,
                     "text": (
                         "合言葉は銀のコンパスです。" if ja else "The password is silver compass."
-                    )
-                    if char_place == current["place"]
-                    else "",
+                    ),
                 }
             return AIMessage(
                 content=json.dumps(wire_reply(value), ensure_ascii=False),

@@ -371,7 +371,7 @@
   "chat.profile": "Configured LLM profile.",
   "chat.scenario": "Starting situation for the conversation.",
   "chat.identity": "Saved conversation ID.",
-  "chat.text": "Message to send.",
+  "chat.text": "Spoken message. Omit it when sending an action.",
   "chat.operation_id": "Reuse this ID to inspect or retry the same request.",
   "chat.allow_real": "Allow one call to the configured real LLM for this message.",
   "chat.status": "Read the saved conversation state without contacting a model.",

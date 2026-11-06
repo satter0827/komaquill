@@ -112,9 +112,6 @@ SceneChange = Annotated[
 
 class DialogueResult(Record):
     kind: Literal["companion"]
-    movement: Literal["stay", "join_player"] = Field(
-        description="Explicitly stay at the companion's current place or join the player."
-    )
     changes: list[SceneChange] = Field(
         max_length=6,
         description=(
@@ -154,9 +151,7 @@ class ReactionReply(NarrativeReply):
 
 
 def resolve_scene(conversation: Conversation, generated: DialogueResult) -> ConversationState:
-    changes: dict[str, Any] = (
-        {"character_place": conversation.state.place} if generated.movement == "join_player" else {}
-    )
+    changes: dict[str, Any] = {}
     for change in generated.changes:
         if change.field in {"relationship", "scenery"}:
             changes[change.field] = change.value
@@ -217,10 +212,7 @@ class ConversationResponder:
             latest = json.dumps(
                 {
                     "speaker": "human_player",
-                    "current_places": {
-                        "human_player": conversation.state.place,
-                        "assistant_character": conversation.state.character_place,
-                    },
+                    "shared_place": conversation.state.place,
                     "completed_action": {
                         "actor": "human_player",
                         **action.request.action.model_dump(mode="json", exclude_none=True),
@@ -334,9 +326,7 @@ class ConversationResponder:
                     for key, value in facts.items()
                     if value is not None and (value != "" or key == "clothing")
                 },
-                "place": conversation.state.place
-                if state_role == "player"
-                else conversation.state.character_place,
+                "place": conversation.state.place,
             }
         context = {
             "story": story,
@@ -379,21 +369,22 @@ class ConversationResponder:
                 + f"\nWrite text, action_narration and changes to scenery only in {language}."
                 + "\nThe observer is human_player at "
                 + json.dumps(conversation.state.place, ensure_ascii=False)
-                + ". Scenery can describe only what is visible from that place. "
-                + "The companion is currently at "
-                + json.dumps(conversation.state.character_place, ensure_ascii=False)
-                + ". If you stay elsewhere, do not describe your own surroundings. "
+                + ". Both people are together at this shared place. "
+                + "Scenery can describe only what is visible from that place. "
                 + "If no new visible detail is known, omit the scenery change; "
                 + "the confirmed player location will still be displayed."
             )
 
         language_contract = (
             "Write dialogue, action_narration and scenery changes in " + language + ". "
-            "Use kind=player for a future player action; use kind=companion otherwise."
+            "Use kind=player only for an explicit immediate change to the player's state or "
+            "currently adopted intention. Questions, conditional plans and appointments are "
+            "dialogue with kind=companion. Both people always share the confirmed place."
         )
         reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
-        retained_response = self.execution.has_response(request.operation_id)
+        purpose = "move-response-" if request.action_origin == "conversation" else ""
+        retained_response = self.execution.has_response(request.operation_id, purpose)
         messages: list[tuple[str, str]] = []
         active_memory = conversation.memory
         if not retained_response:
@@ -435,11 +426,7 @@ class ConversationResponder:
                     conversation.state, proposed, value.text, value.action_narration
                 )
             except KomaquillError:
-                present = proposed.character_place == proposed.place
-                raise ResponseConstraintError(
-                    "empty_response" if present else "companion_presence",
-                    ("response", "text" if present else "movement"),
-                ) from None
+                raise ResponseConstraintError("empty_response", ("response", "text")) from None
             for field, content in (
                 ("action_narration", value.action_narration),
                 ("text", value.text),
@@ -475,6 +462,7 @@ class ConversationResponder:
                 system(active_memory),
                 validate,
                 field_language,
+                purpose=purpose,
             )
         else:
             generated = self.execution.invoke(
@@ -488,6 +476,7 @@ class ConversationResponder:
                 correction=language_contract,
                 field_language=field_language,
                 trim=False,
+                purpose=purpose,
             )
         value = generated.response
         if isinstance(value, ProposalResult):

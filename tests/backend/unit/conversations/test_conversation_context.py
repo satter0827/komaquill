@@ -11,7 +11,6 @@ from komaquill.domain.roleplay import ConversationState, StatePatch
 def test_prose_never_overrides_current_people_or_location():
     state = ConversationState(
         place="sea",
-        character_place="sea",
         player={"clothing": "red coat"},
         character={"clothing": "black apron", "pose": "standing"},
     )

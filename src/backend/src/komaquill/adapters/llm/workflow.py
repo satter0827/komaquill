@@ -50,7 +50,11 @@ def run_conversation(
     respond: Callable[[Conversation, TurnRequest], Reply],
 ) -> Reply:
     config = {
-        "configurable": {"thread_id": f"conversation:{request.operation_id}", "checkpoint_ns": ""},
+        "configurable": {
+            "thread_id": f"conversation:{request.operation_id}"
+            + (":move-response" if request.action_origin == "conversation" else ""),
+            "checkpoint_ns": "",
+        },
         "callbacks": [],
     }
     snapshot = graph.get_state(config)

@@ -1,4 +1,4 @@
-"""Reject contradictory speech without losing the original model response."""
+"""Reject empty visible replies without losing the original model response."""
 
 import json
 from uuid import uuid4
@@ -21,86 +21,6 @@ def model_for(api, responses):
             for response in responses
         ]
     )
-
-
-@pytest.mark.parametrize("corrected", [True, False])
-def test_absent_companion_is_repaired_or_failed_instead_of_silenced(
-    tmp_path, monkeypatch, corrected
-):
-    api = Client.initialize(tmp_path)
-    scene = api.conversations.create(
-        ConversationInput(title="Presence", locale="en", initial_state={"place": "Shop"})
-    )
-    invalid = {
-        "response": {
-            "kind": "companion",
-            "movement": "stay",
-            "changes": [],
-            "action_narration": "Waves hello.",
-            "text": "Hello at the beach.",
-        }
-    }
-    valid = {"response": {**invalid["response"], "movement": "join_player"}}
-    model = model_for(api, [invalid, valid if corrected else invalid])
-    monkeypatch.setattr(api._execution, "_model", lambda _: model)
-    result = api.conversations.send(
-        scene.id,
-        SendInput(
-            text="Join me.",
-            locale="en",
-            allow_real_llm=True,
-            operation_id=uuid4(),
-            expected_revision=0,
-            action=MoveAction(destination="Beach"),
-        ),
-    )
-    records = api.llm_records(result.id)
-    assert len(records) == 2
-    assert json.loads(records[0]["response"]) == invalid
-    saved = api.conversations.get(scene.id)
-    assert saved.state.place == "Beach" and len(saved.actions) == 1
-    if corrected:
-        assert result.state == "complete"
-        assert saved.turns[-1].assistant == "Hello at the beach."
-        assert saved.turns[-1].action_narration == "Waves hello."
-        assert saved.state.character_place == "Beach"
-    else:
-        assert result.state == "failed" and result.error == "invalid_response"
-        assert saved.turn_count == 0 and saved.state.character_place == "Shop"
-    api.close()
-
-
-def test_explicit_stay_preserves_the_companion_place_without_speech(tmp_path, monkeypatch):
-    api = Client.initialize(tmp_path)
-    scene = api.conversations.create(
-        ConversationInput(title="Stay", locale="en", initial_state={"place": "Shop"})
-    )
-    reply = {
-        "response": {
-            "kind": "companion",
-            "movement": "stay",
-            "changes": [{"field": "scenery", "value": "An empty beach."}],
-            "action_narration": "",
-            "text": "",
-        }
-    }
-    monkeypatch.setattr(api._execution, "_model", lambda _: model_for(api, [reply]))
-    operation = api.conversations.send(
-        scene.id,
-        SendInput(
-            text="Stay here while I go.",
-            locale="en",
-            allow_real_llm=True,
-            expected_revision=0,
-            operation_id=uuid4(),
-            action=MoveAction(destination="Beach"),
-        ),
-    )
-    assert operation.state == "complete"
-    saved = api.conversations.get(scene.id)
-    assert saved.state.character_place == "Shop" and saved.turns[-1].assistant == ""
-    assert saved.turns[-1].narration == "An empty beach."
-    api.close()
 
 
 def test_private_state_change_cannot_complete_an_empty_reply(tmp_path, monkeypatch):
@@ -134,7 +54,6 @@ def test_present_companion_must_produce_visible_content_even_after_an_action(
     invalid = {
         "response": {
             "kind": "companion",
-            "movement": "join_player",
             "changes": [{"field": "pose", "value": "standing"}],
             "text": "",
             "action_narration": "",
@@ -173,7 +92,6 @@ def test_new_visible_scenery_is_a_valid_silent_response(tmp_path, monkeypatch):
     response = {
         "response": {
             "kind": "companion",
-            "movement": "stay",
             "changes": [{"field": "scenery", "value": "Sunlight fills the room."}],
             "text": "",
             "action_narration": "",

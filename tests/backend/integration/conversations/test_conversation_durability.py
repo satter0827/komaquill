@@ -46,7 +46,9 @@ def test_validated_reply_survives_restart_without_another_model_call(tmp_path, m
 
 
 @pytest.mark.parametrize("finished", [True, False])
-def test_historical_workflow_only_recovers_its_saved_result(tmp_path, monkeypatch, finished):
+def test_incompatible_workflow_is_retained_without_replaying_old_behavior(
+    tmp_path, monkeypatch, finished
+):
     import hashlib
 
     from langgraph.checkpoint.base import empty_checkpoint
@@ -82,38 +84,33 @@ def test_historical_workflow_only_recovers_its_saved_result(tmp_path, monkeypatc
     checkpoint = empty_checkpoint()
     checkpoint["channel_values"] = {
         "version": 1,
-        "result": Reply(
-            text="A retained reply", state_patch={"character_place": "Garden"}
-        ).model_dump(mode="json", exclude_unset=True)
+        "result": {"text": "A retained reply", "state_patch": {"character_place": "Garden"}}
         if finished
         else None,
     }
     checkpoint["channel_versions"] = {"result": 1}
-    repository.database.checkpoints.saver.put(
-        {
-            "configurable": {
-                "thread_id": f"conversation:{request.operation_id}",
-                "checkpoint_ns": "",
-            }
-        },
-        checkpoint,
-        {"source": "update", "step": 0, "parents": {}},
-        {"result": 1},
-    )
+    with closing(repository.database.checkpoints) as checkpoints:
+        checkpoints.saver.put(
+            {
+                "configurable": {
+                    "thread_id": f"conversation:{request.operation_id}",
+                    "checkpoint_ns": "",
+                }
+            },
+            checkpoint,
+            {"source": "update", "step": 0, "parents": {}},
+            {"result": 1},
+        )
     monkeypatch.setattr(
         api.conversations.responder, "reply", lambda *_: pytest.fail("Never resend old input")
     )
     restored = api.conversations.resume(scene.id)
     operation = api.operations.get(request.operation_id)
     assert restored.state.place == "Garden" and len(restored.actions) == 1
-    if finished:
-        assert operation.state == "complete" and restored.turn_count == 1
-        assert restored.turns[0].user == "" and restored.turns[0].action == request.action
-    else:
-        assert operation.state == "interrupted" and not operation.can_resume
-        assert operation.error == "operation_conflict" and restored.turn_count == 0
-        with pytest.raises(KomaquillError, match="submission_unknown"):
-            api.conversations.resume_operation(request.operation_id)
+    assert operation.state == "interrupted" and not operation.can_resume
+    assert operation.error == "operation_conflict" and restored.turn_count == 0
+    with pytest.raises(KomaquillError, match="submission_unknown"):
+        api.conversations.resume_operation(request.operation_id)
     with repository.database.engine.connect() as connection:
         assert connection.execute(select(operations.c.request)).scalar_one() == raw
 
@@ -153,7 +150,7 @@ def test_contradictory_retained_reply_is_isolated_without_resending(tmp_path, mo
     api.conversations.accept(scene.id, request)
     repository = api.conversations.repository
     assert repository.running(request.operation_id)
-    reply = Reply(text="An absent companion speaks", state_patch={})
+    reply = Reply(text="An invalid location change", state_patch={"place": "Elsewhere"})
     repository.checkpoint(request.operation_id, reply)
     with repository.database.engine.begin() as connection:
         connection.execute(operations.update().values(owner_started="0"))

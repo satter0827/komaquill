@@ -1,4 +1,6 @@
 {
+  "web.workspace_cleanup_boundary": "The isolated workspace is outside its owned directory. Keep it for inspection.",
+  "quality.invalid_retention": "The browser environment retention count must be positive.",
   "recovery.description": "Verify retained real-model results without resending accepted operations.",
   "recovery.budget": "Existing shared real-model call budget.",
   "recovery.output": "Keep live evidence and its call budget in .artifacts.",

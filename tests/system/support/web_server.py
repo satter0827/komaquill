@@ -35,12 +35,9 @@ def scripted_completion(body: dict) -> dict:
             english = context["response_language"] == "English"
             break
     if "response" in schema:
-        current = context.get("current_state", {})
-        visible = current.get("character_place", "") == current.get("place", "")
         value = {
             "current_state": {
                 "relationship": "",
-                "companion_movement": "stay",
                 "scenery": "Rain taps against the bookshop window."
                 if english
                 else "雨音が店内に響く。",
@@ -59,11 +56,6 @@ def scripted_completion(body: dict) -> dict:
             if english
             else "画面検証用の決まった返答です。",
         }
-        if not visible:
-            value["text"] = ""
-            value["current_state"]["scenery"] = (
-                "Waves wash over the beach." if english else "波が海辺に寄せている。"
-            )
     elif "personality" in schema:
         value = {
             "name": "Fixture character",

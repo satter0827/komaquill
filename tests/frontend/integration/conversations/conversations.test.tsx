@@ -27,6 +27,7 @@ import { client } from '../../../../src/frontend/src/api/generated/client.gen'
 import {
   getConversationQueryKey,
   getOperationQueryKey,
+  getConversationOperationsQueryKey,
 } from '../../../../src/frontend/src/api/generated/@tanstack/react-query.gen'
 
 const base = 'http://localhost'
@@ -128,7 +129,7 @@ function app(path: string, cache?: QueryClient) {
 
 async function actionDestination() {
   const trigger = await screen.findByRole('button', {
-    name: m.addAction,
+    name: m.changePlace,
   })
   if (trigger.getAttribute('aria-expanded') !== 'true')
     await userEvent.click(trigger)
@@ -136,6 +137,61 @@ async function actionDestination() {
 }
 
 describe('conversation workflow', () => {
+  it('uses the completed receipt instead of a stale running list to enable the next send', async () => {
+    const cache = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    let identity = ''
+    server.use(
+      http.post(
+        `${base}/api/v1/conversations/one/turns`,
+        async ({ request }) => {
+          identity = ((await request.json()) as { operation_id: string })
+            .operation_id
+          return HttpResponse.json({
+            id: identity,
+            conversation_id: 'one',
+            state: 'complete',
+          })
+        },
+      ),
+      http.get(`${base}/api/v1/operations/:identity`, ({ params }) =>
+        HttpResponse.json({
+          id: params.identity,
+          conversation_id: 'one',
+          state: 'complete',
+        }),
+      ),
+      http.get(`${base}/api/v1/conversations/one/operations`, () =>
+        HttpResponse.json(
+          identity
+            ? [
+                {
+                  id: identity,
+                  conversation_id: 'one',
+                  state: 'running',
+                  input: { text: 'First' },
+                },
+              ]
+            : [],
+        ),
+      ),
+    )
+    app('/conversations/one', cache)
+    const input = await screen.findByRole('textbox', { name: m.messageLabel })
+    await userEvent.type(input, 'First')
+    await userEvent.click(screen.getByRole('button', { name: m.send }))
+    await waitFor(() => expect(input).toHaveValue(''))
+    await waitFor(() =>
+      expect(
+        cache.getQueryData<Array<{ state: string }>>(
+          getConversationOperationsQueryKey({ path: { identity: 'one' } }),
+        )?.[0]?.state,
+      ).toBe('running'),
+    )
+    await userEvent.type(input, 'Second')
+    expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
+  })
   it('keeps panel opening intent before the width change notification arrives', async () => {
     const matchMedia = vi.mocked(window.matchMedia)
     const original = matchMedia.getMockImplementation()!
@@ -263,7 +319,7 @@ describe('conversation workflow', () => {
       )
       app('/conversations/one')
       await userEvent.type(await actionDestination(), 'Beach')
-      await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+      await userEvent.click(screen.getByRole('button', { name: m.changePlace }))
       const input = screen.getByRole('textbox', { name: m.messageLabel })
       await userEvent.type(input, 'Keep this message')
       await userEvent.click(screen.getByRole('button', { name: m.send }))
@@ -469,7 +525,7 @@ describe('conversation workflow', () => {
     await userEvent.click(screen.getByRole('button', { name: m.send }))
     await screen.findByRole('button', { name: m.retryRequest })
     expect(screen.getByRole('button', { name: m.drawScene })).toBeDisabled()
-    expect(await actionDestination()).toBeDisabled()
+    expect(screen.getByRole('button', { name: m.changePlace })).toBeDisabled()
     received = true
     await userEvent.click(
       await screen.findByRole('button', { name: m.retryRequest }),
@@ -573,7 +629,7 @@ describe('conversation workflow', () => {
         },
       ),
     )
-    await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+    await userEvent.click(screen.getByRole('button', { name: m.changePlace }))
     await userEvent.type(
       screen.getByRole('textbox', { name: m.messageLabel }),
       'Go together?',
@@ -624,6 +680,7 @@ describe('conversation workflow', () => {
           },
         ),
       )
+      await userEvent.click(screen.getByRole('button', { name: m.addAction }))
       await userEvent.selectOptions(
         screen.getByLabelText(m.chooseAction),
         next === 'pose' ? 'pose' : 'intention',
@@ -716,7 +773,7 @@ describe('conversation workflow', () => {
     )
     app('/conversations/one', cache)
     await userEvent.type(await actionDestination(), 'Beach')
-    await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+    await userEvent.click(screen.getByRole('button', { name: m.changePlace }))
     await userEvent.click(screen.getByRole('button', { name: m.showState }))
     await userEvent.click(screen.getByRole('button', { name: m.closeState }))
     const input = screen.getByRole('textbox', { name: m.messageLabel })
@@ -762,7 +819,7 @@ describe('conversation workflow', () => {
     )
     app('/conversations/one')
     await userEvent.type(await actionDestination(), 'Beach')
-    await userEvent.click(screen.getByRole('button', { name: m.queueAction }))
+    await userEvent.click(screen.getByRole('button', { name: m.changePlace }))
     await userEvent.type(
       screen.getByRole('textbox', { name: m.messageLabel }),
       'Go together?',

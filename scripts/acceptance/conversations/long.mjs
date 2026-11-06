@@ -45,20 +45,13 @@ try {
     await evidence.step(
       `Send and display conversation turn ${index + 1}`,
       async () => {
-        if (index === config.rejoin_index) {
+        if (config.moves[String(index)]) {
           await page
-            .getByRole('button', { name: ja.joinCompanion, exact: true })
-            .click()
-        } else if (config.moves[String(index)]) {
-          await page
-            .getByRole('button', { name: ja.addAction, exact: true })
+            .getByRole('button', { name: ja.changePlace, exact: true })
             .click()
           await page
             .getByLabel(ja.destination, { exact: true })
             .fill(config.moves[String(index)])
-          await page
-            .getByRole('button', { name: ja.queueAction, exact: true })
-            .click()
         }
         await page
           .getByRole('textbox', { name: ja.messageLabel })
@@ -102,10 +95,10 @@ try {
         saved = await (await api.get(apiPath)).json()
         assert.equal(saved.turn_count, index + 1)
         const latest = await (await api.get(apiPath + '/turns?limit=1')).json()
-        const away = config.away_indexes.includes(index)
-        assert.equal(latest.items[0].assistant.trim().length > 0, !away)
-        assert.equal(saved.state.place === saved.state.character_place, !away)
-        if (away) assert(latest.items[0].narration.includes(saved.state.place))
+        assert(latest.items[0].assistant.trim().length > 0)
+        assert(!Object.hasOwn(saved.state, 'character_place'))
+        const expectedPlace = config.expected_places?.[String(index)]
+        if (expectedPlace) assert.equal(saved.state.place, expectedPlace)
         if (index === 16)
           assert(latest.items[0].assistant.includes('銀のコンパス'))
         if (index === 17) {

@@ -186,7 +186,7 @@ def bind(
     def send(
         ctx: typer.Context,
         identity: Annotated[UUID, typer.Argument(help=message("chat.identity"))],
-        text: Annotated[str, typer.Argument(help=message("chat.text"))],
+        text: Annotated[str, typer.Argument(help=message("chat.text"))] = "",
         operation_id: Annotated[
             UUID | None, typer.Option(help=message("chat.operation_id"))
         ] = None,

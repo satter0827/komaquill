@@ -14,6 +14,19 @@ const args = process.argv.slice(2)
 const env = verificationEnvironment(nodeEnvironment())
 let run
 if (args[0] === 'test') {
+  const observed = spawnSync(
+    process.execPath,
+    [
+      'tools/runtime/python.mjs',
+      '-m',
+      'tools.observations',
+      '--observe',
+      '--owner-pid',
+      String(process.pid),
+    ],
+    { env, encoding: 'utf8', windowsHide: true },
+  )
+  if (observed.status !== 0) process.exit(observed.status ?? 1)
   const id = new Date().toISOString().replace(/[:.]/g, '-') + '-' + randomUUID()
   const directory = path.resolve('.artifacts/records/reports/web', id)
   env.KOMAQUILL_WEB_EVIDENCE_DIR = directory
@@ -40,6 +53,7 @@ if (args[0] === 'test') {
       image_quality: 'not_evaluated',
     },
     status: 'running',
+    ...JSON.parse(observed.stdout),
   }
   await jsonFile(path.join(directory, 'run.json'), run)
   await jsonFile(
@@ -55,7 +69,13 @@ if (args[0] === 'test') {
 if (run?.execution === 'browser') {
   const prepared = spawnSync(
     process.execPath,
-    ['tools/runtime/python.mjs', '-m', 'tools.testing.browser_environment'],
+    [
+      'tools/runtime/python.mjs',
+      '-m',
+      'tools.testing.browser_environment',
+      '--owner-pid',
+      String(process.pid),
+    ],
     { env, encoding: 'utf8' },
   )
   if (prepared.status !== 0) {

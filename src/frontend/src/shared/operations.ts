@@ -91,6 +91,24 @@ export function operationOptions(identity: string) {
   })
 }
 
+export function conversationOperationsOptions(identity: string) {
+  return queryOptions({
+    ...q.getConversationOperationsOptions({ path: { identity } }),
+    structuralSharing: (previous, next) => {
+      const current = previous as OperationView[] | undefined
+      const incoming = next as OperationView[]
+      const known = new Map((current ?? []).map((value) => [value.id, value]))
+      const ids = new Set(incoming.map((value) => value.id))
+      return [
+        ...incoming.map((value) => keepTerminal(known.get(value.id), value)),
+        ...(current ?? []).filter((value) => !ids.has(value.id)),
+      ]
+    },
+    refetchInterval: (query) =>
+      query.state.data?.some(operationPending) ? POLL_INTERVAL_MS : false,
+  })
+}
+
 export function creationOptions(identity: string) {
   return queryOptions({
     ...q.getJobOptions({ path: { identity } }),

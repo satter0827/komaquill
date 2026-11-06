@@ -58,6 +58,19 @@ def test_failure_is_recorded_without_copying_private_exception_text(prepared, mo
     assert "private-response-text" not in raw
 
 
+def test_initialization_failure_still_finalizes_the_run(prepared, monkeypatch):
+    root, calls = prepared
+
+    def failed(*args):
+        raise OSError("private-initialization-detail")
+
+    monkeypatch.setattr(long.Client, "initialize", failed)
+    assert not long.collect(root / "initialization-failed")
+    raw = (root / "initialization-failed/run.json").read_text()
+    assert "private-initialization-detail" not in raw
+    assert json.loads(raw)["status"] == "failed" and not calls
+
+
 def test_expired_allowance_does_not_launch_a_browser(prepared, monkeypatch):
     root, calls = prepared
 

@@ -96,7 +96,7 @@ for (const locale of ['ja', 'en'] as const) {
               ).not.toBeVisible()
               await page.getByText(m.addAction, { exact: true }).click()
               const destination = page.getByRole('textbox', {
-                name: m.destination,
+                name: m.preparationValue,
                 exact: true,
               })
               await destination.fill('Review destination')
@@ -123,7 +123,7 @@ for (const locale of ['ja', 'en'] as const) {
               ).toBeVisible()
               await expect(
                 page.getByRole('button', { name: m.send, exact: true }),
-              ).toBeDisabled()
+              ).toBeEnabled()
               await page
                 .getByRole('textbox', { name: m.messageLabel, exact: true })
                 .fill('A new unsent draft')

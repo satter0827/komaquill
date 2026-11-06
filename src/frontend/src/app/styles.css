@@ -488,6 +488,7 @@ textarea {
   gap: var(--space-field);
   min-height: 0;
   overflow-y: auto;
+  scroll-padding-block: var(--space-field);
   padding: var(--space-field);
   margin: calc(-1 * var(--space-field));
 }
@@ -1232,19 +1233,8 @@ details > .details-content {
   display: grid;
   gap: var(--space-group);
 }
-.presence-notice {
-  display: grid;
-  gap: var(--space-field);
-  padding: var(--space-group);
-  background: var(--surface-soft);
-  border-radius: var(--radius-control);
-}
-.presence-notice p,
 .query-notice p {
   margin: 0;
-}
-.presence-notice .button {
-  justify-self: start;
 }
 .query-notice {
   display: flex;

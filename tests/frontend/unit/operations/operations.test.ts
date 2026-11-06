@@ -10,9 +10,30 @@ import {
   operationOptions,
   watchReceipt,
   imageOptions,
+  conversationOperationsOptions,
 } from '../../../../src/frontend/src/shared/operations'
 
 describe('late operation observations', () => {
+  it('retains completed operations when an earlier list response arrives later', async () => {
+    const cache = new QueryClient()
+    const options = conversationOperationsOptions('scene')
+    let resolve!: (values: OperationView[]) => void
+    const response = new Promise<OperationView[]>((done) => {
+      resolve = done
+    })
+    const pending = cache.fetchQuery({ ...options, queryFn: () => response })
+    const complete: OperationView = {
+      id: 'turn',
+      conversation_id: 'scene',
+      state: 'complete',
+      input: { text: 'Saved' },
+    }
+    cache.setQueryData(options.queryKey, [complete])
+    resolve([{ ...complete, state: 'running' }])
+    await pending
+    expect(cache.getQueryData(options.queryKey)).toEqual([complete])
+    cache.clear()
+  })
   it('consumes an already cached image receipt once without waiting for another response', () => {
     const cache = new QueryClient()
     const key = imageOptions('image').queryKey

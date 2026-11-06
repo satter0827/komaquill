@@ -156,16 +156,24 @@ class Client:
     def operations(self) -> OperationService:
         return OperationService(self.conversations.repository)
 
-    def limit_llm_calls(self, ledger: Path, *, max_calls: int, max_seconds: int) -> None:
-        """Attach a persistent allowance without resetting previous reservations."""
+    def limit_llm_calls(
+        self, ledger: Path, *, max_calls: int, max_seconds: int, create: bool = False
+    ) -> None:
+        """Attach an allowance, requiring explicit creation for a new ledger."""
         from komaquill.adapters.atomic import atomic_json
         from komaquill.adapters.persistence.budgets import BudgetBinding, CallBudget
         from komaquill.adapters.persistence.connection import Database
 
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_REQUEST):
+            if type(create) is not bool:
+                raise ValueError
             limits = BudgetBinding(ledger=ledger, max_calls=max_calls, max_seconds=max_seconds)
             ledger = limits.ledger.resolve()
-            create = not (self.workspace / ".artifacts/state/llm-budget.json").exists()
+            create = (
+                create
+                and not ledger.exists()
+                and not (self.workspace / ".artifacts/state/llm-budget.json").exists()
+            )
             self._execution.call_budget = CallBudget(
                 Database(ledger, create=create), limits.max_calls, limits.max_seconds, create=create
             )

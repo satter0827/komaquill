@@ -51,10 +51,8 @@ def drawing_context(
 ) -> dict[str, object]:
     """Resolve the visible partner while keeping the player out of the image."""
     require_reviewed(conversation)
-    visible = conversation.state.character_place == conversation.state.place
+    visible = subjects != "environment"
     if subjects == "pair":
-        if not visible:
-            raise KomaquillError(code="invalid_request", retryable=False)
         return {
             "subjects": {
                 "player": visible_person(conversation.definition.user, conversation.state.player),
@@ -70,8 +68,6 @@ def drawing_context(
                 "scenery": conversation.state.scenery,
             },
         }
-    if subjects == "environment":
-        visible = False
     return {
         "character": visible_person(conversation.definition.character, conversation.state.character)
         if visible

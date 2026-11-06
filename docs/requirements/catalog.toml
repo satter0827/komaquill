@@ -623,6 +623,6 @@ tests = ["tests/tools/integration/runtime/test_processes.py", "tests/tools/integ
 [requirements.REQ-VERIFICATION-RETENTION]
 summary = "検証生成物の増加を抑え、失敗・原本・使用中の環境を保持する"
 status = "implemented"
-acceptance = ["通常の画面検査は失敗時にトレースを保持する", "成功した隔離サーバーの終了を確認して作業DBを削除する", "pytestとNodeの標準teardownを使う", "検証用Python環境は現行と直前の完成世代を保持し使用中・所有不明・作成中は削除しない", "リンク先や正本を削除しない", "実行ID・PID・開始時刻を保存する", "古い実行記録を変更せず所有状態の観測を追記する", "確認項目の失敗と中断を非ゼロ終了へ反映する"]
+acceptance = ["通常の画面検査は失敗時にトレースを保持する", "成功した隔離サーバーの終了を確認して作業DBを削除する", "pytestとNodeの標準teardownを使う", "検証用Python環境は現行と直前の完成世代を保持し使用中・所有不明・作成中は削除しない", "リンク先や正本を削除しない", "実行ID・PID・開始時刻を保存する", "古い実行記録を変更せず所有状態の観測を追記する", "確認項目の失敗と中断を非ゼロ終了へ反映する", "固定した実行動シナリオの服装・現在地・合言葉・未指定の持ち物を同じ関数で再評価する"]
 sources = ["tools/testing/browser_environment.py", "tools/observations.py", "tools/testing/web/server-fixture.ts", "scripts/acceptance/conversations/actions.py"]
 tests = ["tests/tools/integration/runtime/test_browser_environment.py", "tests/tools/unit/runner/test_observations.py", "tests/scripts/integration/conversations/test_player_actions_collection.py"]

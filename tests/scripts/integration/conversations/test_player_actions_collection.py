@@ -44,7 +44,7 @@ def test_main_rejects_failed_checks(tmp_path, monkeypatch, passed):
     assert report["inputs_unchanged"]
 
 
-@pytest.mark.parametrize("missing", [None, "clothing", "password"])
+@pytest.mark.parametrize("missing", [None, "clothing", "password", "objects"])
 def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch, missing):
     import langchain_openai
 
@@ -79,6 +79,8 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                     for key, value in context["people"]["assistant_character"].items()
                     if key in {"clothing", "expression", "pose", "held_objects"}
                 }
+                if missing == "objects":
+                    companion["held_objects"] = [{"id": "invented", "name": "Cup"}]
                 latest = messages[-1].content
                 spoken = json.loads(latest)["text"] if latest.startswith("{") else latest
                 if missing != "clothing" and (

@@ -18,6 +18,36 @@ from scripts.acceptance.run import attach
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def evaluate(final: "Conversation") -> dict[str, bool]:
+    """Evaluate the fixed input scenario, including facts it never supplies."""
+    from komaquill.api import MoveAction, PrepareAction
+
+    moved = next(a for a in final.actions if isinstance(a.request.action, MoveAction))
+    prepared = next(a for a in final.actions if isinstance(a.request.action, PrepareAction))
+    move = moved.request.action
+    assert isinstance(move, MoveAction)
+    return {
+        "movement_completed_with_dialogue": bool(final.turns and final.turns[0].assistant),
+        "movement_applied_once": len(final.actions) == 2,
+        "shared_place_after_move": moved.after.place == move.destination,
+        "player_clothing_preserved": final.state.player.clothing == prepared.after.player.clothing,
+        "companion_clothing_updated": any(
+            word in (final.state.character.clothing or "").casefold() for word in ("緑", "green")
+        ),
+        "final_shared_place_preserved": final.state.place == move.destination,
+        "password_recalled": (
+            "銀のコンパス" if final.definition.locale == "ja" else "silver compass"
+        )
+        in final.turns[-1].assistant.casefold(),
+        "undeclared_objects_absent": all(
+            not person.held_objects
+            for turn in final.turns
+            for person in (turn.state.player, turn.state.character)
+        ),
+        "history_available_after_restart": len(final.turns) == 3,
+    }
+
+
 def send_step(
     client: "Client",
     identity: UUID,
@@ -97,11 +127,6 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                 record = next(
                     a for a in current.actions if isinstance(a.request.action, MoveAction)
                 )
-                move = record.request.action
-                assert isinstance(move, MoveAction)
-                movement_completed_with_dialogue = current.turn_count == 1 and bool(
-                    current.turns[0].assistant
-                )
                 events.append(
                     {"kind": "conversation_movement", "record": record.model_dump(mode="json")}
                 )
@@ -152,21 +177,7 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                     "locale": locale,
                     "events": events,
                     "conversation": final.model_dump(mode="json"),
-                    "checks": {
-                        "movement_completed_with_dialogue": movement_completed_with_dialogue,
-                        "movement_applied_once": len(final.actions) == 2,
-                        "shared_place_after_move": record.after.place == move.destination,
-                        "player_clothing_preserved": final.state.player.clothing
-                        == prepared.after.player.clothing,
-                        "companion_clothing_updated": any(
-                            word in (final.state.character.clothing or "").casefold()
-                            for word in ("緑", "green")
-                        ),
-                        "final_shared_place_preserved": final.state.place == move.destination,
-                        "password_recalled": ("銀のコンパス" if ja else "silver compass")
-                        in final.turns[-1].assistant.casefold(),
-                        "history_available_after_restart": len(final.turns) == 3,
-                    },
+                    "checks": evaluate(final),
                 }
                 result["status"] = "passed" if all(result["checks"].values()) else "failed"
                 results.append(result)

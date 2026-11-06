@@ -4,7 +4,7 @@
 
 ## 同行を前提にした会話
 
-現在地を一つにする変更と、自然文の即時移動から返答まで一度の送信で完了する処理は実装済みです。設計は[自分の行動と現在の場面](../current/player-actions.md)、残る受入検証は[共有する現在地と検証生成物の整理](shared-location-and-retention.md)で管理します。実LLMの4Bで観測した移動の取り落としと持ち物の誤追加と、T4の追加受入が残っています。[検証結果](../verification/results/shared-location-and-retention.md)で通常検査と区別します。
+現在地を一つにする変更と、自然文の即時移動から返答まで一度の送信で完了する処理は実装済みです。設計は[自分の行動と現在の場面](../current/player-actions.md)、残る受入検証は[共有する現在地と検証生成物の整理](shared-location-and-retention.md)で管理します。実4Bで移動と持ち物の反例、保存した20ターン、分岐による最終返答の修正を確認しました。要約の意味の忠実さとT4の追加受入は残っています。[検証結果](../verification/results/shared-location-and-retention.md)で動作と品質を区別します。
 
 ## 検証生成物の保持
 

@@ -587,7 +587,7 @@ tests = ["tests/backend/integration/conversations/test_visible_reply.py", "tests
 [requirements.REQ-REAL-ACCEPTANCE]
 summary = "実LLMとGPUの検査を明示許可と累積予算で分離し、保存結果から再検証する"
 status = "implemented"
-acceptance = ["通常ゲートは実LLMとGPUを使わない", "許可と回数・時間・費用の既使用分を再起動後も保持する", "共有台帳の接続と明示した新規作成を分け、台帳の欠損で許可枠を復活させない", "保存結果の再検証で追加推論と画像要求を送らない", "標準画面の4表示と想定外の例外・通信失敗を記録する", "確保したGPUの終了と割当0件を確認する"]
+acceptance = ["通常ゲートは実LLMとGPUを使わない", "許可と回数・時間・費用の既使用分を再起動後も保持する", "共有台帳の接続と明示した新規作成を分け、台帳の欠損で許可枠を復活させない", "保存結果の再検証で追加推論と画像要求を送らない", "保存済みと新規の会話に同じ確認項目を適用する", "期限後の保存済み会話の確認は読取専用で追加送信しない", "標準画面の4表示と想定外の例外・通信失敗を記録する", "確保したGPUの終了と割当0件を確認する"]
 sources = ["src/backend/src/komaquill/api/client.py", "scripts/acceptance/run.py", "scripts/acceptance/budget.py", "scripts/acceptance/web.mjs"]
 tests = ["tests/backend/integration/llm/test_call_budget.py", "tests/scripts/integration/acceptance/test_run.py", "tests/scripts/integration/budget/test_verification_budget.py", "tests/tools/integration/web/evidence.test.mjs"]
 implementation_note = "実LLMの2会話・各2ターンとT4の4画像を保存した。2026年11月6日に同じ台帳から標準画面4表示を追加推論・画像生成なしで再検証し、終了を確認した。対象版と未確認事項はdocs/verification/results/standard-ui-final.mdで管理する。"

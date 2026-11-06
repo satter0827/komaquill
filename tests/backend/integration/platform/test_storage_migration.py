@@ -12,7 +12,9 @@ from komaquill.adapters.persistence import archive_layout
 from komaquill.api import Client, KomaquillError
 
 
-def test_legacy_archived_operations_are_preserved_with_their_original_owner(tmp_path):
+def test_legacy_archived_operations_are_preserved_with_their_original_owner(
+    tmp_path, stopped_database
+):
     from alembic import command
     from alembic.config import Config
     from komaquill.adapters.persistence import connection as storage
@@ -60,7 +62,9 @@ def test_legacy_archived_operations_are_preserved_with_their_original_owner(tmp_
     api.migrate()
 
 
-def test_open_reader_prevents_replacement_but_released_reader_allows_migration(tmp_path):
+def test_open_reader_prevents_replacement_but_released_reader_allows_migration(
+    tmp_path, stopped_database
+):
     api = Client.initialize(tmp_path)
     storage = api.conversations.repository.database
     with storage.engine.connect() as reader:

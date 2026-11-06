@@ -26,6 +26,14 @@ for (const locale of ['ja', 'en'] as const) {
       ).json()
       await page.goto(`/conversations/${scene.id}`)
       const input = page.getByRole('textbox', { name: messages.messageLabel })
+      await input.fill('Let us continue our conversation here.')
+      await page
+        .getByRole('button', { name: messages.send, exact: true })
+        .click()
+      await expect(page.locator('.assistant-message')).toHaveCount(1)
+      const history = page.getByRole('log', {
+        name: messages.conversationHistory,
+      })
       await input.fill('May we wait here for five minutes?')
       await page
         .getByRole('button', { name: messages.addAction, exact: true })
@@ -45,6 +53,25 @@ for (const locale of ['ja', 'en'] as const) {
           { width: 1440, height: 960 },
         ]) {
           await page.setViewportSize(viewport)
+          const visibleHistory = await history.evaluate((element) => {
+            const style = getComputedStyle(element)
+            return {
+              height:
+                element.clientHeight -
+                parseFloat(style.paddingTop) -
+                parseFloat(style.paddingBottom),
+              lineHeight: parseFloat(
+                getComputedStyle(element.querySelector('.assistant-message p')!)
+                  .lineHeight,
+              ),
+            }
+          })
+          expect(visibleHistory.height).toBeGreaterThanOrEqual(
+            visibleHistory.lineHeight,
+          )
+          const reply = page.locator('.assistant-message p').last()
+          await reply.scrollIntoViewIfNeeded()
+          await expect(reply).toBeInViewport()
           await expect(input).toBeInViewport({ ratio: 1 })
           await expect(
             page.getByRole('button', { name: messages.send, exact: true }),
@@ -109,7 +136,7 @@ for (const locale of ['ja', 'en'] as const) {
       await page
         .getByRole('button', { name: messages.send, exact: true })
         .click()
-      await expect(page.locator('.assistant-message')).toHaveCount(1)
+      await expect(page.locator('.assistant-message')).toHaveCount(2)
       const saved = await (
         await request.get(`/api/v1/conversations/${scene.id}`)
       ).json()

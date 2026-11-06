@@ -391,6 +391,8 @@ textarea {
   flex-wrap: wrap;
   min-height: var(--control-height);
   overflow-y: auto;
+  max-height: 20%;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-group);
@@ -1518,8 +1520,11 @@ html[data-density='compact'] {
   .conversation-header {
     padding: var(--space-field) var(--space-group);
   }
-  .composer-area {
-    max-height: calc(100% - 2 * var(--control-height));
+  .conversation-header {
+    padding-block: calc(var(--space-field) / 2);
+  }
+  .conversation-header .eyebrow {
+    display: none;
   }
   .composer textarea {
     min-height: 44px;

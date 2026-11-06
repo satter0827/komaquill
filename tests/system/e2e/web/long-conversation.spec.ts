@@ -378,6 +378,23 @@ test('sends a movement without an empty speech bubble', async ({
   await expect(page.locator('.user-action')).toContainText('Garden')
   await page.reload()
   await expect(page.locator('.assistant-message')).toHaveCount(1)
+  const history = page.getByRole('log', { name: ja.conversationHistory })
+  const visibleHistory = await history.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      height:
+        element.clientHeight -
+        parseFloat(style.paddingTop) -
+        parseFloat(style.paddingBottom),
+      lineHeight: parseFloat(
+        getComputedStyle(element.querySelector('.assistant-message p')!)
+          .lineHeight,
+      ),
+    }
+  })
+  expect(visibleHistory.height).toBeGreaterThanOrEqual(
+    visibleHistory.lineHeight,
+  )
   const saved = await (
     await request.get(`/api/v1/conversations/${scene.id}`)
   ).json()

@@ -132,7 +132,13 @@ class DialogueResult(Record):
             "possessions to the companion."
         ),
     )
-    text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
+    text: str = Field(
+        max_length=20000,
+        description=(
+            str(Reply.model_fields["text"].description)
+            + " Answer the latest question directly before offering a follow-up question."
+        ),
+    )
 
     @model_validator(mode="after")
     def unique_changes(self) -> Self:
@@ -164,7 +170,9 @@ class NarrativeReply(Record):
 
 
 class ReactionReply(NarrativeReply):
-    player_move: None
+    player_move: None = Field(
+        description="Always null: the accepted player action has already been applied."
+    )
     response: DialogueResult
 
 
@@ -313,6 +321,7 @@ class ConversationResponder:
         if not request.allow_real_llm:
             raise KomaquillError(code="real_llm_not_allowed", retryable=False)
         language = "Japanese" if locale == "ja" else "English"
+        reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         definition = conversation.definition
         story = definition.scenario.model_dump(exclude_defaults=True, exclude={"place", "goal"})
         if conversation.turns:
@@ -363,6 +372,12 @@ class ConversationResponder:
                 else {}
             ),
             "response_length": definition.response_length,
+            "response_rules": {
+                "player_move": reply_schema.model_fields["player_move"].description,
+                "held_objects": ObjectsChange.model_fields["value"].description,
+                "action_narration": DialogueResult.model_fields["action_narration"].description,
+                "text": DialogueResult.model_fields["text"].description,
+            },
             "response_policy": definition.instructions,
             "response_language": language,
         }
@@ -402,7 +417,6 @@ class ConversationResponder:
             "currently adopted intention. Questions, conditional plans and appointments are "
             "dialogue with kind=companion. Both people always share the confirmed place."
         )
-        reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
         purpose = "move-response-" if request.action_origin == "conversation" else ""
         retained_response = self.execution.has_response(request.operation_id, purpose)

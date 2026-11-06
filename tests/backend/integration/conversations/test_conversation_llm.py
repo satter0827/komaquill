@@ -162,7 +162,12 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
 
 
 def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(tmp_path):
-    from komaquill.adapters.llm.conversation import NarrativeReply
+    from komaquill.adapters.llm.conversation import (
+        DialogueResult,
+        NarrativeReply,
+        ObjectsChange,
+        ReactionReply,
+    )
     from komaquill.api import PrepareAction
 
     api = Client.initialize(tmp_path)
@@ -204,6 +209,14 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
         ),
     )
     context = json.loads(next(line for line in calls[0][4].splitlines() if line.startswith("{")))
+    assert calls[0][0] is ReactionReply
+    assert context["response_rules"] == {
+        "player_move": ReactionReply.model_fields["player_move"].description,
+        "held_objects": ObjectsChange.model_fields["value"].description,
+        "action_narration": DialogueResult.model_fields["action_narration"].description,
+        "text": DialogueResult.model_fields["text"].description,
+    }
+    assert all(isinstance(rule, str) and rule for rule in context["response_rules"].values())
     assert context["people"]["human_player"]["clothing"] == ""
     assert context["people"]["assistant_character"]["clothing"] == "Black apron"
     assert context["people"]["assistant_character"]["name"] == "Mira"

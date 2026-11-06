@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
 import { spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
 import { mkdtemp, readFile, rename, writeFile, rm } from 'node:fs/promises'
 import { setTimeout } from 'node:timers/promises'
 import path from 'node:path'
@@ -19,6 +20,9 @@ import {
 import Reporter from '../../../../tools/testing/web/reporter.mjs'
 import { webConfig } from '../../../../tools/testing/web/config.mjs'
 
+const LOCK_HOLDER_STARTUP_MS = 30_000
+const LOCK_TEST_TIMEOUT_MS = 45_000
+
 async function directory(context) {
   const root = await mkdtemp(path.resolve('.artifacts/tmp/web-evidence-'))
   context.after(() => rm(root, { recursive: true, force: true }))
@@ -29,10 +33,11 @@ test(
   'atomic checkpoints survive a temporary Windows replacement lock',
   {
     skip: process.platform !== 'win32',
-    timeout: 15000,
+    timeout: LOCK_TEST_TIMEOUT_MS,
   },
   async (t) => {
-    const root = await directory(t)
+    const base = path.resolve('.artifacts/tmp')
+    const root = await mkdtemp(path.join(base, 'web-lock-'))
     const target = path.join(root, 'scenario.json')
     const probe = path.join(root, 'probe.json')
     await jsonFile(target, { state: 'previous' })
@@ -55,11 +60,22 @@ test(
         stdio: ['pipe', 'pipe', 'pipe'],
       },
     )
-    t.after(() => holder.kill())
-    const [ready] = await once(holder.stdout, 'data', {
-      signal: AbortSignal.timeout(5000),
+    const exited = once(holder, 'exit')
+    const output = createInterface({ input: holder.stdout })
+    t.after(async () => {
+      if (holder.exitCode === null && holder.signalCode === null) holder.kill()
+      await exited
+      output.close()
+      assert(root.startsWith(base + path.sep))
+      await rm(root, { recursive: true, force: true })
     })
-    assert.match(String(ready), /locked/)
+    const [ready] = await Promise.race([
+      once(output, 'line', {
+        signal: AbortSignal.timeout(LOCK_HOLDER_STARTUP_MS),
+      }),
+      exited.then(() => assert.fail('Lock holder exited before readiness')),
+    ])
+    assert.equal(ready, 'locked')
     await assert.rejects(rename(probe, target), (error) =>
       ['EPERM', 'EACCES', 'EBUSY'].includes(error.code),
     )
@@ -72,7 +88,6 @@ test(
     assert.deepEqual(JSON.parse(await readFile(target, 'utf8')), {
       state: 'previous',
     })
-    const exited = once(holder, 'exit')
     holder.stdin.end('\n')
     await exited
     await saving

@@ -62,6 +62,8 @@ import {
 
 const MAX_DESTINATION_LENGTH = 1000
 
+type ResumeReceipt = { operationId: string; expectedCount: number }
+
 function Drawing({ job }: { job: CreationJob }) {
   const messages = useMessages()
   const failure = useFailure()
@@ -160,10 +162,7 @@ function ConversationView({
     version: number
   } | null>(null)
   const [operationId, setOperationId] = useState<string | null>(null)
-  const [pendingResume, setPendingResume] = useState<{
-    operationId: string
-    expectedCount: number
-  } | null>(null)
+  const [pendingResume, setPendingResume] = useState<ResumeReceipt | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const narrow = useMediaQuery('(max-width: 1279px)')
   const [showState, setShowState] = useState(false)
@@ -297,6 +296,43 @@ function ConversationView({
       },
     )
   }, [cache, send.isError, prepared, confirmSend, resetSend])
+  const clearResumeReceipt = useCallback(
+    (receipt: ResumeReceipt | undefined) => {
+      if (!receipt) return
+      setPendingResume((current) =>
+        current?.operationId === receipt.operationId &&
+        current.expectedCount === receipt.expectedCount
+          ? null
+          : current,
+      )
+    },
+    [],
+  )
+  const checkResumeReceipt = useCallback(
+    async (receipt: ResumeReceipt | undefined) => {
+      if (!receipt) return
+      try {
+        await cache.cancelQueries(
+          {
+            queryKey: q.getOperationQueryKey({
+              path: { identity: receipt.operationId },
+            }),
+            exact: true,
+          },
+          { revert: false },
+        )
+        const observed = await cache.fetchQuery({
+          ...operationOptions(receipt.operationId),
+          staleTime: 0,
+        })
+        if (observed.state === 'interrupted' && observed.can_resume)
+          clearResumeReceipt(receipt)
+      } catch {
+        // The query retains the failure; keep read-only receipt checking available.
+      }
+    },
+    [cache, clearResumeReceipt],
+  )
   const resume = useMutation({
     ...q.resumeOperationMutation(),
     onMutate: ({ path }) => {
@@ -315,29 +351,20 @@ function ConversationView({
       setOperationId(path.identity)
       return receipt
     },
-    onError: (error, { path }, receipt) => {
-      if (isRejectedRequest(error))
-        setPendingResume((current) =>
-          current?.operationId === path.identity &&
-          current.expectedCount === receipt?.expectedCount
-            ? null
-            : current,
-        )
-      void cache.invalidateQueries({
-        queryKey: q.getOperationQueryKey({ path }),
-      })
+    onError: async (error, { path }, receipt) => {
+      if (isRejectedRequest(error)) {
+        clearResumeReceipt(receipt)
+        void cache.invalidateQueries({
+          queryKey: q.getOperationQueryKey({ path }),
+        })
+      } else await checkResumeReceipt(receipt)
     },
     onSuccess: (value, _submitted, receipt) => {
       cache.setQueryData<OperationView>(
         q.getOperationQueryKey({ path: { identity: value.id } }),
         (previous) => retainOperation(previous, value),
       )
-      setPendingResume((current) =>
-        current?.operationId === value.id &&
-        current.expectedCount === receipt?.expectedCount
-          ? null
-          : current,
-      )
+      clearResumeReceipt(receipt)
       void cache.invalidateQueries({
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
       })
@@ -354,20 +381,15 @@ function ConversationView({
       cache,
       q.getOperationQueryKey({ path: { identity: receipt.operationId } }),
       receipt.operationId,
-      (confirmed) => {
-        setPendingResume((current) =>
-          current?.operationId === confirmed.id &&
-          current.expectedCount <= (confirmed.resume_count ?? 0)
-            ? null
-            : current,
-        )
+      () => {
+        clearResumeReceipt(receipt)
         if (resume.isError) resetResume()
       },
       (value) =>
         value.state === 'complete' ||
         (value.resume_count ?? 0) >= receipt.expectedCount,
     )
-  }, [cache, resume.context, resume.isError, resetResume])
+  }, [cache, resume.context, resume.isError, resetResume, clearResumeReceipt])
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
@@ -849,14 +871,12 @@ function ConversationView({
             {resume.error && (
               <p role="alert" className="error">
                 {failure(resume.error)}
-                {pendingResume && (
-                  <Button
-                    onClick={() => void operation.refetch()}
-                    disabled={operation.isFetching}
-                  >
-                    {messages.retryRequest}
-                  </Button>
-                )}
+                <Button
+                  onClick={() => void checkResumeReceipt(resume.context)}
+                  disabled={operation.isFetching}
+                >
+                  {messages.retryRequest}
+                </Button>
               </p>
             )}
             {sampleDrawing && (

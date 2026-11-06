@@ -6,89 +6,106 @@ import { promisify } from 'node:util'
 
 const runFile = promisify(execFile)
 
-test('recovers a lost resume receipt and ignores the earlier interruption without another model call', async ({
-  page,
-  request,
-  evidence,
-}, info) => {
-  const workspace = info.outputPath('server/workspace')
-  const prepare = await runFile(process.env.KOMAQUILL_WEB_PYTHON!, [
-    '-B',
-    '-m',
-    'tests.system.support.conversations',
-    workspace,
-  ])
-  const initial = JSON.parse(prepare.stdout)
-  expect(initial.invocation_ids).toHaveLength(1)
-  const operationPath = `/api/v1/operations/${initial.operation_id}`
-  const conversationPath = `/api/v1/conversations/${initial.conversation_id}`
-  const old = await (await request.get(operationPath)).json()
-  expect(old).toMatchObject({
-    state: 'interrupted',
-    can_resume: true,
-    resume_count: 0,
+for (const loseRequest of [false, true]) {
+  test(`recovers a lost resume ${loseRequest ? 'request' : 'receipt'} without another model call`, async ({
+    page,
+    request,
+    evidence,
+  }, info) => {
+    const workspace = info.outputPath('server/workspace')
+    const prepare = await runFile(process.env.KOMAQUILL_WEB_PYTHON!, [
+      '-B',
+      '-m',
+      'tests.system.support.conversations',
+      workspace,
+    ])
+    const initial = JSON.parse(prepare.stdout)
+    expect(initial.invocation_ids).toHaveLength(1)
+    const operationPath = `/api/v1/operations/${initial.operation_id}`
+    const conversationPath = `/api/v1/conversations/${initial.conversation_id}`
+    const old = await (await request.get(operationPath)).json()
+    expect(old).toMatchObject({
+      state: 'interrupted',
+      can_resume: true,
+      resume_count: 0,
+    })
+    let resumeRequested = false
+    let observedOld = false
+    let releaseResume!: () => void
+    const oldObservation = new Promise<void>((done) => {
+      releaseResume = done
+    })
+    let submissions = 0
+    await page.route(`**${conversationPath}/operations`, (route) =>
+      route.fulfill({ json: [old] }),
+    )
+    await page.route(`**${operationPath}`, async (route) => {
+      if (resumeRequested && !observedOld) {
+        observedOld = true
+        await route.fulfill({ json: old })
+        releaseResume()
+      } else await route.continue()
+    })
+    await page.route(`**${operationPath}/resume?*`, async (route) => {
+      submissions++
+      await oldObservation
+      if (loseRequest && submissions === 1) return abortFault(route, evidence)
+      const response = await route.fetch()
+      expect(response.status()).toBe(200)
+      expect(await response.json()).toMatchObject({ resume_count: 1 })
+      if (loseRequest) await route.fulfill({ response })
+      else await abortFault(route, evidence)
+    })
+    await page.goto(`/conversations/${initial.conversation_id}`)
+    const input = page.getByRole('textbox', { name: ja.messageLabel })
+    await input.fill('Next unsent draft')
+    resumeRequested = true
+    await page
+      .getByRole('button', { name: ja.resumeOperation, exact: true })
+      .click()
+    if (loseRequest) {
+      const resume = page.getByRole('button', {
+        name: ja.resumeOperation,
+        exact: true,
+      })
+      await expect(resume).toBeEnabled()
+      expect(submissions).toBe(1)
+      await page
+        .getByRole('button', { name: ja.retryRequest, exact: true })
+        .click()
+      expect(submissions).toBe(1)
+      await resume.click()
+    }
+    await expect(page.locator('.assistant-message')).toHaveCount(1)
+    await expect(input).toHaveValue('Next unsent draft')
+    await expect(
+      page.getByRole('button', { name: ja.send, exact: true }),
+    ).toBeEnabled()
+    await expect(
+      page.getByRole('button', { name: ja.resumeOperation, exact: true }),
+    ).toHaveCount(0)
+    expect(observedOld).toBe(true)
+    expect(submissions).toBe(loseRequest ? 2 : 1)
+    const inspect = await runFile(process.env.KOMAQUILL_WEB_PYTHON!, [
+      '-B',
+      '-m',
+      'tests.system.support.conversations',
+      workspace,
+      initial.operation_id,
+    ])
+    const saved = JSON.parse(inspect.stdout)
+    expect(saved).toMatchObject({
+      resume_count: 1,
+      turn_count: 1,
+      action_count: 1,
+      place: 'Garden',
+    })
+    expect(saved.invocation_ids).toEqual(initial.invocation_ids)
+    await evidence.capture(
+      'Resumed the same operation after a lost receipt; one move and no new inference',
+    )
   })
-  let resumeRequested = false
-  let observedOld = false
-  let releaseResume!: () => void
-  const oldObservation = new Promise<void>((done) => {
-    releaseResume = done
-  })
-  let submissions = 0
-  await page.route(`**${conversationPath}/operations`, (route) =>
-    route.fulfill({ json: [old] }),
-  )
-  await page.route(`**${operationPath}`, async (route) => {
-    if (resumeRequested && !observedOld) {
-      observedOld = true
-      await route.fulfill({ json: old })
-      releaseResume()
-    } else await route.continue()
-  })
-  await page.route(`**${operationPath}/resume?*`, async (route) => {
-    submissions++
-    await oldObservation
-    const response = await route.fetch()
-    expect(response.status()).toBe(200)
-    expect(await response.json()).toMatchObject({ resume_count: 1 })
-    await abortFault(route, evidence)
-  })
-  await page.goto(`/conversations/${initial.conversation_id}`)
-  const input = page.getByRole('textbox', { name: ja.messageLabel })
-  await input.fill('Next unsent draft')
-  resumeRequested = true
-  await page
-    .getByRole('button', { name: ja.resumeOperation, exact: true })
-    .click()
-  await expect(page.locator('.assistant-message')).toHaveCount(1)
-  await expect(input).toHaveValue('Next unsent draft')
-  await expect(
-    page.getByRole('button', { name: ja.send, exact: true }),
-  ).toBeEnabled()
-  await expect(
-    page.getByRole('button', { name: ja.resumeOperation, exact: true }),
-  ).toHaveCount(0)
-  expect(observedOld).toBe(true)
-  expect(submissions).toBe(1)
-  const inspect = await runFile(process.env.KOMAQUILL_WEB_PYTHON!, [
-    '-B',
-    '-m',
-    'tests.system.support.conversations',
-    workspace,
-    initial.operation_id,
-  ])
-  const saved = JSON.parse(inspect.stdout)
-  expect(saved).toMatchObject({
-    resume_count: 1,
-    turn_count: 1,
-    action_count: 1,
-    place: 'Garden',
-  })
-  expect(saved.invocation_ids).toEqual(initial.invocation_ids)
-  await evidence.capture(
-    'Resumed the same operation after a lost receipt; one move and no new inference',
-  )
-})
+}
 
 test('confirms an album receipt across navigation without submitting again', async ({
   page,

@@ -688,6 +688,83 @@ describe('conversation workflow', () => {
     ).not.toBeInTheDocument()
     expect(submissions).toBe(1)
   })
+  it.each([false, true])(
+    'allows explicit resume after an unreceived request and failed observation: %s',
+    async (failObservation) => {
+      let submissions = 0
+      let observations = 0
+      let unavailable = failObservation
+      const interrupted = {
+        id: 'retained',
+        conversation_id: 'one',
+        state: 'interrupted',
+        error: 'operation_failed',
+        can_resume: true,
+        resume_count: 0,
+      }
+      const receipt = () =>
+        submissions >= 2
+          ? {
+              ...interrupted,
+              state: 'complete',
+              can_resume: false,
+              error: null,
+              resume_count: 1,
+            }
+          : interrupted
+      server.use(
+        http.get(`${base}/api/v1/conversations/one/operations`, () =>
+          HttpResponse.json([receipt()]),
+        ),
+        http.get(`${base}/api/v1/operations/retained`, () => {
+          observations++
+          if (unavailable && submissions === 1)
+            return HttpResponse.json(
+              { code: 'connection_failed' },
+              { status: 503 },
+            )
+          return HttpResponse.json(receipt())
+        }),
+        http.post(`${base}/api/v1/operations/retained/resume`, () => {
+          submissions++
+          return submissions === 1
+            ? HttpResponse.error()
+            : HttpResponse.json(receipt())
+        }),
+      )
+      app('/conversations/one')
+      const input = await screen.findByRole('textbox', { name: m.messageLabel })
+      await userEvent.type(input, 'Retain this draft')
+      const resume = await screen.findByRole('button', {
+        name: m.resumeOperation,
+      })
+      await userEvent.click(resume)
+      if (failObservation) {
+        await screen.findByRole('button', { name: m.retryRequest })
+        expect(resume).toBeDisabled()
+        unavailable = false
+        await userEvent.click(
+          screen.getByRole('button', { name: m.retryRequest }),
+        )
+      }
+      await waitFor(() => expect(resume).toBeEnabled())
+      expect(observations).toBeGreaterThan(0)
+      expect(submissions).toBe(1)
+      await userEvent.click(
+        await screen.findByRole('button', { name: m.retryRequest }),
+      )
+      expect(submissions).toBe(1)
+      await userEvent.click(resume)
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: m.resumeOperation }),
+        ).not.toBeInTheDocument(),
+      )
+      expect(input).toHaveValue('Retain this draft')
+      expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
+      expect(submissions).toBe(2)
+    },
+  )
   it('keeps observing a later send when an earlier resume acknowledgement arrives late', async () => {
     const cache = new QueryClient({
       defaultOptions: {

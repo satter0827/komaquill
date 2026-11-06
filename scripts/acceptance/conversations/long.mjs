@@ -36,8 +36,11 @@ const evidence = new Evidence(page, path.join(directory, 'browser'), {
 page.setDefaultTimeout(15000)
 const apiPath = `/api/v1/conversations/${config.conversation}`
 function inspectInventory(saved) {
-  if (config.expected_inventory) {
-    for (const person of ['player', 'character']) {
+  for (const person of ['player', 'character']) {
+    for (const object of saved.state[person].held_objects ?? []) {
+      assert(!config.forbidden_held_objects?.includes(object.name))
+    }
+    if (config.expected_inventory) {
       assert.deepEqual(
         saved.state[person].held_objects,
         config.expected_inventory[person],
@@ -111,7 +114,7 @@ try {
         check = 'reply_visible'
         await turn.locator('.assistant-message').waitFor()
         saved = await (await api.get(apiPath)).json()
-        check = 'inventory_unchanged'
+        check = 'inventory_constraints'
         inspectInventory(saved)
         check = 'turn_saved'
         assert.equal(saved.turn_count, index + 1)
@@ -142,7 +145,7 @@ try {
     }
   }
   await page.reload()
-  check = 'inventory_unchanged'
+  check = 'inventory_constraints'
   inspectInventory(saved)
   check = 'restored_turn_order'
   await page

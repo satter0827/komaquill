@@ -14,7 +14,7 @@ from komaquill.adapters.persistence.access import acquire
 from komaquill.domain.errors import KomaquillError
 
 RESULT_VERSION = 1
-CONVERSATION_WORKFLOW_VERSION = 6
+CONVERSATION_WORKFLOW_VERSION = 7
 
 
 class Checkpoints:

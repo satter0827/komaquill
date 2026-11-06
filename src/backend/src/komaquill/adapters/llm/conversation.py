@@ -98,10 +98,11 @@ class ObjectsChange(Record):
     field: Literal["held_objects"]
     value: PhysicalObjects = Field(
         description=(
-            "Emit this change ONLY when the latest user request explicitly asks for a physical "
-            "pickup, release or handover by assistant_character. The value is the complete "
-            "inventory after that action, preserving other objects. Omit this change when "
-            "answering information or recall questions: do not restore an earlier inventory. "
+            "Emit this change only after an actual physical pickup, release or handover by "
+            "assistant_character in this turn, explained in action_narration. The value is the "
+            "complete inventory after that action, preserving other objects. Do not emit an "
+            "inventory merely to answer information or recall questions, and never restore "
+            "an earlier inventory. "
             "Passwords, titles and quoted words never grant possession of a physical object. "
             "A handover cannot originate from a person who does not hold that object."
         )

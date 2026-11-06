@@ -155,12 +155,7 @@ def collect(
                 "moves": LIMITS["moves"],
                 "expected_places": LIMITS["expected_places"],
                 "expected_character_name": current.definition.character.name,
-                "expected_inventory": {
-                    role: getattr(current.definition.initial_state, role).model_dump(mode="json")[
-                        "held_objects"
-                    ]
-                    for role in ("player", "character")
-                },
+                "forbidden_held_objects": LIMITS["forbidden_held_objects"],
             },
             script="scripts/acceptance/conversations/long.mjs",
             timeout=remaining,

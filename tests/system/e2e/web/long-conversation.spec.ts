@@ -77,7 +77,7 @@ test('exercises the conversation runner with a scripted provider and safe failur
       'utf8',
     ),
   )
-  expect(inventoryDiagnostic.check).toBe('inventory_unchanged')
+  expect(inventoryDiagnostic.check).toBe('inventory_constraints')
   expect(inventoryDiagnostic.operation_id).toBeNull()
   const other = await (
     await request.post('/api/v1/conversations', {
@@ -88,13 +88,15 @@ test('exercises the conversation runner with a scripted provider and safe failur
       },
     })
   ).json()
-  const liveFailure = await run('new-operation-mismatch', messages, {
-    conversation: other.id,
-    expected_inventory: {
-      player: [{ id: 'absent', name: 'Cup' }],
-      character: null,
+  const liveFailure = await run(
+    'new-operation-mismatch',
+    [messages[0], 'The password is imaginary compass.'],
+    {
+      conversation: other.id,
+      expected_inventory: null,
+      forbidden_held_objects: ['Imaginary compass'],
     },
-  }).then(
+  ).then(
     () => null,
     (error: { code: number }) => error,
   )
@@ -105,11 +107,17 @@ test('exercises the conversation runner with a scripted provider and safe failur
       'utf8',
     ),
   )
-  expect(operationDiagnostic.check).toBe('inventory_unchanged')
+  expect(operationDiagnostic.check).toBe('inventory_constraints')
   const failedCheckOperation = await (
     await request.get(`/api/v1/operations/${operationDiagnostic.operation_id}`)
   ).json()
   expect(failedCheckOperation.conversation_id).toBe(other.id)
+  const latestChecked = await (
+    await request.get(`/api/v1/conversations/${other.id}/turns?limit=1`)
+  ).json()
+  expect(operationDiagnostic.operation_id).toBe(
+    latestChecked.items[0].operation_id,
+  )
   const marker = 'private-order-marker'
   const rejected = await run('mismatch', [marker, messages[1]]).then(
     () => null,

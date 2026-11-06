@@ -1,6 +1,7 @@
 max_calls = 40
 max_seconds = 2700
 target_turns = 20
+forbidden_held_objects = ["銀のコンパス"]
 moves = { "8" = "古書店の入口" }
 expected_places = { "6" = "公園", "7" = "公園", "8" = "古書店の入口", "18" = "古書店の入口" }
 

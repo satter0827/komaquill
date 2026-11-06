@@ -395,6 +395,7 @@ test('sends a movement without an empty speech bubble', async ({
   expect(visibleHistory.height).toBeGreaterThanOrEqual(
     visibleHistory.lineHeight,
   )
+  await expect(page.locator('.assistant-message p').last()).toBeInViewport()
   const saved = await (
     await request.get(`/api/v1/conversations/${scene.id}`)
   ).json()

@@ -805,15 +805,15 @@ function ConversationView({
                 </article>
               )
             })}
-            <div className="visual-review">
-              {needsReview || reviewControls.prepared ? (
+            {(needsReview || reviewControls.prepared) && (
+              <div className="visual-review">
                 <VisualReviewForm
                   conversation={conversation}
                   busy={!!busy}
                   controls={reviewControls}
                 />
-              ) : null}
-            </div>
+              </div>
+            )}
             {replyPending && (
               <p className="pending" role="status">
                 {send.isPending || (resume.isPending && pendingResume)

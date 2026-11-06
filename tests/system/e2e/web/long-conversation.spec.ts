@@ -25,7 +25,11 @@ test('exercises the conversation runner with a scripted provider and safe failur
     })
   ).json()
   const messages = ['A scripted first message.', 'A scripted second message.']
-  async function run(name: string, expectedMessages: string[]) {
+  async function run(
+    name: string,
+    expectedMessages: string[],
+    overrides: Record<string, unknown> = {},
+  ) {
     const directory = info.outputPath(name)
     await mkdir(directory, { recursive: true })
     const file = path.join(directory, 'browser-input.json')
@@ -40,6 +44,8 @@ test('exercises the conversation runner with a scripted provider and safe failur
         target_turns: expectedMessages.length,
         moves: {},
         expires_at: new Date(Date.now() + 60_000).toISOString(),
+        expected_inventory: { player: null, character: null },
+        ...overrides,
       }),
     )
     return runFile(
@@ -55,6 +61,16 @@ test('exercises the conversation runner with a scripted provider and safe failur
   expect(passed.status).toBe('passed')
   expect(passed.real_llm).toBe(false)
   expect(passed.unexpected_events).toEqual([])
+  const inventoryFailure = await run('inventory-mismatch', messages, {
+    expected_inventory: {
+      player: [{ id: 'absent', name: 'Cup' }],
+      character: null,
+    },
+  }).then(
+    () => null,
+    (error: { code: number }) => error,
+  )
+  expect(inventoryFailure?.code).toBe(1)
   const marker = 'private-order-marker'
   const rejected = await run('mismatch', [marker, messages[1]]).then(
     () => null,

@@ -35,6 +35,16 @@ const evidence = new Evidence(page, path.join(directory, 'browser'), {
 })
 page.setDefaultTimeout(15000)
 const apiPath = `/api/v1/conversations/${config.conversation}`
+function inspectInventory(saved) {
+  if (config.expected_inventory) {
+    for (const person of ['player', 'character']) {
+      assert.deepEqual(
+        saved.state[person].held_objects,
+        config.expected_inventory[person],
+      )
+    }
+  }
+}
 let status = 'failed'
 try {
   await page.goto(`/conversations/${config.conversation}`)
@@ -93,9 +103,14 @@ try {
           .filter({ hasText: config.messages[index] })
         await turn.locator('.assistant-message').waitFor()
         saved = await (await api.get(apiPath)).json()
+        inspectInventory(saved)
         assert.equal(saved.turn_count, index + 1)
         const latest = await (await api.get(apiPath + '/turns?limit=1')).json()
         assert(latest.items[0].assistant.trim().length > 0)
+        if (config.expected_character_name && (index === 0 || index === 18))
+          assert(
+            latest.items[0].assistant.includes(config.expected_character_name),
+          )
         assert(!Object.hasOwn(saved.state, 'character_place'))
         const expectedPlace = config.expected_places?.[String(index)]
         if (expectedPlace) assert.equal(saved.state.place, expectedPlace)
@@ -113,6 +128,7 @@ try {
     }
   }
   await page.reload()
+  inspectInventory(saved)
   await page
     .locator('.assistant-message')
     .nth(config.target_turns - 1)

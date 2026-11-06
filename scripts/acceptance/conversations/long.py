@@ -26,6 +26,7 @@ def collect(
     ledger: Path | None = None,
     max_calls: int | None = None,
     max_seconds: int | None = None,
+    llm_profile: str | None = None,
 ) -> bool:
     output = output.resolve()
     if not output.is_relative_to(ROOT / ".artifacts"):
@@ -65,6 +66,12 @@ def collect(
             raise KomaquillError(code="invalid_request")
         if case.exists():
             identity = json.loads(case.read_bytes())["conversation_id"]
+            if (
+                not new_conversation
+                and llm_profile is not None
+                and api.conversations.overview(UUID(identity)).definition.llm_profile != llm_profile
+            ):
+                raise KomaquillError(code="invalid_request")
             operations = api.conversations.operations(UUID(identity))
             if any(op.state not in {"complete", "failed"} for op in operations):
                 raise KomaquillError(code="operation_busy")
@@ -105,6 +112,7 @@ def collect(
                     {
                         "title": "長い会話の検証",
                         "locale": "ja",
+                        **({"llm_profile": llm_profile} if llm_profile is not None else {}),
                         "response_length": "standard",
                         "user": {"name": "あかり", "age": "28"},
                         "character": {
@@ -123,7 +131,10 @@ def collect(
             identity = str(scene.id)
             atomic_json(case, {"conversation_id": identity})
         report["conversation_id"] = identity
-        if api.conversations.overview(UUID(identity)).turn_count > target:
+        current = api.conversations.overview(UUID(identity))
+        report["llm_profile"] = current.definition.llm_profile
+        report["starting_turns"] = current.turn_count
+        if current.turn_count > target:
             raise KomaquillError(code="invalid_request")
         atomic_json(output / "run.json", report)
         expiry = datetime.fromisoformat(str(api.llm_usage()["expires_at"]))
@@ -143,6 +154,13 @@ def collect(
                 "expires_at": expiry.isoformat(),
                 "moves": LIMITS["moves"],
                 "expected_places": LIMITS["expected_places"],
+                "expected_character_name": current.definition.character.name,
+                "expected_inventory": {
+                    role: getattr(current.definition.initial_state, role).model_dump(mode="json")[
+                        "held_objects"
+                    ]
+                    for role in ("player", "character")
+                },
             },
             script="scripts/acceptance/conversations/long.mjs",
             timeout=remaining,
@@ -206,6 +224,7 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path)
     parser.add_argument("--max-calls", type=int)
     parser.add_argument("--max-seconds", type=int)
+    parser.add_argument("--llm-profile", help=message("acceptance.llm_profile"))
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
         "--new-conversation", action="store_true", help=message("acceptance.new_conversation")
@@ -225,6 +244,7 @@ def main() -> int:
             ledger=args.ledger,
             max_calls=args.max_calls,
             max_seconds=args.max_seconds,
+            llm_profile=args.llm_profile,
         )
         else 1
     )

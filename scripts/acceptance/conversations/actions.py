@@ -22,22 +22,26 @@ def evaluate(final: "Conversation") -> dict[str, bool]:
     """Evaluate the fixed input scenario, including facts it never supplies."""
     from komaquill.api import MoveAction, PrepareAction
 
-    moved = next(a for a in final.actions if isinstance(a.request.action, MoveAction))
-    prepared = next(a for a in final.actions if isinstance(a.request.action, PrepareAction))
-    move = moved.request.action
-    assert isinstance(move, MoveAction)
+    moved = next((a for a in final.actions if isinstance(a.request.action, MoveAction)), None)
+    prepared = next((a for a in final.actions if isinstance(a.request.action, PrepareAction)), None)
+    move = moved.request.action if moved else None
     return {
+        "movement_record_present": moved is not None,
+        "preparation_record_present": prepared is not None,
         "movement_completed_with_dialogue": bool(final.turns and final.turns[0].assistant),
         "movement_applied_once": len(final.actions) == 2,
-        "shared_place_after_move": moved.after.place == move.destination,
-        "player_clothing_preserved": final.state.player.clothing == prepared.after.player.clothing,
+        "shared_place_after_move": moved is not None
+        and isinstance(move, MoveAction)
+        and moved.after.place == move.destination,
+        "player_clothing_preserved": prepared is not None
+        and final.state.player.clothing == prepared.after.player.clothing,
         "companion_clothing_updated": any(
             word in (final.state.character.clothing or "").casefold() for word in ("緑", "green")
         ),
-        "final_shared_place_preserved": final.state.place == move.destination,
-        "password_recalled": (
-            "銀のコンパス" if final.definition.locale == "ja" else "silver compass"
-        )
+        "final_shared_place_preserved": isinstance(move, MoveAction)
+        and final.state.place == move.destination,
+        "password_recalled": bool(final.turns)
+        and ("銀のコンパス" if final.definition.locale == "ja" else "silver compass")
         in final.turns[-1].assistant.casefold(),
         "undeclared_objects_absent": all(
             not person.held_objects
@@ -129,8 +133,10 @@ def collect(
                     else "The password is silver compass. I head to the beach now."
                 )
                 record = next(
-                    a for a in current.actions if isinstance(a.request.action, MoveAction)
+                    (a for a in current.actions if isinstance(a.request.action, MoveAction)), None
                 )
+                result["checks"] = {"movement_record_present": record is not None}
+                assert record is not None
                 events.append(
                     {"kind": "conversation_movement", "record": record.model_dump(mode="json")}
                 )
@@ -190,6 +196,14 @@ def collect(
                     status="failed",
                     failure=describe_failure(error, "operation").model_dump(mode="json"),
                 )
+                try:
+                    snapshot = client.conversations.get(conversation.id)
+                    result["conversation"] = snapshot.model_dump(mode="json")
+                    result["checks"] = evaluate(snapshot)
+                except Exception as snapshot_error:
+                    result["snapshot_failure"] = describe_failure(
+                        snapshot_error, "storage"
+                    ).model_dump(mode="json")
                 raise
             finally:
                 atomic_json(output / f"{locale}.json", result)

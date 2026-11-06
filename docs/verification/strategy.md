@@ -20,14 +20,14 @@ tests/
 
 ## 実行する検査
 
-| 操作 | 範囲 |
-|---|---|
-| `pnpm check` | Nxで選んだ関連範囲 |
-| `pnpm check:ci` | 関連範囲とCI用の全Python測定 |
-| `pnpm check:all` | 全プロジェクトの静的検査・テスト・build |
-| `pnpm build` | 配布物の作成・同梱検査・隔離導入のE2E |
-| `pnpm test:web` | 配布wheelのCLIから起動するブラウザーE2E |
-| `pnpm verify:live --allow-real-llm --output PATH` | 許可した実LLMの検証 |
+| 操作                                              | 範囲                                    |
+| ------------------------------------------------- | --------------------------------------- |
+| `pnpm check`                                      | Nxで選んだ関連範囲                      |
+| `pnpm check:ci`                                   | 関連範囲とCI用の全Python測定            |
+| `pnpm check:all`                                  | 全プロジェクトの静的検査・テスト・build |
+| `pnpm build`                                      | 配布物の作成・同梱検査・隔離導入のE2E   |
+| `pnpm test:web`                                   | 配布wheelのCLIから起動するブラウザーE2E |
+| `pnpm verify:live --allow-real-llm --output PATH` | 許可した実LLMの検証                     |
 
 Pythonの対象はsrc、tools、scripts、bootstrapで、未実行ファイルを含めます。行と分岐の閾値は[pyproject.toml](../../pyproject.toml)を正本にします。実機用の許可や外部トレースの環境変数は通常ゲートから取り除き、テストの通信は自分が開始したloopbackの擬似APIに限定します。実モデルへ切り替えて不足を埋めません。
 
@@ -75,7 +75,8 @@ CLIとブラウザーの両方から、初期化、会話、行動、編集、�
 
 AIが修正する場合は、失敗した契約と再現手順から同じ原因の範囲を調べ、原因を修正して関連検査を再実行します。検査の削除、恒久的なskip、広い失敗除外、自動モデル切り替えで受入条件を緩めません。
 
-
 実機の画面確認だけをやり直す場合は、同じ親フォルダーに新しい`--output`を指定し、`--resume 以前の出力/run.json`を付けます。保存済みの会話と画像を使い、新しい推論や画像要求は送りません。停止済みT4を再度確保する場合も`--allow-gpu`が必要で、残りの累積予算を適用します。
 
 利用者が追加時間を明示許可した場合だけ、再確認に`--extend-gpu-seconds 秒数 --authorization-id UUID`を付けます。元の上限、消費時間、画像予約、CU制限は維持し、許可IDと追加時間を同じ台帳へ追記します。同じ許可IDは一度だけ適用します。実LLMの回数・期限は延長しません。
+
+長会話の実機検証は`python -m scripts.acceptance.conversations.long --llm-profile PROFILE`で接続プロファイルを指定できる。使用するモデルは作業設定の接続プロファイルで定義する。未指定時は会話入力の既定値を使い、再開時に既存の会話を別のプロファイルへ自動変更しない。実行には別途明示許可と既存使用分を保持する台帳が必要である。

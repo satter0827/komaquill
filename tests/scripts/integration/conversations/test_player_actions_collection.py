@@ -29,6 +29,23 @@ def test_failed_operation_keeps_partial_evidence_and_closes_client(tmp_path):
     assert result["failure"]["code"] == "llm_unavailable"
 
 
+def test_missing_movement_keeps_named_checks_and_saved_conversation(tmp_path):
+    from komaquill.domain.conversations.models import Reply
+
+    client = Client.initialize(tmp_path)
+    client.conversations.responder.reply = lambda *_: Reply(
+        text="I remember the password.", state_patch={}
+    )
+    with pytest.raises(AssertionError):
+        collect(client, tmp_path, locales=("ja",))
+    result = json.loads((tmp_path / "ja.json").read_bytes())
+    assert result["status"] == "failed"
+    assert result["checks"]["movement_record_present"] is False
+    assert result["checks"]["preparation_record_present"] is False
+    assert result["conversation"]["turn_count"] == 1
+    assert result["conversation"]["actions"] == []
+
+
 @pytest.mark.parametrize("passed", [True, False])
 def test_main_rejects_failed_checks(tmp_path, monkeypatch, passed):
     from scripts.acceptance.conversations import actions

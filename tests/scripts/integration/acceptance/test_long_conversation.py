@@ -45,6 +45,19 @@ def test_reopening_uses_the_same_conversation_and_durable_budget(prepared):
         assert len(api.conversations.list()) == 1
 
 
+def test_selected_profile_is_saved_and_cannot_change_during_resume(prepared):
+    root, calls = prepared
+    assert long.collect(root / "first", llm_profile="fake")
+    with Client(root / "workspace") as api:
+        assert api.conversations.list()[0].definition.llm_profile == "fake"
+    case = (root / "case.json").read_bytes()
+    assert not long.collect(root / "mismatch", llm_profile="lmstudio-4b")
+    assert len(calls) == 1
+    assert (root / "case.json").read_bytes() == case
+    report = json.loads((root / "mismatch/run.json").read_bytes())
+    assert report["failure"]["code"] == "invalid_request"
+
+
 def test_failure_is_recorded_without_copying_private_exception_text(prepared, monkeypatch):
     root, _ = prepared
 

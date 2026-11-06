@@ -26,6 +26,11 @@ for (const locale of ['ja', 'en'] as const) {
       ).json()
       await page.goto(`/conversations/${scene.id}`)
       const input = page.getByRole('textbox', { name: messages.messageLabel })
+      const latest = page.getByRole('button', {
+        name: messages.latestReply,
+        exact: true,
+      })
+      await expect(latest).not.toBeVisible()
       await input.fill('Let us continue our conversation here.')
       await page
         .getByRole('button', { name: messages.send, exact: true })
@@ -122,9 +127,9 @@ for (const locale of ['ja', 'en'] as const) {
       await expect(page.locator('.queued-action > p')).toBeInViewport({
         ratio: 1,
       })
-      await expect(
-        page.getByRole('button', { name: messages.latestReply, exact: true }),
-      ).not.toBeVisible()
+      if (await latest.isVisible()) await latest.click()
+      await expect(latest).not.toBeVisible()
+      await expect(page.locator('.assistant-message p').last()).toBeInViewport()
       await expect(input).toHaveValue('May we wait here for five minutes?')
       await page
         .getByRole('button', { name: messages.editQueuedAction, exact: true })

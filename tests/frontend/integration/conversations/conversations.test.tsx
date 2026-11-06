@@ -684,6 +684,9 @@ describe('conversation workflow', () => {
     expect(input).toHaveValue('Next unsent draft')
     expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
     expect(
+      screen.queryByRole('button', { name: m.retryRequest }),
+    ).not.toBeInTheDocument()
+    expect(
       screen.queryByRole('button', { name: m.resumeOperation }),
     ).not.toBeInTheDocument()
     expect(submissions).toBe(1)
@@ -765,6 +768,108 @@ describe('conversation workflow', () => {
       expect(submissions).toBe(2)
     },
   )
+  it('keeps a newer resume pending when an earlier receipt read returns', async () => {
+    const cache = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    let submissions = 0
+    let holdRead = false
+    let readStarted = false
+    let accepted = false
+    let releaseRead!: () => void
+    let releasePost!: () => void
+    const reading = new Promise<void>((done) => {
+      releaseRead = done
+    })
+    const posting = new Promise<void>((done) => {
+      releasePost = done
+    })
+    const interrupted = {
+      id: 'retained',
+      conversation_id: 'one',
+      state: 'interrupted',
+      error: 'operation_failed',
+      can_resume: true,
+      resume_count: 0,
+    }
+    const receipt = () =>
+      accepted
+        ? {
+            ...interrupted,
+            state: 'complete',
+            error: null,
+            can_resume: false,
+            resume_count: 1,
+          }
+        : interrupted
+    server.use(
+      http.get(`${base}/api/v1/conversations/one/operations`, () =>
+        HttpResponse.json([receipt()]),
+      ),
+      http.get(`${base}/api/v1/operations/retained`, async () => {
+        if (holdRead) {
+          readStarted = true
+          await reading
+          return HttpResponse.json(interrupted)
+        }
+        return HttpResponse.json(receipt())
+      }),
+      http.post(`${base}/api/v1/operations/retained/resume`, async () => {
+        submissions++
+        if (submissions === 1) return HttpResponse.error()
+        await posting
+        return HttpResponse.json(receipt())
+      }),
+    )
+    app('/conversations/one', cache)
+    try {
+      const input = await screen.findByRole('textbox', { name: m.messageLabel })
+      await userEvent.type(input, 'Retain this unsent draft')
+      const resume = await screen.findByRole('button', {
+        name: m.resumeOperation,
+      })
+      await userEvent.click(resume)
+      await waitFor(() => expect(resume).toBeEnabled())
+      holdRead = true
+      await userEvent.click(
+        await screen.findByRole('button', { name: m.retryRequest }),
+      )
+      await waitFor(() => expect(readStarted).toBe(true))
+      await userEvent.click(resume)
+      await waitFor(() => expect(submissions).toBe(2))
+      expect(resume).toBeDisabled()
+      holdRead = false
+      await act(async () => {
+        releaseRead()
+        await reading
+      })
+      await waitFor(() =>
+        expect(
+          cache.getQueryState(
+            getOperationQueryKey({ path: { identity: 'retained' } }),
+          )?.fetchStatus,
+        ).toBe('idle'),
+      )
+      expect(resume).toBeDisabled()
+      expect(screen.getByRole('button', { name: m.send })).toBeDisabled()
+      accepted = true
+      await act(async () => {
+        releasePost()
+        await posting
+      })
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: m.send })).toBeEnabled(),
+      )
+      expect(input).toHaveValue('Retain this unsent draft')
+      expect(submissions).toBe(2)
+    } finally {
+      releaseRead()
+      releasePost()
+    }
+  })
   it('keeps observing a later send when an earlier resume acknowledgement arrives late', async () => {
     const cache = new QueryClient({
       defaultOptions: {

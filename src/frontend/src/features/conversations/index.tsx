@@ -299,12 +299,8 @@ function ConversationView({
   const clearResumeReceipt = useCallback(
     (receipt: ResumeReceipt | undefined) => {
       if (!receipt) return
-      setPendingResume((current) =>
-        current?.operationId === receipt.operationId &&
-        current.expectedCount === receipt.expectedCount
-          ? null
-          : current,
-      )
+      // Unreceived retries share the expected server count; keep request identity.
+      setPendingResume((current) => (current === receipt ? null : current))
     },
     [],
   )
@@ -373,7 +369,6 @@ function ConversationView({
       })
     },
   })
-  const resetResume = resume.reset
   useEffect(() => {
     if (!resume.context) return
     const receipt = resume.context
@@ -383,13 +378,21 @@ function ConversationView({
       receipt.operationId,
       () => {
         clearResumeReceipt(receipt)
-        if (resume.isError) resetResume()
       },
       (value) =>
         value.state === 'complete' ||
         (value.resume_count ?? 0) >= receipt.expectedCount,
     )
-  }, [cache, resume.context, resume.isError, resetResume, clearResumeReceipt])
+  }, [cache, resume.context, clearResumeReceipt])
+  const resumeReceiptKnown =
+    !!resume.context &&
+    operation.data?.id === resume.context.operationId &&
+    (operation.data.state === 'complete' ||
+      (operation.data.resume_count ?? 0) >= resume.context.expectedCount)
+  const resumeError =
+    operationId === resume.context?.operationId && !resumeReceiptKnown
+      ? resume.error
+      : null
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
@@ -818,8 +821,7 @@ function ConversationView({
               <p className="pending" role="status">
                 {send.isPending || (resume.isPending && pendingResume)
                   ? messages.requestSending
-                  : (prepared && send.isError) ||
-                      (pendingResume && resume.isError)
+                  : (prepared && send.isError) || (pendingResume && resumeError)
                     ? messages.receiptUnknown
                     : messages.pending}
               </p>
@@ -868,9 +870,9 @@ function ConversationView({
                 {messages.resumeOperation}
               </Button>
             )}
-            {resume.error && (
+            {resumeError && (
               <p role="alert" className="error">
-                {failure(resume.error)}
+                {failure(resumeError)}
                 <Button
                   onClick={() => void checkResumeReceipt(resume.context)}
                   disabled={operation.isFetching}

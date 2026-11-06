@@ -108,8 +108,10 @@ try {
         if (away) assert(latest.items[0].narration.includes(saved.state.place))
         if (index === 16)
           assert(latest.items[0].assistant.includes('銀のコンパス'))
-        if (index === 17)
+        if (index === 17) {
           assert(/四時|4時|４時|16時|１６時/.test(latest.items[0].assistant))
+          assert(latest.items[0].assistant.includes('土曜'))
+        }
       },
     )
     if (index === 9) {

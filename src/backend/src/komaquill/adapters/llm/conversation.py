@@ -57,7 +57,7 @@ class ProposedPreparation(PrepareAction):
 
 
 class ProposedIntention(IntentionAction):
-    """An ongoing personal goal, never a physical action or a request to the companion."""
+    """An explicitly adopted current personal goal, excluding questions and conditional plans."""
 
     kind: Literal["intention"]
 

@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
+from komaquill.adapters.compute import inspection, shutdown, supervisor
 from komaquill.adapters.diagnostics import operation_scope
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
@@ -12,7 +13,6 @@ from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.models import JsonObject
 from komaquill.domain.status import SessionStatus
 from komaquill.domain.usage import AccountUsage
-from komaquill.runtime import inspection, shutdown, supervisor
 
 
 class RuntimeService:
@@ -56,7 +56,11 @@ class RuntimeService:
             result = []
             for profile in settings.selected_profiles():
                 for view in ("app", "graph"):
-                    url = session.endpoint + "/"
+                    url = (
+                        self._project.configuration.web.origin + "/comfy/"
+                        if self._project.configuration.web.origin
+                        else session.endpoint + "/"
+                    )
                     if session.backend == "colab":
                         url += "?" + urlencode(
                             {"template": f"{profile}_{view}", "source": "komaquill"}
@@ -67,8 +71,8 @@ class RuntimeService:
             return result
 
     def workflow(self, profile: str, view: Literal["app", "graph"]) -> JsonObject:
+        from komaquill.adapters.compute.connection import session_project
         from komaquill.adapters.workflows import prepare, select
-        from komaquill.runtime.connection import session_project
 
         with api_operation(OperationStage.PREPARATION, invalid=ErrorCode.INVALID_CONFIGURATION):
             settings = session_project(self._project).settings()

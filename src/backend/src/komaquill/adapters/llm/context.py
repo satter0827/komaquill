@@ -3,11 +3,7 @@
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from langchain_core.messages import (
-    BaseMessage,
-    HumanMessage,
-    trim_messages,
-)
+from langchain_core.messages import BaseMessage, HumanMessage, trim_messages
 from langchain_core.messages.utils import count_tokens_approximately
 
 from komaquill.domain.errors import KomaquillError

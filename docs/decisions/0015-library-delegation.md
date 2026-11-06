@@ -12,9 +12,9 @@ CheckpointerとSqliteSaverの見送りは、[会話実行の永続化](0017-dura
 
 ## 確認した範囲
 
-以下は採用判断時の調査結果である。実装後の分担は[現在の設計](../current/library-delegation.md)、未完了の比較は[委譲計画](../plans/library-adoption.md)を参照する。
+以下は採用判断時の調査結果である。実装後の分担は[現在の設計](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/docs/current/library-delegation.md)、未完了の比較は[委譲計画](../plans/library-adoption.md)を参照する。
 
-対象は2026-11-01の未コミット差分を含む作業ツリーである。基点コミット、調査対象ファイルのSHA256と集約ハッシュ、環境、使用したパッケージ版、期待との差、未確認事項は非公開の`.artifacts/records/reports/library-review-20261101/python.json`と`heyapi.json`へ記録した。対象のパッケージは[Pythonの依存定義](../../src/backend/pyproject.toml)と[ロック](../../src/backend/uv.lock)、[JavaScriptのロック](../../pnpm-lock.yaml)に対応する。
+対象は2026-11-01の未コミット差分を含む作業ツリーである。基点コミット、調査対象ファイルのSHA256と集約ハッシュ、環境、使用したパッケージ版、期待との差、未確認事項は非公開の`.artifacts/records/reports/library-review-20261101/python.json`と`heyapi.json`へ記録した。対象のパッケージは[Pythonの依存定義](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/pyproject.toml)と[ロック](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/src/backend/uv.lock)、[JavaScriptのロック](../../pnpm-lock.yaml)に対応する。
 
 - 現在のOpenAPIから、導入済みHey APIでqueryOptions、mutationOptions、query keyを一時領域へ生成できた。製品への接続と画面の受入は未実施である。
 - 現在の文書検査の正規表現は、架空の参照形式リンクを拾わず、括弧を含むリンクを途中で切った。markdown-it-pyは両方を抽出し、コードブロックの例を除外した。

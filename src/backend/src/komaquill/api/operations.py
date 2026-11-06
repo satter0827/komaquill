@@ -2,8 +2,8 @@
 
 from uuid import UUID
 
-from komaquill.conversations.models import AcceptedInput, Operation
-from komaquill.conversations.service import Repository
+from komaquill.application.conversations.service import Repository
+from komaquill.domain.conversations.models import AcceptedInput, Operation
 
 
 class OperationService:

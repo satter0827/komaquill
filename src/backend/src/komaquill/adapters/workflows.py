@@ -10,7 +10,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import CompiledImageInput, compile_image_input
 from komaquill.domain.models import JsonObject, ModelPreset
 from komaquill.domain.presets import GenerationPreset
-from komaquill.messages import message
+from komaquill.resources.messages import message
 
 _INPUT_LABELS = {
     "prompt": "workflow.prompt",

@@ -85,7 +85,7 @@ RSSは1秒間隔の観測値で、厳密な瞬間最大値ではありません�
 
 ## 設定と再検証
 
-`lmstudio-9b`・`lmstudio-4b`を作業設定、環境変数、CLI、Python APIから選べます。VS Codeの実LLM入口も同じ設定を参照します。[切替操作](../../guides/stories.md)と[比較手順](../../guides/llm-comparison.md)を参照してください。
+`lmstudio-9b`・`lmstudio-4b`を作業設定、環境変数、CLI、Python APIから選べます。VS Codeの実LLM入口も同じ設定を参照します。[切替操作](../../guides/preservation.md)と[比較手順](../../guides/preservation.md)を参照してください。
 
 日常検査はFakeListLLMとモックだけで行い、実モデルへの接続は実測入口の許可フラグを必要とします。単一の比較スクリプトの終了コード0は測定と復元の完了を表し、9Bの採用や精度合格を表しません。
 

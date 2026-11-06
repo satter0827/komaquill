@@ -22,7 +22,7 @@ CLIとPython APIは既存の処理を共有する。GPUとHigh RAMは起動時�
 
 ## 実行制約
 
-時間・枚数・CU・容量の正本は[比較設定](../../tests/fixtures/klein-comparison/config.toml)とする。CUの基準残高は次のセッションと再開へ引き継ぐ。照会の失敗、陳腐化、アカウントや割当の不一致、残高の増加では追加送信を停止する。
+時間・枚数・CU・容量の正本は[比較設定](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/tests/fixtures/klein-comparison/config.toml)とする。CUの基準残高は次のセッションと再開へ引き継ぐ。照会の失敗、陳腐化、アカウントや割当の不一致、残高の増加では追加送信を停止する。
 
 大容量転送の前に、同じ経路で速度を測る。停止用の時間とCUを予約し、期限に収まらない場合は転送を始めない。再利用はファイルの存在ではなくGPU上のSHA256一致で判定する。
 

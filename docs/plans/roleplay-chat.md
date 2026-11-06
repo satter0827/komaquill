@@ -36,7 +36,7 @@ pipで導入し、呼び出し側のPythonアプリケーションへ組み込�
 | [監視](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/infrastructure/sessions/monitor.py)と[ファイル保存](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/infrastructure/storage.py)が旧Runを読み書きする | 新規要求はCLI・HTTP・監視・停止で同じDB保存境界を使い、旧記録の読取りと混在させない |
 | [生成処理](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/application/generation.py)は送信、回収、完了待ちを分けている | 既存の分離を再利用し、HTTPは送信受付、CLIの同期生成は送信と待機の組合せとして提供する |
 | [プリセット](../current/presets.md)はモデル・操作と標準グラフを対応付ける | 一式での差し替えとAPI・画面の条件一致を維持し、標準のWAI構成を検証する |
-| [wheel検証](../../tests/e2e/test_wheel.py)と[公開API検証](../../tests/integration/test_public_api.py)がある | 独立した利用アプリからの会話作成・反復入力・再開・状態取得・単発生成へ拡張する |
+| [wheel検証](../../tests/system/e2e/package/test_installed_wheel.py)と[公開API検証](../../tests/backend/integration/platform/test_public_api.py)がある | 独立した利用アプリからの会話作成・反復入力・再開・状態取得・単発生成へ拡張する |
 
 現在の[製品範囲](../product/scope.md)と[current](../current/architecture.md)は実装済み機能の説明として保持する。Story固有の新規拡張は本移行の対象外とし、過去の検証結果をチャットの実績へ読み替えない。実装時は要件、現在設計、操作手順、AGENTS、テストを同じPRで更新する。
 

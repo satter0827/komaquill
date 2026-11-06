@@ -10,7 +10,8 @@ from urllib.parse import urlsplit
 import httpx
 from filelock import FileLock, Timeout
 
-from komaquill.adapters.asset_store import cached_path, file_digest, model_path, register
+from komaquill.adapters.asset_store import cached_path, model_path, register
+from komaquill.adapters.digests import file_digest
 from komaquill.domain.errors import FailureInfo, KomaquillError, failure_info
 from komaquill.domain.presets import ModelPreset
 

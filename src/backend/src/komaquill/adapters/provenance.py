@@ -18,9 +18,13 @@ def resource_names() -> tuple[str, ...]:
     def walk(folder: Traversable, prefix: str = "") -> Iterator[str]:
         for item in sorted(folder.iterdir(), key=lambda row: row.name):
             name = prefix + item.name
-            if item.is_dir() and not item.name.startswith("."):
+            if item.is_dir() and not item.name.startswith(".") and item.name != "__pycache__":
                 yield from walk(item, name + "/")
-            elif item.is_file() and not item.name.startswith(".") and not name.endswith(".pyc"):
+            elif (
+                item.is_file()
+                and not item.name.startswith(".")
+                and not name.endswith((".py", ".pyc"))
+            ):
                 yield name
 
     return tuple(walk(anchor))
@@ -77,44 +81,45 @@ def source_revision() -> str | None:
 
 
 GPU_MODULES = frozenset(
-    {
+    [
         "__init__.py",
-        "messages.py",
+        "adapters/__init__.py",
+        "adapters/digests.py",
+        "adapters/asset_download.py",
+        "adapters/asset_store.py",
+        "adapters/atomic.py",
+        "adapters/configuration.py",
+        "adapters/diagnostics.py",
+        "adapters/downloads.py",
+        "adapters/paths.py",
+        "adapters/preset_catalog.py",
+        "adapters/provenance.py",
+        "adapters/worker_workspace.py",
+        "adapters/workflows.py",
         "domain/__init__.py",
+        "domain/assets.py",
         "domain/configuration.py",
-        "domain/models.py",
         "domain/errors.py",
-        "domain/workflow.py",
-        "domain/presets.py",
         "domain/images.py",
+        "domain/materials.py",
+        "domain/models.py",
+        "domain/presets.py",
         "domain/prompts.py",
         "domain/retained_images.py",
         "domain/retained_presets.py",
-        "worker/__init__.py",
-        "worker/bootstrap.py",
-        "worker/progress.py",
-        "adapters/worker_workspace.py",
+        "domain/workflow.py",
         "interfaces/__init__.py",
         "interfaces/comfyui/__init__.py",
         "interfaces/comfyui/api.py",
         "interfaces/comfyui/preservation.py",
-        "domain/assets.py",
-        "domain/materials.py",
-        "adapters/asset_download.py",
-        "adapters/asset_store.py",
-        "worker/worker.py",
+        "resources/__init__.py",
+        "resources/messages.py",
+        "worker/__init__.py",
+        "worker/bootstrap.py",
         "worker/models.py",
-        "adapters/__init__.py",
-        "adapters/configuration.py",
-        "adapters/paths.py",
-        "adapters/atomic.py",
-        "adapters/artifacts.py",
-        "adapters/diagnostics.py",
-        "adapters/downloads.py",
-        "adapters/workflows.py",
-        "adapters/preset_catalog.py",
-        "adapters/provenance.py",
-    }
+        "worker/progress.py",
+        "worker/worker.py",
+    ]
 )
 
 

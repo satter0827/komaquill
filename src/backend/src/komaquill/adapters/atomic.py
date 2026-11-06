@@ -10,7 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from komaquill.domain.models import JsonObject
-from komaquill.messages import message
+from komaquill.resources.messages import message
 
 WINDOWS_REPLACE_ERRORS = frozenset({5, 32, 33})
 REPLACE_TIMEOUT_SECONDS = 1.0

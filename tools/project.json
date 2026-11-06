@@ -1,0 +1,55 @@
+{
+  "name": "tools",
+  "implicitDependencies": ["contracts"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/src/contracts/openapi.json",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/pyproject.toml",
+        "{workspaceRoot}/docs/**/*",
+        "{workspaceRoot}/AGENTS.md",
+        "{workspaceRoot}/README.md",
+        "{workspaceRoot}/CONTRIBUTING.md",
+        "{workspaceRoot}/tests/tools/integration/web/evidence.test.mjs"
+      ],
+      "options": {
+        "commands": [
+          "node tools/runtime/python.mjs -m ruff check tools",
+          "node tools/runtime/python.mjs -m ruff format --check tools",
+          "node tools/runtime/python.mjs -m tools.checks.documentation",
+          "node node_modules/prettier/bin/prettier.cjs --check tools/testing/web tools/testing/playwright.mjs tests/tools/integration/web/evidence.test.mjs"
+        ],
+        "parallel": false
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/src/contracts/openapi.json",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/tests/**/*.test.mjs",
+        "{workspaceRoot}/src/frontend/src/app/locales/*.json",
+        "{workspaceRoot}/src/backend/src/komaquill/interfaces/comfyui/web/preparation.js",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "options": {
+        "command": "node --test tests/tools/integration/web/evidence.test.mjs"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "default",
+        "{workspaceRoot}/bootstrap/**/*",
+        "{workspaceRoot}/pyproject.toml"
+      ],
+      "options": {
+        "command": "node tools/runtime/python.mjs -m mypy tools --cache-dir .artifacts/cache/mypy/tools"
+      }
+    }
+  }
+}

@@ -50,7 +50,7 @@ jobs:
         run: |
           uv sync --project src/backend --locked --group dev --all-extras
           node bootstrap/setup-node.mjs
-          node scripts/playwright.mjs install chromium
+          node tools/testing/playwright.mjs install chromium
       - name: Check affected projects
         env:
           NX_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -59,6 +59,15 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag' -or $env:NX_BASE -match '^0+$') { pnpm check:all } else { pnpm check:ci }
       - name: Build distributions
         run: pnpm build
+      - name: Retain verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ matrix.os }}
+          path: |
+            .artifacts/records/reports
+            .artifacts/cache/nx/terminalOutputs
+          retention-days: 7
   quality:
     name: quality
     needs: checks
@@ -82,4 +91,25 @@ jobs:
           version: '0.13.5'
           enable-cache: false
       - name: Check publishable files
-        run: uv run --project src/backend --locked --group dev python -m scripts.checks.secrets --scope history --report-dir .artifacts/records/reports/security
+        run: uv run --project src/backend --locked --group dev python -m tools.checks.secrets --scope history --report-dir .artifacts/records/reports/security
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --quiet --project src/backend --locked --all-extras --all-groups --no-emit-project --output-file .artifacts/records/reports/security/dependencies.txt
+          uv run --project src/backend --locked --group dev python -m pip_audit --vulnerability-service osv --require-hashes --disable-pip --strict --cache-dir .artifacts/cache/pip-audit -r .artifacts/records/reports/security/dependencies.txt --format json --output .artifacts/records/reports/security/python-audit.json
+      - name: Audit locked Node dependencies
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm audit --json > .artifacts/records/reports/security/node-audit.json
+      - name: Retain security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security
+          path: .artifacts/records/reports/security
+          retention-days: 7

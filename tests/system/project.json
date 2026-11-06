@@ -1,0 +1,60 @@
+{
+  "name": "e2e",
+  "implicitDependencies": ["frontend", "backend", "contracts"],
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "inputs": ["default", "{workspaceRoot}/playwright.config.ts"],
+      "options": {
+        "command": "node node_modules/prettier/bin/prettier.cjs --check tests/system/e2e/web tests/system/tsconfig.json tests/system/project.json playwright.config.ts"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "inputs": ["default", "{workspaceRoot}/tools/testing/web/**/*"],
+      "options": {
+        "command": "node src/frontend/node_modules/typescript/bin/tsc -p tests/system/tsconfig.json"
+      }
+    },
+    "review": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        {
+          "projects": ["backend"],
+          "target": "build"
+        }
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/tools/testing/web/**/*",
+        "^default"
+      ],
+      "options": {
+        "command": "node tools/testing/playwright.mjs test --config=scripts/review/web/playwright.config.mjs"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        {
+          "projects": ["backend"],
+          "target": "build"
+        }
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/tests/backend/support/**/*.py",
+        "{workspaceRoot}/playwright.config.ts",
+        "{workspaceRoot}/tools/testing/playwright.mjs",
+        "{workspaceRoot}/tools/testing/web/**/*",
+        "^default"
+      ],
+      "outputs": ["{workspaceRoot}/.artifacts/records/reports/web"],
+      "options": {
+        "command": "node tools/testing/playwright.mjs test"
+      }
+    }
+  }
+}

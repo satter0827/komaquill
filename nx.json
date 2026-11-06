@@ -31,10 +31,10 @@
         "runtime": "node --version"
       },
       {
-        "runtime": "node scripts/python.mjs --version"
+        "runtime": "node tools/runtime/python.mjs --version"
       },
-      "{workspaceRoot}/scripts/python.mjs",
-      "{workspaceRoot}/scripts/nx.mjs",
+      "{workspaceRoot}/tools/runtime/python.mjs",
+      "{workspaceRoot}/tools/runtime/nx.mjs",
       "{workspaceRoot}/.github/workflows/**/*",
       "{workspaceRoot}/.python-version",
       "{workspaceRoot}/pnpm-workspace.yaml",

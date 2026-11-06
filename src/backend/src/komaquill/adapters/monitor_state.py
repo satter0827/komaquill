@@ -37,7 +37,7 @@ def alive(state: MonitorState | None) -> bool:
             abs(process.create_time() - state.process_started_at) < PID_TIME_TOLERANCE
             and process.is_running()
             and process.status() != psutil.STATUS_ZOMBIE
-            and ("komaquill.runtime.worker" in args or "--foreground" in args)
+            and ("komaquill.adapters.compute.worker" in args or "--foreground" in args)
         )
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         return False

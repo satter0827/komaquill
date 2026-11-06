@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from komaquill.adapters.llm.execution import StructuredExecution
 from komaquill.adapters.llm.language import check_language
-from komaquill.library.models import CharacterInput, CreationRequest, StoryInput
+from komaquill.domain.library.models import CharacterInput, CreationRequest, StoryInput
 
 
 class StoryDraft(StoryInput):

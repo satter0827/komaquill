@@ -1,0 +1,10 @@
+[llm]
+max_calls = 52
+max_seconds = 3600
+
+[gpu]
+output_limit = 6
+gpu_seconds = 1800
+
+[acceptance]
+readonly_shutdown_seconds = 120

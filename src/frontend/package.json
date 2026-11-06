@@ -2,11 +2,14 @@
   "name": "@komaquill/frontend",
   "private": true,
   "type": "module",
+  "nx": {
+    "includedScripts": []
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && prettier --check src tests",
+    "lint": "pnpm --workspace-root lint:frontend",
     "test": "vitest run"
   },
   "dependencies": {
@@ -16,8 +19,8 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.555.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "react-router": "^7.9.5",
     "tailwindcss": "^4.1.0",
     "use-stick-to-bottom": "^1.1.6"

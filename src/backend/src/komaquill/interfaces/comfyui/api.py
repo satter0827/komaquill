@@ -14,9 +14,7 @@ from aiohttp import web
 from filelock import FileLock
 
 from komaquill.adapters.asset_download import download_asset
-from komaquill.adapters.asset_store import (
-    verified_cache,
-)
+from komaquill.adapters.asset_store import verified_cache
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.diagnostics import record_event
 from komaquill.adapters.paths import GpuPaths
@@ -24,7 +22,7 @@ from komaquill.domain.assets import PREPARATION_TERMINAL, PROTOCOL_VERSION, Prep
 from komaquill.domain.errors import FailureInfo, KomaquillError, failure_info
 from komaquill.domain.presets import MODEL_ROLES
 from komaquill.interfaces.comfyui.preservation import Preservation
-from komaquill.messages import catalog
+from komaquill.resources.messages import catalog
 
 
 class Extension:

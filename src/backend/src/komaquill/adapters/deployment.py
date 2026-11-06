@@ -10,6 +10,7 @@ from pathlib import Path
 
 from komaquill.adapters.atomic import atomic_bytes, atomic_json
 from komaquill.adapters.provenance import code_sha256, gpu_contents, source_revision
+from komaquill.adapters.runtime_tools import runtime_archive
 from komaquill.adapters.workspace import RuntimeWorkspace
 
 
@@ -30,6 +31,8 @@ def create_payload(project: RuntimeWorkspace) -> Payload:
     fingerprint = code_sha256(contents)
     revision = source_revision()
     entries = dict(contents)
+    bootstrap = runtime_archive(project)
+    entries["runtime-tools/uv.tar.gz"] = bootstrap
     entries["komaquill.toml"] = (
         "\n".join(
             f"{key} = {json.dumps(value)}"
@@ -44,6 +47,7 @@ def create_payload(project: RuntimeWorkspace) -> Payload:
             "settings": settings.model_dump(mode="json"),
             "source_revision": revision,
             "code_sha256": fingerprint,
+            "bootstrap_sha256": hashlib.sha256(bootstrap).hexdigest(),
         },
         sort_keys=True,
     ).encode()

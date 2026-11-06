@@ -20,4 +20,4 @@ NSFWは作業フォルダー単位の明示設定とする。操作には受付�
 
 既存DBには明示的な移行を必要とする。チェックポイントに原文と応答が含まれるため、作品データと同じ非公開保存領域で扱う。実LLMの意味精度、速度、総量の改善は機械的な保存検査だけでは判定しない。
 
-実装と操作は[現在の契約](../current/execution-and-content.md)、未完了の受入は[LLMの改善計画](../plans/langgraph-and-context.md)、機械検査の範囲は[検証記録](../verification/results/execution-and-content.md)を参照する。
+実装と操作は[現在の契約](https://github.com/satter0827/komaquill/blob/51a67a6730007106314c13c7ca7586e67a08a03f/docs/current/execution-and-content.md)、未完了の受入は[LLMの改善計画](../plans/langgraph-and-context.md)、機械検査の範囲は[検証記録](../verification/results/execution-and-content.md)を参照する。

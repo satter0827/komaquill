@@ -6,8 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from komaquill.adapters.artifacts import file_digest as file_digest
 from komaquill.adapters.atomic import atomic_json
+from komaquill.adapters.digests import file_digest
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.presets import ModelPreset
 

@@ -1,0 +1,5 @@
+# Limits for the local application and explicitly configured HTTPS devices.
+max_body_bytes = 20971520
+device_lifetime_days = 90
+pending_limit = 16
+websocket_seconds = 60

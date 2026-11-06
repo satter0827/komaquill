@@ -3,20 +3,17 @@
 import hashlib
 import io
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image, UnidentifiedImageError
 
-from komaquill.adapters.atomic import atomic_bytes
 from komaquill.adapters.paths import WorkspacePaths, artifact_path
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import ImageMetadata, ImageRef
 
-
-def file_digest(path: Path) -> str:
-    """Verify file contents with bounded memory."""
-    with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
+if TYPE_CHECKING:
+    from komaquill.adapters.persistence.artifacts import ArtifactRepository
 
 
 class LocalArtifactStore:
@@ -26,25 +23,50 @@ class LocalArtifactStore:
         self.project = project
         self.root = project.data
 
+    @property
+    def repository(self) -> "ArtifactRepository":
+        from komaquill.adapters.persistence.artifacts import ArtifactRepository
+        from komaquill.adapters.persistence.connection import database
+
+        return ArtifactRepository(database(self.root / "komaquill.sqlite3"))
+
     def path(self, key: str) -> Path:
         """Reject traversal and symlinks escaping the configured data root."""
-        return artifact_path(self.root, key)
+        artifact_path(self.root, key)
+        reference = self.repository.reference(key)
+        if reference is None:
+            raise FileNotFoundError(key)
+        return self.repository.objects.verify(reference)
 
     def read(self, key: str) -> bytes:
         return self.path(key).read_bytes()
 
     def write(self, key: str, content: bytes) -> None:
         """Commit a blob atomically without changing identical existing content."""
-        target = self.path(key)
-        if not target.is_file() or target.read_bytes() != content:
-            atomic_bytes(target, content)
+        artifact_path(self.root, key)
+        repository = self.repository
+        try:
+            reference = repository.objects.publish(content)
+        except KomaquillError as error:
+            retained = repository.reference(key)
+            if error.code != "identity_mismatch" or retained is None:
+                raise
+            repository.objects.restore(retained, content)
+            reference = retained
+        repository.bind(key, reference)
 
     def cached_image(self, key: str, previous: ImageMetadata | None) -> bytes | None:
         """Reuse only a checkpoint whose saved checksum still matches."""
-        target = self.path(key)
-        if previous is None or not target.is_file():
+        if previous is None:
             return None
-        content = target.read_bytes()
+        try:
+            content = self.read(key)
+        except FileNotFoundError:
+            return None
+        except KomaquillError as error:
+            if error.code == "identity_mismatch":
+                return None
+            raise
         if (
             len(content) != previous.size_bytes
             or hashlib.sha256(content).hexdigest() != previous.sha256

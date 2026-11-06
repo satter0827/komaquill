@@ -1,76 +1,51 @@
-# 構成と設定
+# アプリケーションの構成
 
-## 処理の分担
+## 処理の入口
 
-ReactはHTTP APIを呼び、HTTPとCLIは公開Python APIの同じ処理を使います。GPU側のComfyUIが画像を生成します。Colabの認証とランタイム操作には公式Colab CLI、接続にはOpenSSH、生成にはComfyUI標準APIを使用します。
+ReactはHTTPを呼び、HTTPとCLIは`komaquill.api.Client`の機能別サービスを呼びます。公開Python APIは表示と終了コードを決めません。import時に通信、ファイル作成、認証、GPU確保を行いません。
 
-| 区分                 | 責務                                                     |
-| -------------------- | -------------------------------------------------------- |
-| api・composition     | 作業場所と機能別サービスの組み立て                       |
-| conversations        | 会話と状態の確定、本人の行動、外見の確認                 |
-| library              | プリセット、個人設定、下書き、会話画像の受付と関連付け   |
-| images               | 画像の送信、照合、回収、完了待ち                         |
-| runtime              | 実行環境の起動、所有、監視、終了                         |
-| domain               | 要求、状態、設定スナップショット、エラーコード           |
-| application          | 終了調整、準備、評価の判断                               |
-| cli・interfaces/http | 端末とHTTPの入力、結果の表示・変換                       |
-| adapters             | HTTP、Colab CLI、SSH、ファイル保存、資格情報、接続の維持 |
-| worker               | GPU側の環境準備とComfyUI起動                             |
+## ソースの配置
 
-生成・回収はGenerationBackendとRunRepositoryのProtocolを使用します。Workspaceが設定、ワークフロー、出自、保存契約を束ねます。終了調整はShutdownActionsを受け取り、プロバイダーやファイル操作を直接呼びません。具体的な実装は接続・作業フォルダーの入口で組み立てます。DBや別の画面を追加する場合も、業務処理とこれらの契約を再利用します。
+```text
+src/
+  backend/src/komaquill/
+    api/                    公開Python API
+    composition/            具体的な実装の組み立て
+    interfaces/cli/         CLIの入出力
+    interfaces/http/        HTTPの入力と応答
+    interfaces/comfyui/     ComfyUI標準画面の拡張
+    application/<機能>/     操作の調整
+    domain/<機能>/          状態、判断、保存・入力契約
+    adapters/persistence/   SQLiteの接続、テーブル、機能別リポジトリ
+    adapters/llm/           推論、トークン計測、文脈、再開
+    adapters/compute/       GPUと接続の制御
+    worker/                 GPU側の導入と起動
+    resources/              設定、文言、モデルとプリセット
+  frontend/src/
+    app/                    起動、経路、画面の組み立て
+    features/<機能>/        機能別の画面と操作
+    shared/                 共通UI、言語、状態の購読
+    api/generated/          OpenAPIから生成した通信契約
+  contracts/                OpenAPIの正本
+```
 
-## 設定の優先順位
+`domain`と`application`は表示、DB、通信、ファイル、GPU制御をimportしません。交換が必要な境界には既存のProtocolや型付きの関数を使い、将来のためだけに汎用サービス層を増やしません。Reactの機能は他機能のページや`app`へ依存せず、共通の画像表示と接続購読は`shared`へ置きます。
 
-CLI／Pythonの指定、環境変数、komaquill.toml、パッケージ内defaults.tomlの順です。ネストした設定は指定項目だけを上書きします。接続とGPU環境は起動時に検証し、保存・回収・終了で同じ値を使用します。長時間動くサーバーの接続設定は起動時、画像条件は生成試行ごとに確定します。再開では元の試行条件を使用します。認証情報は設定へ含めません。
+Reactの文言の正本は`app/locales`です。`shared/messages`はこのJSONを読み取ります。このデータ参照だけをESLintの依存制約から除き、`app`の実行コードへの依存は許可しません。機能間の組み立ては`app`で行います。
 
-Pythonと依存の正本はsrc/backend/pyproject.toml、同じフォルダーのuv.lock、ルートの.python-versionです。GPU用pylock.worker.tomlはロックから書き出し、URLとハッシュを固定して導入します。ComfyUIとフロントエンドはruntime/versions.toml、モデルと生成プリセットはresources/modelsとresources/presetsで固定します。
+`tools/`は決定的な検査と開発の実行管理、`scripts/`は実接続・評価・探索、`bootstrap/`は環境導入、`tests/`は決定的な回帰検証を担当します。製品からこれらへ逆依存しません。実行管理は製品を同じプロセスへimportせず、子プロセスの終了と証跡を扱います。
 
-## GPUへの転送
+## 設定と実行
 
-GPU確保前に、導入済みパッケージのGPU用コード、固定依存、設定、ワークフロー、必要な文言から転送物を作成します。CLI、Colab制御、作品、モデル、認証情報、Git履歴は含めません。コードと転送物のSHA256を記録し、GPU側で検証して展開します。CLI専用の変更でGPU用コードのハッシュは変わりません。
+CLIの指定、環境変数、作業設定、同梱の既定値の順に解決します。接続と制限は起動時に確定し、回収と終了でも共有します。保存済みの試行を再開する場合は元の条件を使用します。正本は[Pythonの設定](../../src/backend/src/komaquill/resources/settings/)と[LLMの設定](../../src/backend/src/komaquill/resources/conversations/defaults.toml)です。
 
-Gitのコミットは出自の補助情報です。wheelからの起動にGitは不要です。モデルの固定版とSHA256を資源定義で管理し、GPUが配布元から直接取得・検証します。PCへモデル本体を保存しません。
+## 保存、接続、表示
 
-## 保存と終了
+保存の正本と再構築可能な出力は[保存設計](storage.md)を参照してください。画面の更新や集計の失敗で保存済み状態を後退させません。受付が不明な送信を自動再送しません。
 
-要求は送信前、画面からの要求は観測時に記録します。受付不明の場合は再送せずIDで照合します。画像は検証後に一つずつ原子的に保存し、同じロックの下で履歴を更新します。必要な画像が揃うまでsavedへ進めません。複数ファイルを一括で原子的に保存する前提は置かず、途中停止後はチェックポイントから再開します。
+画像生成はComfyUI標準API、実行状態の再開は公式LangGraph SQLite saver、DBはSQLAlchemyとAlembic、表示は既存のReact・TanStack Query・Base UIを使います。独自ノード、認証基盤、汎用プラグイン層は追加しません。家庭内LANは[接続の保護](security.md)に従います。
 
-終了は回収、ログ取得、GPU終了確認、接続終了、履歴確定、結果保存、所有記録削除の順です。前段の失敗でもGPU終了を試みます。確認できない終了や後始末の失敗では所有記録を保持します。外部サーバーは停止せず、その要求をlostにしません。
+GPU確保は明示的なstartだけで行い、再接続から確保しません。所有ID、アカウント、終了確認を照合し、外部サーバーを停止しません。GPU転送物は[provenance.py](../../src/backend/src/komaquill/adapters/provenance.py)の宣言と配布検査で確認します。
 
-## 診断と秘密情報
 
-操作ID、状態変化、経過時間、エラーコードと処理段階を記録します。正常なポーリング、プロンプト全文、認証情報、応答本文、例外本文・変数は記録しません。ログ取得はファイルごとに成否と最終成功日時を残し、失敗時は前回の内容を保持します。
-
-Google認証と公式CLIの管理ファイルは標準のユーザーフォルダー、外部認証はOSの資格情報ストアを使用します。製品の保存先は.artifactsです。古い検査結果は現在の稼働状態を表さないため、現在の確認にはstatusを使用します。
-
-## 資源とGPUの所有
-
-拡散モデル、テキストエンコーダー、LoRA、VAEの定義はresources/modelsとresources/presets、接続は標準workflow JSON、適用処理はadapters/workflows.pyが担当します。生成・保存のユースケースはColabや画面の操作へ依存しません。起動時に資源とプリセットを含む設定全体を確定し、転送物のmanifestと接続記録へ保存します。
-
-Colabの確保・実行・初回転送は公式CLIを使います。状態確認と対象指定の終了には同じ固定パッケージのClientを使い、公式CLIのローカルキャッシュを生存確認の根拠にしません。SSHは固定した公式実装の`_run_proxy_bridge`へ、プロバイダーで照合した一時SessionStateを渡します。この内部関数への依存は一つのアダプターに限定します。公式CLIのSSHコマンドには記録欠損時の自動確保があるため、再接続には使用しません。
-
-RuntimeObservationはrunning、stopped、unknownと観測時刻を持ちます。終了調整はアカウントとエンドポイントが確認されたstoppedだけを受け付け、その後に未回収要求の確定と所有記録の削除を行います。プロバイダーの応答本文や一時トークンは子プロセス内に留めます。
-
-## バックグラウンド監視
-
-監視プロセスは作業フォルダーごとに1つです。OSサービス登録は行いません。起動端末でGoogle認証を完了した後、標準入力を切り離して起動します。PID、プロセス開始時刻、操作ID、確定した設定をstate/monitor.jsonへ記録し、プロセスの取り違えを防ぎます。
-
-起動設定と監視状態、プロバイダーのGPU観測結果は別々に扱います。状態更新で最終観測時刻を更新し、ログへは段階の変化と失敗だけを追記します。監視が失われた場合は原因を推測せず、次のstartまたはstopで所有するGPUを照合します。
-
-worker_execution_timeoutは公式Colab CLIがコード実行を待つ時間です。GPUの利用時間上限や自動終了設定ではありません。準備済みランタイムへの再接続では、所有ID、転送コード、確定設定を照合します。モデルの全体ハッシュ検証は新しい準備時に行います。
-
-## 素材の保全
-
-ComfyUI上の拡張は標準の書き込みと生成要求を観測し、一時領域に不変の版を作ります。ローカル監視は画像回収とは別に素材を回収し、内容と参照記録を保存してから確認を返します。停止時は新しい要求を抑止し、処理中の標準書き込みが完了してから最終回収へ進みます。
-
-保存形式の版は[Runの契約](../../src/backend/src/komaquill/domain/models.py)、[素材の契約](../../src/backend/src/komaquill/domain/materials.py)、[準備要求の契約](../../src/backend/src/komaquill/domain/assets.py)を正本とします。既存の画像・履歴・取得済みログは書き換えません。生成・保存の契約と実行環境の制御を分離します。
-
-## 製品コードと保存の境界
-
-製品コードは`src/frontend`、`src/backend`、`src/contracts`に置きます。会話と画面の構成は[ローカルWebアプリケーション](web.md)を参照してください。
-
-設定ロードはadapters/configuration、作業場所と具体的な保存・生成境界はadapters/workspace、会話の組み立てはcompositionが担当します。CLIとHTTPは同じ機能別公開サービスを呼びます。
-
-新規の会話・操作・画像・評価の構造化記録はSQLiteを正本とし、バイナリはArtifactStoreへ保存します。画像の回収は通信を共通ロックの外で行い、要求単位の排他と確定前の再読込みで保存済み状態の後退を防ぎます。ファイルの保存成功を確認してからDBをsavedへ進めます。
-
-旧Storyとファイル形式の画像履歴はarchiveで読み取り専用に扱います。画像回収、監視、停止から旧Storyの閲覧用再構築を呼びません。旧計画とKlein固有の比較・全体組版の生成入口は廃止しました。
+GPUの起動に必要なuvは、確保前にローカルで公式配布物と固定SHA256を照合し、転送物へ含めます。GPU側からuvの配布先へ再取得しません。転送物とツールの内容をそれぞれ照合してから実行し、環境準備の取得失敗で不要なGPUを確保しないようにします。

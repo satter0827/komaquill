@@ -22,11 +22,11 @@ from komaquill.adapters.materials import MaterialCollector, workspace_identity
 from komaquill.adapters.model_sources import resolve_model
 from komaquill.adapters.storage import load_session
 from komaquill.adapters.workspace import RuntimeWorkspace
-from komaquill.application.preparation import requirements
+from komaquill.application.preparation.service import requirements
 from komaquill.domain.assets import PREPARATION_TERMINAL, Preparation
 from komaquill.domain.configuration import remaining_seconds
 from komaquill.domain.errors import KomaquillError, failure_info
-from komaquill.messages import message
+from komaquill.resources.messages import message
 
 PREFIX = "/komaquill/v1"
 
@@ -311,7 +311,10 @@ def prepare_workflow(
         raise
     if job.phase != "ready":
         raise KomaquillError(
-            code=job.failure.code if job.failure else "stopping", stage="preparation"
+            code=job.failure.code if job.failure else "stopping",
+            stage="preparation",
+            http_status=job.failure.http_status if job.failure else None,
+            retryable=job.failure.retryable if job.failure else False,
         )
     save_bindings(project, job)
     echo(message("assets.ready"))

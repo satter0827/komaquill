@@ -9,8 +9,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langsmith import tracing_context
 
-from komaquill.adapters.checkpoints import CONVERSATION_WORKFLOW_VERSION, Checkpoints
-from komaquill.conversations.models import Conversation, Reply, TurnRequest
+from komaquill.adapters.persistence.checkpoints import CONVERSATION_WORKFLOW_VERSION, Checkpoints
+from komaquill.domain.conversations.models import Conversation, Reply, TurnRequest
 from komaquill.domain.errors import KomaquillError
 
 

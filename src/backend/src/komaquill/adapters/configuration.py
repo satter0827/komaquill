@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from komaquill.adapters.llm_configuration import ConversationSettings
+    from komaquill.adapters.web_configuration import WebSettings
 
 from pydantic import Strict, TypeAdapter
 from pydantic.fields import FieldInfo
@@ -78,8 +79,11 @@ class WorkspaceConfiguration:
 
     def __init__(self, root: Path) -> None:
         from komaquill.adapters.llm_configuration import ConversationOptions, ProfileOptions
+        from komaquill.adapters.web_configuration import WebOptions, defaults
 
         self.root = root
+        self._web_env = EnvSettingsSource(WebOptions)
+        self._web_defaults = defaults()
         with (root / "komaquill.toml").open("rb") as handle:
             self._configured = tomllib.load(handle)
         self._runtime_env = TypedEnvSettingsSource(Settings)
@@ -110,7 +114,7 @@ class WorkspaceConfiguration:
                 values = {
                     key: value
                     for key, value in snapshot._configured.items()
-                    if key not in {"story", "conversation", "llm_profiles"}
+                    if key not in {"story", "conversation", "llm_profiles", "web"}
                 }
                 return (
                     init_settings,
@@ -122,6 +126,14 @@ class WorkspaceConfiguration:
 
         values: dict[str, Any] = {}
         return RuntimeSettings.model_validate(ResolvedRuntime(**values).model_dump())
+
+    @cached_property
+    def web(self) -> WebSettings:
+        from komaquill.adapters.web_configuration import WebSettings
+
+        return WebSettings.model_validate(
+            {**self._web_defaults, **self._configured.get("web", {}), **self._web_env()}
+        )
 
     @cached_property
     def conversation(self) -> ConversationSettings:

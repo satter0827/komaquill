@@ -8,8 +8,8 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from PIL import Image
 
-from komaquill.conversations.models import Conversation
 from komaquill.domain.content import ContentRating
+from komaquill.domain.conversations.models import Conversation
 from komaquill.domain.models import Run
 
 
@@ -22,7 +22,7 @@ def export_conversation(
     include_images: bool = True,
     include_conditions: bool = False,
 ) -> Path:
-    destination = workspace / ".artifacts/data/exports" / f"{uuid4()}.zip"
+    destination = workspace / ".artifacts/outputs/conversations" / f"{uuid4()}.zip"
     destination.parent.mkdir(parents=True, exist_ok=True)
     transcript = [conversation.definition.title]
     for turn in conversation.turns:

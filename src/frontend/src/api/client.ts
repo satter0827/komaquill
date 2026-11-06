@@ -1,5 +1,5 @@
-import { messageCatalog } from '../app/messages'
-import type { Locale } from '../app/messages'
+import { messageCatalog } from '../shared/messages'
+import type { Locale } from '../shared/messages'
 import { client } from './generated/client.gen'
 client.setConfig({ baseUrl: '', throwOnError: true })
 

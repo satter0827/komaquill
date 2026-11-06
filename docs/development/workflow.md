@@ -11,19 +11,25 @@
 | `pnpm check`      | 基準版との共通祖先以降の変更を扱う。Pythonはimport依存から関連テストを選択 |
 | `pnpm check:ci`   | 基準版から影響を受けるプロジェクトの全テストとビルド                       |
 | `pnpm check:all`  | 全プロジェクト、カバレッジ、配布物、隔離導入の検証                         |
-| `pnpm build`      | Reactをビルドし、画面を同梱するwheelとsdistを作成                          |
+| `pnpm build`      | Reactをビルドし、画面を同梱するwheel・sdistを作成し隔離導入を検証                          |
 | `pnpm test:web`   | 隔離した画面E2Eと操作ごとの証跡取得                                        |
 | `pnpm review:web` | 主観評価用の操作・証跡収集。評価の合格判定は行わない                       |
 
-`node scripts/python.mjs scripts/check.py --scope daily --plan`で対象プロジェクト、`node scripts/python.mjs scripts/affected.py --plan`でPythonの選択理由とテストを確認できます。比較基準の既定値はnx.jsonのdefaultBaseが正本です。`NX_BASE`を指定するとNxとPythonで同じ値を使用します。コミット済み・ステージ済み・作業中・新規・削除の変更を含めます。Reactの変更からPythonの全テストを呼び出す依存は設定しません。
+`node tools/runtime/python.mjs tools/checks/run.py --scope daily --plan`で対象プロジェクト、`node tools/runtime/python.mjs tools/testing/affected.py --plan`でPythonの選択理由とテストを確認できます。比較基準の既定値はnx.jsonのdefaultBaseが正本です。`NX_BASE`を指定するとNxとPythonで同じ値を使用します。コミット済み・ステージ済み・作業中・新規・削除の変更を含めます。Reactの変更からPythonの全テストを呼び出す依存は設定しません。
 
 新規ブランチの初回pushでGitHubが返すゼロのコミットIDは比較基準にせず、設定済みのdefaultBaseを使います。初回pushの全体検査と通常の差分検査で同じ解決処理を共有し、それ以外の不正な参照は失敗として記録します。
 
 lint、型検査、テスト、ビルドをNxの別タスクとして定義します。入力と出力は各project.jsonを正本とします。API契約は`pnpm contracts`でOpenAPIとTypeScriptクライアントを生成します。
 
+画面テストは`frontend-tests:test`を担当とし、`frontend`の変更から依存で選択します。[Nxの標準設定](https://nx.dev/docs/reference/project-configuration)でpackage.jsonのスクリプト推論を制限し、同じVitestの範囲を複数のtargetで実行しません。構造検査は設定ファイルだけでなく、Nxが解決した実効グラフで担当と依存を確認します。
+
 ## 結果を確認する
 
 検証全体の対象範囲、基準版、入力ハッシュ、時刻、終了結果、出力ログは`.artifacts/records/reports/checks/`、Pythonの選択とJUnitは`.artifacts/records/reports/affected/`へ保存します。Nxのタスクキャッシュは`.artifacts/cache/nx/`です。キャッシュは静的検査、画面の単体テスト、契約、ビルドに使用します。画面E2Eとレビュー用収集は毎回新しい操作証跡を残し、Pythonの関連テストは実行範囲を毎回記録するためタスクキャッシュから復元しません。現在のGPU・プロバイダー観測にもキャッシュを使用しません。
+
+Nxのタスク実行は標準のstatic出力を既定とし、集約ログにも各検査の診断を残します。明示した`--output-style`は優先します。成功件数だけの表示から失敗原因を推測しません。
+
+検査で起動するプロセスは、Windowsでは開始を一時停止して専用Job Objectへ所属させてから実行し、Linuxでは専用プロセスグループを使います。親の正常終了、タイムアウト、中断のいずれでも所有する子プロセスを終了し、別の実行のプロセスへ介入しません。Windowsの方式は[標準のJob Object](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)と既存のpywin32を使います。
 
 局所検証の成功を全体成功として扱いません。中断、不足環境、入力変更があった実行は成功として記録しません。実LLMとGPUの検査は日常の検証から分離します。
 
@@ -31,9 +37,13 @@ lint、型検査、テスト、ビルドをNxの別タスクとして定義し�
 
 カバレッジは製品・検査・環境更新のPythonを未実行ファイルも含めて計測し、testsを除外します。閾値は[pyproject.toml](../../pyproject.toml)を正本とし、行と分岐を独立して判定します。
 
+並列の型検査は対象ごとに別のmypyキャッシュを使います。手動で別のOSを指定して検査する場合も、通常実行と異なる`--cache-dir`を指定してください。
+
+検査全体の期限と個別検査の期限は、[品質設定](../../pyproject.toml)で分けます。全体の期限にはグラフ作成・ビルド・検査の開始待ち・終了確認を含め、個別検査の期限より長くします。Pythonの検査上限とPlaywrightのケース・全体上限は維持し、親の期限を個別検査へ流用しません。タイムアウト時も取得済みの出力を表示し、適用した期限とログの取得可否を記録します。
+
 ## 配布と依存更新
 
-`pnpm build`は`.artifacts/build/`で配布用ソースを組み立て、`.artifacts/dist/`へ出力します。Reactのビルド結果を追跡対象へ書き戻しません。通常の利用者にNode.jsを要求しません。
+`pnpm build`は配布物を隔離環境へ導入し、公開CLIの基本動作も確認します。`.artifacts/build/`で配布用ソースを組み立て、`.artifacts/dist/`へ出力します。Reactのビルド結果を追跡対象へ書き戻しません。通常の利用者にNode.jsを要求しません。
 
 Python依存を更新する場合はbackendのuv.lockを更新し、`python -m bootstrap.update_worker_lock`でGPU転送用ロックを出力します。実機検査では日時、対象ハッシュ、環境、期待結果との差、停止確認を記録します。
 

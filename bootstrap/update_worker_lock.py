@@ -1,8 +1,12 @@
 """Update the packaged GPU lock from the canonical uv lock."""
 
+import sys
 from pathlib import Path
 
-from scripts.checks.worker_lock import exported
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from tools.checks.worker_lock import exported
 
 
 def main() -> None:

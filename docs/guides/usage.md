@@ -29,7 +29,7 @@ komaquill collect
 komaquill collect 実行ID
 ```
 
-`.artifacts/data/runs/実行ID/`にrun.json、workflow-api.json、画像を保存します。画面用のworkflow.jsonは取得できる場合に保存します。
+生成要求と保存状態はSQLite、画像と確定条件は内容ハッシュで識別するオブジェクトへ保存します。表示された保存先、またはPython APIの`client.artifact_path("runs/実行ID/ファイル名")`から取得してください。物理フォルダーを組み立てないでください。詳細は[保存設計](../current/storage.md)を参照してください。
 CLIの要求は送信前、画面の要求は監視で確認した時点で記録します。受付不明の要求は自動再送せず、キューと履歴を照合します。
 
 1件の取得失敗があっても、ほかの正常な画像の保存を続けます。今回の回収失敗がある場合、collectは対象IDを表示して終了コード1を返します。

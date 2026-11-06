@@ -4,20 +4,27 @@ import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from importlib.resources import files
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import BackgroundTasks, Body, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.middleware.body_limit import RequestBodyLimitMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from komaquill.adapters.diagnostics import record_event
+from komaquill.adapters.paths import WorkspacePaths
+from komaquill.adapters.web_configuration import WebSettings, defaults
 from komaquill.api import Client, KomaquillError, Run, SessionStatus
-from komaquill.availability import Availability, AvailabilityRequest
-from komaquill.conversations.actions import ActionRecord, ProposalDismissal
-from komaquill.conversations.editing import Bookmark, NotesRequest, SceneRequest
-from komaquill.conversations.models import (
+from komaquill.domain.availability import Availability, AvailabilityRequest
+from komaquill.domain.conversations.actions import ActionRecord, ProposalDismissal
+from komaquill.domain.conversations.editing import Bookmark, NotesRequest, SceneRequest
+from komaquill.domain.conversations.models import (
     AcceptedInput,
     Conversation,
     ConversationInput,
@@ -25,13 +32,11 @@ from komaquill.conversations.models import (
     SendInput,
     Turn,
 )
-from komaquill.conversations.visuals import VisualReview
-from komaquill.domain.errors import OperationStage
+from komaquill.domain.conversations.visuals import VisualReview
+from komaquill.domain.errors import OperationStage, failure_info
 from komaquill.domain.materials import InputArtifact
 from komaquill.interfaces.http.background import execute_retained
-from komaquill.messages import error_message, message
-
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+from komaquill.resources.messages import error_message, message
 
 
 class TurnPage(BaseModel):
@@ -113,6 +118,8 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         lifespan=lifespan,
         responses={status: {"model": ErrorView} for status in (400, 403, 404, 409, 422, 500)},
     )
+    security = client.web_settings if client else WebSettings.model_validate(defaults())
+    app.add_middleware(RequestBodyLimitMiddleware, max_body_size=security.max_body_bytes)
     ui = ui_directory or Path(str(files("komaquill").joinpath("resources/web")))
 
     def selected() -> Client:
@@ -132,11 +139,10 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
     async def local_only(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        host = request.url.hostname
         origin = request.headers.get("origin")
         cross_site = request.headers.get("sec-fetch-site") == "cross-site"
         allowed = origin is None or origin == str(request.base_url).rstrip("/")
-        if host not in {"127.0.0.1", "localhost", "::1", "testserver"} or not allowed or cross_site:
+        if not allowed or cross_site:
             return JSONResponse(
                 ErrorView(
                     code="origin_not_allowed",
@@ -145,20 +151,88 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
                 ).model_dump(mode="json"),
                 status_code=403,
             )
+        peer = request.client.host if request.client else ""
         try:
-            return await call_next(request)
-        except Exception:
-            return JSONResponse(
-                ErrorView(
-                    code="operation_failed",
-                    stage=OperationStage.OPERATION,
-                    message=message("http.failed"),
-                ).model_dump(mode="json"),
-                status_code=500,
-            )
+            local = ip_address(peer).is_loopback
+        except ValueError:
+            local = peer == "testclient"
+        if not local:
+            if not security.origin or str(request.base_url).rstrip("/") != security.origin:
+                return JSONResponse({"code": "origin_not_allowed"}, status_code=403)
+            state = selected().devices.state(request.cookies.get("__Host-komaquill-device"))
+            if state != "approved":
+                if request.url.path == "/" and request.method == "GET" and state is None:
+                    identity, token = selected().devices.enroll()
+                    response = Response(
+                        message("http.device_pending", identity=identity),
+                        status_code=403,
+                        media_type="text/plain",
+                    )
+                    response.set_cookie(
+                        "__Host-komaquill-device",
+                        token,
+                        secure=True,
+                        httponly=True,
+                        samesite="strict",
+                        max_age=security.device_lifetime_days * 86400,
+                    )
+                    return response
+                return JSONResponse({"code": "device_not_approved"}, status_code=403)
+        request.state.local_device_administrator = local
+        return await call_next(request)
+
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["127.0.0.1", "localhost", "[::1]"]
+        + ([str(urlsplit(security.origin).hostname)] if security.origin else []),
+        www_redirect=False,
+    )
+
+    @app.middleware("http")
+    async def protect_response(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        try:
+            response = await call_next(request)
+        except KomaquillError as error:
+            response = await failure(request, error)
+        except Exception as error:
+            if client is not None:
+                record_event(
+                    WorkspacePaths(client.workspace),
+                    "http",
+                    "failed",
+                    failure=failure_info(error, "operation"),
+                )
+            response = await unexpected(request, error)
+        response.headers.update(
+            {
+                "Content-Security-Policy": (
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; "
+                    "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+                ),
+                "X-Content-Type-Options": "nosniff",
+                "X-Frame-Options": "DENY",
+                "Referrer-Policy": "no-referrer",
+            }
+        )
+        response.headers.setdefault("Cache-Control", "no-store")
+        return response
 
     @app.exception_handler(KomaquillError)
     async def failure(_: Request, error: KomaquillError) -> JSONResponse:
+        if client is not None and error.code in {
+            "storage_failed",
+            "internal_error",
+            "operation_failed",
+        }:
+            record_event(
+                WorkspacePaths(client.workspace),
+                "http",
+                "failed",
+                failure=failure_info(error, "operation"),
+            )
         status = (
             404
             if error.code == "request_not_found"
@@ -199,6 +273,30 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
             "profiles": [profile.model_dump() for profile in selected().conversations.profiles()],
             "sample_input": "Hello",
         }
+
+    @app.get("/api/v1/access", operation_id="check_device_access")
+    def device_access() -> dict[str, bool]:
+        return {"approved": True}
+
+    @app.get("/api/v1/devices", operation_id="list_devices")
+    def list_devices(request: Request) -> Response:
+        if not request.state.local_device_administrator:
+            return JSONResponse({"code": "device_administrator_required"}, status_code=403)
+        return JSONResponse(selected().devices.list())
+
+    @app.post("/api/v1/devices/{identity}/approve", operation_id="approve_device")
+    def approve_device(identity: UUID, request: Request) -> Response:
+        if not request.state.local_device_administrator:
+            return JSONResponse({"code": "device_administrator_required"}, status_code=403)
+        selected().devices.decide(identity, approve=True)
+        return Response(status_code=204)
+
+    @app.delete("/api/v1/devices/{identity}", operation_id="revoke_device")
+    def revoke_device(identity: UUID, request: Request) -> Response:
+        if not request.state.local_device_administrator:
+            return JSONResponse({"code": "device_administrator_required"}, status_code=403)
+        selected().devices.decide(identity, approve=False)
+        return Response(status_code=204)
 
     @app.get(
         "/api/v1/conversations",
@@ -367,9 +465,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
     )
     def import_input(
         name: str,
-        content: Annotated[
-            bytes, Body(media_type="application/octet-stream", max_length=MAX_UPLOAD_BYTES)
-        ],
+        content: Annotated[bytes, Body(media_type="application/octet-stream")],
         kind: Literal["image", "mask"] = "image",
     ) -> InputArtifact:
         return selected().inputs.import_bytes(content, name=name, kind=kind)
@@ -401,6 +497,12 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
             raise KomaquillError(code="request_not_found")
         return FileResponse(
             selected().artifact_path(f"runs/{identity}/{run.images[index]}"),
+            media_type={
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".webp": "image/webp",
+            }.get(Path(run.images[index]).suffix.lower(), "application/octet-stream"),
             headers={"Cache-Control": "no-store"},
         )
 

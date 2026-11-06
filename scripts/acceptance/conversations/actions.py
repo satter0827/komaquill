@@ -74,13 +74,17 @@ def send_step(
     return client.conversations.get(identity)
 
 
-def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
+def collect(
+    client: "Client",
+    output: Path,
+    *,
+    locales: tuple[Literal["ja", "en"], ...] = ("ja", "en"),
+) -> list[dict[str, Any]]:
     from komaquill.api import ConversationInput, MoveAction, PrepareAction, SendInput
 
     with ExitStack() as sessions:
         sessions.callback(client.close)
         results: list[dict[str, Any]] = []
-        locales: tuple[Literal["ja", "en"], ...] = ("ja", "en")
         for locale in locales:
             ja = locale == "ja"
             place = "古書店" if ja else "Bookshop"

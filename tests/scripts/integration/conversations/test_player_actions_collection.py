@@ -45,7 +45,10 @@ def test_main_rejects_failed_checks(tmp_path, monkeypatch, passed):
 
 
 @pytest.mark.parametrize("missing", [None, "clothing", "password", "objects"])
-def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch, missing):
+@pytest.mark.parametrize("locales", [("ja", "en"), ("ja",)])
+def test_collector_tracks_confirmation_memory_and_recreation(
+    tmp_path, monkeypatch, missing, locales
+):
     import langchain_openai
 
     calls = []
@@ -117,9 +120,9 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
     client = Client.initialize(tmp_path)
     (tmp_path / "komaquill.toml").write_text("[conversation]\nrecent_turns=4\n", encoding="utf-8")
-    results = collect(client, tmp_path)
-    assert len(results) == 2
-    assert len(calls) == 8
+    results = collect(client, tmp_path, locales=locales)
+    assert len(results) == len(locales)
+    assert len(calls) == 4 * len(locales)
     for result in results:
         assert all(result["checks"].values()) == (missing is None)
         assert result["status"] == ("passed" if missing is None else "failed")

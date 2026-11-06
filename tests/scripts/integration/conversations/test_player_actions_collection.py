@@ -44,7 +44,8 @@ def test_main_rejects_failed_checks(tmp_path, monkeypatch, passed):
     assert report["inputs_unchanged"]
 
 
-def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("missing", [None, "clothing", "password"])
+def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypatch, missing):
     import langchain_openai
 
     calls = []
@@ -79,8 +80,10 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                     if key in {"clothing", "expression", "pose", "held_objects"}
                 }
                 latest = messages[-1].content
-                if latest.startswith("あなたは緑のコート") or latest.startswith(
-                    "Please wear a green coat"
+                spoken = json.loads(latest)["text"] if latest.startswith("{") else latest
+                if missing != "clothing" and (
+                    spoken.startswith("あなたは緑のコート")
+                    or spoken.startswith("Please wear a green coat")
                 ):
                     companion["clothing"] = "Green coat"
                 proposals = []
@@ -97,7 +100,11 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
                     "action_narration": "",
                     "requested_player_action": proposals[0] if proposals else None,
                     "text": (
-                        "合言葉は銀のコンパスです。" if ja else "The password is silver compass."
+                        ("覚えていません。" if ja else "I do not remember.")
+                        if missing == "password"
+                        else "合言葉は銀のコンパスです。"
+                        if ja
+                        else "The password is silver compass."
                     ),
                 }
             return AIMessage(
@@ -112,6 +119,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(tmp_path, monkeypat
     assert len(results) == 2
     assert len(calls) == 8
     for result in results:
-        assert all(result["checks"].values())
+        assert all(result["checks"].values()) == (missing is None)
+        assert result["status"] == ("passed" if missing is None else "failed")
         assert result["conversation"]["memory"] is None
         assert (tmp_path / f"{result['locale']}.json").is_file()

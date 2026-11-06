@@ -158,6 +158,13 @@ def collect(client: "Client", output: Path) -> list[dict[str, Any]]:
                         "shared_place_after_move": record.after.place == move.destination,
                         "player_clothing_preserved": final.state.player.clothing
                         == prepared.after.player.clothing,
+                        "companion_clothing_updated": any(
+                            word in (final.state.character.clothing or "").casefold()
+                            for word in ("緑", "green")
+                        ),
+                        "final_shared_place_preserved": final.state.place == move.destination,
+                        "password_recalled": ("銀のコンパス" if ja else "silver compass")
+                        in final.turns[-1].assistant.casefold(),
                         "history_available_after_restart": len(final.turns) == 3,
                     },
                 }

@@ -17,6 +17,7 @@ from komaquill.domain.models import Session
 
 from tests.backend.support.comfy import ComfyStub
 from tests.backend.support.conversations import wire_reply
+from tests.backend.support.storage import sqlite_connection
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -120,6 +121,16 @@ def main() -> None:
         raise ValueError("Browser fixtures require an isolated artifact workspace.")
     client = Client.initialize(target)
     workspace = find_project(client.workspace)
+    if os.environ.get("KOMAQUILL_WEB_ARCHIVE") == "1":
+        payload = {
+            "definition": {"title": "The preserved bookshop"},
+            "turns": [{"user": "I open the book.", "assistant": "This page is still here."}],
+        }
+        with sqlite_connection(workspace.data / "komaquill.sqlite3") as connection:
+            connection.execute(
+                "INSERT INTO archived_conversations (id, payload, reason) VALUES (?, ?, ?)",
+                (str(uuid4()), json.dumps(payload), "legacy_state"),
+            )
     session = Session(
         endpoint="http://127.0.0.1:8188",
         runtime_id=uuid4(),

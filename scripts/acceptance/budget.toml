@@ -2,6 +2,10 @@
 max_calls = 52
 max_seconds = 3600
 
+[ui]
+max_calls = 16
+max_seconds = 1200
+
 [gpu]
 output_limit = 6
 gpu_seconds = 1800

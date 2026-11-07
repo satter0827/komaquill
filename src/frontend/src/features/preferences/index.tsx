@@ -21,12 +21,31 @@ export function PreferencesPage({ connections }: { connections: ReactNode }) {
     density: m.density,
     response_length: m.responseLength,
   }
+  const renderOption = (key: keyof typeof options) => (
+    <label key={key}>
+      {labels[key]}
+      <select
+        value={preferences.value[key]}
+        disabled={preferences.pending}
+        onChange={(event) => {
+          void preferences
+            .update({ [key]: event.target.value } as Partial<Preferences>)
+            .catch(() => {})
+        }}
+      >
+        {options[key].map((value) => (
+          <option key={value} value={value}>
+            {m[value as MessageKey]}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
   return (
     <section className="page preferences-page">
-      <div className="eyebrow">{m.preferencesEyebrow}</div>
       <h1>{m.preferences}</h1>
-      <p className="subtle">{m.settingsDescription}</p>
       <div className="settings-grid">
+        <h2>{m.displayPreferences}</h2>
         <label>
           {m.language}
           <select
@@ -42,33 +61,19 @@ export function PreferencesPage({ connections }: { connections: ReactNode }) {
             <option value="en">{m.english}</option>
           </select>
         </label>
-        {(Object.keys(options) as (keyof typeof options)[]).map((key) => (
-          <label key={key}>
-            {labels[key]}
-            <select
-              value={preferences.value[key]}
-              disabled={preferences.pending}
-              onChange={(event) => {
-                void preferences
-                  .update({ [key]: event.target.value } as Partial<Preferences>)
-                  .catch(() => {})
-              }}
-            >
-              {options[key].map((value) => (
-                <option key={value} value={value}>
-                  {m[value as MessageKey]}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
+        {renderOption('font_size')}
+        {renderOption('density')}
+      </div>
+      <div className="settings-grid">
+        <h2>{m.conversationPreferences}</h2>
+        {renderOption('response_length')}
+        <p className="subtle">{m.responseLengthScope}</p>
       </div>
       {!!preferences.error && (
         <p className="error" role="alert">
           {failure(preferences.error)}
         </p>
       )}
-      <p className="subtle">{m.responseLengthScope}</p>
       <details className="connection-details">
         <summary>{m.connectionSettings}</summary>
         <div className="details-content">{connections}</div>

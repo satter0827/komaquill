@@ -4,7 +4,8 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { Send, Feather, PanelRight, Sparkles } from 'lucide-react'
+import { Send, PanelRight, Sparkles } from 'lucide-react'
+import { DrawIcon } from '../../shared/ui/atelier-icons'
 import {
   useCallback,
   useId,
@@ -492,13 +493,6 @@ function ConversationView({
   const sampleDrawing = conversation.definition.llm_profile === 'fake'
   const statePanel = (
     <aside className="state-panel">
-      {snapshots?.character?.image_id && (
-        <OriginalImage
-          className="character-portrait"
-          identity={snapshots.character.image_id}
-          alt={snapshots.character.name}
-        />
-      )}
       {!narrow && <h2>{messages.currentState}</h2>}
       <div className="state-items">
         {visibleState.map(([key, label, value]) => (
@@ -553,6 +547,9 @@ function ConversationView({
       <details>
         <summary>{messages.actionHistory}</summary>
         <div className="details-content">
+          {!conversation.actions?.length && (
+            <p className="subtle">{messages.noActionHistory}</p>
+          )}
           {conversation.actions?.map((record) => (
             <ActionDescription
               key={record.request.operation_id}
@@ -561,6 +558,13 @@ function ConversationView({
           ))}
         </div>
       </details>
+      {snapshots?.character?.image_id && (
+        <OriginalImage
+          className="character-portrait"
+          identity={snapshots.character.image_id}
+          alt={snapshots.character.name}
+        />
+      )}
       <h3>{messages.scenario}</h3>
       <p className="state-description">
         {content(conversation.definition.scenario) || messages.openConversation}
@@ -985,7 +989,7 @@ function ConversationView({
                   })
                 }
               >
-                <Feather size={18} aria-hidden="true" />
+                <DrawIcon />
                 <span>{messages.drawScene}</span>
               </Button>
               <Popover.Root open={actionOpen} onOpenChange={setActionOpen}>

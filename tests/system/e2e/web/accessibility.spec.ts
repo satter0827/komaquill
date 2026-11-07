@@ -65,12 +65,28 @@ for (const locale of ['ja', 'en'] as const) {
         },
       })
     ).json()
+    await page.setViewportSize({ width: 390, height: 420 })
     await page.goto(`/characters/${created.preset.id}`)
-    await page
-      .getByRole('button', { name: messages.delete, exact: true })
-      .click()
-    await expect(page.locator('.confirmation')).toBeVisible()
+    await page.addStyleTag({ content: 'html { font-size: 200% !important; }' })
+    const deleteTrigger = page.getByRole('button', {
+      name: messages.delete,
+      exact: true,
+    })
+    await deleteTrigger.click()
+    const deletion = page.getByRole('dialog', {
+      name: messages.delete,
+      exact: true,
+    })
+    await expect(
+      deletion.getByRole('button', { name: messages.cancel }),
+    ).toBeFocused()
     await auditAccessibility()
+    await evidence.capture(
+      'Delete confirmation on a short screen at double text size',
+    )
+    await page.keyboard.press('Escape')
+    await expect(deletion).not.toBeVisible()
+    await expect(deleteTrigger).toBeFocused()
     await page.goto('/new')
     await page
       .getByRole('button', { name: messages.create, exact: true })

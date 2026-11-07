@@ -68,6 +68,8 @@ AIは最初に`run.json`で対象版・実接続の有無・入力変更の有�
 
 ## 実機の受入
 
+下書きから会話までの画面操作は `pnpm verify:live --ui --allow-real-llm --output .artifacts/records/reports/live-ui/attempt-1` で確認します。ローカル4Bでキャラクターとストーリーの下書きを生成し、編集・保存・再読込します。日英それぞれの会話を画面から送り、表示順と再読込時の送信回数を確認します。使用上限は [実機検証の設定](../../scripts/acceptance/budget.toml) を参照してください。UIの受入と長会話の意味品質は別に記録します。
+
 `pnpm verify:live --allow-real-llm --output .artifacts/records/reports/live/attempt-1`で実LLMを確認します。`--allow-gpu`を加えると隔離した作業場所でT4の生成と標準画面まで確認します。今回所有したGPUは終了時に解放し、既存の利用者の作品や起動済み画面は使いません。上限と再確認の手順は[検証方針](strategy.md)を参照してください。
 
 標準ComfyUIの未作成の任意ファイルは、固定版の[APIの空結果への変換](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/src/scripts/api.ts)、[テンプレート読取](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/src/extensions/core/nodeTemplates.ts)、[追加スタイルの読込](https://github.com/Comfy-Org/ComfyUI_frontend/blob/v1.55.18/vite.config.mts)に従い、画面起動中だけ接続元・経路・GET・404・最大件数を指定して判定します。他のHTTP失敗やアプリケーションのconsole.errorは除外しません。成功した空本文の応答を受信した後の本文キャンセルは、受付前の送信中断と分けて記録します。本文のある応答や受付を確認できないPOSTの中断は失敗です。

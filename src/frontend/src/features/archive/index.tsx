@@ -21,16 +21,16 @@ export function ArchivedConversations() {
   if (query.error && !query.data) return notice
   if (!query.data?.length) return notice
   return (
-    <section>
+    <section className="home-section">
       {notice}
       <h2>{m.archivedTitle}</h2>
-      <div className="recent-cards">
+      <ul className="archived-list">
         {query.data.map((item) => (
-          <Link key={item.id} to={`/archive/conversations/${item.id}`}>
-            {item.title}
-          </Link>
+          <li key={item.id}>
+            <Link to={`/archive/conversations/${item.id}`}>{item.title}</Link>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   )
 }
@@ -52,15 +52,15 @@ export function ArchivedConversationPage() {
   if (query.error && !query.data) return notice
   if (!query.data) return <p>{m.loading}</p>
   return (
-    <section className="page">
+    <section className="page archive-page">
       {notice}
       <h1>{query.data.title}</h1>
-      <p>{m.archivedNotice}</p>
-      <Link to="/new">{m.newConversation}</Link>
+      <p className="subtle">{m.archivedNotice}</p>
       {!query.data.readable && <p role="alert">{m.unreadableConversation}</p>}
       {query.data.turns.map((turn, index) => (
         <article className="turn" key={index}>
           <div className="user-message">
+            <div className="message-label">{m.you}</div>
             <p>{turn.user}</p>
           </div>
           <div className="assistant-message">
@@ -72,6 +72,9 @@ export function ArchivedConversationPage() {
           </div>
         </article>
       ))}
+      <Link className="button" to="/new">
+        {m.newConversation}
+      </Link>
     </section>
   )
 }

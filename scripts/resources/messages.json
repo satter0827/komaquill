@@ -74,6 +74,8 @@
   "acceptance.model_required": "Select the exact loaded model for live acceptance checks.",
   "web.invalid_failure_expectation": "Declare an exact request, error status, and bounded failure count.",
   "acceptance.help": "Verify model and GPU operations with explicit permission and persistent budgets.",
+  "acceptance.ui_help": "Verify draft creation and conversation through the browser using a local model.",
+  "acceptance.ui_conflict": "Browser UI acceptance requires a new scenario without GPU allocation.",
   "acceptance.llm_profile": "Use the selected connection profile for a new conversation.",
   "acceptance.new_conversation": "Start another isolated conversation without resetting the shared allowance.",
   "acceptance.fork_after_turn": "Branch after a saved turn without resetting the shared allowance or deadline.",

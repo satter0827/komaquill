@@ -10,11 +10,13 @@ import { collectEvidence } from '../../../../tools/testing/web/fixtures'
 import { isolatedServer } from '../../../../tools/testing/web/server-fixture'
 
 export const test = base.extend<{
+  archive: boolean
   evidence: Evidence
   auditAccessibility: () => Promise<void>
 }>({
-  baseURL: async ({}, use, info) => {
-    await isolatedServer(use, info)
+  archive: [false, { option: true }],
+  baseURL: async ({ archive }, use, info) => {
+    await isolatedServer(use, info, archive)
   },
   request: async ({ playwright, baseURL }, use) => {
     const request = await playwright.request.newContext({

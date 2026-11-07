@@ -8,6 +8,7 @@ import { message } from './evidence.mjs'
 export async function isolatedServer(
   use: (url: string) => Promise<void>,
   info: TestInfo,
+  archive = false,
 ) {
   const directory = info.outputPath('server')
   const workspace = path.join(directory, 'workspace')
@@ -21,6 +22,7 @@ export async function isolatedServer(
         ...process.env,
         KOMAQUILL_WEB_WORKSPACE: workspace,
         KOMAQUILL_WEB_CASE_DIR: directory,
+        KOMAQUILL_WEB_ARCHIVE: archive ? '1' : '0',
         PYTHONUNBUFFERED: '1',
       },
       stdio: ['pipe', 'pipe', 'pipe'],

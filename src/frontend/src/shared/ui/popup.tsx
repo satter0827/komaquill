@@ -29,7 +29,7 @@ export function Popup({
           {...props}
           className={`popup-content details-content ${className ?? ''}`}
         >
-          <Popover.Title className="sr-only">{label}</Popover.Title>
+          <Popover.Title className="popup-title">{label}</Popover.Title>
           {children}
         </Popover.Popup>
       </Popover.Positioner>

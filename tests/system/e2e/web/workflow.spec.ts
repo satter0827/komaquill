@@ -205,6 +205,7 @@ test('generates and automatically collects a standalone image', async ({
   page,
 }) => {
   await page.goto('/images')
+  await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page
     .getByLabel(ja.imagePrompt, { exact: true })
     .fill('a quiet green garden')
@@ -268,9 +269,7 @@ test('retains one profile across start, edit, return and start navigation', asyn
   await page
     .getByRole('link', { name: ja.newConversation, exact: true })
     .click()
-  await expect(page.locator('.selection-card').first()).toContainText(
-    player.name,
-  )
+  await expect(page.locator('.selection-summary')).toContainText(player.name)
   await page.getByRole('button', { name: ja.create, exact: true }).click()
   await expect(page).toHaveURL(/\/conversations\//)
   const identity = new URL(page.url()).pathname.split('/').at(-1)

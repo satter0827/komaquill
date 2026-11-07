@@ -129,6 +129,9 @@ export function ConversationNotes({
       </details>
       <h3>{m.savedScenes}</h3>
       {bookmarks.error && <p role="alert">{failure(bookmarks.error)}</p>}
+      {bookmarks.isSuccess && bookmarks.data.length === 0 && (
+        <p className="subtle">{m.noSavedScenes}</p>
+      )}
       {bookmarks.data?.map((bookmark) => (
         <div key={bookmark.id}>
           <p>{bookmark.name}</p>

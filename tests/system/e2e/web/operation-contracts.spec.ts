@@ -33,11 +33,11 @@ test('REVIEW-SINGLE-PLAYER: Your profile opens directly for editing', async ({
   const player = await (await request.get('/api/v1/player')).json()
   await page.goto('/player')
   await expect(
-    page.getByRole('heading', { name: player.name, exact: true }),
+    page.getByRole('heading', { name: ja.players, level: 1, exact: true }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('textbox', { name: ja.requiredName, exact: true }),
-  ).toBeVisible()
+  const name = page.getByRole('textbox', { name: ja.requiredName, exact: true })
+  await expect(name).toBeVisible()
+  await expect(name).toHaveValue(player.name)
 })
 
 for (const route of ['/player', '/characters/new']) {

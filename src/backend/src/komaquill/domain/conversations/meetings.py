@@ -63,8 +63,12 @@ class MeetingChange(Record):
             return MeetingPlan(cancellation=MeetingSource(turn_id=turn_id, span=span))
         if not explicit:
             raise ValueError("A meeting decision must supply at least one value.")
-        values = plan.model_dump() if plan is not None and not plan.cancellation else {}
+        current = plan if plan is not None and plan.cancellation is None else None
+        values = current.model_dump() if current is not None else {}
         for name, value in explicit.items():
+            retained = getattr(current, name) if current is not None else None
+            if retained is not None and retained.text == value:
+                continue
             part = SourceSpan.locate(self.quote, value)
             values[name] = MeetingValue(
                 text=value,

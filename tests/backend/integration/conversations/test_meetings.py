@@ -60,7 +60,15 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
                     },
                     text="The meeting is at 3 PM at the wrong place.",
                 ),
-                reply({"kind": "set", "quote": correction, "time": "11 AM"}),
+                reply(
+                    {
+                        "kind": "set",
+                        "quote": correction,
+                        "date": "Friday",
+                        "time": "11 AM",
+                        "place": "Town Hall",
+                    }
+                ),
                 reply(),
                 reply({"kind": "cancel", "quote": cancel}),
                 reply({"kind": "set", "quote": new, "place": "Central Station"}, query=False),
@@ -99,6 +107,7 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
         assert cancelled.meeting.status == "cancelled" and cancelled.meeting.time is None
         assert replacement.meeting.place == "Central Station" and replacement.meeting.time is None
         assert revised.meeting_state.place.turn_id == original.operation_id
+        assert revised.meeting_state.date.turn_id == original.operation_id
         assert revised.meeting_state.time.span.read(revised.user) == "11 AM"
         assert "meeting_state" not in revised.model_dump()
         forked = client.conversations.fork(

@@ -5,6 +5,8 @@ forbidden_held_objects = ["銀のコンパス"]
 forbidden_reply_fragments = ["}}]}{", "]}**", "”}}"]
 moves = { "8" = "古書店の入口" }
 expected_places = { "6" = "公園", "7" = "公園", "8" = "古書店の入口", "18" = "古書店の入口" }
+expected_replies = { "0" = "栞", "16" = "銀のコンパス", "18" = "栞" }
+expected_meetings = { "9" = { status = "confirmed", date = "土曜日", time = "午後三時", place = "古書店" }, "17" = { status = "confirmed", date = "土曜日", time = "午後四時", place = "古書店" }, "19" = { status = "confirmed", date = "土曜日", time = "午後四時", place = "古書店" } }
 
 messages = [
   "こんにちは。今日は一緒に読書会の準備をしましょう。あなたの名前を教えてください。",
@@ -27,4 +29,26 @@ messages = [
   "訂正後の集合時刻と、変更していない曜日を教えてください。最初の時刻と取り違えないでください。",
   "あなたの名前と、私たちが今いる場所を教えてください。",
   "ありがとう。準備で決めたことを確認して、今日の相談を締めくくりましょう。",
+]
+
+[cases.meeting-ja]
+locale = "ja"
+expected_meetings = { "0" = { status = "unknown" }, "1" = { status = "confirmed", date = "日曜日", time = "午前九時", place = "市民ホール" }, "2" = { status = "confirmed", date = "日曜日", time = "午前十時", place = "市民ホール" }, "3" = { status = "cancelled" }, "4" = { status = "cancelled" }, "5" = { status = "confirmed", place = "中央駅" } }
+messages = [
+  "晴れたら海辺に集合するのはどうでしょう。今、確定している集合予定はありますか？",
+  "集合は日曜日の午前九時、市民ホールに決めます。集合予定を確認してください。",
+  "集合時刻だけ午前十時に訂正します。変更後の集合予定を教えてください。",
+  "集合は中止します。今の予定を確認してください。",
+  "友人が『金曜に美術館で集合』と提案していました。私たちの集合予定はどうなりましたか？",
+  "新しい集合場所は中央駅に決めます。日付と時刻は未定です。集合予定を教えてください。",
+]
+
+[cases.meeting-en]
+locale = "en"
+expected_meetings = { "0" = { status = "confirmed", date = "Friday", time = "10 AM", place = "Town Hall" }, "1" = { status = "confirmed", date = "Friday", time = "11 AM", place = "Town Hall" }, "2" = { status = "confirmed", date = "Friday", time = "11 AM", place = "Town Hall" }, "3" = { status = "cancelled" } }
+messages = [
+  "We will meet on Friday at 10 AM at Town Hall. What is the confirmed meeting plan?",
+  "Change just the meeting time to 11 AM. What are the new meeting details?",
+  "If it rains, we could meet at the café instead. Where are we currently set to meet?",
+  "I am cancelling the meeting. What is its status now?",
 ]

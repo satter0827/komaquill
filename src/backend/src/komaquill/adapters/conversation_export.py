@@ -11,6 +11,7 @@ from PIL import Image
 from komaquill.domain.content import ContentRating
 from komaquill.domain.conversations.models import Conversation
 from komaquill.domain.models import Run
+from komaquill.resources.meeting_messages import meeting_text
 
 
 def export_conversation(
@@ -28,7 +29,13 @@ def export_conversation(
     for turn in conversation.turns:
         transcript.extend(
             value
-            for value in (turn.user, turn.narration, turn.action_narration, turn.assistant)
+            for value in (
+                turn.user,
+                turn.narration,
+                turn.action_narration,
+                meeting_text(turn.meeting) if turn.meeting else "",
+                turn.assistant,
+            )
             if value
         )
     temporary = destination.with_suffix(".partial")

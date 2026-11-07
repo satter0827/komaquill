@@ -593,6 +593,13 @@ acceptance = ["現在地を一つにし人物は常に同行する", "自然文�
 sources = ["src/backend/src/komaquill/domain/conversations/transitions.py", "src/backend/src/komaquill/adapters/llm/conversation.py", "src/frontend/src/features/conversations/index.tsx", "src/frontend/src/shared/ui/query-notice.tsx", "scripts/acceptance/conversations/long.py", "src/frontend/src/shared/operations.ts", "src/backend/src/komaquill/domain/conversations/models.py", "src/backend/src/komaquill/adapters/persistence/conversations.py"]
 tests = ["tests/backend/integration/conversations/test_visible_reply.py", "tests/backend/integration/conversations/test_shared_scene.py", "tests/backend/integration/conversations/test_recorded_shared_state.py", "tests/system/e2e/web/long-conversation.spec.ts", "tests/scripts/integration/acceptance/test_long_conversation.py", "tests/tools/integration/web/readiness.test.mjs", "tests/frontend/unit/operations/operations.test.ts", "tests/system/e2e/web/recovery.spec.ts", "tests/backend/integration/conversations/test_execution_content.py"]
 
+[requirements.REQ-CONFIRMED-MEETING]
+summary = "利用者が決めた集合予定を現在地と分けて保存し、照会に表示する"
+status = "implemented"
+acceptance = ["一会話につき一件の日付または曜日・時刻・場所を扱う", "利用者の原文を根拠に確定・部分訂正・取消を行う", "予定と根拠を会話ターンと同時に保存する", "照会は保存値と未確定・取消を台詞と分けて表示する", "条件付きの提案を確定せず曖昧な採用は確認する", "分岐点の予定を引き継ぎ既存の原文とハッシュを保持する"]
+sources = ["src/backend/src/komaquill/domain/conversations/meetings.py", "src/backend/src/komaquill/adapters/persistence/conversations.py", "src/frontend/src/features/conversations/index.tsx", "scripts/acceptance/conversations/long.mjs"]
+tests = ["tests/backend/integration/conversations/test_meetings.py", "tests/backend/integration/conversations/test_shared_scene.py", "tests/scripts/integration/acceptance/test_long_conversation.py"]
+
 [requirements.REQ-REAL-ACCEPTANCE]
 summary = "実LLMとGPUの検査を明示許可と累積予算で分離し、保存結果から再検証する"
 status = "implemented"

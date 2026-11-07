@@ -43,7 +43,7 @@ from komaquill.adapters.persistence.schema import (
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.actions import (
     ActionRecord,
-    MoveAction,
+    InferredMove,
     ProposalDismissal,
     ProposedAction,
     RecordedActionRequest,
@@ -51,7 +51,9 @@ from komaquill.domain.conversations.actions import (
 from komaquill.domain.conversations.commands import accept_input
 from komaquill.domain.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.domain.conversations.history import advance_history, memory_sources
+from komaquill.domain.conversations.meetings import MeetingAnswer, MeetingPlan
 from komaquill.domain.conversations.models import (
+    TURN_RESULT,
     AcceptedInput,
     Conversation,
     ConversationInput,
@@ -124,13 +126,16 @@ class ConversationRepository:
         for position, turn in enumerate(
             value.turns[max(0, existing - value.turn_offset) :], max(existing, value.turn_offset)
         ):
-            prefix = advance_history(prefix, turn.model_dump(mode="json"))
+            source = turn.model_dump(mode="json")
+            if turn.meeting_state is not None:
+                source["meeting_state"] = turn.meeting_state.model_dump(mode="json")
+            prefix = advance_history(prefix, source)
             connection.execute(
                 conversation_turns.insert().values(
                     conversation_id=str(value.id),
                     position=position,
                     turn_id=str(turn.operation_id),
-                    payload=turn.model_dump_json(),
+                    payload=json.dumps(source, ensure_ascii=False),
                     prefix_sha256=prefix,
                 )
             )
@@ -248,21 +253,30 @@ class ConversationRepository:
             )
         ):
             raise ValueError("The accepted action identity differs from its request.")
+        if recorded.source is not None:
+            if recorded.origin != "conversation":
+                raise ValueError("Only inferred moves have a source span.")
+            recorded.source.read(request.text)
         return request.model_copy(update={"action_id": action_id, "action_origin": recorded.origin})
 
     @stored
-    def apply_inferred_move(self, identity: UUID, action: MoveAction) -> None:
+    def apply_inferred_move(self, identity: UUID, move: InferredMove) -> None:
         """Apply a saved interpretation once without changing the accepted message."""
         with self.database.transaction() as connection:
             row = self._row(connection, identity)
             operation = self._operation(row)
             request = RecordedTurnRequest.model_validate_json(str(row["request"]))
+            move.source.read(request.text)
             previous = self._event_payload(
                 connection, operation.conversation_id, "actions", identity
             )
             if previous is not None:
                 recorded = read_action(previous)
-                if recorded.origin != "conversation" or recorded.request.action != action:
+                if (
+                    recorded.origin != "conversation"
+                    or recorded.request.action != move.action
+                    or recorded.source != move.source
+                ):
                     raise conflict()
                 return
             conversation = self._get(connection, operation.conversation_id, with_turns=False)
@@ -279,7 +293,7 @@ class ConversationRepository:
                     operation_id=identity,
                     expected_revision=conversation.revision,
                     text=request.text,
-                    action=action,
+                    action=move.action,
                     locale=request.locale,
                     allow_real_llm=request.allow_real_llm,
                 ),
@@ -288,7 +302,9 @@ class ConversationRepository:
                 update={
                     "actions": [
                         *updated.actions[:-1],
-                        updated.actions[-1].model_copy(update={"origin": "conversation"}),
+                        updated.actions[-1].model_copy(
+                            update={"origin": "conversation", "source": move.source}
+                        ),
                     ]
                 }
             )
@@ -637,6 +653,14 @@ class ConversationRepository:
             raise ValueError("Operation identity mismatch.")
         return value
 
+    def _meeting(self, connection: Connection, conversation: Conversation) -> MeetingPlan | None:
+        if not conversation.turn_count:
+            return None
+        turns, _, _ = self._read_turns(
+            connection, str(conversation.id), conversation.turn_count - 1, conversation.turn_count
+        )
+        return turns[0].meeting_state
+
     @stored
     def request(self, identity: UUID) -> tuple[Conversation, TurnRequest]:
         with self.database.engine.connect() as connection:
@@ -681,7 +705,8 @@ class ConversationRepository:
                     update={
                         "locale": self._operation(row).response_locale
                         or request.locale
-                        or header.definition.locale
+                        or header.definition.locale,
+                        "meeting_state": self._meeting(connection, header),
                     }
                 ).model_dump_json(include=set(TurnRequest.model_fields))
             )
@@ -793,9 +818,22 @@ class ConversationRepository:
             if request.action_id is not None
             else None
         )
+        action = read_action(action_payload) if action_payload else None
+        meeting = self._meeting(connection, conversation)
+        if reply.meeting_change is not None:
+            try:
+                quote = reply.meeting_change.quote
+                if action and action.source and quote not in action.source.remaining(request.text):
+                    raise ValueError("The meeting decision must be in the remaining message.")
+                meeting = reply.meeting_change.apply(meeting, request.text, identity)
+            except ValueError:
+                raise KomaquillError(code="invalid_response", retryable=False) from None
+        answer = None
+        if reply.meeting_query:
+            answer = meeting.answer() if meeting else MeetingAnswer(status="unknown")
         turn = Turn(
             operation_id=identity,
-            action=read_action(action_payload).request.action if action_payload else None,
+            action=action.request.action if action else None,
             user=request.text,
             assistant=reply.text,
             narration="" if reply.action_proposals else (state.scenery or state.place),
@@ -803,6 +841,8 @@ class ConversationRepository:
             action_narration=reply.action_narration,
             notes=conversation.notes,
             action_id=request.action_id,
+            meeting=answer,
+            meeting_state=meeting,
         )
         updated = conversation.model_copy(
             update={
@@ -921,14 +961,8 @@ class ConversationRepository:
                     saved = self.database.checkpoints.conversation_result(
                         f"conversation:{identity}"
                     )
-                candidate = Reply.model_validate(saved) if saved is not None else None
-                retained[identity] = (
-                    None
-                    if candidate
-                    and len(candidate.action_proposals) == 1
-                    and isinstance(candidate.action_proposals[0], MoveAction)
-                    else candidate
-                )
+                candidate = TURN_RESULT.validate_python(saved) if saved is not None else None
+                retained[identity] = candidate if isinstance(candidate, Reply) else None
             except KomaquillError as error:
                 retention_errors[identity] = error.code.value
             except (OSError, ValueError):

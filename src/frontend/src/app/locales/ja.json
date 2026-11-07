@@ -220,6 +220,13 @@
     "image_composition_unavailable": "二人の画像にはWAIモデルが必要です。画像モデルをWAIへ切り替えてください。"
   },
   "currentPlace": "現在地",
+  "meetingDetails": "集合予定",
+  "meetingUnknown": "集合予定はまだ決まっていません。",
+  "meetingCancelled": "集合予定は取り消されました。",
+  "meetingDate": "日付・曜日",
+  "meetingTime": "時刻",
+  "meetingPlace": "集合場所",
+  "meetingUndecided": "未定",
   "currentTime": "時刻",
   "age": "年齢",
   "gender": "性別",

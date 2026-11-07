@@ -8,7 +8,7 @@ from contextlib import AbstractContextManager
 from typing import Protocol
 from uuid import UUID
 
-from komaquill.domain.conversations.actions import ActionRecord, MoveAction, ProposalDismissal
+from komaquill.domain.conversations.actions import ActionRecord, InferredMove, ProposalDismissal
 from komaquill.domain.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.domain.conversations.models import (
     AcceptedInput,
@@ -19,6 +19,7 @@ from komaquill.domain.conversations.models import (
     Reply,
     SendInput,
     TurnRequest,
+    TurnResult,
 )
 from komaquill.domain.conversations.transitions import apply_reply
 from komaquill.domain.errors import FailureInfo, KomaquillError, OperationStage, failure_info
@@ -39,7 +40,7 @@ class Repository(Protocol):
     def fork(self, identity: UUID, request: SceneRequest) -> Conversation: ...
     def accept(self, identity: UUID, request: SendInput) -> tuple[Operation, bool]: ...
     def request(self, identity: UUID) -> tuple[Conversation, TurnRequest]: ...
-    def apply_inferred_move(self, identity: UUID, action: MoveAction) -> None: ...
+    def apply_inferred_move(self, identity: UUID, move: InferredMove) -> None: ...
     def operation(self, identity: UUID) -> Operation: ...
     def operation_snapshot(self, identity: UUID) -> Operation: ...
     def accepted_input(self, identity: UUID) -> AcceptedInput: ...
@@ -59,7 +60,7 @@ class Repository(Protocol):
 
 
 class Responder(Protocol):
-    def reply(self, conversation: Conversation, request: TurnRequest) -> Reply: ...
+    def reply(self, conversation: Conversation, request: TurnRequest) -> TurnResult: ...
     def profiles(self) -> list[ConnectionProfile]: ...
 
 
@@ -173,14 +174,12 @@ class ConversationService:
             try:
                 conversation, request = self.repository.request(identity)
                 reply = self.responder.reply(conversation, request)
-                if (
-                    request.action_id is None
-                    and len(reply.action_proposals) == 1
-                    and isinstance(reply.action_proposals[0], MoveAction)
-                ):
-                    self.repository.apply_inferred_move(identity, reply.action_proposals[0])
+                if request.action_id is None and isinstance(reply, InferredMove):
+                    self.repository.apply_inferred_move(identity, reply)
                     conversation, request = self.repository.request(identity)
                     reply = self.responder.reply(conversation, request)
+                if not isinstance(reply, Reply):
+                    raise KomaquillError(code="invalid_response", retryable=False)
                 apply_reply(conversation, reply, action_confirmed=request.action_id is not None)
             except KomaquillError as error:
                 if self.report_failure:

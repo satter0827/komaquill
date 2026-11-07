@@ -14,17 +14,21 @@ from komaquill.adapters.llm.constraints import ResponseConstraintError
 from komaquill.adapters.llm.execution import StructuredExecution, response_schema
 from komaquill.adapters.llm.language import ResponseLanguageError, check_language
 from komaquill.domain.conversations.actions import (
+    InferredMove,
     IntentionAction,
     MoveAction,
     PrepareAction,
     WaitAction,
 )
 from komaquill.domain.conversations.context import scene_context
+from komaquill.domain.conversations.evidence import SourceSpan
+from komaquill.domain.conversations.meetings import MeetingChange
 from komaquill.domain.conversations.models import (
     ConnectionProfile,
     Conversation,
     Reply,
     TurnRequest,
+    TurnResult,
 )
 from komaquill.domain.conversations.transitions import require_visible_reply
 from komaquill.domain.errors import KomaquillError
@@ -44,6 +48,7 @@ from komaquill.domain.roleplay import (
 
 class ProposedMove(MoveAction):
     kind: Literal["move"]
+    quote: str = Field(min_length=1, description="Verbatim immediate travel clause only.")
 
 
 class ProposedWait(WaitAction):
@@ -141,12 +146,12 @@ class DialogueResult(Record):
             str(Reply.model_fields["text"].description)
             + " Answer the latest question directly before offering a follow-up question."
             " Keep response-framing JSON outside the dialogue; include literal JSON only when "
-            "the player explicitly asks to discuss it. In a recap, state the latest confirmed "
-            "arrangements from the user's messages, preserving details the user did not change. "
-            "Keep the meeting place separate from the current scene and label open ideas "
-            "as proposals."
+            "the player explicitly asks to discuss it. When meeting_query is true, use text "
+            "only to answer any separate question or discuss other confirmed decisions."
         ),
     )
+    meeting_change: MeetingChange | None = None
+    meeting_query: bool = False
 
     @model_validator(mode="after")
     def unique_changes(self) -> Self:
@@ -177,10 +182,7 @@ class NarrativeReply(Record):
         return self
 
 
-class ReactionReply(NarrativeReply):
-    player_move: None = Field(
-        description="Always null: the accepted player action has already been applied."
-    )
+class ReactionReply(Record):
     response: DialogueResult
 
 
@@ -220,7 +222,7 @@ class ConversationResponder:
             for name, p in self.execution.settings.llm_profiles.items()
         ]
 
-    def reply(self, conversation: Conversation, request: TurnRequest) -> Reply:
+    def reply(self, conversation: Conversation, request: TurnRequest) -> TurnResult:
         try:
             with self.execution.lock:
                 from komaquill.adapters.llm.workflow import run_conversation
@@ -231,7 +233,7 @@ class ConversationResponder:
         except ImportError:
             raise KomaquillError(code="llm_dependencies_missing", retryable=False) from None
 
-    def _reply(self, conversation: Conversation, request: TurnRequest) -> Reply:
+    def _reply(self, conversation: Conversation, request: TurnRequest) -> TurnResult:
         profile = self.execution.settings.llm_profiles.get(conversation.definition.llm_profile)
         if profile is None:
             raise KomaquillError(code="invalid_configuration", retryable=False)
@@ -239,8 +241,13 @@ class ConversationResponder:
         action = next(
             (a for a in conversation.actions if a.request.operation_id == request.action_id), None
         )
-        latest = request.text
+        message = request.text
+        latest = message
         if action is not None:
+            if action.origin == "conversation":
+                if action.source is None:
+                    raise KomaquillError(code="operation_conflict", retryable=False)
+                message = action.source.remaining(request.text)
             latest = json.dumps(
                 {
                     "speaker": "human_player",
@@ -248,7 +255,7 @@ class ConversationResponder:
                         "actor": "human_player",
                         **action.request.action.model_dump(mode="json", exclude_none=True),
                     },
-                    "original_message_before_action": request.text,
+                    "message": message,
                 },
                 ensure_ascii=False,
             )
@@ -331,7 +338,9 @@ class ConversationResponder:
         if not request.allow_real_llm:
             raise KomaquillError(code="real_llm_not_allowed", retryable=False)
         language = "Japanese" if locale == "ja" else "English"
-        reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
+        reply_schema: type[NarrativeReply | ReactionReply] = (
+            ReactionReply if request.action_id is not None else NarrativeReply
+        )
         definition = conversation.definition
         story = definition.scenario.model_dump(exclude_defaults=True, exclude={"place", "goal"})
         if conversation.turns:
@@ -367,6 +376,9 @@ class ConversationResponder:
         context = {
             "story": story,
             "current_state": scene["current_state"],
+            "meeting": request.meeting_state.answer().model_dump(mode="json", exclude_none=True)
+            if request.meeting_state
+            else {"status": "unknown"},
             "people": people,
             **({"pinned_notes": conversation.notes} if conversation.notes else {}),
             **(
@@ -382,7 +394,6 @@ class ConversationResponder:
             ),
             "response_length": definition.response_length,
             "response_rules": {
-                "player_move": reply_schema.model_fields["player_move"].description,
                 "held_objects": ObjectsChange.model_fields["value"].description,
                 "action_narration": DialogueResult.model_fields["action_narration"].description,
                 "text": DialogueResult.model_fields["text"].description,
@@ -393,11 +404,10 @@ class ConversationResponder:
 
         turn_contract = (
             "The completed_action is already applied in current_state. "
-            "The original_message_before_action records what the user said before it happened. "
-            "Start with a direct answer to the question or discussion from the current scene. "
+            "Respond to message from the current scene, starting with its question if any. "
             "If there is only an action, acknowledge it as complete. Keep the completed action "
             "out of any new plan or narration of travel. "
-            "Return player_move=null and response.kind=companion."
+            "Return response.kind=companion."
             if action is not None
             else self.intent
         )
@@ -459,15 +469,35 @@ class ConversationResponder:
             if value
         ]
 
-        def validate(reply: NarrativeReply) -> None:
-            if reply.player_move is not None or isinstance(reply.response, ProposalResult):
+        def validate(reply: NarrativeReply | ReactionReply) -> None:
+            if isinstance(reply, NarrativeReply) and reply.player_move is not None:
+                try:
+                    SourceSpan.locate(message, reply.player_move.quote)
+                except ValueError:
+                    raise ResponseConstraintError("move_source", ("player_move", "quote")) from None
+                return
+            if isinstance(reply.response, ProposalResult):
                 return
             value = reply.response
+            if value.meeting_change is not None:
+                try:
+                    SourceSpan.locate(message, value.meeting_change.quote)
+                    value.meeting_change.apply(
+                        request.meeting_state, request.text, request.operation_id
+                    )
+                except ValueError:
+                    raise ResponseConstraintError(
+                        "meeting_source", ("response", "meeting_change")
+                    ) from None
             desired = resolve_scene(conversation, value)
             proposed = StatePatch.between(conversation.state, desired).apply(conversation.state)
             try:
                 require_visible_reply(
-                    conversation.state, proposed, value.text, value.action_narration
+                    conversation.state,
+                    proposed,
+                    value.text,
+                    value.action_narration,
+                    meeting_query=value.meeting_query,
                 )
             except KomaquillError:
                 raise ResponseConstraintError("empty_response", ("response", "text")) from None
@@ -522,13 +552,10 @@ class ConversationResponder:
                 trim=False,
                 purpose=purpose,
             )
-        if generated.player_move is not None:
-            return Reply(
-                text="",
-                state_patch=StatePatch(),
-                action_proposals=[
-                    MoveAction(kind="move", destination=generated.player_move.destination)
-                ],
+        if isinstance(generated, NarrativeReply) and generated.player_move is not None:
+            return InferredMove(
+                action=MoveAction(destination=generated.player_move.destination),
+                source=SourceSpan.locate(message, generated.player_move.quote),
             )
         value = generated.response
         if isinstance(value, ProposalResult):
@@ -539,4 +566,6 @@ class ConversationResponder:
             action_narration=value.action_narration,
             text=value.text,
             state_patch=StatePatch.between(conversation.state, desired),
+            meeting_change=value.meeting_change,
+            meeting_query=value.meeting_query,
         )

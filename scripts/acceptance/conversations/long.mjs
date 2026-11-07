@@ -9,9 +9,12 @@ import {
   jsonFile,
 } from '../../../tools/testing/web/evidence.mjs'
 import ja from '../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
+import en from '../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
 
 const file = contained(path.resolve('.artifacts'), process.argv[2])
 const config = JSON.parse(await readFile(file, 'utf8'))
+const locale = config.locale ?? 'ja'
+const messages = locale === 'en' ? en : ja
 assert.equal(config.format_version, 1)
 assert.equal(typeof config.real_llm, 'boolean')
 const origin = new URL(config.endpoint)
@@ -56,21 +59,43 @@ function inspectTurn(turn, index) {
   check = 'inventory_constraints'
   inspectInventory(turn)
   check = 'reply_content'
-  assert(turn.assistant.trim().length > 0)
+  assert(turn.assistant.trim() || turn.action_narration?.trim() || turn.meeting)
   for (const fragment of config.forbidden_reply_fragments ?? [])
     assert(!turn.assistant.includes(fragment))
-  if (config.expected_character_name && (index === 0 || index === 18))
-    assert(turn.assistant.includes(config.expected_character_name))
+  const expectedReply = config.expected_replies?.[String(index)]
+  if (expectedReply) assert(turn.assistant.includes(expectedReply))
   check = 'shared_place'
   assert(!Object.hasOwn(turn.state, 'character_place'))
   const expectedPlace = config.expected_places?.[String(index)]
   if (expectedPlace) assert.equal(turn.state.place, expectedPlace)
-  check = 'recalled_password'
-  if (index === 16) assert(turn.assistant.includes('銀のコンパス'))
-  check = 'corrected_appointment'
-  if (index === 17) {
-    assert(/四時|4時|４時|16時|１６時/.test(turn.assistant))
-    assert(turn.assistant.includes('土曜'))
+  check = 'meeting_result'
+  const expectedMeeting = config.expected_meetings?.[String(index)]
+  if (expectedMeeting) {
+    assert.equal(turn.meeting?.status, expectedMeeting.status)
+    for (const key of ['date', 'time', 'place'])
+      assert.equal(turn.meeting[key] ?? null, expectedMeeting[key] ?? null)
+  }
+}
+
+async function inspectDisplayedMeeting(article, index) {
+  const expected = config.expected_meetings?.[String(index)]
+  if (!expected) return
+  check = 'meeting_display'
+  const details = article.getByRole('region', { name: messages.meetingDetails })
+  await details.waitFor()
+  if (expected.status === 'confirmed') {
+    assert.deepEqual(
+      await details.locator('dd').allTextContents(),
+      ['date', 'time', 'place'].map(
+        (key) => expected[key] ?? messages.meetingUndecided,
+      ),
+    )
+  } else {
+    const expectedText =
+      expected.status === 'cancelled'
+        ? messages.meetingCancelled
+        : messages.meetingUnknown
+    assert.equal(await details.locator('p').last().innerText(), expectedText)
   }
 }
 async function inspectSavedTurns(count) {
@@ -104,8 +129,18 @@ async function inspectSavedTurns(count) {
   }
 }
 try {
+  if (locale === 'en') {
+    const preferences = await (await api.get('/api/v1/preferences')).json()
+    if (preferences.locale !== locale) {
+      assert(!config.read_only)
+      const response = await api.put('/api/v1/preferences', {
+        data: { ...preferences, locale },
+      })
+      assert.equal(response.status(), 200)
+    }
+  }
   await page.goto(`/conversations/${config.conversation}`)
-  await page.getByRole('textbox', { name: ja.messageLabel }).waitFor()
+  await page.getByRole('textbox', { name: messages.messageLabel }).waitFor()
   let saved = await (await api.get(apiPath)).json()
   assert(!config.read_only || saved.turn_count === config.target_turns)
   await inspectSavedTurns(saved.turn_count)
@@ -119,14 +154,14 @@ try {
       async () => {
         if (config.moves[String(index)]) {
           await page
-            .getByRole('button', { name: ja.changePlace, exact: true })
+            .getByRole('button', { name: messages.changePlace, exact: true })
             .click()
           await page
-            .getByLabel(ja.destination, { exact: true })
+            .getByLabel(messages.destination, { exact: true })
             .fill(config.moves[String(index)])
         }
         await page
-          .getByRole('textbox', { name: ja.messageLabel })
+          .getByRole('textbox', { name: messages.messageLabel })
           .fill(config.messages[index])
         check = 'accept_input'
         const [response] = await Promise.all([
@@ -135,7 +170,9 @@ try {
               response.request().method() === 'POST' &&
               new URL(response.url()).pathname === apiPath + '/turns',
           ),
-          page.getByRole('button', { name: ja.send, exact: true }).click(),
+          page
+            .getByRole('button', { name: messages.send, exact: true })
+            .click(),
         ])
         assert.equal(response.status(), 202)
         const operation = await response.json()
@@ -175,6 +212,7 @@ try {
         assert.equal(saved.turn_count, index + 1)
         const latest = await (await api.get(apiPath + '/turns?limit=1')).json()
         inspectTurn(latest.items[0], index)
+        await inspectDisplayedMeeting(turn, index)
       },
     )
     if (index === 9) {
@@ -201,6 +239,11 @@ try {
       restored.every((text, index) => text === config.messages[index]),
     'The saved message order differs from the scenario.',
   )
+  for (let index = 0; index < config.target_turns; index++)
+    await inspectDisplayedMeeting(
+      page.locator('article.turn').nth(index),
+      index,
+    )
   check = 'unexpected_images'
   assert.equal((await (await api.get(apiPath + '/images')).json()).length, 0)
   status = 'passed'

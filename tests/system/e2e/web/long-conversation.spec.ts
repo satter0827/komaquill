@@ -45,6 +45,7 @@ test('exercises the conversation runner with a scripted provider and safe failur
         moves: {},
         expires_at: new Date(Date.now() + 60_000).toISOString(),
         expected_inventory: { player: null, character: null },
+        expected_meetings: {},
         ...overrides,
       }),
     )

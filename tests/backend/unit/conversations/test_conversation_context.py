@@ -120,7 +120,7 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
             DialogueResult(
                 kind="companion",
                 meeting_change=None,
-                meeting_query="none",
+                meeting_query=None,
                 movement="stay",
                 changes=[ExpressionPoseChange(field="pose", value="x" * 1001)],
                 action_narration="",
@@ -135,7 +135,7 @@ def test_movement_decision_is_required_and_cannot_be_repeated_by_a_reaction():
     response = {
         "kind": "companion",
         "meeting_change": None,
-        "meeting_query": "none",
+        "meeting_query": None,
         "changes": [],
         "action_narration": "",
         "text": "",

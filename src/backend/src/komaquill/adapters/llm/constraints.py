@@ -6,7 +6,14 @@ from typing import Literal
 class ResponseConstraintError(ValueError):
     def __init__(
         self,
-        rule: Literal["object_ownership", "empty_response", "move_source", "meeting_source"],
+        rule: Literal[
+            "object_ownership",
+            "empty_response",
+            "move_source",
+            "meeting_source",
+            "meeting_query",
+            "password_object",
+        ],
         path: tuple[str | int, ...] = (),
     ) -> None:
         self.rule = rule
@@ -28,6 +35,16 @@ class ResponseConstraintError(ValueError):
                 "only the explicitly changed values. For a correction, set the other "
                 "values to null. For a cancellation, set all three values to null. For a "
                 "proposal, condition or ambiguous decision, set meeting_change to null."
+            )
+        if self.rule == "meeting_query":
+            return (
+                "Quote only the user's exact question about the meeting or set meeting_query to "
+                "null if there is no such question. Answer other requests directly in text."
+            )
+        if self.rule == "password_object":
+            return (
+                "The user gave these words as a password. Keep them in dialogue and remove the "
+                "new physical object and any narration of picking it up."
             )
         if self.rule == "empty_response":
             return (

@@ -51,7 +51,7 @@ from komaquill.domain.conversations.actions import (
 from komaquill.domain.conversations.commands import accept_input
 from komaquill.domain.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.domain.conversations.history import advance_history, memory_sources
-from komaquill.domain.conversations.meetings import MeetingAnswer, MeetingPlan
+from komaquill.domain.conversations.meetings import MeetingAnswer, MeetingPlan, meeting_query_source
 from komaquill.domain.conversations.models import (
     TURN_RESULT,
     AcceptedInput,
@@ -63,6 +63,7 @@ from komaquill.domain.conversations.models import (
     Turn,
     TurnRequest,
 )
+from komaquill.domain.conversations.movement import validate_move
 from komaquill.domain.conversations.transitions import apply_reply
 from komaquill.domain.conversations.visuals import VisualReviewRecord
 from komaquill.domain.errors import KomaquillError, OperationStage
@@ -266,7 +267,6 @@ class ConversationRepository:
             row = self._row(connection, identity)
             operation = self._operation(row)
             request = RecordedTurnRequest.model_validate_json(str(row["request"]))
-            move.source.read(request.text)
             previous = self._event_payload(
                 connection, operation.conversation_id, "actions", identity
             )
@@ -287,8 +287,10 @@ class ConversationRepository:
                 or request.action_id is not None
             ):
                 raise conflict()
-            if move.action.destination.strip() == conversation.state.place.strip():
-                raise KomaquillError(code="invalid_response", retryable=False)
+            try:
+                validate_move(move, request.text, conversation.state.place)
+            except ValueError:
+                raise KomaquillError(code="invalid_response", retryable=False) from None
             updated = accept_input(
                 conversation,
                 SendInput(
@@ -822,14 +824,18 @@ class ConversationRepository:
         )
         action = read_action(action_payload) if action_payload else None
         meeting = self._meeting(connection, conversation)
-        if reply.meeting_change is not None:
-            try:
-                quote = reply.meeting_change.quote
-                if action and action.source and quote not in action.source.remaining(request.text):
-                    raise ValueError("The meeting decision must be in the remaining message.")
-                meeting = reply.meeting_change.apply(meeting, request.text, identity)
-            except ValueError:
-                raise KomaquillError(code="invalid_response", retryable=False) from None
+        excluded = action.source if action else None
+        try:
+            if reply.meeting_query is not None:
+                meeting_query_source(
+                    request.text, reply.meeting_query, meeting is not None, excluded=excluded
+                )
+            if reply.meeting_change is not None:
+                meeting = reply.meeting_change.apply(
+                    meeting, request.text, identity, excluded=excluded
+                )
+        except ValueError:
+            raise KomaquillError(code="invalid_response", retryable=False) from None
         answer = None
         if reply.meeting_query or reply.meeting_change is not None:
             answer = meeting.answer() if meeting else MeetingAnswer(status="unknown")

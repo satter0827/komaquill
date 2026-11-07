@@ -154,7 +154,7 @@ def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
     generated = DialogueResult(
         kind="companion",
         meeting_change=None,
-        meeting_query="none",
+        meeting_query=None,
         changes=[],
         action_narration="",
         text="Hello",

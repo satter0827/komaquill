@@ -147,7 +147,7 @@ class Reply(Record):
     state_patch: StatePatch
     action_proposals: list[PlayerAction] = Field(default_factory=list, max_length=4)
     meeting_change: MeetingChange | None = None
-    meeting_query: bool = False
+    meeting_query: str | None = None
 
 
 type TurnResult = Reply | InferredMove

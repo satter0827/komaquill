@@ -57,7 +57,7 @@ def test_present_companion_must_produce_visible_content_even_after_an_action(
         "response": {
             "kind": "companion",
             "meeting_change": None,
-            "meeting_query": "none",
+            "meeting_query": None,
             "changes": [{"field": "pose", "value": "standing"}],
             "text": "",
             "action_narration": "",
@@ -98,7 +98,7 @@ def test_new_visible_scenery_is_a_valid_silent_response(tmp_path, monkeypatch):
         "response": {
             "kind": "companion",
             "meeting_change": None,
-            "meeting_query": "none",
+            "meeting_query": None,
             "changes": [{"field": "scenery", "value": "Sunlight fills the room."}],
             "text": "",
             "action_narration": "",

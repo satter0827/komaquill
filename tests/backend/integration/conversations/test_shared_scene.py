@@ -254,7 +254,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                             "response": {
                                 "kind": "companion",
                                 "meeting_change": None,
-                                "meeting_query": "none",
+                                "meeting_query": None,
                                 "changes": [],
                                 "action_narration": "",
                                 "text": "",
@@ -268,7 +268,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                         {
                             "response": {
                                 "kind": "companion",
-                                "meeting_query": "none",
+                                "meeting_query": None,
                                 "changes": [],
                                 "action_narration": "",
                                 "text": "Let us plan the reading group here.",

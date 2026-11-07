@@ -115,7 +115,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(
                     proposals = [
                         {
                             "kind": "move",
-                            "destination": "海辺" if ja else "Beach",
+                            "destination": "海" if ja else "Beach",
                             "quote": "私は今から海へ向かいます。"
                             if ja
                             else "I head to the beach now.",

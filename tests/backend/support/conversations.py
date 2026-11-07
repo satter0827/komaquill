@@ -42,7 +42,7 @@ def wire_reply(value: dict[str, Any], *, reaction: bool = False) -> dict[str, An
                 "response": {
                     "kind": "companion",
                     "meeting_change": None,
-                    "meeting_query": "none",
+                    "meeting_query": None,
                     "changes": [],
                     "action_narration": "",
                     "text": "",
@@ -68,7 +68,7 @@ def wire_reply(value: dict[str, Any], *, reaction: bool = False) -> dict[str, An
         "response": {
             "kind": "companion",
             "meeting_change": None,
-            "meeting_query": "none",
+            "meeting_query": None,
             "changes": changes,
             **{
                 key: value[key]

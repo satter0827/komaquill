@@ -21,8 +21,12 @@ from komaquill.domain.conversations.actions import (
     WaitAction,
 )
 from komaquill.domain.conversations.context import scene_context
-from komaquill.domain.conversations.evidence import SourceSpan
-from komaquill.domain.conversations.meetings import MeetingChange
+from komaquill.domain.conversations.evidence import (
+    SourceSpan,
+    has_other_content,
+    named_only_as_password,
+)
+from komaquill.domain.conversations.meetings import MeetingChange, meeting_query_source
 from komaquill.domain.conversations.models import (
     ConnectionProfile,
     Conversation,
@@ -30,6 +34,7 @@ from komaquill.domain.conversations.models import (
     TurnRequest,
     TurnResult,
 )
+from komaquill.domain.conversations.movement import direct_move, validate_move
 from komaquill.domain.conversations.transitions import require_visible_reply
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.library.models import CharacterInput, PlayerInput, StoryInput
@@ -125,8 +130,8 @@ class DialogueResult(Record):
     meeting_change: MeetingChange | None = Field(
         description="The latest user's explicit rendezvous decision, or null."
     )
-    meeting_query: Literal["none", "only", "mixed"] = Field(
-        description="Whether the user asks to review the meeting alone or alongside other topics."
+    meeting_query: str | None = Field(
+        description="Exact passage asking to review the meeting, or null. Exclude other questions."
     )
     changes: list[SceneChange] = Field(
         max_length=6,
@@ -256,10 +261,12 @@ class ConversationResponder:
         message = request.text
         latest = message
         arrived = action is not None and isinstance(action.request.action, MoveAction)
+        move_source = None
         if action is not None:
             if action.origin == "conversation":
                 if action.source is None:
                     raise KomaquillError(code="operation_conflict", retryable=False)
+                move_source = action.source
                 message = action.source.remaining(request.text)
             latest = json.dumps(
                 {
@@ -356,6 +363,7 @@ class ConversationResponder:
                 )
         if not request.allow_real_llm:
             raise KomaquillError(code="real_llm_not_allowed", retryable=False)
+        stated_move = direct_move(message, conversation.state.place) if action is None else None
         language = "Japanese" if locale == "ja" else "English"
         reply_schema: type[NarrativeReply | ReactionReply]
         if arrived:
@@ -495,37 +503,70 @@ class ConversationResponder:
             if value
         ]
 
-        def validate(reply: NarrativeReply | ReactionReply) -> None:
-            if isinstance(reply, NarrativeReply) and reply.player_move is not None:
-                try:
-                    travel = SourceSpan.locate(message, reply.player_move.quote)
-                    if reply.player_move.destination.strip() == conversation.state.place.strip():
-                        raise ValueError("The characters are already at the destination.")
-                    if (
-                        isinstance(reply.response, DialogueResult)
-                        and reply.response.meeting_change is not None
-                    ):
-                        meeting = SourceSpan.locate(message, reply.response.meeting_change.quote)
-                        if travel.start < meeting.end and meeting.start < travel.end:
-                            raise ValueError("A meeting decision cannot also be an immediate move.")
-                except ValueError:
-                    raise ResponseConstraintError("move_source", ("player_move", "quote")) from None
-                return
-            if isinstance(reply.response, ProposalResult):
-                return
-            value = reply.response
+        def resolve_move(reply: NarrativeReply | ReactionReply) -> InferredMove | None:
+            if not isinstance(reply, NarrativeReply) or reply.player_move is None:
+                return stated_move
+            try:
+                travel = SourceSpan.locate(message, reply.player_move.quote)
+                move = InferredMove(
+                    action=MoveAction(destination=reply.player_move.destination), source=travel
+                )
+                validate_move(move, message, conversation.state.place)
+                if stated_move and (
+                    move.action.destination.strip().casefold()
+                    != stated_move.action.destination.casefold()
+                    or not travel.overlaps(stated_move.source)
+                ):
+                    raise ValueError("The proposed move differs from the direct request.")
+                if isinstance(reply.response, DialogueResult) and reply.response.meeting_change:
+                    meeting = SourceSpan.locate(message, reply.response.meeting_change.quote)
+                    if travel.overlaps(meeting):
+                        raise ValueError("A meeting decision cannot also be an immediate move.")
+                return move
+            except ValueError:
+                raise ResponseConstraintError("move_source", ("player_move", "quote")) from None
+
+        def meeting_only(value: DialogueResult) -> bool:
+            spans = [move_source] if move_source else []
             if value.meeting_change is not None:
                 try:
-                    SourceSpan.locate(message, value.meeting_change.quote)
+                    spans.append(SourceSpan.locate(request.text, value.meeting_change.quote))
                     value.meeting_change.apply(
-                        request.meeting_state, request.text, request.operation_id
+                        request.meeting_state,
+                        request.text,
+                        request.operation_id,
+                        excluded=move_source,
                     )
                 except ValueError:
                     raise ResponseConstraintError(
                         "meeting_source", ("response", "meeting_change")
                     ) from None
-            if value.meeting_query == "only":
+            if value.meeting_query is None:
+                return value.meeting_change is not None and not has_other_content(
+                    request.text, spans
+                )
+            try:
+                inquiry = meeting_query_source(
+                    request.text,
+                    value.meeting_query,
+                    request.meeting_state is not None,
+                    excluded=move_source,
+                )
+                spans.append(inquiry)
+            except ValueError:
+                raise ResponseConstraintError(
+                    "meeting_query", ("response", "meeting_query")
+                ) from None
+            return not has_other_content(request.text, spans)
+
+        def validate(reply: NarrativeReply | ReactionReply) -> None:
+            if resolve_move(reply) is not None or isinstance(reply.response, ProposalResult):
                 return
+            value = reply.response
+            if meeting_only(value):
+                return
+            if value.meeting_query is not None and not value.text.strip():
+                raise ResponseConstraintError("meeting_query", ("response", "text"))
             desired = resolve_scene(conversation, value)
             proposed = StatePatch.between(conversation.state, desired).apply(conversation.state)
             try:
@@ -534,8 +575,7 @@ class ConversationResponder:
                     proposed,
                     value.text,
                     value.action_narration,
-                    meeting_query=value.meeting_query == "mixed"
-                    or value.meeting_change is not None,
+                    meeting_query=value.meeting_change is not None,
                 )
             except KomaquillError:
                 raise ResponseConstraintError("empty_response", ("response", "text")) from None
@@ -557,14 +597,19 @@ class ConversationResponder:
             ):
                 raise ValueError("Player changes require confirmation.")
             player_objects = {item.id for item in proposed.player.held_objects or []}
+            retained_objects = {item.id for item in conversation.state.character.held_objects or []}
+            passwords = named_only_as_password(message)
             for index, change in enumerate(value.changes):
                 if isinstance(change, ObjectsChange):
                     for item_index, item in enumerate(change.value):
+                        path = ("response", "changes", index, "value", item_index)
                         if item.id in player_objects:
-                            raise ResponseConstraintError(
-                                "object_ownership",
-                                ("response", "changes", index, "value", item_index, "id"),
-                            )
+                            raise ResponseConstraintError("object_ownership", (*path, "id"))
+                        if (
+                            item.id not in retained_objects
+                            and item.name.strip().casefold() in passwords
+                        ):
+                            raise ResponseConstraintError("password_object", (*path, "name"))
 
         if retained_response:
             generated = self.execution.replay(
@@ -590,20 +635,17 @@ class ConversationResponder:
                 trim=False,
                 purpose=purpose,
             )
-        if isinstance(generated, NarrativeReply) and generated.player_move is not None:
-            return InferredMove(
-                action=MoveAction(destination=generated.player_move.destination),
-                source=SourceSpan.locate(message, generated.player_move.quote),
-            )
+        if (move := resolve_move(generated)) is not None:
+            return move
         value = generated.response
         if isinstance(value, ProposalResult):
             return Reply(text="", state_patch=StatePatch(), action_proposals=[value.action])
-        if value.meeting_query == "only":
+        if meeting_only(value):
             return Reply(
                 text="",
                 state_patch=StatePatch(),
                 meeting_change=value.meeting_change,
-                meeting_query=True,
+                meeting_query=value.meeting_query,
             )
         desired = resolve_scene(conversation, value)
         return Reply(
@@ -612,5 +654,5 @@ class ConversationResponder:
             text=value.text,
             state_patch=StatePatch.between(conversation.state, desired),
             meeting_change=value.meeting_change,
-            meeting_query=value.meeting_query == "mixed",
+            meeting_query=value.meeting_query,
         )

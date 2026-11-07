@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage
 from tests.backend.support.conversations import scripted_llm_availability
 
 
-def reply(change=None, *, query=True, text=""):
+def reply(change=None, *, query=None, text=""):
     return {
         "player_move": None,
         "response": {
@@ -22,7 +22,7 @@ def reply(change=None, *, query=True, text=""):
             "meeting_change": {"date": None, "time": None, "place": None, **change}
             if change is not None
             else None,
-            "meeting_query": "only" if query else "none",
+            "meeting_query": query,
         },
     }
 
@@ -46,6 +46,7 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
         correction = "Change only the time to 11 AM."
         cancel = "I am cancelling the meeting."
         new = "The new meeting place is Central Station."
+        inquiry = "What is the meeting plan?"
         model_responses(
             client,
             monkeypatch,
@@ -58,6 +59,7 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
                         "time": "10 AM",
                         "place": "Town Hall",
                     },
+                    query=inquiry,
                     text="The meeting is at 3 PM at the wrong place.",
                 ),
                 reply(
@@ -67,12 +69,13 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
                         "date": "Friday",
                         "time": "11 AM",
                         "place": "Town Hall",
-                    }
+                    },
+                    query=inquiry,
                 ),
-                reply(),
-                reply({"kind": "cancel", "quote": cancel}),
-                reply({"kind": "set", "quote": new, "place": "Central Station"}, query=False),
-                reply(),
+                reply(query="Where are we meeting?", text="We can discuss the café as a fallback."),
+                reply({"kind": "cancel", "quote": cancel}, query="What is its status?"),
+                reply({"kind": "set", "quote": new, "place": "Central Station"}, query=inquiry),
+                reply(query=inquiry),
             ],
         )
 
@@ -131,7 +134,7 @@ def test_missing_or_repeated_move_evidence_leaves_the_scene_unchanged(tmp_path, 
         scene = client.conversations.create(
             ConversationInput(title="Reading group", locale="en", initial_state={"place": "Shop"})
         )
-        candidate = reply(query=False)
+        candidate = reply()
         candidate["player_move"] = {"kind": "move", "destination": "Park", "quote": quote}
         model_responses(client, monkeypatch, [candidate, candidate])
         operation = client.conversations.send(
@@ -172,3 +175,102 @@ def test_meeting_decision_cannot_also_be_applied_as_travel(tmp_path, monkeypatch
         saved = client.conversations.get(scene.id)
         assert saved.state.place == "Shop" and not saved.actions
         assert saved.turns[0].meeting.place == destination
+
+
+@pytest.mark.parametrize(
+    "text,quote,kind,values",
+    [
+        (
+            "初めて参加する人でも話しやすい質問を考えてください。",
+            "初めて参加する人でも話しやすい質問を考えてください。",
+            "cancel",
+            {},
+        ),
+        ("Do not cancel the meeting.", "cancel the meeting", "cancel", {}),
+        (
+            "Do not change the meeting to Sunday.",
+            "change the meeting to Sunday",
+            "set",
+            {"date": "Sunday"},
+        ),
+        (
+            "Change the screening time to 11 AM.",
+            "Change the screening time to 11 AM.",
+            "set",
+            {"time": "11 AM"},
+        ),
+        ('A friend wrote: "Hello. Cancel the meeting."', "Cancel the meeting.", "cancel", {}),
+        ("If it rains, we meet at the café.", "we meet at the café.", "set", {"place": "café"}),
+    ],
+)
+def test_a_verbatim_quote_cannot_authorize_a_non_decision(
+    tmp_path, monkeypatch, text, quote, kind, values
+):
+    scripted_llm_availability(monkeypatch)
+    with Client.initialize(tmp_path) as client:
+        scene = client.conversations.create(ConversationInput(title="Reading group", locale="en"))
+        first = "We will meet on Friday at Town Hall."
+        model_responses(
+            client,
+            monkeypatch,
+            [
+                reply({"kind": "set", "quote": first, "date": "Friday", "place": "Town Hall"}),
+                reply({"kind": kind, "quote": quote, **values}, text="I have changed the meeting."),
+                reply(text="We can discuss that separately."),
+            ],
+        )
+        original = client.conversations.send(
+            scene.id,
+            SendInput(operation_id=uuid4(), expected_revision=0, text=first, allow_real_llm=True),
+        )
+        assert original.state == "complete"
+        latest = client.conversations.send(
+            scene.id,
+            SendInput(operation_id=uuid4(), expected_revision=1, text=text, allow_real_llm=True),
+        )
+        assert latest.state == "complete" and len(client.llm_records(latest.id)) == 2
+        before, after = client.conversations.get(scene.id).turns
+        assert after.meeting is None and after.meeting_state == before.meeting_state
+
+
+@pytest.mark.parametrize("join", ["? ", " and "])
+def test_unrecognized_move_still_answers_separate_questions_after_arrival(
+    tmp_path, monkeypatch, join
+):
+    scripted_llm_availability(monkeypatch)
+    with Client.initialize(tmp_path) as client:
+        scene = client.conversations.create(
+            ConversationInput(title="Reading group", locale="en", initial_state={"place": "Shop"})
+        )
+        travel = "Let's go to Central Park."
+        inquiry = "What is the meeting plan"
+        other = "how should we greet the guests?"
+        message = f"{inquiry}{join}{other}"
+        answer = "Welcome them by name and offer a seat."
+        model_responses(
+            client,
+            monkeypatch,
+            [
+                reply(query=other, text="We can discuss that."),
+                {"response": reply(query=message)["response"]},
+                {"response": reply(query=inquiry, text=answer)["response"]},
+            ],
+        )
+        operation = client.conversations.send(
+            scene.id,
+            SendInput(
+                operation_id=uuid4(),
+                expected_revision=0,
+                text=f"{travel} {message}",
+                allow_real_llm=True,
+            ),
+        )
+        assert operation.state == "complete"
+        saved = client.conversations.get(scene.id)
+        assert saved.state.place == "Central Park" and len(saved.actions) == 1
+        assert saved.turns[0].assistant == answer
+        assert saved.turns[0].meeting.status == "unknown"
+        calls = client.llm_records(operation.id)
+        assert len(calls) == 3
+        content = json.loads(calls[1]["messages"][-1]["content"])
+        assert content["message"] == message

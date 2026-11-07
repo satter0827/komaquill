@@ -74,21 +74,30 @@ function inspectTurn(turn, index) {
     turn.action?.kind === 'move' ? turn.action.destination : undefined,
     expectedMove,
   )
-  if (expectedMove) assert.equal(turn.action_narration, '')
+  if (expectedMove) {
+    assert.equal(turn.action_narration, '')
+    assert(turn.assistant.trim())
+  }
   check = 'meeting_result'
   const expectedMeeting = config.expected_meetings?.[String(index)]
   if (expectedMeeting) {
     assert.equal(turn.meeting?.status, expectedMeeting.status)
     for (const key of ['date', 'time', 'place'])
       assert.equal(turn.meeting[key] ?? null, expectedMeeting[key] ?? null)
+  } else if (config.expected_meetings) {
+    assert.equal(turn.meeting ?? null, null)
   }
 }
 
 async function inspectDisplayedMeeting(article, index) {
   const expected = config.expected_meetings?.[String(index)]
-  if (!expected) return
+  if (!config.expected_meetings) return
   check = 'meeting_display'
   const details = article.getByRole('region', { name: messages.meetingDetails })
+  if (!expected) {
+    assert.equal(await details.count(), 0)
+    return
+  }
   await details.waitFor()
   if (expected.status === 'confirmed') {
     assert.deepEqual(

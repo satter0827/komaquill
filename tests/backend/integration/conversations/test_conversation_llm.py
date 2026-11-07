@@ -192,7 +192,7 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
                 "response": {
                     "kind": "companion",
                     "meeting_change": None,
-                    "meeting_query": "none",
+                    "meeting_query": None,
                     "changes": [],
                     "action_narration": "",
                     "text": "Understood.",
@@ -791,7 +791,7 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                         "response": {
                             "kind": "companion",
                             "meeting_change": None,
-                            "meeting_query": "none",
+                            "meeting_query": None,
                             "changes": [
                                 {
                                     "field": "held_objects",
@@ -834,3 +834,53 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
     saved = api.conversations.get(scene.id)
     assert saved.state.player.held_objects[0].id == object_id
     assert not saved.state.character.held_objects
+
+
+def test_password_assignment_does_not_create_a_physical_object(tmp_path, monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    with Client.initialize(tmp_path) as api:
+        scene = api.conversations.create(ConversationInput(title="Password", locale="ja"))
+        model_name = api._execution.settings.llm_profiles["lmstudio-4b"].model
+        baseline = {
+            "kind": "companion",
+            "meeting_change": None,
+            "meeting_query": None,
+            "changes": [],
+            "action_narration": "",
+            "text": "合言葉を覚えておきます。",
+        }
+        incorrect = {
+            **baseline,
+            "changes": [
+                {"field": "held_objects", "value": [{"id": "compass", "name": "銀のコンパス"}]}
+            ],
+            "action_narration": "銀のコンパスを手に取った。",
+        }
+        model = FakeMessagesListChatModel(
+            responses=[
+                AIMessage(
+                    content=json.dumps(
+                        {"player_move": None, "response": value}, ensure_ascii=False
+                    ),
+                    response_metadata={"model_name": model_name},
+                )
+                for value in (incorrect, baseline)
+            ]
+        )
+        monkeypatch.setattr(api._execution, "_model", lambda _: model)
+        result = api.conversations.send(
+            scene.id,
+            SendInput(
+                operation_id=uuid4(),
+                expected_revision=0,
+                text="今回の読書会の合言葉は『銀のコンパス』です。覚えておいてください。",
+                allow_real_llm=True,
+            ),
+        )
+        assert result.state == "complete"
+        assert len(api.llm_records(result.id)) == 2
+        saved = api.conversations.get(scene.id)
+        assert not saved.state.character.held_objects
+        assert saved.turns[0].action_narration == ""

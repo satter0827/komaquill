@@ -31,7 +31,7 @@ def apply_reply(
             state,
             reply.text,
             reply.action_narration,
-            meeting_query=reply.meeting_query or reply.meeting_change is not None,
+            meeting_query=reply.meeting_query is not None or reply.meeting_change is not None,
         )
     if (
         (

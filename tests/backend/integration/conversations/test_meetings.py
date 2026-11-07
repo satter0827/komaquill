@@ -52,7 +52,7 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
             [
                 reply(
                     {
-                        "kind": "confirm",
+                        "kind": "set",
                         "quote": first,
                         "date": "Friday",
                         "time": "10 AM",
@@ -60,10 +60,10 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
                     },
                     text="The meeting is at 3 PM at the wrong place.",
                 ),
-                reply({"kind": "correct", "quote": correction, "time": "11 AM"}),
+                reply({"kind": "set", "quote": correction, "time": "11 AM"}),
                 reply(),
                 reply({"kind": "cancel", "quote": cancel}),
-                reply({"kind": "confirm", "quote": new, "place": "Central Station"}, query=False),
+                reply({"kind": "set", "quote": new, "place": "Central Station"}, query=False),
                 reply(),
             ],
         )
@@ -148,7 +148,7 @@ def test_meeting_decision_cannot_also_be_applied_as_travel(tmp_path, monkeypatch
             ConversationInput(title="Reading group", locale="en", initial_state={"place": "Shop"})
         )
         text = f"We will meet on Friday at {destination}."
-        meeting = {"kind": "confirm", "quote": text, "date": "Friday", "place": destination}
+        meeting = {"kind": "set", "quote": text, "date": "Friday", "place": destination}
         correct = reply(meeting)
         conflict = {
             **correct,

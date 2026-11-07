@@ -24,7 +24,8 @@ class ResponseConstraintError(ValueError):
         if self.rule == "meeting_source":
             return (
                 "Quote one exact passage from the latest user message and copy each stated "
-                "value verbatim. For a correction, fill the changed value and set the other "
+                "value verbatim. For an explicit decision or correction, use kind=set and fill "
+                "only the explicitly changed values. For a correction, set the other "
                 "values to null. For a cancellation, set all three values to null. For a "
                 "proposal, condition or ambiguous decision, set meeting_change to null."
             )

@@ -273,7 +273,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                                 "action_narration": "",
                                 "text": "Let us plan the reading group here.",
                                 "meeting_change": {
-                                    "kind": "confirm",
+                                    "kind": "set",
                                     "quote": meeting,
                                     "date": "Friday",
                                     "time": None,

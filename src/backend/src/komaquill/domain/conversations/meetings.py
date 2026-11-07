@@ -12,14 +12,11 @@ MEETING_FIELDS = ("date", "time", "place")
 MeetingText = Annotated[str, Field(min_length=1, max_length=MAX_PLACE_LENGTH)]
 
 
-class MeetingValues(Record):
+class MeetingAnswer(Record):
+    status: Literal["confirmed", "unknown", "cancelled"]
     date: MeetingText | None = None
     time: MeetingText | None = None
     place: MeetingText | None = None
-
-
-class MeetingAnswer(MeetingValues):
-    status: Literal["confirmed", "unknown", "cancelled"]
 
 
 class MeetingSource(Record):
@@ -49,7 +46,7 @@ class MeetingPlan(Record):
 
 
 class MeetingChange(Record):
-    kind: Literal["confirm", "correct", "cancel"]
+    kind: Literal["set", "cancel"]
     quote: str = Field(min_length=1, description="Exact user passage expressing this decision.")
     date: MeetingText | None = Field(description="Exact stated date or weekday, otherwise null.")
     time: MeetingText | None = Field(description="Exact stated time, otherwise null.")
@@ -66,8 +63,6 @@ class MeetingChange(Record):
             return MeetingPlan(cancellation=MeetingSource(turn_id=turn_id, span=span))
         if not explicit:
             raise ValueError("A meeting decision must supply at least one value.")
-        if self.kind == "correct" and (plan is None or plan.cancellation is not None):
-            raise ValueError("A correction requires an active meeting.")
         values = plan.model_dump() if plan is not None and not plan.cancellation else {}
         for name, value in explicit.items():
             part = SourceSpan.locate(self.quote, value)

@@ -1052,6 +1052,10 @@ export type IntentionAction = {
  */
 export type MeetingAnswer = {
     /**
+     * Status
+     */
+    status: 'confirmed' | 'unknown' | 'cancelled';
+    /**
      * Date
      */
     date?: string | null;
@@ -1063,10 +1067,6 @@ export type MeetingAnswer = {
      * Place
      */
     place?: string | null;
-    /**
-     * Status
-     */
-    status: 'confirmed' | 'unknown' | 'cancelled';
 };
 
 /**

@@ -6931,6 +6931,15 @@
       },
       "MeetingAnswer": {
         "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "unknown",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
           "date": {
             "anyOf": [
               {
@@ -6969,15 +6978,6 @@
               }
             ],
             "title": "Place"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "confirmed",
-              "unknown",
-              "cancelled"
-            ],
-            "title": "Status"
           }
         },
         "additionalProperties": false,

@@ -50,7 +50,12 @@ export function ArchivedConversationPage() {
     />
   )
   if (query.error && !query.data) return notice
-  if (!query.data) return <p>{m.loading}</p>
+  if (!query.data)
+    return (
+      <p role="status" className="page">
+        {m.loading}
+      </p>
+    )
   return (
     <section className="page archive-page">
       {notice}
@@ -59,10 +64,12 @@ export function ArchivedConversationPage() {
       {!query.data.readable && <p role="alert">{m.unreadableConversation}</p>}
       {query.data.turns.map((turn, index) => (
         <article className="turn" key={index}>
-          <div className="user-message">
-            <div className="message-label">{m.you}</div>
-            <p>{turn.user}</p>
-          </div>
+          {turn.user.trim() && (
+            <div className="user-message">
+              <div className="message-label">{m.you}</div>
+              <p>{turn.user}</p>
+            </div>
+          )}
           <div className="assistant-message">
             <StoryReply
               narration={turn.narration}

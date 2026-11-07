@@ -12,7 +12,9 @@ test('saves the single player and personal attributes', async ({
   await page.getByLabel(ja.age, { exact: true }).fill('28')
   await page.getByLabel(ja.gender, { exact: true }).fill('女性')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
-  await expect(page.locator('.editor-page [role=status]')).toHaveText(ja.saved)
+  await expect(
+    page.locator('.editor-page form').getByRole('status'),
+  ).toHaveText(ja.saved)
   await page.reload()
   await page.getByText(ja.basicDetails, { exact: true }).click()
   await expect(page.getByLabel(ja.age, { exact: true })).toHaveValue('28')
@@ -51,7 +53,9 @@ test('automatically collects a portrait and preserves it after duplication', asy
   )
   await page.getByLabel(ja.requiredName, { exact: true }).fill(name + ' edited')
   await page.getByRole('button', { name: ja.save, exact: true }).click()
-  await expect(page.locator('.editor-page [role=status]')).toHaveText(ja.saved)
+  await expect(
+    page.locator('.editor-page form').getByRole('status'),
+  ).toHaveText(ja.saved)
   await page.getByRole('button', { name: ja.duplicate }).click()
   await expect(
     page.locator('.preset-card h2').filter({ hasText: name }),
@@ -356,7 +360,9 @@ test('reviews a draft separately and edits a saved character', async ({
     stored.find((item: { id: string }) => item.id === created.preset.id),
   ).toMatchObject({ name, revision: 0 })
   await page.getByRole('button', { name: en.save, exact: true }).click()
-  await expect(page.locator('.editor-page [role=status]')).toHaveText(en.saved)
+  await expect(
+    page.locator('.editor-page form').getByRole('status'),
+  ).toHaveText(en.saved)
   await page.reload()
   await expect(editorName).toHaveValue('Fixture character')
   await page.getByText(en.basicDetails, { exact: true }).click()

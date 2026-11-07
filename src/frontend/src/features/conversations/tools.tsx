@@ -1,6 +1,6 @@
 import { MoreHorizontal } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type {
@@ -8,9 +8,14 @@ import type {
   NotesRequest,
   SceneRequest,
 } from '../../api/generated/types.gen'
-import { useFailure, useMessages } from '../../shared/preferences'
+import {
+  useFailure,
+  useFormatMessage,
+  useMessages,
+} from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
 import { Popover, Popup } from '../../shared/ui/popup'
+import { QueryNotice } from '../../shared/ui/query-notice'
 
 export function ConversationNotes({
   conversation,
@@ -128,7 +133,13 @@ export function ConversationNotes({
         </div>
       </details>
       <h3>{m.savedScenes}</h3>
-      {bookmarks.error && <p role="alert">{failure(bookmarks.error)}</p>}
+      {bookmarks.isPending && <p role="status">{m.loading}</p>}
+      <QueryNotice
+        error={bookmarks.error}
+        retained={bookmarks.data !== undefined}
+        pending={bookmarks.isFetching}
+        onRetry={() => void bookmarks.refetch()}
+      />
       {bookmarks.isSuccess && bookmarks.data.length === 0 && (
         <p className="subtle">{m.noSavedScenes}</p>
       )}
@@ -159,11 +170,15 @@ export function SceneActions({
   defaultName?: string
 }) {
   const m = useMessages()
+  const format = useFormatMessage()
   const failure = useFailure()
   const cache = useQueryClient()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(defaultName)
+  const label = defaultName
+    ? format('bookmarkActions', { name: defaultName })
+    : m.sceneActions
   const [prepared, setPrepared] = useState<{
     kind: 'save' | 'fork'
     body: SceneRequest
@@ -206,6 +221,11 @@ export function SceneActions({
       navigate(`/conversations/${value.id}`)
     },
   })
+  const actionError = save.error || fork.error
+  const errorNotice = useRef<HTMLParagraphElement>(null)
+  useEffect(() => {
+    if (open && actionError) errorNotice.current?.focus()
+  }, [open, actionError])
   const request = (kind: 'save' | 'fork') => {
     const body = prepared?.body ?? {
       operation_id: crypto.randomUUID(),
@@ -221,16 +241,12 @@ export function SceneActions({
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger
           render={
-            <Button
-              variant="ghost"
-              aria-label={m.sceneActions}
-              disabled={!canMutate}
-            />
+            <Button variant="ghost" aria-label={label} disabled={!canMutate} />
           }
         >
           <MoreHorizontal size={18} />
         </Popover.Trigger>
-        <Popup label={m.sceneActions}>
+        <Popup label={label}>
           <label>
             {m.sceneName}
             <input
@@ -240,6 +256,11 @@ export function SceneActions({
               onChange={(event) => setName(event.target.value)}
             />
           </label>
+          {actionError && (
+            <p ref={errorNotice} tabIndex={-1} role="alert" className="error">
+              {failure(actionError)}
+            </p>
+          )}
           <Button
             disabled={
               !canMutate ||
@@ -247,7 +268,10 @@ export function SceneActions({
               fork.isPending ||
               prepared?.kind === 'fork'
             }
-            onClick={() => save.mutate(request('save'))}
+            onClick={() => {
+              fork.reset()
+              save.mutate(request('save'))
+            }}
           >
             {m.saveScene}
           </Button>
@@ -258,15 +282,15 @@ export function SceneActions({
               fork.isPending ||
               prepared?.kind === 'save'
             }
-            onClick={() => fork.mutate(request('fork'))}
+            onClick={() => {
+              save.reset()
+              fork.mutate(request('fork'))
+            }}
           >
             {m.forkScene}
           </Button>
         </Popup>
       </Popover.Root>
-      {(save.error || fork.error) && (
-        <p role="alert">{failure(save.error || fork.error)}</p>
-      )}
     </div>
   )
 }

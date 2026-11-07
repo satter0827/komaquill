@@ -1479,16 +1479,26 @@ details > .details-content {
   width: min(26rem, calc(100vw - 2 * var(--panel-gutter)));
   max-height: min(65dvh, var(--available-height));
   overflow: auto;
+  overscroll-behavior: contain;
   padding: var(--space-group);
   border: 1px solid var(--control-line);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: 0 12px 40px #44233324;
 }
-.popup-title {
-  margin: 0;
+.popup-content[data-roomy] {
+  max-height: var(--available-height);
+}
+.popup-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-field);
   padding-block-end: var(--space-field);
   border-bottom: 1px solid var(--line);
+}
+.popup-title {
+  margin: 0;
   font-size: 1rem;
   overflow-wrap: anywhere;
 }

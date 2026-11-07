@@ -9,6 +9,7 @@ import {
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { QueryNotice } from '../../shared/ui/query-notice'
 
 const DEFAULT_EXTERNAL_ENDPOINT = 'http://127.0.0.1:8188'
 
@@ -42,7 +43,7 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
   })
   const busy = refresh.isPending || start.isPending || stop.isPending
   const status = runtime.isSuccess ? runtime.data : undefined
-  const entries = views.isSuccess ? views.data : []
+  const entries = views.data ?? []
   const target = status?.shutdown_target
   const owned = target === 'owned'
   const external = target === 'external'
@@ -109,9 +110,14 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
             {m.refresh}
           </Button>
         </div>
-        {!!(runtime.error || refresh.error) && (
+        <QueryNotice
+          error={runtime.error}
+          pending={runtime.isFetching}
+          onRetry={() => void runtime.refetch()}
+        />
+        {!!refresh.error && (
           <p role="alert" className="error">
-            {failure(runtime.error || refresh.error)}
+            {failure(refresh.error)}
           </p>
         )}
       </section>
@@ -147,12 +153,13 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
       <details className="runtime-card">
         <summary>{m.drawingSettings}</summary>
         <div className="details-content">
-          {views.isPending && <p>{m.loading}</p>}
-          {!!views.error && (
-            <p role="alert" className="error">
-              {failure(views.error)}
-            </p>
-          )}
+          {views.isPending && <p role="status">{m.loading}</p>}
+          <QueryNotice
+            error={views.error}
+            retained={views.data !== undefined}
+            pending={views.isFetching}
+            onRetry={() => void views.refetch()}
+          />
           {views.isSuccess && entries.length === 0 && (
             <p className="subtle">{m.runtimeNoViews}</p>
           )}

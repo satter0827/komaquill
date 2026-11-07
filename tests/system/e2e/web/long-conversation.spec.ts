@@ -315,17 +315,37 @@ test('retains the conversation and draft when refreshing fails, then recovers ex
   await expect(page.locator('.assistant-message')).toHaveCount(1)
   await input.fill('Keep this unsent draft')
   const route = `**/api/v1/conversations/${scene.id}`
-  await page.route(route, (r) =>
-    fulfillFault(r, evidence, {
+  let notesSaved = false
+  await page.route(
+    `${route}/notes`,
+    async (request) => {
+      const response = await request.fetch()
+      notesSaved = response.ok()
+      await request.fulfill({ response })
+    },
+    { times: 1 },
+  )
+  await page.route(route, (request) => {
+    if (!notesSaved) return request.continue()
+    return fulfillFault(request, evidence, {
       status: 503,
       json: { code: 'connection_failed' },
-    }),
-  )
+    })
+  })
   await page
     .getByRole('button', { name: ja.conversationMenu, exact: true })
     .click()
   await page.getByText(ja.pinnedNotes, { exact: true }).click()
-  await page.getByRole('button', { name: ja.save, exact: true }).click()
+  const [saved] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname ===
+          `/api/v1/conversations/${scene.id}/notes`,
+    ),
+    page.getByRole('button', { name: ja.save, exact: true }).click(),
+  ])
+  expect(saved.ok()).toBe(true)
   await page.keyboard.press('Escape')
   await expect(page.getByText(ja.refreshFailed, { exact: true })).toBeVisible()
   await expect(page.locator('.assistant-message')).toHaveCount(1)

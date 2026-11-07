@@ -1,5 +1,6 @@
 import { OriginalImage } from '../../shared/images/original'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import {
@@ -9,7 +10,9 @@ import {
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { QueryNotice } from '../../shared/ui/query-notice'
 import { paths } from '../../shared/navigation'
+import { presetsForLocale } from '../../shared/story/presets'
 
 function selectionChanged(error: unknown) {
   return (
@@ -28,6 +31,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
   const cache = useQueryClient()
   const navigate = useNavigate()
   const [search, setSearch] = useSearchParams()
+  const [expanded, setExpanded] = useState<boolean>()
   const player = useQuery(q.getPlayerOptions())
   const characters = useQuery({
     ...q.listCharactersOptions(),
@@ -35,22 +39,27 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
   const stories = useQuery({
     ...q.listStoriesOptions(),
   })
-  const choices = (kind: 'character' | 'story') =>
-    ((kind === 'character' ? characters.data : stories.data) ?? []).filter(
-      (item) => !item.sample || item.sample_locale === preferences.value.locale,
-    )
-  const story =
-    choices('story').find((item) => item.id === search.get('story')) ??
-    (search.has('story') ? undefined : choices('story')[0])
-  const recommended =
-    story && 'character_id' in story ? story.character_id : null
-  const character =
-    choices('character').find(
-      (item) => item.id === (search.get('character') ?? recommended),
-    ) ??
-    (search.has('character') || recommended
-      ? undefined
-      : choices('character')[0])
+  const locale = preferences.value.locale
+  const storyId = search.get('story')
+  const storyChoices = presetsForLocale(stories.data, locale, storyId)
+  const story = storyId
+    ? storyChoices.find((item) => item.id === storyId)
+    : storyChoices[0]
+  const characterId = search.get('character') ?? story?.character_id
+  const characterChoices = presetsForLocale(
+    characters.data,
+    locale,
+    characterId,
+  )
+  const character = characterId
+    ? characterChoices.find((item) => item.id === characterId)
+    : characterChoices[0]
+  const choiceError = !!(player.error || characters.error || stories.error)
+  const loadingChoices =
+    player.isPending || characters.isPending || stories.isPending
+  const selectionComplete = !!(player.data && character && story)
+  const selectionOpen =
+    expanded ?? (choiceError || (!selectionComplete && !loadingChoices))
   const mutation = useMutation({
     ...q.startConversationMutation(),
     onError: async (error) => {
@@ -72,7 +81,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
     if (kind === 'story') next.delete('character')
     setSearch(next)
   }
-  if (compact && (!player.data || !character || !story))
+  if (compact && !selectionComplete)
     return (
       <Link className="button primary" to="/new">
         {m.newConversation}
@@ -92,7 +101,8 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
             player.data &&
             character &&
             story &&
-            !mutation.isPending
+            !mutation.isPending &&
+            !choiceError
           )
             mutation.mutate({
               body: {
@@ -106,7 +116,8 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
       >
         <details
           className="start-selection"
-          open={!player.data || !character || !story}
+          open={selectionOpen}
+          onToggle={(event) => setExpanded(event.currentTarget.open)}
         >
           <summary>
             {m.changeStartSelection}
@@ -127,6 +138,8 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
           <div className="details-content selection-grid">
             {(['story', 'character'] as const).map((kind) => {
               const record = kind === 'story' ? story : character
+              const query = kind === 'story' ? stories : characters
+              const choices = kind === 'story' ? storyChoices : characterChoices
               return (
                 <section
                   className={`selection-card selection-${kind}`}
@@ -136,26 +149,43 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
                     {kind === 'story' ? m.chooseStory : m.chooseCharacter}
                     <select
                       value={record?.id ?? ''}
-                      disabled={mutation.isPending}
+                      disabled={mutation.isPending || !choices.length}
                       onChange={(event) => change(kind, event.target.value)}
                     >
-                      {!record && <option value="">{m.noPresets}</option>}
-                      {choices(kind).map((item) => (
+                      {!record && (
+                        <option value="" disabled>
+                          {m.selectPreset}
+                        </option>
+                      )}
+                      {choices.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name}
                         </option>
                       ))}
                     </select>
                   </label>
-                  <p className="subtle">
-                    {record
-                      ? record.description ||
+                  {query.isPending && <p role="status">{m.loading}</p>}
+                  <QueryNotice
+                    error={compact && kind === 'story' ? null : query.error}
+                    retained={query.data !== undefined}
+                    pending={query.isFetching}
+                    onRetry={() => void query.refetch()}
+                  />
+                  {record ? (
+                    <p className="subtle">
+                      {record.description ||
                         ('opening' in record
                           ? record.opening || record.world || record.goal
                           : record.appearance || record.role) ||
-                        record.name
-                      : m.noPresets}
-                  </p>
+                        record.name}
+                    </p>
+                  ) : query.isSuccess ? (
+                    <p className="subtle">
+                      {choices.length
+                        ? m.startSelectionUnavailable
+                        : m.noPresets}
+                    </p>
+                  ) : null}
                   <div className="actions">
                     {record && (
                       <Link
@@ -187,6 +217,13 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
             })}
             <section className="selection-card">
               <h2>{m.choosePlayer}</h2>
+              {player.isPending && <p role="status">{m.loading}</p>}
+              <QueryNotice
+                error={player.error}
+                retained={!!player.data}
+                pending={player.isFetching}
+                onRetry={() => void player.refetch()}
+              />
               <p>{player.data?.name}</p>
               <p className="subtle">{player.data?.description}</p>
               <Link
@@ -198,6 +235,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
             </section>
           </div>
         </details>
+        {loadingChoices && !selectionOpen && <p role="status">{m.loading}</p>}
         <Button
           variant="primary"
           type="submit"
@@ -206,25 +244,19 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
             !player.data ||
             !character ||
             !story ||
+            choiceError ||
             mutation.isPending
           }
         >
           {m.create}
         </Button>
-        {[
-          mutation.error,
-          player.error,
-          characters.error,
-          ...(compact ? [] : [stories.error]),
-        ]
-          .filter(Boolean)
-          .map((error, index) => (
-            <p key={index} role="alert" className="error">
-              {error === mutation.error && selectionChanged(error)
-                ? m.startSettingsChanged
-                : failure(error)}
-            </p>
-          ))}
+        {mutation.error && (
+          <p role="alert" className="error">
+            {selectionChanged(mutation.error)
+              ? m.startSettingsChanged
+              : failure(mutation.error)}
+          </p>
+        )}
       </form>
     </section>
   )

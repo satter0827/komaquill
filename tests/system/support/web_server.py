@@ -124,7 +124,10 @@ def main() -> None:
     if os.environ.get("KOMAQUILL_WEB_ARCHIVE") == "1":
         payload = {
             "definition": {"title": "The preserved bookshop"},
-            "turns": [{"user": "I open the book.", "assistant": "This page is still here."}],
+            "turns": [
+                {"user": "I open the book.", "assistant": "This page is still here."},
+                {"user": "", "assistant": "The next page turns."},
+            ],
         }
         with sqlite_connection(workspace.data / "komaquill.sqlite3") as connection:
             connection.execute(

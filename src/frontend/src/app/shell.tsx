@@ -25,6 +25,7 @@ import { ImagesPage } from '../features/images/index'
 import { LibraryPage, PlayerPage, PresetCard } from '../features/library/index'
 import { PreferencesPage } from '../features/preferences/index'
 import { ImageActivityProvider } from '../shared/image-activity'
+import { presetsForLocale } from '../shared/story/presets'
 import { ConnectionSummary, useConnectionSummary } from '../shared/availability'
 import { RuntimePage } from '../features/runtime/index'
 import { NewConversation } from '../features/conversations/start'
@@ -260,9 +261,7 @@ function Home() {
   const conversations = useQuery({
     ...q.listConversationsOptions(),
   })
-  const visibleStories = stories.data?.filter(
-    (item) => !item.sample || item.sample_locale === value.locale,
-  )
+  const visibleStories = presetsForLocale(stories.data, value.locale)
   return (
     <section className="page home-page">
       <div className="home-intro">
@@ -306,7 +305,7 @@ function Home() {
       <NewConversation compact />
       <div className="home-section">
         <h2>{m.stories}</h2>
-        {visibleStories?.length === 0 && (
+        {stories.data && visibleStories.length === 0 && (
           <div className="empty-card">
             <p>{m.noPresets}</p>
             <Link className="text-button" to="/stories/new">
@@ -315,7 +314,7 @@ function Home() {
           </div>
         )}
         <div className="preset-grid">
-          {visibleStories?.map((story) => (
+          {visibleStories.map((story) => (
             <PresetCard key={story.id} preset={story} kind="story" />
           ))}
         </div>

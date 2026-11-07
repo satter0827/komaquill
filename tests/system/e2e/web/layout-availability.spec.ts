@@ -160,16 +160,17 @@ test('unconfirmed services disable generation and sending while text remains edi
   request,
   evidence,
 }) => {
+  let ready = false
   await page.route('**/api/v1/availability*', (route) =>
     route.fulfill({
       json: {
-        ready: false,
+        ready,
         connections: [
           {
             kind: 'llm',
             target: 'fixture',
-            state: 'unavailable',
-            reason: 'llm_unavailable',
+            state: ready ? 'ready' : 'unavailable',
+            reason: ready ? null : 'llm_unavailable',
             observed_at: new Date().toISOString(),
             expires_at: new Date(Date.now() + 60_000).toISOString(),
           },
@@ -196,9 +197,18 @@ test('unconfirmed services disable generation and sending while text remains edi
   await page.goto('/images')
   await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet coast')
-  await expect(
-    page.getByRole('button', { name: ja.drawRequestedScene, exact: true }),
-  ).toBeDisabled()
+  const drawing = page.getByRole('button', {
+    name: ja.drawRequestedScene,
+    exact: true,
+  })
+  await expect(drawing).toBeDisabled()
+  const form = page.locator('.image-form')
+  await expect(form.getByText(ja.errors.llm_unavailable)).toBeVisible()
+  ready = true
+  await form.getByRole('button', { name: ja.refresh, exact: true }).click()
+  await expect(drawing).toBeEnabled()
+  await expect(page.getByLabel(ja.imagePrompt)).toHaveValue('A quiet coast')
+  ready = false
   await page.goto('/characters/new')
   await page
     .getByLabel(ja.requiredName, { exact: true })

@@ -333,10 +333,27 @@ test('separates connection controls and distinguishes external from owned enviro
   evidence,
 }) => {
   await page.setViewportSize(viewports.mobile)
-  let owned = false
+  let environment: 'external' | 'active' | 'unconfirmed' | 'none' = 'external'
+  let stops = 0
   const status = () => ({
-    gpu: owned ? 'active' : 'absent',
-    connection: 'connected',
+    gpu:
+      environment === 'unconfirmed'
+        ? 'unknown'
+        : environment === 'active'
+          ? 'active'
+          : 'absent',
+    connection:
+      environment === 'unconfirmed'
+        ? 'preparing'
+        : environment === 'none'
+          ? 'stopped'
+          : 'connected',
+    shutdown_target:
+      environment === 'external'
+        ? 'external'
+        : environment === 'none'
+          ? null
+          : 'owned',
     collector_running: true,
     observed_at: '2026-11-07T03:00:00Z',
     pending: [],
@@ -346,19 +363,28 @@ test('separates connection controls and distinguishes external from owned enviro
   )
   await page.route('**/api/v1/runtime/views', (route) =>
     route.fulfill({
-      json: ['app', 'graph'].map((view) => ({
+      json: (environment === 'external' || environment === 'active'
+        ? ['app', 'graph']
+        : []
+      ).map((view) => ({
         profile: 'wai-illustrious',
         view,
-        backend: owned ? 'colab' : 'external',
-        url: owned
-          ? `http://127.0.0.1:8188/?template=${view}`
-          : 'http://127.0.0.1:8188/',
+        backend: environment === 'active' ? 'colab' : 'external',
+        url:
+          environment === 'active'
+            ? `http://127.0.0.1:8188/?template=${view}`
+            : 'http://127.0.0.1:8188/',
       })),
     }),
   )
   await page.route('**/api/v1/runtime/refresh', (route) =>
     route.fulfill({ json: status() }),
   )
+  await page.route('**/api/v1/runtime/stop', (route) => {
+    stops++
+    environment = 'none'
+    return route.fulfill({ json: status() })
+  })
   await page.route('**/api/v1/runtime/start', (route) =>
     fulfillFault(route, evidence, {
       status: 503,
@@ -388,16 +414,25 @@ test('separates connection controls and distinguishes external from owned enviro
   await connect.click()
   await expect(panel.getByRole('alert')).toBeVisible()
   await expect(address).toHaveValue('http://127.0.0.1:8189')
-  owned = true
+  environment = 'active'
   await panel.getByRole('button', { name: ja.refresh, exact: true }).click()
-  await expect(
-    panel.getByRole('button', { name: ja.stop, exact: true }),
-  ).toBeEnabled()
+  const stop = panel.getByRole('button', { name: ja.stop, exact: true })
+  await expect(stop).toBeEnabled()
   await expect(disconnect).toHaveCount(0)
   await expect(
     panel.getByRole('link', { name: ja.appMode, exact: true }),
   ).toBeVisible()
   await evidence.capture('Connection controls on a narrow screen')
+  environment = 'unconfirmed'
+  await panel.getByRole('button', { name: ja.refresh, exact: true }).click()
+  await expect(
+    panel.getByText(ja.runtimeNoViews, { exact: true }),
+  ).toBeVisible()
+  await expect(stop).toBeEnabled()
+  await expect(disconnect).toHaveCount(0)
+  await stop.click()
+  await expect(stop).toHaveCount(0)
+  expect(stops).toBe(1)
 })
 
 for (const locale of ['ja', 'en'] as const) {

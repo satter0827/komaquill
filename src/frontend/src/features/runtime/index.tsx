@@ -43,9 +43,9 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
   const busy = refresh.isPending || start.isPending || stop.isPending
   const status = runtime.isSuccess ? runtime.data : undefined
   const entries = views.isSuccess ? views.data : []
-  const external = entries.some((view) => view.backend === 'external')
-  const owned =
-    status?.gpu === 'active' || entries.some((view) => view.backend === 'colab')
+  const target = status?.shutdown_target
+  const owned = target === 'owned'
+  const external = target === 'external'
   const externalUrls = new Set(
     entries
       .filter((view) => view.backend === 'external')
@@ -201,7 +201,7 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
       </details>
       <section className="runtime-card">
         <h2>{m.runtimeEndTitle}</h2>
-        {owned !== external ? (
+        {target ? (
           <div className="actions">
             <Button
               variant={owned ? 'danger' : 'secondary'}

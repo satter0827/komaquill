@@ -32,15 +32,20 @@ class RuntimeService:
         with api_operation(OperationStage.CHECK):
             path = self._project.state / "runtime-observation.json"
             adapter = TypeAdapter(SessionStatus)
-            if not refresh:
-                return (
-                    adapter.validate_json(read_bytes(path))
-                    if path.is_file()
-                    else SessionStatus(gpu="unknown")
+            if refresh:
+                result = inspection.inspect(self._project)
+                result.observed_at = datetime.now(UTC)
+                atomic_json(
+                    path, adapter.dump_python(result, mode="json", exclude={"shutdown_target"})
                 )
-            result = inspection.inspect(self._project)
-            result.observed_at = datetime.now(UTC)
-            atomic_json(path, adapter.dump_python(result, mode="json"))
+            else:
+                try:
+                    result = adapter.validate_json(read_bytes(path))
+                except FileNotFoundError:
+                    result = SessionStatus(gpu="unknown")
+                except (OSError, ValueError):
+                    result = SessionStatus(gpu="unknown", unreadable=[path.name])
+            result.shutdown_target = inspection.shutdown_target(self._project)
             return result
 
     def views(self) -> list[dict[str, str]]:

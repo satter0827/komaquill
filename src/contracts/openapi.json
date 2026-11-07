@@ -8860,6 +8860,21 @@
             },
             "type": "array",
             "title": "Unreadable"
+          },
+          "shutdown_target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "owned",
+                  "external"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shutdown Target"
           }
         },
         "type": "object",

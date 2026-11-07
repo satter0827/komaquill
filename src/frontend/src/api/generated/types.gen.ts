@@ -2044,6 +2044,10 @@ export type SessionStatus = {
      * Unreadable
      */
     unreadable?: Array<string>;
+    /**
+     * Shutdown Target
+     */
+    shutdown_target?: 'owned' | 'external' | null;
 };
 
 /**

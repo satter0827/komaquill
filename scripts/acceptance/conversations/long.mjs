@@ -68,6 +68,13 @@ function inspectTurn(turn, index) {
   assert(!Object.hasOwn(turn.state, 'character_place'))
   const expectedPlace = config.expected_places?.[String(index)]
   if (expectedPlace) assert.equal(turn.state.place, expectedPlace)
+  check = 'movement_result'
+  const expectedMove = config.expected_moves?.[String(index)]
+  assert.equal(
+    turn.action?.kind === 'move' ? turn.action.destination : undefined,
+    expectedMove,
+  )
+  if (expectedMove) assert.equal(turn.action_narration, '')
   check = 'meeting_result'
   const expectedMeeting = config.expected_meetings?.[String(index)]
   if (expectedMeeting) {

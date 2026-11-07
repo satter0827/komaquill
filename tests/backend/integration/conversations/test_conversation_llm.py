@@ -191,6 +191,8 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
             {
                 "response": {
                     "kind": "companion",
+                    "meeting_change": None,
+                    "meeting_query": "none",
                     "changes": [],
                     "action_narration": "",
                     "text": "Understood.",
@@ -788,6 +790,8 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                         "player_move": None,
                         "response": {
                             "kind": "companion",
+                            "meeting_change": None,
+                            "meeting_query": "none",
                             "changes": [
                                 {
                                     "field": "held_objects",

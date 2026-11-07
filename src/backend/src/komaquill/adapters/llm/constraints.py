@@ -18,7 +18,8 @@ class ResponseConstraintError(ValueError):
         if self.rule == "move_source":
             return (
                 "Quote the exact immediate travel clause once, excluding any other question "
-                "or request. If the input does not explicitly request travel now, use null."
+                "or meeting decision. Use null for a rendezvous, a future trip or a destination "
+                "where both people are already present."
             )
         if self.rule == "meeting_source":
             return (

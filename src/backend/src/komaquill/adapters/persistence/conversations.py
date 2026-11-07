@@ -287,6 +287,8 @@ class ConversationRepository:
                 or request.action_id is not None
             ):
                 raise conflict()
+            if move.action.destination.strip() == conversation.state.place.strip():
+                raise KomaquillError(code="invalid_response", retryable=False)
             updated = accept_input(
                 conversation,
                 SendInput(

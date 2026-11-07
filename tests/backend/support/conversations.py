@@ -41,6 +41,8 @@ def wire_reply(value: dict[str, Any], *, reaction: bool = False) -> dict[str, An
                 "player_move": action,
                 "response": {
                     "kind": "companion",
+                    "meeting_change": None,
+                    "meeting_query": "none",
                     "changes": [],
                     "action_narration": "",
                     "text": "",
@@ -65,6 +67,8 @@ def wire_reply(value: dict[str, Any], *, reaction: bool = False) -> dict[str, An
         **({} if reaction else {"player_move": None}),
         "response": {
             "kind": "companion",
+            "meeting_change": None,
+            "meeting_query": "none",
             "changes": changes,
             **{
                 key: value[key]

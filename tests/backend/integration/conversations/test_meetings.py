@@ -20,7 +20,7 @@ def reply(change=None, *, query=True, text=""):
             "action_narration": "",
             "text": text,
             "meeting_change": change,
-            "meeting_query": query,
+            "meeting_query": "only" if query else "none",
         },
     }
 
@@ -55,7 +55,8 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
                         "date": "Friday",
                         "time": "10 AM",
                         "place": "Town Hall",
-                    }
+                    },
+                    text="The meeting is at 3 PM at the wrong place.",
                 ),
                 reply({"kind": "correct", "quote": correction, "time": "11 AM"}),
                 reply(),
@@ -135,3 +136,28 @@ def test_missing_or_repeated_move_evidence_leaves_the_scene_unchanged(tmp_path, 
         assert not client.conversations.actions(scene.id)
         assert client.conversations.overview(scene.id).state.place == "Shop"
         assert len(client.llm_records(operation.id)) == 2
+
+
+@pytest.mark.parametrize("destination", ["Shop", "Town Hall"])
+def test_meeting_decision_cannot_also_be_applied_as_travel(tmp_path, monkeypatch, destination):
+    scripted_llm_availability(monkeypatch)
+    with Client.initialize(tmp_path) as client:
+        scene = client.conversations.create(
+            ConversationInput(title="Reading group", locale="en", initial_state={"place": "Shop"})
+        )
+        text = f"We will meet on Friday at {destination}."
+        meeting = {"kind": "confirm", "quote": text, "date": "Friday", "place": destination}
+        correct = reply(meeting)
+        conflict = {
+            **correct,
+            "player_move": {"kind": "move", "destination": destination, "quote": text},
+        }
+        model_responses(client, monkeypatch, [conflict, correct])
+        operation = client.conversations.send(
+            scene.id,
+            SendInput(operation_id=uuid4(), expected_revision=0, text=text, allow_real_llm=True),
+        )
+        assert operation.state == "complete" and len(client.llm_records(operation.id)) == 2
+        saved = client.conversations.get(scene.id)
+        assert saved.state.place == "Shop" and not saved.actions
+        assert saved.turns[0].meeting.place == destination

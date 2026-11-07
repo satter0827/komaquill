@@ -173,6 +173,7 @@ def collect(
                 "expires_at": expiry.isoformat(),
                 "moves": scenario.get("moves", {}),
                 "expected_places": scenario.get("expected_places", {}),
+                "expected_moves": scenario.get("expected_moves", {}),
                 "expected_meetings": scenario.get("expected_meetings", {}),
                 "expected_replies": scenario.get("expected_replies", {}),
                 "forbidden_held_objects": LIMITS["forbidden_held_objects"],

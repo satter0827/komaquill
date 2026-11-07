@@ -5,6 +5,7 @@ forbidden_held_objects = ["銀のコンパス"]
 forbidden_reply_fragments = ["}}]}{", "]}**", "”}}"]
 moves = { "8" = "古書店の入口" }
 expected_places = { "6" = "公園", "7" = "公園", "8" = "古書店の入口", "18" = "古書店の入口" }
+expected_moves = { "6" = "公園", "8" = "古書店の入口" }
 expected_replies = { "0" = "栞", "16" = "銀のコンパス", "18" = "栞" }
 expected_meetings = { "9" = { status = "confirmed", date = "土曜日", time = "午後三時", place = "古書店" }, "17" = { status = "confirmed", date = "土曜日", time = "午後四時", place = "古書店" }, "19" = { status = "confirmed", date = "土曜日", time = "午後四時", place = "古書店" } }
 

@@ -3,19 +3,19 @@ import { fileURLToPath } from 'node:url'
 import { message } from './evidence.mjs'
 
 export const root = fileURLToPath(new URL('../../../', import.meta.url))
+const assertionWorkers = 2
 
 export function webConfig(mode = 'assertion') {
   const output = process.env.KOMAQUILL_WEB_EVIDENCE_DIR
   if (!output) throw new Error(message('web.use_runner'))
+  const exploration = mode === 'exploration'
   return {
     testDir: path.join(
       root,
-      mode === 'exploration'
-        ? 'scripts/review/web/scenarios'
-        : 'tests/system/e2e/web',
+      exploration ? 'scripts/review/web/scenarios' : 'tests/system/e2e/web',
     ),
     outputDir: path.join(output, 'playwright'),
-    workers: 1,
+    workers: exploration ? 1 : assertionWorkers,
     retries: 0,
     timeout: 90000,
     expect: { timeout: 15000 },
@@ -28,7 +28,7 @@ export function webConfig(mode = 'assertion') {
     use: {
       viewport: { width: 1440, height: 960 },
       screenshot: 'only-on-failure',
-      trace: mode === 'exploration' ? 'on' : 'retain-on-failure',
+      trace: exploration ? 'on' : 'retain-on-failure',
     },
   }
 }

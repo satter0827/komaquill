@@ -534,6 +534,10 @@ test('browser configurations isolate assertions and review collection in fresh o
     assert.equal(review.use.baseURL, undefined)
     assert.equal(review.use.trace, 'on')
     assert.equal(review.retries, 0)
+    assert.equal(review.workers, 1)
+    assert.equal(assertions.workers, 2)
+    assert.equal(assertions.retries, 0)
+    assert.equal(assertions.globalTimeout, review.globalTimeout)
   } finally {
     if (previous === undefined) delete process.env.KOMAQUILL_WEB_EVIDENCE_DIR
     else process.env.KOMAQUILL_WEB_EVIDENCE_DIR = previous

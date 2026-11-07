@@ -1,12 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   BookOpen,
-  Image,
   Menu,
   MessageSquare,
   Plus,
   Settings2,
-  Feather,
   EyeOff,
   UserRound,
   Users,
@@ -17,6 +15,7 @@ import { useMediaQuery } from '../shared/viewport'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router'
 import * as q from '../api/generated/@tanstack/react-query.gen'
 import { Button } from '../shared/ui/button'
+import { AlbumIcon, AtelierMark } from '../shared/ui/atelier-icons'
 import {
   ArchivedConversationPage,
   ArchivedConversations,
@@ -86,7 +85,10 @@ function Application() {
                   />
                 </Modal>
               )}
-              <span>{m.brand}</span>
+              <span className="mobile-brand">
+                <AtelierMark size={18} />
+                {m.brand}
+              </span>
             </header>
             <Routes>
               <Route path="/" element={<Home />} />
@@ -176,9 +178,9 @@ function Navigation({
   })
   return (
     <aside className="navigation">
-      <NavLink to="/" className="brand">
+      <NavLink to="/" className="brand" onClick={onNavigate}>
         <span className="brand-icon">
-          <Feather size={24} />
+          <AtelierMark />
         </span>
         {m.brand}
       </NavLink>
@@ -226,10 +228,10 @@ function Navigation({
           </NavLink>
         ))}
       </div>
-      <ConnectionSummary />
+      <ConnectionSummary onNavigate={onNavigate} />
       <nav className="secondary-navigation">
         <NavLink to="/images" onClick={onNavigate}>
-          <Image size={17} />
+          <AlbumIcon />
           {m.images}
         </NavLink>
         <NavLink to="/settings" onClick={onNavigate}>
@@ -264,7 +266,6 @@ function Home() {
   return (
     <section className="page home-page">
       <div className="home-intro">
-        <div className="eyebrow">{m.welcomeEyebrow}</div>
         <h1>{m.emptyTitle}</h1>
         <p>{m.emptyBody}</p>
       </div>
@@ -304,7 +305,7 @@ function Home() {
       )}
       <NewConversation compact />
       <div className="home-section">
-        <div className="eyebrow">{m.yourStories}</div>
+        <h2>{m.stories}</h2>
         {visibleStories?.length === 0 && (
           <div className="empty-card">
             <p>{m.noPresets}</p>
@@ -319,7 +320,6 @@ function Home() {
           ))}
         </div>
       </div>
-      <p className="welcome-footer">{m.welcomeFooter}</p>
       <ArchivedConversations />
     </section>
   )

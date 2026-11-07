@@ -82,7 +82,6 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
     <section
       className={compact ? 'home-section start-page' : 'page start-page'}
     >
-      {!compact && <div className="eyebrow">{m.newEyebrow}</div>}
       {compact ? <h2>{m.newConversation}</h2> : <h1>{m.newConversation}</h1>}
       {!compact && <p className="subtle">{m.newDescription}</p>}
       <form
@@ -110,21 +109,22 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
           open={!player.data || !character || !story}
         >
           <summary>
-            {player.data && character && story
-              ? `${player.data.name} · ${character.name} · ${story.name}`
-              : m.chooseStory}
+            {m.changeStartSelection}
+            {player.data && character && story && (
+              <span className="selection-summary">
+                <span>
+                  <span>{m.chooseStory}</span> {story.name}
+                </span>
+                <span>
+                  <span>{m.chooseCharacter}</span> {character.name}
+                </span>
+                <span>
+                  <span>{m.choosePlayer}</span> {player.data.name}
+                </span>
+              </span>
+            )}
           </summary>
           <div className="details-content selection-grid">
-            <section className="selection-card">
-              <h2>{m.choosePlayer}</h2>
-              <p>{player.data?.name}</p>
-              <p className="subtle">{player.data?.description}</p>
-              <Link
-                to={`/player?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
-              >
-                {m.edit}
-              </Link>
-            </section>
             {(['story', 'character'] as const).map((kind) => {
               const record = kind === 'story' ? story : character
               return (
@@ -132,14 +132,6 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
                   className={`selection-card selection-${kind}`}
                   key={kind}
                 >
-                  {record?.image_id && (
-                    <OriginalImage
-                      className="selection-image"
-                      identity={record.image_id}
-                      alt={record.name}
-                    />
-                  )}
-
                   <label>
                     {kind === 'story' ? m.chooseStory : m.chooseCharacter}
                     <select
@@ -183,9 +175,27 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
                       {m.new} →
                     </Link>
                   </div>
+                  {record?.image_id && (
+                    <OriginalImage
+                      className="selection-image"
+                      identity={record.image_id}
+                      alt={record.name}
+                    />
+                  )}
                 </section>
               )
             })}
+            <section className="selection-card">
+              <h2>{m.choosePlayer}</h2>
+              <p>{player.data?.name}</p>
+              <p className="subtle">{player.data?.description}</p>
+              <Link
+                className="text-button"
+                to={`/player?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
+              >
+                {m.edit}
+              </Link>
+            </section>
           </div>
         </details>
         <Button

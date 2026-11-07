@@ -341,6 +341,7 @@ def save_image(
 def main() -> int:
     parser = argparse.ArgumentParser(description=message("acceptance.help"))
     parser.add_argument("--allow-real-llm", action="store_true", required=True)
+    parser.add_argument("--ui", action="store_true", help=message("acceptance.ui_help"))
     parser.add_argument("--allow-gpu", action="store_true")
     parser.add_argument("--resume", type=Path)
     parser.add_argument("--conversation-id", type=UUID)
@@ -351,6 +352,8 @@ def main() -> int:
     parser.add_argument("--authorization-id", type=UUID)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.ui and (args.resume or args.conversation_id or args.allow_gpu):
+        parser.error(message("acceptance.ui_conflict"))
     if (args.extend_gpu_seconds is not None or args.authorization_id is not None) and not (
         (args.resume or args.conversation_id)
         and args.allow_gpu
@@ -391,13 +394,24 @@ def main() -> int:
             )
             initialized.close()
         api = Client(workspace)
-        attach(
-            api, output, ledger=args.ledger, max_calls=args.max_calls, max_seconds=args.max_seconds
-        )
+        limits = LIMITS["ui" if args.ui else "llm"]
+        max_calls = limits["max_calls"] if args.max_calls is None else args.max_calls
+        max_seconds = limits["max_seconds"] if args.max_seconds is None else args.max_seconds
+        attach(api, output, ledger=args.ledger, max_calls=max_calls, max_seconds=max_seconds)
         opening_value = api.llm_usage()["reserved_calls"]
         assert isinstance(opening_value, int)
         opening_calls = opening_value
-        if args.conversation_id:
+        if args.ui:
+            browse(
+                api,
+                output,
+                report,
+                {"format_version": 1, "real_llm": True},
+                script="scripts/acceptance/ui.mjs",
+                timeout=max_seconds,
+            )
+            report["status"] = "passed"
+        elif args.conversation_id:
             api.conversations.overview(args.conversation_id)
             identities = [args.conversation_id]
         elif args.resume:
@@ -417,23 +431,24 @@ def main() -> int:
                 raise KomaquillError(code="invalid_request")
         else:
             api, identities = conversations(api, output, report)
-        report["conversation_ids"] = [str(value) for value in identities]
-        before_calls = api.llm_usage()["reserved_calls"]
-        if args.allow_gpu:
-            gpu(
-                api,
-                output,
-                report,
-                identities,
-                saved_only=bool(args.resume),
-                time_extension=time_extension,
-                conversation_only=args.conversation_id is not None,
-            )
-        else:
-            observe(api, output, report, identities)
-        if args.resume:
-            assert api.llm_usage()["reserved_calls"] == before_calls
-        report["status"] = "passed"
+        if not args.ui:
+            report["conversation_ids"] = [str(value) for value in identities]
+            before_calls = api.llm_usage()["reserved_calls"]
+            if args.allow_gpu:
+                gpu(
+                    api,
+                    output,
+                    report,
+                    identities,
+                    saved_only=bool(args.resume),
+                    time_extension=time_extension,
+                    conversation_only=args.conversation_id is not None,
+                )
+            else:
+                observe(api, output, report, identities)
+            if args.resume:
+                assert api.llm_usage()["reserved_calls"] == before_calls
+            report["status"] = "passed"
     except BaseException as error:
         report.update(
             status="interrupted" if isinstance(error, KeyboardInterrupt) else "failed",

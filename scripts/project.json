@@ -9,7 +9,8 @@
           "node tools/runtime/python.mjs -m ruff check scripts",
           "node tools/runtime/python.mjs -m ruff format --check scripts",
           "node node_modules/prettier/bin/prettier.cjs --check scripts",
-          "node --check scripts/acceptance/web.mjs"
+          "node --check scripts/acceptance/web.mjs",
+          "node --check scripts/acceptance/ui.mjs"
         ],
         "parallel": false
       }

@@ -4,7 +4,8 @@ import { OriginalImage } from '../../shared/images/original'
 import { useAvailability } from '../../shared/availability'
 import { objectLines, parseObjects } from '../../shared/forms/physical-objects'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Plus, UserRound } from 'lucide-react'
+import { Plus, UserRound } from 'lucide-react'
+import { AlbumIcon } from '../../shared/ui/atelier-icons'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
@@ -84,6 +85,9 @@ const fields = {
   ],
 } as const
 type FieldName = (typeof fields)[Kind][number]
+const basicFields: readonly FieldName[] = ['name', 'description']
+const storyOpeningFields: readonly FieldName[] = [...basicFields, 'opening']
+const storyExpressionFields: readonly FieldName[] = ['tone', 'topics', 'avoid']
 type Fields = PlayerInput & Partial<CharacterInput & StoryInput>
 type DraftValues = Partial<Record<FieldName, string>>
 type PresetSaveOptions = Omit<CharacterSaveRequest, 'value'>
@@ -201,20 +205,17 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
   const formatMessage = useFormatMessage()
   return (
     <article className={`preset-card preset-${kind}`}>
-      <div className="preset-cover">
-        {preset.image_id ? (
-          <OriginalImage identity={preset.image_id} alt={preset.name} />
-        ) : kind === 'story' ? (
-          <BookOpen size={38} aria-hidden="true" />
-        ) : (
-          <UserRound size={38} aria-hidden="true" />
-        )}
-        {preset.sample && <span className="sample-badge">{m.sample}</span>}
-      </div>
       <div className="preset-card-body">
-        <h2>
-          <Link to={`${paths[kind]}/${preset.id}`}>{preset.name}</Link>
-        </h2>
+        <div className="preset-card-heading">
+          {!preset.image_id &&
+            (kind === 'story' ? (
+              <AlbumIcon />
+            ) : (
+              <UserRound size={18} aria-hidden="true" />
+            ))}
+          <h2>{preset.name}</h2>
+          {preset.sample && <span className="sample-badge">{m.sample}</span>}
+        </div>
 
         {'role' in preset && preset.role && (
           <p className="preset-role">{preset.role}</p>
@@ -261,6 +262,11 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
           </Link>
         </div>
       </div>
+      {preset.image_id && (
+        <div className="preset-cover">
+          <OriginalImage identity={preset.image_id} alt={preset.name} />
+        </div>
+      )}
     </article>
   )
 }
@@ -337,12 +343,6 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
       </>
     )
   }
-  const eyebrow =
-    kind === 'story'
-      ? m.storyEyebrow
-      : kind === 'character'
-        ? m.charactersEyebrow
-        : m.playersEyebrow
   const visible = query.data.filter(
     (preset) =>
       !preset.sample || preset.sample_locale === preferences.value.locale,
@@ -352,9 +352,7 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
       {notice}
       <div className="page-heading">
         <div>
-          <div className="eyebrow">{eyebrow}</div>
           <h1>{m[presetLabels[kind]]}</h1>
-          <p className="subtle">{m.libraryDescription}</p>
         </div>
         <Link className="button primary" to={`${paths[kind]}/new`}>
           <Plus size={17} />
@@ -556,7 +554,7 @@ function PresetEditor({
       : current
   const details = useRef<HTMLDetailsElement>(null)
   const [notice, setNotice] = useState(preset ? m.saved : '')
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const deleteCancel = useRef<HTMLButtonElement>(null)
   const [pendingSave, setPendingSave] = useState<SaveSubmission | null>(null)
   const imageCreation = useCreation()
   const [availabilityId] = useState(() => crypto.randomUUID())
@@ -577,24 +575,26 @@ function PresetEditor({
     imageRequest ? { kind: 'creation', creation: imageRequest } : undefined,
   )
   const dirty =
-    !current ||
     fields[kind].some((field) => {
       if (field === 'initial_held_objects')
         return (
           heldObjects !==
           objectLines(
-            'initial_held_objects' in current
+            current && 'initial_held_objects' in current
               ? (current.initial_held_objects ?? [])
               : [],
           )
         )
-      const saved = current[field as keyof typeof current]
+      const saved = current?.[field as keyof Preset]
       return field === 'initial_clothing'
         ? (value[field] ?? null) !== (saved ?? null)
         : (value[field] ?? '') !== (saved ?? '')
     }) ||
-    ('character_id' in current &&
-      (value.character_id || null) !== (current.character_id ?? null))
+    (kind === 'story' &&
+      (value.character_id || null) !==
+        (current && 'character_id' in current
+          ? (current.character_id ?? null)
+          : null))
   const characters = useQuery({
     ...q.listCharactersOptions(),
     enabled: kind === 'story',
@@ -679,7 +679,12 @@ function PresetEditor({
     else setValue((old) => ({ ...old, [key]: text }))
     setNotice('')
   }
-  const renderField = (field: (typeof fields)[Kind][number], index: number) => (
+  const primaryFields = kind === 'story' ? storyOpeningFields : basicFields
+  const detailFields = fields[kind].filter(
+    (field) =>
+      !primaryFields.includes(field) && !storyExpressionFields.includes(field),
+  )
+  const renderField = (field: FieldName) => (
     <label key={field}>
       {field === 'name' ? m.requiredName : m[field as MessageKey]}
       {['name', 'age', 'gender', 'address'].includes(field) ? (
@@ -695,7 +700,7 @@ function PresetEditor({
         />
       ) : (
         <textarea
-          rows={index < 3 ? 3 : 2}
+          rows={primaryFields.includes(field) ? 3 : 2}
           value={
             field === 'initial_held_objects'
               ? heldObjects
@@ -710,18 +715,18 @@ function PresetEditor({
   )
   return (
     <section className="page editor-page">
-      <Link className="text-button" to={paths[kind]}>
-        ← {m[presetLabels[kind]]}
-      </Link>
-      <div className="eyebrow">
-        {kind === 'story'
-          ? m.storyEyebrow
-          : kind === 'character'
-            ? m.charactersEyebrow
-            : m.playersEyebrow}
-      </div>
+      {kind !== 'player' && (
+        <Link className="text-button" to={paths[kind]}>
+          ← {m[presetLabels[kind]]}
+        </Link>
+      )}
       <div className="page-heading">
-        <h1>{current ? current.name : m.new}</h1>
+        <h1>
+          {kind === 'player'
+            ? m.players
+            : (current?.name ??
+              (kind === 'story' ? m.newStory : m.newCharacter))}
+        </h1>
         {kind !== 'player' && (
           <PresetDraftDialog
             kind={kind}
@@ -735,7 +740,7 @@ function PresetEditor({
                 details.current &&
                 (initial_held_objects !== undefined ||
                   Object.keys(changes).some(
-                    (field) => field !== 'name' && field !== 'description',
+                    (field) => !primaryFields.includes(field as FieldName),
                   ))
               )
                 details.current.open = true
@@ -755,19 +760,7 @@ function PresetEditor({
           <fieldset
             disabled={mutation.isPending || (!!pendingSave && mutation.isError)}
           >
-            {fields[kind]
-              .filter((field) => field === 'name' || field === 'description')
-              .map(renderField)}
-            <details ref={details}>
-              <summary>{m.basicDetails}</summary>
-              <div className="details-content">
-                {fields[kind]
-                  .filter(
-                    (field) => field !== 'name' && field !== 'description',
-                  )
-                  .map(renderField)}
-              </div>
-            </details>
+            {primaryFields.map(renderField)}
             {kind === 'story' && (
               <label>
                 {m.defaultCharacter}
@@ -792,6 +785,18 @@ function PresetEditor({
                 </select>
               </label>
             )}
+            <details ref={details} className="editor-details">
+              <summary>{m.basicDetails}</summary>
+              <div className="details-content">
+                {detailFields.map(renderField)}
+                {kind === 'story' && (
+                  <>
+                    <h2>{m.storyExpression}</h2>
+                    {storyExpressionFields.map(renderField)}
+                  </>
+                )}
+              </div>
+            </details>
             <div className="actions editor-actions">
               <Button
                 variant="primary"
@@ -800,23 +805,6 @@ function PresetEditor({
               >
                 {mutation.isPending ? m.saving : m.save}
               </Button>
-              {current && kind !== 'player' && (
-                <>
-                  <Button
-                    onClick={() => duplicateAction.mutate()}
-                    disabled={!canMutate || duplicateAction.isPending}
-                  >
-                    {m.duplicate}
-                  </Button>
-                  <Button
-                    variant="danger"
-                    disabled={!canMutate}
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    {m.delete}
-                  </Button>
-                </>
-              )}
             </div>
           </fieldset>
           <p role="status" className="success">
@@ -830,32 +818,13 @@ function PresetEditor({
               {m.retrySave}
             </Button>
           )}
-          {[
-            mutation.error,
-            duplicateAction.error,
-            deletion.error,
-            preferences.error,
-          ]
+          {[mutation.error, duplicateAction.error, preferences.error]
             .filter(Boolean)
             .map((error, index) => (
               <p key={index} role="alert" className="error">
                 {failure(error)}
               </p>
             ))}
-          {confirmDelete && (
-            <div className="confirmation" role="alert">
-              <p>{m.removeNotice}</p>
-              <Button
-                onClick={() => deletion.mutate()}
-                disabled={!canMutate || deletion.isPending}
-              >
-                {m.delete}
-              </Button>
-              <Button onClick={() => setConfirmDelete(false)}>
-                {m.cancel}
-              </Button>
-            </div>
-          )}
         </form>
         {kind !== 'player' && preset && (
           <aside className="editor-preview">
@@ -909,6 +878,56 @@ function PresetEditor({
           </aside>
         )}
       </div>
+      {current && kind !== 'player' && (
+        <div className="actions editor-management">
+          <Button
+            onClick={() => duplicateAction.mutate()}
+            disabled={
+              !canMutate ||
+              duplicateAction.isPending ||
+              mutation.isPending ||
+              !!pendingSave
+            }
+          >
+            {m.duplicate}
+          </Button>
+          <Dialog.Root disablePointerDismissal>
+            <Dialog.Trigger
+              render={
+                <Button
+                  disabled={!canMutate || mutation.isPending || !!pendingSave}
+                />
+              }
+            >
+              {m.delete}
+            </Dialog.Trigger>
+            <Modal
+              label={m.delete}
+              closeLabel={m.closePanel}
+              initialFocus={deleteCancel}
+            >
+              <p>{m.removeNotice}</p>
+              {!!deletion.error && (
+                <p role="alert" className="error">
+                  {failure(deletion.error)}
+                </p>
+              )}
+              <div className="actions">
+                <Dialog.Close render={<Button ref={deleteCancel} />}>
+                  {m.cancel}
+                </Dialog.Close>
+                <Button
+                  variant="danger"
+                  onClick={() => deletion.mutate()}
+                  disabled={!canMutate || deletion.isPending}
+                >
+                  {m.delete}
+                </Button>
+              </div>
+            </Modal>
+          </Dialog.Root>
+        </div>
+      )}
     </section>
   )
 }

@@ -197,7 +197,7 @@ export function useConnectionSummary() {
   }
 }
 
-export function ConnectionSummary() {
+export function ConnectionSummary({ onNavigate }: { onNavigate?: () => void }) {
   const m = useMessages()
   const failure = useFailure()
   const status = useConnectionSummary()
@@ -268,7 +268,9 @@ export function ConnectionSummary() {
         >
           {m.refresh}
         </Button>
-        <Link to="/settings">{m.connectionSettings}</Link>
+        <Link to="/runtime" onClick={onNavigate}>
+          {m.connectionSettings}
+        </Link>
       </div>
     </details>
   )

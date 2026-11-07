@@ -186,6 +186,7 @@ test('confirms an album receipt across navigation without submitting again', asy
     if (req.method() === 'POST' && req.url().endsWith('/collect')) collections++
   })
   await page.goto('/images')
+  await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet bookshop')
   await page
     .getByRole('button', { name: ja.drawRequestedScene, exact: true })

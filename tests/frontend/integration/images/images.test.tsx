@@ -119,6 +119,11 @@ function images() {
   return cache
 }
 async function compose() {
+  if (!screen.queryByRole('textbox', { name: m.imagePrompt })) {
+    await userEvent.click(
+      await screen.findByRole('button', { name: m.openDrawingForm }),
+    )
+  }
   return screen.findByLabelText(m.imagePrompt)
 }
 const dayLabel = () =>

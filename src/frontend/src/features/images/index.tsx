@@ -11,6 +11,7 @@ import {
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { AlbumIcon, DrawIcon } from '../../shared/ui/atelier-icons'
 import {
   imageOptions,
   retainImage,
@@ -56,7 +57,7 @@ export function groupImageDays(runs: Run[], locale: string) {
 }
 
 export function ImagesPage() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const formId = useId()
   const [prompt, setPrompt] = useState('')
   const [prepared, setPrepared] = useState<ImageInput | null>(null)
@@ -179,15 +180,15 @@ export function ImagesPage() {
       <div className="page-heading">
         <h1>{m.images}</h1>
         <Button
-          variant="primary"
+          variant={days.length === 0 && !open ? 'primary' : 'secondary'}
           aria-expanded={open}
           aria-controls={formId}
           onClick={() => setOpen((value) => !value)}
         >
+          <DrawIcon />
           {open ? m.closeDrawingForm : m.openDrawingForm}
         </Button>
       </div>
-      <p className="subtle">{m.imageDescription}</p>
       <div id={formId} hidden={!open}>
         {open && (
           <form
@@ -279,7 +280,12 @@ export function ImagesPage() {
           {failure(images.error)}
         </p>
       )}
-      {days.length === 0 && !images.isPending && <p>{m.albumEmpty}</p>}
+      {days.length === 0 && !images.isPending && !images.error && (
+        <div className="album-empty">
+          <AlbumIcon size={24} />
+          <p>{m.albumEmpty}</p>
+        </div>
+      )}
       <div className="album-days">
         {days.map((day) => {
           const expanded = dayExpanded(day.key)

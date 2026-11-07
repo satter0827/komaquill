@@ -194,6 +194,7 @@ test('unconfirmed services disable generation and sending while text remains edi
   ).toBeDisabled()
   await evidence.capture('Disconnected conversation retains editable input')
   await page.goto('/images')
+  await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet coast')
   await expect(
     page.getByRole('button', { name: ja.drawRequestedScene, exact: true }),
@@ -288,6 +289,8 @@ test('album keeps collapsed files unloaded and reopens the accepted result witho
   await page.goto('/images')
   await expect(page.locator('.album-days img')).toHaveCount(0)
   expect(files).toHaveLength(0)
+  await expect(page.getByLabel(ja.imagePrompt)).toHaveCount(0)
+  await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet coast.')
   const close = page.getByRole('button', {
     name: ja.closeDrawingForm,

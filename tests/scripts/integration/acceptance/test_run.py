@@ -52,6 +52,26 @@ def test_live_gate_requires_permission_and_private_output(tmp_path, monkeypatch)
     assert not (tmp_path / "public").exists()
 
 
+def test_ui_acceptance_uses_the_isolated_browser_and_its_call_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "ROOT", tmp_path)
+    output = tmp_path / ".artifacts/ui/attempt-1"
+    monkeypatch.setattr(sys, "argv", ["live", "--ui", "--allow-real-llm", "--output", str(output)])
+
+    def browse(api, directory, report, scenario, *, script, timeout):
+        assert directory == output
+        assert api.llm_usage()["max_calls"] == run.LIMITS["ui"]["max_calls"]
+        assert scenario == {"format_version": 1, "real_llm": True}
+        assert script == "scripts/acceptance/ui.mjs"
+        assert timeout == run.LIMITS["ui"]["max_seconds"]
+        assert report["real_gpu"] is False
+
+    monkeypatch.setattr(run, "browse", browse)
+    assert run.main() == 0
+    report = json.loads((output / "run.json").read_bytes())
+    assert report["new_llm_calls"] == 0
+    assert report["status"] == "passed"
+
+
 def test_unowned_runtime_is_never_stopped_or_allocated(tmp_path):
     calls = []
     api = SimpleNamespace(

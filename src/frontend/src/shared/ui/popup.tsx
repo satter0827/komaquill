@@ -2,9 +2,13 @@ import { Dialog } from '@base-ui/react/dialog'
 import { Popover } from '@base-ui/react/popover'
 import { X } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
+import { useMessages } from '../preferences'
+import { useMediaQuery } from '../viewport'
 import { Button } from './button'
 
 export { Dialog, Popover }
+
+const SHORT_POPUP_VIEWPORT = '(max-height: 550px)'
 
 export function Popup({
   label,
@@ -16,6 +20,8 @@ export function Popup({
   label: string
   keepMounted?: boolean
 }) {
+  const m = useMessages()
+  const short = useMediaQuery(SHORT_POPUP_VIEWPORT)
   return (
     <Popover.Portal keepMounted={keepMounted}>
       <Popover.Positioner
@@ -23,14 +29,26 @@ export function Popup({
         align="start"
         sideOffset={8}
         collisionPadding={16}
-        collisionAvoidance={{ side: 'shift', align: 'shift' }}
+        collisionAvoidance={
+          short ? { side: 'shift', align: 'shift' } : undefined
+        }
         className="popup-positioner"
       >
         <Popover.Popup
           {...props}
+          data-roomy={short || undefined}
           className={`popup-content details-content ${className ?? ''}`}
         >
-          <Popover.Title className="popup-title">{label}</Popover.Title>
+          <div className="popup-heading">
+            <Popover.Title className="popup-title">{label}</Popover.Title>
+            {short && (
+              <Popover.Close
+                render={<Button variant="ghost" aria-label={m.closePanel} />}
+              >
+                <X size={20} aria-hidden="true" />
+              </Popover.Close>
+            )}
+          </div>
           {children}
         </Popover.Popup>
       </Popover.Positioner>

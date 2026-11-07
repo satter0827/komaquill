@@ -1486,10 +1486,19 @@ details > .details-content {
   background: var(--surface);
   box-shadow: 0 12px 40px #44233324;
 }
-.popup-title {
-  margin: 0;
+.popup-content[data-roomy] {
+  max-height: var(--available-height);
+}
+.popup-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-field);
   padding-block-end: var(--space-field);
   border-bottom: 1px solid var(--line);
+}
+.popup-title {
+  margin: 0;
   font-size: 1rem;
   overflow-wrap: anywhere;
 }
@@ -1592,9 +1601,6 @@ html[data-density='compact'] {
   }
 }
 @media (max-height: 550px) {
-  .popup-content {
-    max-height: var(--available-height);
-  }
   .turns {
     padding-block: var(--space-field);
   }

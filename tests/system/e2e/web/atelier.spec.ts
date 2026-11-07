@@ -243,7 +243,8 @@ test('reads and operates the expanded conversation controls at double text size'
   await expect(menuPanel.getByLabel(ja.notesDescription)).toHaveValue(
     'Keep my unfinished note.',
   )
-  await page.keyboard.press('Escape')
+  await menuPanel.getByRole('button', { name: ja.closePanel }).click()
+  await expect(menu).toBeFocused()
   const scene = page.getByRole('button', { name: ja.sceneActions, exact: true })
   await scene.click()
   const scenePanel = page.getByRole('dialog', {

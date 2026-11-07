@@ -590,8 +590,15 @@ summary = "共有する現在地と一度の送信で移動・会話・復旧を
 status = "implemented"
 implementation_note = "実4Bで新規の日本語20ターンをブラウザーから送信し、移動の一回性、保存、表示、再読込を確認した。移動後の動作文と確定事項の要約には意味の誤りが残る。対象版ごとの結果はdocs/verification/results/real-llm-zero-review-20261107.mdで管理する。"
 acceptance = ["現在地を一つにし人物は常に同行する", "自然文の即時移動と返答を追加確認なしで一ターンに保存する", "質問・条件付き相談・予定では移動しない", "空の返答を成功として保存しない", "移動後の失敗・再起動・同一操作の再確認で移動を重複適用しない", "失敗しても原応答と確定済み行動を保持する", "日英で履歴のページ境界を越える会話を画面から送信して全件を復元する", "再取得の失敗で履歴と下書きを失わず明示操作で回復する", "人物・ライブラリ・アーカイブにも取得済み表示の保持を適用する", "スクロールを操作可能なまま配色と余白を統一する", "短い画面と文字拡大でも本文一行以上の閲覧領域と発言・送信欄を同時に保つ", "実LLMは専用台帳と画面操作で別途検証する", "再開の受理回数を永続化し古い応答で再開後の状態を戻さない", "再開の応答喪失は同じ操作IDのGETで確認し追加推論と移動の重複を起こさない", "再開要求の未着と確認GETの失敗から読み取りをやり直し再開可能な中断を確認後に明示再開できる", "前に始めた確認GETが次の明示再開の待機や監視を解除しない"]
-sources = ["src/backend/src/komaquill/domain/conversations/transitions.py", "src/backend/src/komaquill/adapters/llm/conversation.py", "src/frontend/src/features/conversations/index.tsx", "src/frontend/src/shared/ui/query-notice.tsx", "scripts/acceptance/conversations/long.py", "src/frontend/src/shared/operations.ts", "src/backend/src/komaquill/domain/conversations/models.py", "src/backend/src/komaquill/adapters/persistence/conversations.py"]
+sources = ["src/backend/src/komaquill/domain/conversations/transitions.py", "src/backend/src/komaquill/domain/conversations/movement.py", "src/backend/src/komaquill/adapters/llm/conversation.py", "src/frontend/src/features/conversations/index.tsx", "src/frontend/src/shared/ui/query-notice.tsx", "scripts/acceptance/conversations/long.py", "src/frontend/src/shared/operations.ts", "src/backend/src/komaquill/domain/conversations/models.py", "src/backend/src/komaquill/adapters/persistence/conversations.py"]
 tests = ["tests/backend/integration/conversations/test_visible_reply.py", "tests/backend/integration/conversations/test_shared_scene.py", "tests/backend/integration/conversations/test_recorded_shared_state.py", "tests/system/e2e/web/long-conversation.spec.ts", "tests/scripts/integration/acceptance/test_long_conversation.py", "tests/tools/integration/web/readiness.test.mjs", "tests/frontend/unit/operations/operations.test.ts", "tests/system/e2e/web/recovery.spec.ts", "tests/backend/integration/conversations/test_execution_content.py"]
+
+[requirements.REQ-CONFIRMED-MEETING]
+summary = "利用者が決めた集合予定を現在地と分けて保存し、照会に表示する"
+status = "implemented"
+acceptance = ["一会話につき一件の日付または曜日・時刻・場所を扱う", "利用者の原文と引用の前後を根拠に確定・部分訂正・取消を行う", "予定と根拠を会話ターンと同時に保存する", "照会は保存値と未確定・取消を台詞と分けて表示し、別の質問への返答を保持する", "条件付きの提案や伝聞、否定された変更を確定せず曖昧な採用は確認する", "分岐点の予定を引き継ぎ既存の原文とハッシュを保持する"]
+sources = ["src/backend/src/komaquill/domain/conversations/meetings.py", "src/backend/src/komaquill/adapters/persistence/conversations.py", "src/frontend/src/features/conversations/index.tsx", "scripts/acceptance/conversations/long.mjs"]
+tests = ["tests/backend/integration/conversations/test_meetings.py", "tests/backend/integration/conversations/test_shared_scene.py", "tests/scripts/integration/acceptance/test_long_conversation.py"]
 
 [requirements.REQ-REAL-ACCEPTANCE]
 summary = "実LLMとGPUの検査を明示許可と累積予算で分離し、保存結果から再検証する"

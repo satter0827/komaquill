@@ -6,9 +6,17 @@ from uuid import uuid4
 
 import pytest
 from komaquill.api import Client, ConversationInput, KomaquillError, MoveAction, SendInput
+from komaquill.domain.conversations.actions import InferredMove
+from komaquill.domain.conversations.evidence import SourceSpan
 from komaquill.domain.conversations.models import Reply
 from pydantic import ValidationError
 from sqlalchemy import select
+
+
+def inferred(text, clause, destination="Park"):
+    return InferredMove(
+        action=MoveAction(destination=destination), source=SourceSpan.locate(text, clause)
+    )
 
 
 @pytest.fixture
@@ -32,7 +40,7 @@ def test_natural_move_and_dialogue_finish_one_turn_without_changing_the_accepted
     def reply(current, request):
         calls.append((current.state.place, request.action_origin))
         if request.action_id is None:
-            return Reply(text="", state_patch={}, action_proposals=[MoveAction(destination="Park")])
+            return inferred(request.text, "Let us go to the park")
         return Reply(text="Let us continue the reading plan here.", state_patch={})
 
     api.conversations.responder.reply = reply
@@ -94,7 +102,7 @@ def test_failed_reply_keeps_the_inferred_move_and_never_applies_it_twice(scene):
     def reply(current, request):
         calls.append(request.action_id)
         if request.action_id is None:
-            return Reply(text="", state_patch={}, action_proposals=[MoveAction(destination="Park")])
+            return inferred(request.text, "Go to the park")
         raise KomaquillError(code="llm_unavailable")
 
     api.conversations.responder.reply = reply
@@ -102,13 +110,18 @@ def test_failed_reply_keeps_the_inferred_move_and_never_applies_it_twice(scene):
     result = api.conversations.send(conversation.id, request)
     assert result.state == "failed" and result.error == "llm_unavailable"
     saved = api.conversations.get(conversation.id)
+    assert result.result_revision == saved.revision
     assert saved.state.place == "Park" and saved.turn_count == 0 and saved.revision == 1
     assert len(saved.actions) == 1
     assert api.conversations.send(conversation.id, request) == result and len(calls) == 2
-    api.conversations.repository.apply_inferred_move(result.id, MoveAction(destination="Park"))
+    api.conversations.repository.apply_inferred_move(
+        result.id, inferred(request.text, "Go to the park")
+    )
     assert api.conversations.get(conversation.id).revision == 1
     with pytest.raises(KomaquillError, match="operation_conflict"):
-        api.conversations.repository.apply_inferred_move(result.id, MoveAction(destination="Beach"))
+        api.conversations.repository.apply_inferred_move(
+            result.id, inferred(request.text, "Go to the park", "Beach")
+        )
 
 
 @pytest.mark.parametrize("finished", [True, False])
@@ -123,11 +136,13 @@ def test_recovery_only_publishes_the_saved_spoken_reply(scene, monkeypatch, fini
     repository = api.conversations.repository
     assert repository.running(request.operation_id)
     if finished:
-        repository.apply_inferred_move(request.operation_id, MoveAction(destination="Park"))
+        repository.apply_inferred_move(
+            request.operation_id, inferred(request.text, "Go to the park")
+        )
     retained = (
         Reply(text="We can continue here.", state_patch={})
         if finished
-        else Reply(text="", state_patch={}, action_proposals=[MoveAction(destination="Park")])
+        else inferred(request.text, "Go to the park")
     )
     checkpoint = empty_checkpoint()
     checkpoint["channel_values"] = {
@@ -184,7 +199,7 @@ def test_inferred_action_must_belong_to_its_original_operation(scene, field, val
     )
     repository = api.conversations.repository
     assert repository.running(identity)
-    repository.apply_inferred_move(identity, MoveAction(destination="Park"))
+    repository.apply_inferred_move(identity, inferred("Go to the park.", "Go to the park."))
     with repository.database.engine.begin() as connection:
         row = connection.execute(
             select(conversation_events.c.payload).where(conversation_events.c.id == str(identity))
@@ -221,6 +236,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
     from tests.backend.support.conversations import scripted_llm_availability
 
     scripted_llm_availability(monkeypatch)
+    meeting = "We will meet on Friday at Town Hall."
     with Client.initialize(tmp_path) as api:
         conversation = api.conversations.create(
             ConversationInput(title="A walk", locale="en", initial_state={"place": "Shop"})
@@ -231,9 +247,15 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                 AIMessage(
                     content=json.dumps(
                         {
-                            "player_move": {"kind": "move", "destination": "Park"},
+                            "player_move": {
+                                "kind": "move",
+                                "destination": "Park",
+                                "quote": "Go to the park and ",
+                            },
                             "response": {
                                 "kind": "companion",
+                                "meeting_change": None,
+                                "meeting_query": None,
                                 "changes": [],
                                 "action_narration": "",
                                 "text": "",
@@ -245,12 +267,19 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                 AIMessage(
                     content=json.dumps(
                         {
-                            "player_move": None,
                             "response": {
                                 "kind": "companion",
+                                "meeting_query": None,
                                 "changes": [],
-                                "action_narration": "Opens the notebook beside you.",
+                                "action_narration": "",
                                 "text": "Let us plan the reading group here.",
+                                "meeting_change": {
+                                    "kind": "set",
+                                    "quote": meeting,
+                                    "date": "Friday",
+                                    "time": None,
+                                    "place": "Town Hall",
+                                },
                             },
                         }
                     ),
@@ -262,7 +291,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
         request = SendInput(
             operation_id=uuid4(),
             expected_revision=0,
-            text="Go to the park and plan the reading group.",
+            text=f"Go to the park and plan the reading group. {meeting}",
             allow_real_llm=True,
         )
         repository = api.conversations.repository
@@ -296,8 +325,15 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
         records = api._execution.call_records(result.id)
         assert {path.stem for path, _ in records} == {"0", "move-response-0"}
         assert all(record["validation"] == "accepted" for _, record in records)
+        reaction = next(record for path, record in records if path.stem == "move-response-0")
+        assert (
+            json.loads(reaction["messages"][-1]["content"])["message"]
+            == f"plan the reading group. {meeting}"
+        )
         saved = api.conversations.get(conversation.id)
         assert saved.turn_count == 1 and saved.state.place == "Park"
+        assert result.result_revision == saved.revision
+        assert saved.turns[0].meeting_state.place.text == "Town Hall"
         assert len(saved.actions) == 1
         assert api.conversations.send(conversation.id, request) == result
         assert len(api.llm_records(result.id)) == 2

@@ -51,16 +51,19 @@ def test_present_companion_must_produce_visible_content_even_after_an_action(
     scene = api.conversations.create(
         ConversationInput(title="Empty reply", locale="en", initial_state={"place": "Shop"})
     )
+    decision = {} if with_action else {"player_move": None}
     invalid = {
-        "player_move": None,
+        **decision,
         "response": {
             "kind": "companion",
+            "meeting_change": None,
+            "meeting_query": None,
             "changes": [{"field": "pose", "value": "standing"}],
             "text": "",
             "action_narration": "",
         },
     }
-    valid = {"player_move": None, "response": {**invalid["response"], "text": "I am here."}}
+    valid = {**decision, "response": {**invalid["response"], "text": "I am here."}}
     monkeypatch.setattr(
         api._execution,
         "_model",
@@ -94,6 +97,8 @@ def test_new_visible_scenery_is_a_valid_silent_response(tmp_path, monkeypatch):
         "player_move": None,
         "response": {
             "kind": "companion",
+            "meeting_change": None,
+            "meeting_query": None,
             "changes": [{"field": "scenery", "value": "Sunlight fills the room."}],
             "text": "",
             "action_narration": "",

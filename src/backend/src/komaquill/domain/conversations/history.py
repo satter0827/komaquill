@@ -33,5 +33,8 @@ def advance_history(previous: str, turn: dict[str, Any]) -> str:
             ("state", {}),
         )
     }
+    for field in ("meeting", "meeting_state"):
+        if turn.get(field) is not None:
+            value[field] = turn[field]
     encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256((previous + "\n" + encoded).encode()).hexdigest()

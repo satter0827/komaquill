@@ -166,7 +166,6 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
 def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(tmp_path):
     from komaquill.adapters.llm.conversation import (
         DialogueResult,
-        NarrativeReply,
         ObjectsChange,
         ReactionReply,
     )
@@ -188,11 +187,12 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     def invoke(*args, **kwargs):
         calls.append(args)
         corrections.append(kwargs["correction"])
-        return NarrativeReply.model_validate(
+        return ReactionReply.model_validate(
             {
-                "player_move": None,
                 "response": {
                     "kind": "companion",
+                    "meeting_change": None,
+                    "meeting_query": None,
                     "changes": [],
                     "action_narration": "",
                     "text": "Understood.",
@@ -215,7 +215,6 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     context = json.loads(next(line for line in calls[0][4].splitlines() if line.startswith("{")))
     assert calls[0][0] is ReactionReply
     assert context["response_rules"] == {
-        "player_move": ReactionReply.model_fields["player_move"].description,
         "held_objects": ObjectsChange.model_fields["value"].description,
         "action_narration": DialogueResult.model_fields["action_narration"].description,
         "text": DialogueResult.model_fields["text"].description,
@@ -226,13 +225,13 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     assert context["people"]["assistant_character"]["name"] == "Mira"
     assert calls[0][4].endswith(corrections[0])
     assert "The completed_action is already applied" in corrections[0]
-    assert "Return player_move=null" in corrections[0]
+    assert "player_move" not in corrections[0]
     assert "Decide player_move independently" not in calls[0][4]
     latest = json.loads(calls[0][5][-1][1])
     assert latest == {
         "speaker": "human_player",
         "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
-        "original_message_before_action": text,
+        "message": text,
     }
     assert operation.state == "complete"
     saved = api.conversations.get(scene.id)
@@ -791,6 +790,8 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                         "player_move": None,
                         "response": {
                             "kind": "companion",
+                            "meeting_change": None,
+                            "meeting_query": None,
                             "changes": [
                                 {
                                     "field": "held_objects",
@@ -833,3 +834,53 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
     saved = api.conversations.get(scene.id)
     assert saved.state.player.held_objects[0].id == object_id
     assert not saved.state.character.held_objects
+
+
+def test_password_assignment_does_not_create_a_physical_object(tmp_path, monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    with Client.initialize(tmp_path) as api:
+        scene = api.conversations.create(ConversationInput(title="Password", locale="ja"))
+        model_name = api._execution.settings.llm_profiles["lmstudio-4b"].model
+        baseline = {
+            "kind": "companion",
+            "meeting_change": None,
+            "meeting_query": None,
+            "changes": [],
+            "action_narration": "",
+            "text": "合言葉を覚えておきます。",
+        }
+        incorrect = {
+            **baseline,
+            "changes": [
+                {"field": "held_objects", "value": [{"id": "compass", "name": "銀のコンパス"}]}
+            ],
+            "action_narration": "銀のコンパスを手に取った。",
+        }
+        model = FakeMessagesListChatModel(
+            responses=[
+                AIMessage(
+                    content=json.dumps(
+                        {"player_move": None, "response": value}, ensure_ascii=False
+                    ),
+                    response_metadata={"model_name": model_name},
+                )
+                for value in (incorrect, baseline)
+            ]
+        )
+        monkeypatch.setattr(api._execution, "_model", lambda _: model)
+        result = api.conversations.send(
+            scene.id,
+            SendInput(
+                operation_id=uuid4(),
+                expected_revision=0,
+                text="今回の読書会の合言葉は『銀のコンパス』です。覚えておいてください。",
+                allow_real_llm=True,
+            ),
+        )
+        assert result.state == "complete"
+        assert len(api.llm_records(result.id)) == 2
+        saved = api.conversations.get(scene.id)
+        assert not saved.state.character.held_objects
+        assert saved.turns[0].action_narration == ""

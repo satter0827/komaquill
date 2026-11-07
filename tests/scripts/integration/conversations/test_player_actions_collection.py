@@ -75,9 +75,9 @@ def test_collector_tracks_confirmation_memory_and_recreation(
             self.model = options["model"]
 
         def bind(self, **options):
-            self.summary = (
-                "response" not in options["response_format"]["json_schema"]["schema"]["properties"]
-            )
+            fields = options["response_format"]["json_schema"]["schema"]["properties"]
+            self.summary = "response" not in fields
+            self.reaction = not self.summary and "player_move" not in fields
             return self
 
         def invoke(self, messages, config):
@@ -102,11 +102,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(
                 if missing == "objects":
                     companion["held_objects"] = [{"id": "invented", "name": "Cup"}]
                 latest = messages[-1].content
-                spoken = (
-                    json.loads(latest)["original_message_before_action"]
-                    if latest.startswith("{")
-                    else latest
-                )
+                spoken = json.loads(latest)["message"] if latest.startswith("{") else latest
                 if missing != "clothing" and (
                     spoken.startswith("あなたは緑のコート")
                     or spoken.startswith("Please wear a green coat")
@@ -116,7 +112,15 @@ def test_collector_tracks_confirmation_memory_and_recreation(
                 if latest.startswith("合言葉は銀のコンパスです。") or latest.startswith(
                     "The password is silver compass. I head"
                 ):
-                    proposals = [{"kind": "move", "destination": "海辺" if ja else "Beach"}]
+                    proposals = [
+                        {
+                            "kind": "move",
+                            "destination": "海" if ja else "Beach",
+                            "quote": "私は今から海へ向かいます。"
+                            if ja
+                            else "I head to the beach now.",
+                        }
+                    ]
                 value = {
                     "current_state": {
                         "relationship": "",
@@ -134,7 +138,7 @@ def test_collector_tracks_confirmation_memory_and_recreation(
                     ),
                 }
             return AIMessage(
-                content=json.dumps(wire_reply(value), ensure_ascii=False),
+                content=json.dumps(wire_reply(value, reaction=self.reaction), ensure_ascii=False),
                 response_metadata={"model_name": self.model},
             )
 

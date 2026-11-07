@@ -27,6 +27,7 @@ def collect(
     max_calls: int | None = None,
     max_seconds: int | None = None,
     llm_profile: str | None = None,
+    case_name: str = "long",
 ) -> bool:
     output = output.resolve()
     if not output.is_relative_to(ROOT / ".artifacts"):
@@ -43,13 +44,17 @@ def collect(
         "started_at": datetime.now(UTC).isoformat(),
     }
     try:
+        scenario = LIMITS if case_name == "long" else LIMITS["cases"][case_name]
+        locale = scenario.get("locale", "ja")
+        report["case"] = case_name
         api = (
             Client(workspace)
             if (workspace / "komaquill.toml").exists()
             else Client.initialize(workspace)
         )
-        target = LIMITS["target_turns"] if through_turn is None else through_turn
-        if not 1 <= target <= LIMITS["target_turns"]:
+        length = scenario.get("target_turns", len(scenario["messages"]))
+        target = length if through_turn is None else through_turn
+        if not 1 <= target <= length:
             raise KomaquillError(code="invalid_request")
         report["target_turns"] = target
         attach(
@@ -65,7 +70,10 @@ def collect(
         if fork_after_turn is not None and not case.exists():
             raise KomaquillError(code="invalid_request")
         if case.exists():
-            identity = json.loads(case.read_bytes())["conversation_id"]
+            existing = json.loads(case.read_bytes())
+            if existing.get("case", "long") != case_name:
+                raise KomaquillError(code="invalid_request")
+            identity = existing["conversation_id"]
             if (
                 not new_conversation
                 and llm_profile is not None
@@ -105,31 +113,39 @@ def collect(
                 )
             if fork_after_turn is not None:
                 identity = str(forked.id)
-                atomic_json(case, {"conversation_id": identity, "fork": report["fork"]})
+                atomic_json(
+                    case, {"conversation_id": identity, "case": case_name, "fork": report["fork"]}
+                )
         if not case.exists() or new_conversation:
             scene = api.conversations.create(
                 ConversationInput.model_validate(
                     {
-                        "title": "長い会話の検証",
-                        "locale": "ja",
+                        "title": "長い会話の検証" if locale == "ja" else "Meeting verification",
+                        "locale": locale,
                         **({"llm_profile": llm_profile} if llm_profile is not None else {}),
                         "response_length": "standard",
-                        "user": {"name": "あかり", "age": "28"},
+                        "user": {"name": "あかり" if locale == "ja" else "Akari", "age": "28"},
                         "character": {
-                            "name": "栞",
+                            "name": "栞" if locale == "ja" else "Shiori",
                             "age": "32",
-                            "personality": "穏やかで協力的な古書店員",
+                            "personality": "穏やかで協力的な古書店員"
+                            if locale == "ja"
+                            else "A helpful bookseller",
                         },
                         "scenario": {
-                            "place": "古書店",
-                            "world": "現代の港町",
-                            "goal": "一緒に読書会を準備する",
+                            "place": "古書店" if locale == "ja" else "Bookshop",
+                            "world": "現代の港町"
+                            if locale == "ja"
+                            else "A contemporary harbor town",
+                            "goal": "一緒に読書会を準備する"
+                            if locale == "ja"
+                            else "Prepare a reading group together",
                         },
                     }
                 )
             )
             identity = str(scene.id)
-            atomic_json(case, {"conversation_id": identity})
+            atomic_json(case, {"conversation_id": identity, "case": case_name})
         report["conversation_id"] = identity
         current = api.conversations.overview(UUID(identity))
         report["llm_profile"] = current.definition.llm_profile
@@ -151,12 +167,15 @@ def collect(
                 "real_llm": True,
                 "read_only": report["read_only"],
                 "conversation": identity,
-                "messages": LIMITS["messages"][:target],
+                "locale": locale,
+                "messages": scenario["messages"][:target],
                 "target_turns": target,
                 "expires_at": expiry.isoformat(),
-                "moves": LIMITS["moves"],
-                "expected_places": LIMITS["expected_places"],
-                "expected_character_name": current.definition.character.name,
+                "moves": scenario.get("moves", {}),
+                "expected_places": scenario.get("expected_places", {}),
+                "expected_moves": scenario.get("expected_moves", {}),
+                "expected_meetings": scenario.get("expected_meetings", {}),
+                "expected_replies": scenario.get("expected_replies", {}),
                 "forbidden_held_objects": LIMITS["forbidden_held_objects"],
                 "forbidden_reply_fragments": LIMITS["forbidden_reply_fragments"],
             },
@@ -223,6 +242,12 @@ def main() -> int:
     parser.add_argument("--max-calls", type=int)
     parser.add_argument("--max-seconds", type=int)
     parser.add_argument("--llm-profile", help=message("acceptance.llm_profile"))
+    parser.add_argument(
+        "--case",
+        choices=("long", *LIMITS["cases"]),
+        default="long",
+        help=message("acceptance.long_case"),
+    )
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
         "--new-conversation", action="store_true", help=message("acceptance.new_conversation")
@@ -243,6 +268,7 @@ def main() -> int:
             max_calls=args.max_calls,
             max_seconds=args.max_seconds,
             llm_profile=args.llm_profile,
+            case_name=args.case,
         )
         else 1
     )

@@ -49,9 +49,9 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
             self.model = options["model"]
 
         def bind(self, **options):
-            self.summary = (
-                "response" not in options["response_format"]["json_schema"]["schema"]["properties"]
-            )
+            properties = options["response_format"]["json_schema"]["schema"]["properties"]
+            self.summary = "response" not in properties
+            self.reaction = not self.summary and "player_move" not in properties
             return self
 
         def invoke(self, messages, *args, **kwargs):
@@ -85,7 +85,9 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
                 }
             )
             return AIMessage(
-                content=json.dumps(wire_reply(response), ensure_ascii=False),
+                content=json.dumps(
+                    wire_reply(response, reaction=self.reaction), ensure_ascii=False
+                ),
                 response_metadata={"model_name": self.model},
                 usage_metadata={"input_tokens": 10, "output_tokens": 10, "total_tokens": 20},
             )
@@ -106,7 +108,8 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
     collected = json.loads((output / "after.json").read_bytes())
     calls = collected["calls"]
     rows = collected["results"]
-    assert len(calls) == (4 if failed else 40)
+    # Each direct move in a short fixture needs a separate arrival reply.
+    assert len(calls) == (4 if failed else 42)
     assert all(item["status"] == ("failed" if failed else "response_received") for item in calls)
     assert len(rows) == (4 if failed else 40)
     assert all(item["operation"]["state"] == ("failed" if failed else "complete") for item in rows)

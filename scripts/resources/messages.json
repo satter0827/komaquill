@@ -80,6 +80,7 @@
   "acceptance.new_conversation": "Start another isolated conversation without resetting the shared allowance.",
   "acceptance.fork_after_turn": "Branch after a saved turn without resetting the shared allowance or deadline.",
   "acceptance.through_turn": "Stop at this scenario turn without increasing the shared allowance.",
+  "acceptance.long_case": "Select the fixed long or meeting scenario.",
   "development.startup_failed": "The API did not become ready. Check its startup output and restart the development server.",
   "review.gpu_permission_required": "Pass --allow-gpu to permit one bounded owned allocation.",
   "acceptance.extension_required": "A GPU time extension requires --resume, --allow-gpu, a positive --extend-gpu-seconds, and --authorization-id."

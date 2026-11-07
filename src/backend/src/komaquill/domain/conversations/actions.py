@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import Field, model_validator
 
+from komaquill.domain.conversations.evidence import SourceSpan
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import (
     MAX_CLOTHING_LENGTH,
@@ -24,6 +25,11 @@ MAX_WAIT_MINUTES = 60 * 24 * 30
 class MoveAction(Record):
     kind: Literal["move"] = "move"
     destination: str = Field(min_length=1, max_length=MAX_PLACE_LENGTH, pattern=r"\S")
+
+
+class InferredMove(Record):
+    action: MoveAction
+    source: SourceSpan
 
 
 class WaitAction(Record):
@@ -75,6 +81,7 @@ class RecordedActionRequest(Record):
 
 class ActionRecord(Record):
     origin: Literal["explicit", "conversation"] = "explicit"
+    source: SourceSpan | None = None
     request: RecordedActionRequest
     before: ConversationState
     after: ConversationState

@@ -34,6 +34,7 @@ export type ActionRecord = {
      * Origin
      */
     origin?: 'explicit' | 'conversation';
+    source?: SourceSpan | null;
     request: RecordedActionRequest;
     before: ConversationState;
     after: ConversationState;
@@ -1047,6 +1048,64 @@ export type IntentionAction = {
 };
 
 /**
+ * MeetingAnswer
+ */
+export type MeetingAnswer = {
+    /**
+     * Status
+     */
+    status: 'confirmed' | 'unknown' | 'cancelled';
+    /**
+     * Date
+     */
+    date?: string | null;
+    /**
+     * Time
+     */
+    time?: string | null;
+    /**
+     * Place
+     */
+    place?: string | null;
+};
+
+/**
+ * MeetingPlan
+ */
+export type MeetingPlan = {
+    date?: MeetingValue | null;
+    time?: MeetingValue | null;
+    place?: MeetingValue | null;
+    cancellation?: MeetingSource | null;
+};
+
+/**
+ * MeetingSource
+ */
+export type MeetingSource = {
+    /**
+     * Turn Id
+     */
+    turn_id: string;
+    span: SourceSpan;
+};
+
+/**
+ * MeetingValue
+ */
+export type MeetingValue = {
+    /**
+     * Turn Id
+     */
+    turn_id: string;
+    span: SourceSpan;
+    /**
+     * Text
+     */
+    text: string;
+};
+
+/**
  * MemoryPassage
  */
 export type MemoryPassage = {
@@ -1111,6 +1170,10 @@ export type OperationView = {
      * Resume Count
      */
     resume_count?: number;
+    /**
+     * Result Revision
+     */
+    result_revision?: number | null;
     /**
      * Can Resume
      */
@@ -2065,6 +2128,20 @@ export type SettingsView = {
 };
 
 /**
+ * SourceSpan
+ */
+export type SourceSpan = {
+    /**
+     * Start
+     */
+    start: number;
+    /**
+     * End
+     */
+    end: number;
+};
+
+/**
  * StoryDefinition
  */
 export type StoryDefinition = {
@@ -2286,6 +2363,7 @@ export type Turn = {
     } & PrepareAction) | ({
         kind: 'intention';
     } & IntentionAction) | null;
+    meeting?: MeetingAnswer | null;
 };
 
 /**

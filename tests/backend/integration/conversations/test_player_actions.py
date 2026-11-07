@@ -151,7 +151,14 @@ def test_unknown_generated_properties_do_not_restore_removed_clothes(story):
             )
         }
     )
-    generated = DialogueResult(kind="companion", changes=[], action_narration="", text="Hello")
+    generated = DialogueResult(
+        kind="companion",
+        meeting_change=None,
+        meeting_query=None,
+        changes=[],
+        action_narration="",
+        text="Hello",
+    )
     result = resolve_scene(current, generated)
     assert result.character.clothing == "" and result.character.held_objects == []
 

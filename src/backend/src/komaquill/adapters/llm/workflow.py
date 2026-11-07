@@ -10,7 +10,7 @@ from langgraph.runtime import Runtime
 from langsmith import tracing_context
 
 from komaquill.adapters.persistence.checkpoints import CONVERSATION_WORKFLOW_VERSION, Checkpoints
-from komaquill.domain.conversations.models import Conversation, Reply, TurnRequest
+from komaquill.domain.conversations.models import TURN_RESULT, Conversation, TurnRequest, TurnResult
 from komaquill.domain.errors import KomaquillError
 
 
@@ -23,7 +23,7 @@ class ConversationState(TypedDict):
 
 @dataclass
 class ConversationContext:
-    reply: Callable[[Conversation, TurnRequest], Reply]
+    reply: Callable[[Conversation, TurnRequest], TurnResult]
 
 
 def reply(state: ConversationState, runtime: Runtime[ConversationContext]) -> dict[str, object]:
@@ -47,8 +47,8 @@ def run_conversation(
     graph: Any,
     conversation: Conversation,
     request: TurnRequest,
-    respond: Callable[[Conversation, TurnRequest], Reply],
-) -> Reply:
+    respond: Callable[[Conversation, TurnRequest], TurnResult],
+) -> TurnResult:
     config = {
         "configurable": {
             "thread_id": f"conversation:{request.operation_id}"
@@ -78,4 +78,4 @@ def run_conversation(
             durability="sync",
             context=ConversationContext(respond),
         )
-    return Reply.model_validate_json(json.dumps(state["result"]))
+    return TURN_RESULT.validate_python(state["result"])

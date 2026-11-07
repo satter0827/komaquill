@@ -43,7 +43,7 @@ from komaquill.adapters.persistence.schema import (
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.actions import (
     ActionRecord,
-    MoveAction,
+    InferredMove,
     ProposalDismissal,
     ProposedAction,
     RecordedActionRequest,
@@ -51,7 +51,9 @@ from komaquill.domain.conversations.actions import (
 from komaquill.domain.conversations.commands import accept_input
 from komaquill.domain.conversations.editing import Bookmark, NotesRequest, SceneRequest
 from komaquill.domain.conversations.history import advance_history, memory_sources
+from komaquill.domain.conversations.meetings import MeetingAnswer, MeetingPlan, meeting_query_source
 from komaquill.domain.conversations.models import (
+    TURN_RESULT,
     AcceptedInput,
     Conversation,
     ConversationInput,
@@ -61,6 +63,7 @@ from komaquill.domain.conversations.models import (
     Turn,
     TurnRequest,
 )
+from komaquill.domain.conversations.movement import validate_move
 from komaquill.domain.conversations.transitions import apply_reply
 from komaquill.domain.conversations.visuals import VisualReviewRecord
 from komaquill.domain.errors import KomaquillError, OperationStage
@@ -124,13 +127,16 @@ class ConversationRepository:
         for position, turn in enumerate(
             value.turns[max(0, existing - value.turn_offset) :], max(existing, value.turn_offset)
         ):
-            prefix = advance_history(prefix, turn.model_dump(mode="json"))
+            source = turn.model_dump(mode="json")
+            if turn.meeting_state is not None:
+                source["meeting_state"] = turn.meeting_state.model_dump(mode="json")
+            prefix = advance_history(prefix, source)
             connection.execute(
                 conversation_turns.insert().values(
                     conversation_id=str(value.id),
                     position=position,
                     turn_id=str(turn.operation_id),
-                    payload=turn.model_dump_json(),
+                    payload=json.dumps(source, ensure_ascii=False),
                     prefix_sha256=prefix,
                 )
             )
@@ -248,10 +254,14 @@ class ConversationRepository:
             )
         ):
             raise ValueError("The accepted action identity differs from its request.")
+        if recorded.source is not None:
+            if recorded.origin != "conversation":
+                raise ValueError("Only inferred moves have a source span.")
+            recorded.source.read(request.text)
         return request.model_copy(update={"action_id": action_id, "action_origin": recorded.origin})
 
     @stored
-    def apply_inferred_move(self, identity: UUID, action: MoveAction) -> None:
+    def apply_inferred_move(self, identity: UUID, move: InferredMove) -> None:
         """Apply a saved interpretation once without changing the accepted message."""
         with self.database.transaction() as connection:
             row = self._row(connection, identity)
@@ -262,7 +272,11 @@ class ConversationRepository:
             )
             if previous is not None:
                 recorded = read_action(previous)
-                if recorded.origin != "conversation" or recorded.request.action != action:
+                if (
+                    recorded.origin != "conversation"
+                    or recorded.request.action != move.action
+                    or recorded.source != move.source
+                ):
                     raise conflict()
                 return
             conversation = self._get(connection, operation.conversation_id, with_turns=False)
@@ -273,13 +287,17 @@ class ConversationRepository:
                 or request.action_id is not None
             ):
                 raise conflict()
+            try:
+                validate_move(move, request.text, conversation.state.place)
+            except ValueError:
+                raise KomaquillError(code="invalid_response", retryable=False) from None
             updated = accept_input(
                 conversation,
                 SendInput(
                     operation_id=identity,
                     expected_revision=conversation.revision,
                     text=request.text,
-                    action=action,
+                    action=move.action,
                     locale=request.locale,
                     allow_real_llm=request.allow_real_llm,
                 ),
@@ -288,7 +306,9 @@ class ConversationRepository:
                 update={
                     "actions": [
                         *updated.actions[:-1],
-                        updated.actions[-1].model_copy(update={"origin": "conversation"}),
+                        updated.actions[-1].model_copy(
+                            update={"origin": "conversation", "source": move.source}
+                        ),
                     ]
                 }
             )
@@ -637,6 +657,14 @@ class ConversationRepository:
             raise ValueError("Operation identity mismatch.")
         return value
 
+    def _meeting(self, connection: Connection, conversation: Conversation) -> MeetingPlan | None:
+        if not conversation.turn_count:
+            return None
+        turns, _, _ = self._read_turns(
+            connection, str(conversation.id), conversation.turn_count - 1, conversation.turn_count
+        )
+        return turns[0].meeting_state
+
     @stored
     def request(self, identity: UUID) -> tuple[Conversation, TurnRequest]:
         with self.database.engine.connect() as connection:
@@ -681,7 +709,8 @@ class ConversationRepository:
                     update={
                         "locale": self._operation(row).response_locale
                         or request.locale
-                        or header.definition.locale
+                        or header.definition.locale,
+                        "meeting_state": self._meeting(connection, header),
                     }
                 ).model_dump_json(include=set(TurnRequest.model_fields))
             )
@@ -793,9 +822,26 @@ class ConversationRepository:
             if request.action_id is not None
             else None
         )
+        action = read_action(action_payload) if action_payload else None
+        meeting = self._meeting(connection, conversation)
+        excluded = action.source if action else None
+        try:
+            if reply.meeting_query is not None:
+                meeting_query_source(
+                    request.text, reply.meeting_query, meeting is not None, excluded=excluded
+                )
+            if reply.meeting_change is not None:
+                meeting = reply.meeting_change.apply(
+                    meeting, request.text, identity, excluded=excluded
+                )
+        except ValueError:
+            raise KomaquillError(code="invalid_response", retryable=False) from None
+        answer = None
+        if reply.meeting_query or reply.meeting_change is not None:
+            answer = meeting.answer() if meeting else MeetingAnswer(status="unknown")
         turn = Turn(
             operation_id=identity,
-            action=read_action(action_payload).request.action if action_payload else None,
+            action=action.request.action if action else None,
             user=request.text,
             assistant=reply.text,
             narration="" if reply.action_proposals else (state.scenery or state.place),
@@ -803,6 +849,8 @@ class ConversationRepository:
             action_narration=reply.action_narration,
             notes=conversation.notes,
             action_id=request.action_id,
+            meeting=answer,
+            meeting_state=meeting,
         )
         updated = conversation.model_copy(
             update={
@@ -827,7 +875,13 @@ class ConversationRepository:
             }
         )
         self._store(connection, updated)
-        result = operation.model_copy(update={"state": "complete", "image_state": "disabled"})
+        result = operation.model_copy(
+            update={
+                "state": "complete",
+                "image_state": "disabled",
+                "result_revision": updated.revision,
+            }
+        )
         self._save(connection, result)
         return result
 
@@ -858,7 +912,8 @@ class ConversationRepository:
             identity
         )
         with self.database.transaction() as connection:
-            result = Operation.model_validate_json(str(self._row(connection, identity)["payload"]))
+            row = self._row(connection, identity)
+            result = self._operation(row)
             if result.state in {"accepted", "running"}:
                 result = result.model_copy(
                     update={
@@ -866,6 +921,7 @@ class ConversationRepository:
                         "error": code,
                         "error_stage": stage,
                         "can_resume": resumable,
+                        "result_revision": row["base_revision"],
                     }
                 )
                 self._save(connection, result)
@@ -921,14 +977,8 @@ class ConversationRepository:
                     saved = self.database.checkpoints.conversation_result(
                         f"conversation:{identity}"
                     )
-                candidate = Reply.model_validate(saved) if saved is not None else None
-                retained[identity] = (
-                    None
-                    if candidate
-                    and len(candidate.action_proposals) == 1
-                    and isinstance(candidate.action_proposals[0], MoveAction)
-                    else candidate
-                )
+                candidate = TURN_RESULT.validate_python(saved) if saved is not None else None
+                retained[identity] = candidate if isinstance(candidate, Reply) else None
             except KomaquillError as error:
                 retention_errors[identity] = error.code.value
             except (OSError, ValueError):
@@ -981,6 +1031,7 @@ class ConversationRepository:
                                     "state": "interrupted",
                                     "error": retention_errors[str(value.id)],
                                     "can_resume": False,
+                                    "result_revision": row["base_revision"],
                                 }
                             ),
                         )
@@ -998,6 +1049,7 @@ class ConversationRepository:
                                     "state": "interrupted",
                                     "error": error.code.value,
                                     "can_resume": False,
+                                    "result_revision": row["base_revision"],
                                 }
                             )
                         if value.image_state != "pending":
@@ -1011,6 +1063,7 @@ class ConversationRepository:
                     if value.state in {"accepted", "running"}:
                         safe = self._received_calls(value.id)
                         changes["can_resume"] = safe
+                        changes["result_revision"] = row["base_revision"]
                         if safe:
                             changes["error"] = "operation_failed"
                     if (
@@ -1080,6 +1133,7 @@ class ConversationRepository:
                     "error_stage": None,
                     "can_resume": False,
                     "resume_count": result.resume_count + 1,
+                    "result_revision": None,
                 }
             )
             self._save(connection, result)

@@ -1,12 +1,19 @@
 """Define persisted conversation contracts independently of transport and storage."""
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from pydantic import Field, model_validator
+from pydantic import Field, TypeAdapter, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
-from komaquill.domain.conversations.actions import ActionRecord, PlayerAction, ProposedAction
+from komaquill.domain.conversations.actions import (
+    ActionRecord,
+    InferredMove,
+    PlayerAction,
+    ProposedAction,
+)
+from komaquill.domain.conversations.meetings import MeetingAnswer, MeetingChange, MeetingPlan
 from komaquill.domain.conversations.visuals import VisualReviewRecord
 from komaquill.domain.errors import OperationStage
 from komaquill.domain.roleplay import (
@@ -66,6 +73,8 @@ class Turn(Record):
     created_at: datetime = Field(default_factory=now)
     action_id: UUID | None = None
     action: PlayerAction | None = None
+    meeting: MeetingAnswer | None = None
+    meeting_state: SkipJsonSchema[MeetingPlan | None] = Field(default=None, exclude=True)
 
 
 class Conversation(Record):
@@ -100,6 +109,7 @@ class TurnRequest(Record):
     proposal_id: UUID | None = None
     allow_real_llm: bool = False
     locale: Literal["ja", "en"] | None = None
+    meeting_state: MeetingPlan | None = None
 
 
 class SendInput(Record):
@@ -136,6 +146,12 @@ class Reply(Record):
     )
     state_patch: StatePatch
     action_proposals: list[PlayerAction] = Field(default_factory=list, max_length=4)
+    meeting_change: MeetingChange | None = None
+    meeting_query: str | None = None
+
+
+type TurnResult = Reply | InferredMove
+TURN_RESULT = TypeAdapter(cast("type[TurnResult]", TurnResult))
 
 
 class AcceptedInput(Record):
@@ -145,6 +161,7 @@ class AcceptedInput(Record):
 
 class Operation(Record):
     resume_count: int = Field(default=0, ge=0)
+    result_revision: int | None = Field(default=None, ge=0)
     can_resume: bool = False
     nsfw_enabled: bool = False
     id: UUID

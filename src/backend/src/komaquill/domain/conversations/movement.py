@@ -13,9 +13,11 @@ from komaquill.domain.roleplay import MAX_PLACE_LENGTH
 
 _DIRECT_TRAVEL = re.compile(
     r"(?:^|(?<=[。！？!?;；\n])|(?<=\. ))\s*(?:(?:一緒に|二人で|今すぐ|今から)\s*)*"
-    r"(?P<ja>[^。！？!?、,\n]+?)(?:へ|に)(?:行こう|向かおう|移ろう|移り)(?=$|[。！、,\n])"
+    r"(?P<ja>[^。！？!?、,\n]+?)(?:へ|に)"
+    r"(?:行こう|行きましょう|向かおう|向かいましょう|移ろう|移りましょう|移り)(?=$|[。！、,\n])"
     r"|(?:^|(?<=[。！？!?;；\n])|(?<=\. ))\s*(?:(?:let['’]s|let us)\s+)?"
-    r"(?:go|head|walk|move|return)\s+to\s+(?:the\s+)?(?P<en>[^.!?,;\n]+?)(?=$|[.!,;\n])",
+    r"(?:go|head|walk|move|return)\s+to\s+(?:the\s+)?(?P<en>[^.!?,;\n]+?)"
+    r"(?:\s+(?:together|(?:right )?now))*(?=$|[.!,;\n])",
     re.IGNORECASE,
 )
 _TRAVEL_VERB = re.compile(

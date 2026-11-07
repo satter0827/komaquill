@@ -242,7 +242,7 @@ def test_unrecognized_move_still_answers_separate_questions_after_arrival(
         scene = client.conversations.create(
             ConversationInput(title="Reading group", locale="en", initial_state={"place": "Shop"})
         )
-        travel = "Let's go to Central Park."
+        travel = "Let's go to Central Park together now."
         inquiry = "What is the meeting plan"
         other = "how should we greet the guests?"
         message = f"{inquiry}{join}{other}"

@@ -108,8 +108,8 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
     collected = json.loads((output / "after.json").read_bytes())
     calls = collected["calls"]
     rows = collected["results"]
-    # The direct move in the short English fixture needs a separate arrival reply.
-    assert len(calls) == (4 if failed else 41)
+    # Each direct move in a short fixture needs a separate arrival reply.
+    assert len(calls) == (4 if failed else 42)
     assert all(item["status"] == ("failed" if failed else "response_received") for item in calls)
     assert len(rows) == (4 if failed else 40)
     assert all(item["operation"]["state"] == ("failed" if failed else "complete") for item in rows)

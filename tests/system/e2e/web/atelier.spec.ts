@@ -28,6 +28,24 @@ test('recovers the starting choices without treating a failed list as empty', as
   await choice.getByRole('button', { name: ja.reloadData }).click()
   await expect(begin).toBeEnabled()
   await evidence.capture('The starting choices can be used after retry')
+
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.route(
+    '**/api/v1/stories',
+    (route) =>
+      fulfillFault(route, evidence, {
+        status: 503,
+        json: { code: 'connection_failed' },
+      }),
+    { times: 1 },
+  )
+  await page.getByRole('link', { name: ja.play, exact: true }).click()
+  const main = page.getByRole('main')
+  await expect(main.getByRole('alert')).toHaveCount(1)
+  await expect(main.locator('.selection-story').getByRole('alert')).toHaveCount(
+    0,
+  )
+  await expect(begin).toBeDisabled()
 })
 
 test('recovers the album and drawing links from failed reads', async ({

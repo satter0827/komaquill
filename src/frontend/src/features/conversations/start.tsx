@@ -58,6 +58,8 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
   const loadingChoices =
     player.isPending || characters.isPending || stories.isPending
   const selectionComplete = !!(player.data && character && story)
+  const selectionOpen =
+    expanded ?? (choiceError || (!selectionComplete && !loadingChoices))
   const mutation = useMutation({
     ...q.startConversationMutation(),
     onError: async (error) => {
@@ -114,9 +116,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
       >
         <details
           className="start-selection"
-          open={
-            expanded ?? (choiceError || (!selectionComplete && !loadingChoices))
-          }
+          open={selectionOpen}
           onToggle={(event) => setExpanded(event.currentTarget.open)}
         >
           <summary>
@@ -166,7 +166,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
                   </label>
                   {query.isPending && <p role="status">{m.loading}</p>}
                   <QueryNotice
-                    error={query.error}
+                    error={compact && kind === 'story' ? null : query.error}
                     retained={query.data !== undefined}
                     pending={query.isFetching}
                     onRetry={() => void query.refetch()}
@@ -235,7 +235,7 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
             </section>
           </div>
         </details>
-        {loadingChoices && !expanded && <p role="status">{m.loading}</p>}
+        {loadingChoices && !selectionOpen && <p role="status">{m.loading}</p>}
         <Button
           variant="primary"
           type="submit"

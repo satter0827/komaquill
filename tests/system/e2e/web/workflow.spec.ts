@@ -111,6 +111,7 @@ test('continues dialogue with narration and draws only on request', async ({
 
 test('saves a banner and starts with the recommended character', async ({
   page,
+  request,
 }) => {
   const name = 'Story-' + randomUUID().slice(0, 8)
   await page.goto('/stories/new')
@@ -119,6 +120,9 @@ test('saves a banner and starts with the recommended character', async ({
   await page
     .getByLabel(ja.opening, { exact: true })
     .fill('A visitor waits at the clocktower.')
+  await page.getByLabel(ja.tone, { exact: true }).fill('Gentle and concise')
+  await page.getByLabel(ja.topics, { exact: true }).fill('Clock repair')
+  await page.getByLabel(ja.avoid, { exact: true }).fill('Violence')
   await page.getByLabel(ja.defaultCharacter).selectOption({ label: '栞' })
   await page.getByRole('button', { name: ja.save, exact: true }).click()
   await page.getByRole('button', { name: ja.createImage, exact: true }).click()
@@ -137,11 +141,21 @@ test('saves a banner and starts with the recommended character', async ({
   await expect(
     page.getByText('A visitor waits at the clocktower.', { exact: true }),
   ).toBeVisible()
+  await expect(page.getByLabel(ja.tone, { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: ja.create, exact: true }).click()
   await expect(page.locator('.conversation-banner img')).toHaveJSProperty(
     'naturalWidth',
     8,
   )
+  const identity = page.url().split('/').at(-1)
+  const started = await (
+    await request.get('/api/v1/conversations/' + identity)
+  ).json()
+  expect(started.definition).toMatchObject({
+    tone: 'Gentle and concise',
+    topics: 'Clock repair',
+    avoid: 'Violence',
+  })
 })
 
 test('uses English for dialogue and narration after changing language', async ({
@@ -191,7 +205,6 @@ test('generates and automatically collects a standalone image', async ({
   page,
 }) => {
   await page.goto('/images')
-  await page.getByRole('button', { name: ja.generate, exact: true }).click()
   await page
     .getByLabel(ja.imagePrompt, { exact: true })
     .fill('a quiet green garden')
@@ -268,6 +281,88 @@ test('retains one profile across start, edit, return and start navigation', asyn
   await evidence.capture(
     'One edited profile survives both directions of client navigation',
   )
+})
+
+test('reviews a draft separately and edits a saved character', async ({
+  page,
+  request,
+  evidence,
+  auditAccessibility,
+}) => {
+  const preferences = await (await request.get('/api/v1/preferences')).json()
+  await request.put('/api/v1/preferences', {
+    data: { ...preferences, locale: 'en' },
+  })
+  const name = 'Saved watchmaker'
+  const description = 'An adult who repairs clocks.'
+  const created = await (
+    await request.post('/api/v1/characters/save', {
+      data: {
+        operation_id: randomUUID(),
+        value: { name, description, initial_clothing: 'Blue coat' },
+      },
+    })
+  ).json()
+  await page.goto('/characters')
+  const edit = page.getByRole('link', {
+    name: en.editPresetLabel.replace('{name}', name),
+    exact: true,
+  })
+  await expect(edit).toHaveText(en.edit)
+  await edit.click()
+  const trigger = page.getByRole('button', {
+    name: en.createDraft,
+    exact: true,
+  })
+  const editorName = page.getByLabel(en.requiredName, { exact: true })
+  await expect(editorName).toHaveValue(name)
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: en.createDraft, exact: true })
+  const idea = dialog.getByRole('textbox', {
+    name: en.draftPrompt,
+    exact: true,
+  })
+  await idea.fill('An adult watchmaker.')
+  await page.keyboard.press('Escape')
+  await expect(trigger).toBeFocused()
+  await trigger.click()
+  await expect(idea).toHaveValue('An adult watchmaker.')
+  await dialog
+    .getByRole('button', { name: en.generateDraft, exact: true })
+    .click()
+  await expect(
+    dialog.getByText('Fixture character', { exact: true }),
+  ).toBeVisible()
+  await expect(editorName).toHaveValue(name)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await auditAccessibility()
+  await evidence.capture('Draft review in the narrow editor')
+  await dialog.getByRole('button', { name: en.useDraft, exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await expect(editorName).toHaveValue('Fixture character')
+  const personality = page.getByRole('textbox', {
+    name: en.personality,
+    exact: true,
+  })
+  await expect(
+    page.getByRole('textbox', { name: en.description, exact: true }),
+  ).toHaveValue(description)
+  await expect(personality).toBeVisible()
+  await expect(personality).toHaveValue('Calm')
+  await expect(
+    page.getByRole('textbox', { name: en.initial_clothing, exact: true }),
+  ).toHaveValue('Blue coat')
+  const stored = await (await request.get('/api/v1/characters')).json()
+  expect(
+    stored.find((item: { id: string }) => item.id === created.preset.id),
+  ).toMatchObject({ name, revision: 0 })
+  await page.getByRole('button', { name: en.save, exact: true }).click()
+  await expect(page.locator('.editor-page [role=status]')).toHaveText(en.saved)
+  await page.reload()
+  await expect(editorName).toHaveValue('Fixture character')
+  await page.getByText(en.basicDetails, { exact: true }).click()
+  await expect(personality).toHaveValue('Calm')
+  await evidence.capture('Saved settings after applying and editing a draft')
 })
 
 test('regenerates the current age and gender and displays one preview', async ({

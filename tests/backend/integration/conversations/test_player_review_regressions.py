@@ -1,4 +1,4 @@
-"""Review execution ownership, locale defaults and explicit visual confirmation."""
+"""Review execution ownership, locale defaults and retained appearance."""
 
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
@@ -13,7 +13,6 @@ from komaquill.api import (
     CreationRequest,
     KomaquillError,
     SendInput,
-    VisualReview,
     WaitAction,
 )
 from komaquill.domain.conversations.models import Reply
@@ -161,46 +160,34 @@ def test_live_creator_is_not_reclaimed_or_invoked_twice(tmp_path):
         assert running.result().state == "complete"
 
 
-def test_review_cannot_change_a_confirmed_person_and_retains_unknown_clothes(tmp_path):
+def test_saved_mixed_appearance_remains_a_reference_until_the_source_is_edited(tmp_path):
     api = Client.initialize(tmp_path)
-    c = api.conversations.create(
-        ConversationInput(
-            title="Review",
-            user={"appearance": "Brown hair", "initial_clothing": "Red coat"},
-            character={"appearance": "Silver hair and apron", "visual_review_required": True},
-        )
+    character = api.characters.create(
+        CharacterInput(name="Mira", appearance="Silver hair and apron", visual_review_required=True)
     )
-    review = VisualReview(
+    updated = api.characters.update(
+        character.id,
+        character.revision,
+        CharacterInput(name="Renamed", appearance=character.appearance),
+    )
+    request = CreationRequest(
+        kind="portrait",
         operation_id=uuid4(),
-        expected_revision=0,
-        character={"appearance": "Silver hair", "initial_clothing": None, "current_clothing": None},
+        target_id=updated.id,
+        expected_revision=updated.revision,
     )
-    saved = api.conversations.review_visuals(c.id, review)
-    assert saved.definition.user == c.definition.user
-    assert saved.state.player == c.state.player
-    assert saved.definition.character.initial_clothing is None
-    assert saved.state.character.clothing is None
-    assert api.conversations.review_visuals(c.id, review) == saved
-
-
-def test_review_refuses_updates_to_an_already_confirmed_person(tmp_path):
-    api = Client.initialize(tmp_path)
-    c = api.conversations.create(
-        ConversationInput(
-            title="Review",
-            user={"appearance": "Brown hair"},
-            character={"visual_review_required": True},
-        )
+    source, _ = api.library.source(request)
+    assert '"appearance_reference": "Silver hair and apron"' in source
+    replaced = api.characters.update(
+        updated.id,
+        updated.revision,
+        CharacterInput(name="Renamed", appearance="Silver hair", initial_clothing="Blue coat"),
     )
-    person = {"appearance": "Changed", "initial_clothing": None, "current_clothing": None}
-    with pytest.raises(KomaquillError, match="invalid_request"):
-        api.conversations.review_visuals(
-            c.id,
-            VisualReview(
-                operation_id=uuid4(), expected_revision=0, player=person, character=person
-            ),
-        )
-    assert api.conversations.get(c.id) == c
+    source, _ = api.library.source(
+        request.model_copy(update={"expected_revision": replaced.revision})
+    )
+    assert '"appearance": "Silver hair"' in source
+    assert "apron" not in source
 
 
 def test_http_reply_commit_recovers_while_server_process_stays_alive(tmp_path, monkeypatch):
@@ -233,23 +220,33 @@ def test_http_reply_commit_recovers_while_server_process_stays_alive(tmp_path, m
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("role", ["user", "character"])
-def test_drawing_cannot_bypass_an_unreviewed_person(tmp_path, role):
+@pytest.mark.parametrize("clothing", [None, "", "Blue coat"])
+def test_drawing_uses_retained_appearance_only_when_clothing_is_unspecified(tmp_path, clothing):
+    import json
+
+    from komaquill.adapters.llm.images import visual_facts
+    from komaquill.domain.conversations.context import scene_context
+
     api = Client.initialize(tmp_path)
-    c = api.conversations.create(
+    conversation = api.conversations.create(
         ConversationInput(
-            title="Review",
-            initial_state={"place": "Beach"},
-            **{role: {"appearance": "Mixed", "visual_review_required": True}},
+            title="Retained appearance",
+            initial_state={"place": "Beach", "character": {"clothing": clothing}},
+            character={"appearance": "Silver hair and old apron", "visual_review_required": True},
         )
     )
-    with pytest.raises(KomaquillError, match="visual_review_required"):
-        api.library.accept(
-            CreationRequest(
-                llm_profile="fake",
-                operation_id=uuid4(),
-                kind="conversation_image",
-                target_id=c.id,
-                expected_revision=0,
-            )
+    source, _ = api.library.source(
+        CreationRequest(
+            operation_id=uuid4(),
+            kind="conversation_image",
+            target_id=conversation.id,
+            expected_revision=0,
         )
+    )
+    person = scene_context(conversation)["people"]["character"]
+    facts = visual_facts(source)
+    assert json.loads(source)["character"] == person
+    assert ("appearance_reference" in facts) == (clothing is None)
+    assert ("old apron" in str(person)) == (clothing is None)
+    if clothing is not None:
+        assert facts["clothing"] == (clothing or "No clothing")

@@ -239,50 +239,60 @@ def test_operation_ids_cannot_be_reused_in_another_conversation(story):
         )
 
 
-def test_visual_review_is_explicit_idempotent_and_used_by_drawing(story):
-    from komaquill.adapters.persistence.schema import conversations
+def test_retained_appearance_allows_actions_without_rewriting_review_history(story):
+    from komaquill.adapters.persistence.schema import conversation_events
     from komaquill.domain.conversations.context import drawing_context
-    from komaquill.domain.conversations.visuals import VisualReview
+    from sqlalchemy import select
 
-    client, service, conversation = story
-    definition = conversation.definition.model_copy(
-        update={
-            "character": conversation.definition.character.model_copy(
-                update={
-                    "appearance": "Silver hair and an old apron",
-                    "visual_review_required": True,
-                }
-            )
-        }
+    client, service, _ = story
+    original = service.create(
+        ConversationInput(
+            title="Retained appearance",
+            llm_profile="fake",
+            character={
+                "appearance": "Silver hair and an old apron",
+                "visual_review_required": True,
+            },
+        )
     )
-    old = conversation.model_copy(update={"definition": definition})
+    event_id = uuid4()
+    raw = (
+        '{ "request": { "operation_id": "'
+        + str(event_id)
+        + '", "expected_revision": 0, "character": { "appearance": "Silver hair", '
+        '"initial_clothing": null, "current_clothing": null } }, '
+        '"revision": 1, "created_at": "2026-11-01T00:00:00Z" }'
+    )
     with service.repository.database.engine.begin() as connection:
         connection.execute(
-            conversations.update()
-            .where(conversations.c.id == str(old.id))
-            .values(payload=old.model_dump_json())
+            conversation_events.insert().values(
+                conversation_id=str(original.id),
+                kind="visual_reviews",
+                id=str(event_id),
+                payload=raw,
+                pending=0,
+            )
         )
-    with pytest.raises(KomaquillError, match="visual_review_required"):
-        drawing_context(service.get(old.id))
-    review = VisualReview(
-        operation_id=uuid4(),
-        expected_revision=0,
-        character={
-            "appearance": "Silver hair",
-            "initial_clothing": "Black apron",
-            "current_clothing": "Green coat",
-        },
+    snapshot = drawing_context(service.get(original.id))
+    assert snapshot["character"]["appearance_reference"] == original.definition.character.appearance
+    operation, created = service.accept(
+        original.id,
+        SendInput(operation_id=uuid4(), expected_revision=0, action=MoveAction(destination="Park")),
     )
-    current = service.review_visuals(old.id, review)
-    assert service.review_visuals(old.id, review) == current
-    snapshot = drawing_context(current)
-    assert snapshot["character"]["physical_features"] == "Silver hair"
-    assert snapshot["character"]["clothing"] == "Green coat"
-    assert "old apron" not in str(snapshot)
-    assert current.definition.initial_state.character.clothing == "Black apron"
-    assert len(Client(client.workspace).conversations.get(old.id).visual_reviews) == 1
-    with pytest.raises(KomaquillError, match="operation_conflict"):
-        service.review_visuals(old.id, review.model_copy(update={"expected_revision": 1}))
+    assert created and operation.state == "accepted"
+    updated = Client(client.workspace).conversations.get(original.id)
+    assert updated.state.place == "Park"
+    assert updated.definition == original.definition
+    assert updated.visual_reviews[0].request.operation_id == event_id
+    with service.repository.database.engine.connect() as connection:
+        assert (
+            connection.execute(
+                select(conversation_events.c.payload).where(
+                    conversation_events.c.id == str(event_id)
+                )
+            ).scalar_one()
+            == raw
+        )
 
 
 @pytest.mark.parametrize(

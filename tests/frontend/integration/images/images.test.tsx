@@ -119,7 +119,6 @@ function images() {
   return cache
 }
 async function compose() {
-  await userEvent.click(await screen.findByRole('button', { name: m.generate }))
   return screen.findByLabelText(m.imagePrompt)
 }
 const dayLabel = () =>
@@ -127,13 +126,15 @@ const dayLabel = () =>
     new Date(2026, 10, 5),
   )
 
-it('keeps all days collapsed and displays saved files without individual lookups or collection', async () => {
+it('opens only the latest day without looking up or collecting individual runs', async () => {
   records.set('kept', saved('kept'))
+  records.set('older', {
+    ...saved('older'),
+    created_at: '2026-11-04T12:00:00Z',
+  })
   const cache = images()
   const day = await screen.findByText(dayLabel())
-  expect(screen.queryByRole('img')).not.toBeInTheDocument()
-  await userEvent.click(day)
-  const image = screen.getByRole('img')
+  const image = await screen.findByRole('img')
   expect(image.closest('a')).toHaveAttribute(
     'href',
     '/api/v1/images/kept/files/0',
@@ -149,8 +150,7 @@ it('keeps all days collapsed and displays saved files without individual lookups
 it('retries file display without collecting or generating again', async () => {
   records.set('kept', saved('kept'))
   const cache = images()
-  await userEvent.click(await screen.findByText(dayLabel()))
-  const original = screen.getByRole('img')
+  const original = await screen.findByRole('img')
   fireEvent.error(original)
   await userEvent.click(screen.getByRole('button', { name: m.retryCollection }))
   expect(screen.getByRole('img')).not.toBe(original)
@@ -172,7 +172,6 @@ it('displays a new image URL after the previous file failed', async () => {
 it('does not collect an old unfinished run when its day is opened', async () => {
   records.set('old', { ...saved('old', 'queued'), runtime_id: 'past' })
   const cache = images()
-  await userEvent.click(await screen.findByText(dayLabel()))
   expect(await screen.findByText(m.imagePreparing)).toBeVisible()
   expect(reads).toBe(0)
   expect(collections).toBe(0)
@@ -579,7 +578,6 @@ it('links to recovered partial images while retaining the generation failure', a
     'href',
     `#image-${requests[0].request_id}`,
   )
-  await userEvent.click(document.querySelector('.album-days summary')!)
   expect(await screen.findByRole('img')).toBeVisible()
   expect(collections).toBe(1)
   cache.clear()
@@ -649,11 +647,15 @@ it('refreshes connection observations after collection fails while its day is co
     screen.getByRole('button', { name: m.drawRequestedScene }),
   )
   await waitFor(() => expect(refreshed).toBeGreaterThan(0))
+  await userEvent.click(await screen.findByText(dayLabel()))
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: m.retryCollection }),
     ).toBeDisabled(),
   )
+  expect(
+    screen.queryByText(dayLabel())?.closest('details'),
+  ).not.toHaveAttribute('open')
   expect(collections).toBe(1)
   expect(screen.queryByRole('img')).not.toBeInTheDocument()
   expect(requests).toHaveLength(1)

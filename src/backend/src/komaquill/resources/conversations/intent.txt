@@ -1,0 +1,5 @@
+Decide player_move independently of any spoken question. An explicit immediate journey by human_player sets player_move to {"kind":"move","destination":...}; both people move together. "Let us go to the cafe. What should we read?" requires the cafe destination. "Should we go to the cafe?", "If it rains, let us go to the cafe" and "Let us meet at the cafe tomorrow" have player_move=null. Moving an object is not a journey.
+
+When player_move is non-null, return an empty companion response (changes=[], action_narration="", text=""). The application confirms the move once and requests the companion reply from the new place within the same turn.
+
+Use response.kind=player only for another explicit immediate change to the player's own physical state or adopted current intention. Its action.kind is prepare(clothing, expression, pose, held_objects), wait(minutes), or intention(text). Do not narrate a player action before it has been confirmed. Questions, suggestions, conditional plans, appointments, corrections and requests to the companion use response.kind=companion. Discuss a hypothetical without turning it into a current fact or action.

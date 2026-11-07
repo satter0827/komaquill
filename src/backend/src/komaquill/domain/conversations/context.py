@@ -1,26 +1,16 @@
 """Project canonical state without deriving facts from generated prose."""
 
 from komaquill.domain.conversations.models import Conversation
-from komaquill.domain.errors import KomaquillError
-from komaquill.domain.roleplay import PersonDefinition, PersonState
-
-
-def require_reviewed(conversation: Conversation) -> None:
-    if any(
-        person.visual_review_required
-        for person in (conversation.definition.user, conversation.definition.character)
-    ):
-        raise KomaquillError(code="visual_review_required", retryable=False)
+from komaquill.domain.roleplay import PersonDefinition, PersonState, visual_appearance
 
 
 def visible_person(person: PersonDefinition, state: PersonState) -> dict[str, object]:
-    if person.visual_review_required:
-        raise KomaquillError(code="visual_review_required", retryable=False)
+    clothing = person.initial_clothing if state.clothing is None else state.clothing
     return {
         "age": person.age,
         "gender": person.gender,
-        "physical_features": person.appearance,
-        "clothing": person.initial_clothing if state.clothing is None else state.clothing,
+        **visual_appearance(person, clothing, field="physical_features"),
+        "clothing": clothing,
         "expression": state.expression,
         "pose": state.pose,
         "held_objects": [
@@ -50,7 +40,6 @@ def drawing_context(
     conversation: Conversation, subjects: str = "character", viewpoint: str = "player"
 ) -> dict[str, object]:
     """Resolve the visible partner while keeping the player out of the image."""
-    require_reviewed(conversation)
     visible = subjects != "environment"
     if subjects == "pair":
         return {

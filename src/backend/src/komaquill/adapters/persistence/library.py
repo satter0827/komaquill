@@ -39,7 +39,11 @@ from komaquill.domain.library.models import (
     StoryInput,
     StoryPreset,
 )
-from komaquill.domain.library.rendering import preset_changes, preset_image_input
+from komaquill.domain.library.rendering import (
+    preserve_appearance_reference,
+    preset_changes,
+    preset_image_input,
+)
 
 MODELS: dict[PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]] = {
     "player": PlayerProfile,
@@ -186,6 +190,8 @@ class LibraryRepository:
             previous = self._decode(kind, str(identity), row["payload"])
             if previous.revision != revision:
                 raise conflict()
+            value = preserve_appearance_reference(value, previous)
+            changes = preset_changes(kind, value, previous)
             result = MODELS[kind].model_validate(
                 {
                     **previous.model_dump(),
@@ -194,11 +200,9 @@ class LibraryRepository:
                     "sample": False,
                     "sample_locale": None,
                     "image_stale": bool(previous.image_id)
-                    if preset_image_input(kind, previous) != preset_image_input(kind, value)
+                    if changes.image_changed
                     else previous.image_stale,
-                    "image_job_id": None
-                    if preset_image_input(kind, previous) != preset_image_input(kind, value)
-                    else previous.image_job_id,
+                    "image_job_id": None if changes.image_changed else previous.image_job_id,
                 }
             )
             connection.execute(
@@ -499,6 +503,7 @@ class LibraryRepository:
                 is None
             ):
                 raise missing()
+            value = preserve_appearance_reference(value, previous)
             changes = preset_changes(kind, value, previous)
             record = MODELS[kind].model_validate(
                 {

@@ -1,7 +1,7 @@
 import { ImageResult } from '../../shared/images/result'
 import { isRejectedRequest, POLL_INTERVAL_MS } from '../../api/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type { ImageInput, Run } from '../../api/generated/types.gen'
 import {
@@ -56,11 +56,12 @@ export function groupImageDays(runs: Run[], locale: string) {
 }
 
 export function ImagesPage() {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
+  const formId = useId()
   const [prompt, setPrompt] = useState('')
   const [prepared, setPrepared] = useState<ImageInput | null>(null)
   const [latestId, setLatestId] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [dayOverrides, setDayOverrides] = useState<Record<string, boolean>>({})
   const announced = useRef<string | null>(null)
   const m = useMessages()
   const format = useFormatMessage()
@@ -89,7 +90,7 @@ export function ImagesPage() {
       : undefined,
   )
   const availability = useAvailability(
-    open
+    open && prompt.trim()
       ? { kind: 'image', prompt, llm_profile: preferences.value.llm_profile }
       : undefined,
   )
@@ -139,6 +140,11 @@ export function ImagesPage() {
     )
   }, [cache, prepared, submit.isError, accept, reset])
   const days = groupImageDays(images.data ?? [], preferences.value.locale)
+  const dayExpanded = (key: string) => dayOverrides[key] ?? key === days[0]?.key
+  const latestDay = days.find((day) =>
+    day.runs.some((run) => run.run_id === latestId),
+  )
+  const latestVisible = latestDay && dayExpanded(latestDay.key)
   useEffect(() => {
     if (
       latest.data?.state !== 'saved' ||
@@ -146,10 +152,28 @@ export function ImagesPage() {
     )
       return
     const day = groupImageDays([latest.data], preferences.value.locale)[0]
-    setExpanded((values) => new Set([...values, day.key]))
+    setDayOverrides((values) => ({ ...values, [day.key]: true }))
     announced.current = latest.data.run_id
   }, [latest.data, preferences.value.locale])
   const waiting = submit.isPending || (!!prepared && submit.isError)
+  const announcement = submit.isPending
+    ? m.requestSending
+    : prepared
+      ? m.receiptUnknown
+      : !latestId
+        ? null
+        : latest.data?.state === 'saved'
+          ? m.albumAdded
+          : latestVisible
+            ? null
+            : collectionError
+              ? failure(collectionError)
+              : latest.data?.state === 'lost'
+                ? m.drawingResultUnknown
+                : latest.data?.failure
+                  ? failure(latest.data.failure)
+                  : m.imagePreparing
+  const hasLatestImages = !!latest.data?.images?.length
   return (
     <section className="page album-page">
       <div className="page-heading">
@@ -157,66 +181,55 @@ export function ImagesPage() {
         <Button
           variant="primary"
           aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          aria-controls={formId}
+          onClick={() => setOpen((value) => !value)}
         >
-          {m.generate}
+          {open ? m.closeDrawingForm : m.openDrawingForm}
         </Button>
       </div>
       <p className="subtle">{m.imageDescription}</p>
-      {open && (
-        <form
-          className="image-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!availability.ready || waiting) return
-            const body: ImageInput = {
-              request_id: crypto.randomUUID(),
-              prompt,
-              llm_profile: preferences.value.llm_profile,
-              allow_real_llm: true,
-            }
-            setPrepared(body)
-            setLatestId(null)
-            submit.mutate({ body })
-          }}
-        >
-          <label>
-            {m.imagePrompt}
-            <textarea
-              required
-              rows={4}
-              value={prompt}
-              disabled={waiting}
-              onChange={(event) => setPrompt(event.target.value)}
-            />
-          </label>
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={waiting || !prompt.trim() || !availability.ready}
+      <div id={formId} hidden={!open}>
+        {open && (
+          <form
+            className="image-form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!availability.ready || waiting) return
+              const body: ImageInput = {
+                request_id: crypto.randomUUID(),
+                prompt,
+                llm_profile: preferences.value.llm_profile,
+                allow_real_llm: true,
+              }
+              setPrepared(body)
+              setLatestId(null)
+              submit.mutate({ body })
+            }}
           >
-            {m.drawRequestedScene}
-          </Button>
-        </form>
-      )}
-      {(submit.isPending || prepared || latestId) && (
+            <label>
+              {m.imagePrompt}
+              <textarea
+                required
+                rows={4}
+                value={prompt}
+                disabled={waiting}
+                onChange={(event) => setPrompt(event.target.value)}
+              />
+            </label>
+            <Button
+              variant="primary"
+              type="submit"
+              disabled={waiting || !prompt.trim() || !availability.ready}
+            >
+              {m.drawRequestedScene}
+            </Button>
+          </form>
+        )}
+      </div>
+      {(announcement || hasLatestImages) && (
         <div className="creation-progress" role="status">
-          <p>
-            {submit.isPending
-              ? m.requestSending
-              : prepared
-                ? m.receiptUnknown
-                : latest.data?.state === 'saved'
-                  ? m.albumAdded
-                  : collectionError
-                    ? failure(collectionError)
-                    : latest.data?.state === 'lost'
-                      ? m.drawingResultUnknown
-                      : latest.data?.failure
-                        ? failure(latest.data.failure)
-                        : m.imagePreparing}
-          </p>
-          {!!latest.data?.images?.length && (
+          {announcement && <p>{announcement}</p>}
+          {hasLatestImages && (
             <a
               href={`#image-${latestId}`}
               onClick={(event) => {
@@ -225,7 +238,7 @@ export function ImagesPage() {
                   [latest.data!],
                   preferences.value.locale,
                 )[0]
-                setExpanded((values) => new Set([...values, day.key]))
+                setDayOverrides((values) => ({ ...values, [day.key]: true }))
                 requestAnimationFrame(() => {
                   const image = document.getElementById(`image-${latestId}`)
                   image?.scrollIntoView({ block: 'start' })
@@ -241,7 +254,7 @@ export function ImagesPage() {
               {m.retryRequest}
             </Button>
           )}
-          {collectionError && latestId && (
+          {collectionError && latestId && !latestVisible && (
             <Button
               disabled={!recovery.ready}
               onClick={() => {
@@ -268,45 +281,43 @@ export function ImagesPage() {
       )}
       {days.length === 0 && !images.isPending && <p>{m.albumEmpty}</p>}
       <div className="album-days">
-        {days.map((day) => (
-          <details
-            key={day.key}
-            open={expanded.has(day.key)}
-            onToggle={(event) => {
-              const isOpen = event.currentTarget.open
-              setExpanded((values) => {
-                if (values.has(day.key) === isOpen) return values
-                const next = new Set(values)
-                if (isOpen) next.add(day.key)
-                else next.delete(day.key)
-                return next
-              })
-            }}
-          >
-            <summary>
-              {day.label || m.undatedImages}
-              <span className="subtle">
-                {format('albumDayCount', {
-                  count: day.runs.reduce(
-                    (count, run) => count + (run.images?.length ?? 0),
-                    0,
-                  ),
-                })}
-              </span>
-            </summary>
-            {expanded.has(day.key) && (
-              <div className="details-content image-grid">
-                {day.runs.map((run) => (
-                  <ImageResult
-                    key={run.run_id}
-                    identity={run.run_id}
-                    run={run}
-                  />
-                ))}
-              </div>
-            )}
-          </details>
-        ))}
+        {days.map((day) => {
+          const expanded = dayExpanded(day.key)
+          return (
+            <details key={day.key} open={expanded}>
+              <summary
+                onClick={(event) => {
+                  event.preventDefault()
+                  setDayOverrides((values) => ({
+                    ...values,
+                    [day.key]: !expanded,
+                  }))
+                }}
+              >
+                {day.label || m.undatedImages}
+                <span className="subtle">
+                  {format('albumDayCount', {
+                    count: day.runs.reduce(
+                      (count, run) => count + (run.images?.length ?? 0),
+                      0,
+                    ),
+                  })}
+                </span>
+              </summary>
+              {expanded && (
+                <div className="details-content image-grid">
+                  {day.runs.map((run) => (
+                    <ImageResult
+                      key={run.run_id}
+                      identity={run.run_id}
+                      run={run}
+                    />
+                  ))}
+                </div>
+              )}
+            </details>
+          )
+        })}
       </div>
     </section>
   )

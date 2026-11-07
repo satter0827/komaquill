@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 from uuid import uuid4
 
-from komaquill.api import Client, ConversationInput, VisualReview
+from komaquill.api import Client, ConversationInput, MoveAction, SendInput
 
 
 def test_reader_does_not_mix_a_previous_header_with_newly_committed_events(tmp_path, monkeypatch):
@@ -14,7 +14,6 @@ def test_reader_does_not_mix_a_previous_header_with_newly_committed_events(tmp_p
             {
                 "title": "Snapshot",
                 "llm_profile": "fake",
-                "character": {"visual_review_required": True},
             }
         )
     )
@@ -33,24 +32,18 @@ def test_reader_does_not_mix_a_previous_header_with_newly_committed_events(tmp_p
         assert selected.wait(10)
         try:
             other = Client(tmp_path)
-            changed = other.conversations.review_visuals(
+            _, created = other.conversations.accept(
                 conversation.id,
-                VisualReview.model_validate(
-                    {
-                        "operation_id": str(uuid4()),
-                        "expected_revision": 0,
-                        "character": {
-                            "appearance": "Silver hair",
-                            "initial_clothing": "Black apron",
-                            "current_clothing": "Black apron",
-                        },
-                    }
+                SendInput(
+                    operation_id=uuid4(),
+                    expected_revision=0,
+                    action=MoveAction(destination="Garden"),
                 ),
             )
-            assert changed.revision == 1
+            assert created
         finally:
             proceed.set()
         saved = reading.result(timeout=10)
-    assert saved.revision == 0 and saved.visual_reviews == []
+    assert saved.revision == 0 and saved.actions == []
     latest = other.conversations.get(conversation.id)
-    assert latest.revision == 1 and len(latest.visual_reviews) == 1
+    assert latest.revision == 1 and len(latest.actions) == 1

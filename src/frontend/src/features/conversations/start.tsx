@@ -1,19 +1,28 @@
 import { OriginalImage } from '../../shared/images/original'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { useState } from 'react'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import {
   useFailure,
+  useFormatMessage,
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
 import { paths } from '../../shared/navigation'
 
+function selectionChanged(error: unknown) {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error.code === 'operation_conflict' || error.code === 'request_not_found')
+  )
+}
+
 export function NewConversation({ compact = false }: { compact?: boolean }) {
   const m = useMessages()
-  const [style, setStyle] = useState({ tone: '', topics: '', avoid: '' })
+  const format = useFormatMessage()
   const failure = useFailure()
   const preferences = usePreferences()
   const cache = useQueryClient()
@@ -44,6 +53,14 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
       : choices('character')[0])
   const mutation = useMutation({
     ...q.startConversationMutation(),
+    onError: async (error) => {
+      if (!selectionChanged(error)) return
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: q.getPlayerQueryKey() }),
+        cache.invalidateQueries({ queryKey: q.listCharactersQueryKey() }),
+        cache.invalidateQueries({ queryKey: q.listStoriesQueryKey() }),
+      ])
+    },
     onSuccess: async (conversation) => {
       await cache.invalidateQueries({ queryKey: q.listConversationsQueryKey() })
       navigate(`/conversations/${conversation.id}`)
@@ -71,14 +88,19 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
       <form
         onSubmit={(event) => {
           event.preventDefault()
-          if (player.data && character && story)
+          if (
+            preferences.ready &&
+            player.data &&
+            character &&
+            story &&
+            !mutation.isPending
+          )
             mutation.mutate({
               body: {
                 player_revision: player.data!.revision,
                 character: { id: character!.id, revision: character!.revision },
                 story: { id: story!.id, revision: story!.revision },
                 locale: preferences.value.locale,
-                ...style,
               },
             })
         }}
@@ -142,31 +164,28 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
                         record.name
                       : m.noPresets}
                   </p>
-                  <Link
-                    className="text-button"
-                    to={`${paths[kind]}/new?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
-                  >
-                    {m.new} →
-                  </Link>
+                  <div className="actions">
+                    {record && (
+                      <Link
+                        className="text-button"
+                        to={`${paths[kind]}/${record.id}?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
+                        aria-label={format('editPresetLabel', {
+                          name: record.name,
+                        })}
+                      >
+                        {m.edit}
+                      </Link>
+                    )}
+                    <Link
+                      className="text-button"
+                      to={`${paths[kind]}/new?returnTo=${encodeURIComponent('/new?' + search.toString())}`}
+                    >
+                      {m.new} →
+                    </Link>
+                  </div>
                 </section>
               )
             })}
-          </div>
-        </details>
-        <details>
-          <summary>{m.expressionSettings}</summary>
-          <div className="details-content">
-            {(['tone', 'topics', 'avoid'] as const).map((key) => (
-              <label key={key}>
-                {m[key]}
-                <textarea
-                  value={style[key]}
-                  onChange={(event) =>
-                    setStyle({ ...style, [key]: event.target.value })
-                  }
-                />
-              </label>
-            ))}
           </div>
         </details>
         <Button
@@ -191,7 +210,9 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
           .filter(Boolean)
           .map((error, index) => (
             <p key={index} role="alert" className="error">
-              {failure(error)}
+              {error === mutation.error && selectionChanged(error)
+                ? m.startSettingsChanged
+                : failure(error)}
             </p>
           ))}
       </form>

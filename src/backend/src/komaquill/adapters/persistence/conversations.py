@@ -62,7 +62,7 @@ from komaquill.domain.conversations.models import (
     TurnRequest,
 )
 from komaquill.domain.conversations.transitions import apply_reply
-from komaquill.domain.conversations.visuals import VisualReview, VisualReviewRecord
+from komaquill.domain.conversations.visuals import VisualReviewRecord
 from komaquill.domain.errors import KomaquillError, OperationStage
 from komaquill.domain.models import Run
 from komaquill.domain.roleplay import ConversationMemory
@@ -137,7 +137,7 @@ class ConversationRepository:
 
         from sqlalchemy.dialects.sqlite import insert
 
-        for kind in ("actions", "proposals", "visual_reviews"):
+        for kind in ("actions", "proposals"):
             for event in getattr(value, kind):
                 event_id = (
                     event.id if isinstance(event, ProposedAction) else event.request.operation_id
@@ -175,11 +175,7 @@ class ConversationRepository:
         self,
         identity: UUID,
         kind: str,
-        request: RecordedActionRequest
-        | ProposalDismissal
-        | VisualReview
-        | NotesRequest
-        | SceneRequest,
+        request: RecordedActionRequest | ProposalDismissal | NotesRequest | SceneRequest,
     ) -> str:
         return hashlib.sha256(
             (str(identity) + kind + request.model_dump_json()).encode()
@@ -190,11 +186,7 @@ class ConversationRepository:
         connection: Connection,
         identity: UUID,
         kind: str,
-        request: RecordedActionRequest
-        | ProposalDismissal
-        | VisualReview
-        | NotesRequest
-        | SceneRequest,
+        request: RecordedActionRequest | ProposalDismissal | NotesRequest | SceneRequest,
     ) -> bool:
         operation_id = str(request.operation_id)
         previous = connection.execute(
@@ -215,11 +207,7 @@ class ConversationRepository:
         connection: Connection,
         identity: UUID,
         kind: str,
-        request: RecordedActionRequest
-        | ProposalDismissal
-        | VisualReview
-        | NotesRequest
-        | SceneRequest,
+        request: RecordedActionRequest | ProposalDismissal | NotesRequest | SceneRequest,
     ) -> None:
         connection.execute(
             command_receipts.insert().values(
@@ -616,88 +604,6 @@ class ConversationRepository:
             )
             self._store(connection, updated)
             self._register_command(connection, identity, f"dismiss:{proposal_id}", request)
-            connection.commit()
-            return updated
-
-    @stored
-    def review_visuals(self, identity: UUID, review: VisualReview) -> Conversation:
-        with self.database.transaction() as connection:
-            self._known_command(connection, identity, "visual_review", review)
-            conversation = self._get(connection, identity, with_turns=False, with_events=True)
-            payload = self._event_payload(
-                connection, identity, "visual_reviews", review.operation_id
-            )
-            if payload is not None:
-                previous = VisualReviewRecord.model_validate_json(payload)
-                if previous.request != review:
-                    raise conflict()
-                return conversation
-            if (
-                conversation.revision != review.expected_revision
-                or connection.execute(
-                    select(operations.c.id).where(operations.c.active_slot == 1)
-                ).first()
-            ):
-                raise conflict()
-            roles = (("player", "user"), ("character", "character"))
-            required = {
-                role
-                for role, key in roles
-                if getattr(conversation.definition, key).visual_review_required
-            }
-            if not required:
-                raise conflict()
-            if {role for role, _ in roles if getattr(review, role) is not None} != required:
-                raise KomaquillError(code="invalid_request", retryable=False)
-            people, current, initial = {}, {}, {}
-            for role, key in roles:
-                chosen = getattr(review, role)
-                if chosen is None:
-                    continue
-                people[key] = getattr(conversation.definition, key).model_copy(
-                    update={
-                        "appearance": chosen.appearance,
-                        "initial_clothing": chosen.initial_clothing,
-                        "visual_review_required": False,
-                    }
-                )
-                current[role] = getattr(conversation.state, role).model_copy(
-                    update={
-                        "appearance": None,
-                        "clothing": chosen.current_clothing,
-                    }
-                )
-                initial[role] = getattr(conversation.definition.initial_state, role).model_copy(
-                    update={
-                        "appearance": None,
-                        "clothing": chosen.initial_clothing,
-                    }
-                )
-            definition = conversation.definition.model_copy(
-                update={
-                    **people,
-                    "initial_state": conversation.definition.initial_state.model_copy(
-                        update=initial
-                    ),
-                }
-            )
-            updated = conversation.model_copy(
-                update={
-                    "definition": definition,
-                    "state": conversation.state.model_copy(update=current),
-                    "revision": conversation.revision + 1,
-                    "proposals": [
-                        p.model_copy(update={"state": "expired"}) if p.state == "pending" else p
-                        for p in conversation.proposals
-                    ],
-                    "visual_reviews": [
-                        *conversation.visual_reviews,
-                        VisualReviewRecord(request=review, revision=conversation.revision + 1),
-                    ],
-                }
-            )
-            self._store(connection, updated)
-            self._register_command(connection, identity, "visual_review", review)
             connection.commit()
             return updated
 

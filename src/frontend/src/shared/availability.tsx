@@ -15,6 +15,7 @@ import { useFailure, useMessages } from './preferences'
 import { Button } from './ui/button'
 
 const MIN_REFRESH_INTERVAL_MS = 1000
+const RENEWAL_LEAD_MS = 1000
 const CONNECTION_FAILURE_CODES = new Set([
   'connection_failed',
   'authentication_failed',
@@ -69,6 +70,7 @@ export async function recheckAvailability(cache: QueryClient) {
 
 export function useAvailability(request?: AvailabilityRequest) {
   const cache = useQueryClient()
+  const key = ['availability', request] as const
   const refresh = useMutation({
     mutationFn: async (checked: AvailabilityRequest) => {
       await cache.cancelQueries({
@@ -100,8 +102,14 @@ export function useAvailability(request?: AvailabilityRequest) {
     return () => window.removeEventListener('focus', focused)
   }, [request, refreshNow])
   const query = useQuery({
-    queryKey: ['availability', request],
-    queryFn: async () => (await checkAvailability({ body: request! })).data!,
+    queryKey: key,
+    queryFn: async () =>
+      (
+        await checkAvailability({
+          body: request!,
+          query: cache.getQueryData(key) ? { refresh: true } : undefined,
+        })
+      ).data!,
     enabled: !!request,
     staleTime: (query) => {
       const expiries = query.state.data?.connections?.map((c) =>
@@ -117,7 +125,10 @@ export function useAvailability(request?: AvailabilityRequest) {
         new Date(c.expires_at).getTime(),
       )
       return expiries?.length
-        ? Math.max(MIN_REFRESH_INTERVAL_MS, Math.min(...expiries) - Date.now())
+        ? Math.max(
+            MIN_REFRESH_INTERVAL_MS,
+            Math.min(...expiries) - Date.now() - RENEWAL_LEAD_MS,
+          )
         : false
     },
     retry: false,
@@ -131,7 +142,6 @@ export function useAvailability(request?: AvailabilityRequest) {
       !!request &&
       !!query.data?.ready &&
       !query.isStale &&
-      !query.isFetching &&
       !query.isError &&
       !refresh.isPending,
   }

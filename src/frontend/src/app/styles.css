@@ -670,15 +670,33 @@ textarea {
 .image-result p {
   margin: 10px 0;
 }
+.runtime-panel {
+  display: grid;
+  gap: var(--space-section);
+  min-width: 0;
+}
 .runtime-card {
-  padding: 24px;
-  background: white;
+  display: grid;
+  gap: var(--space-group);
+  padding: var(--space-section);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  margin: 30px 0;
+  min-width: 0;
 }
-.runtime-card .section-label {
-  margin-left: 0;
+.runtime-card h2,
+.runtime-card h3,
+.runtime-card p,
+.runtime-card dl {
+  margin: 0;
+}
+.runtime-card .runtime-connection {
+  font-weight: 600;
+}
+.runtime-profile {
+  display: grid;
+  gap: var(--space-field);
+  overflow-wrap: anywhere;
 }
 dl {
   display: grid;
@@ -895,11 +913,17 @@ fieldset .checkbox {
 .editor-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(230px, 0.65fr);
+  align-items: start;
   gap: var(--space-page);
   margin-top: var(--space-section);
 }
 .editor-preview {
+  display: grid;
+  gap: var(--space-group);
   min-width: 0;
+}
+.editor-preview > p {
+  margin: 0;
 }
 .cover-preview {
   width: 100%;
@@ -911,7 +935,6 @@ fieldset .checkbox {
   border-radius: var(--radius-control);
   overflow: hidden;
   color: var(--muted);
-  margin-bottom: var(--space-group);
 }
 .cover-preview.wide {
   aspect-ratio: 16 / 9;
@@ -925,7 +948,6 @@ fieldset .checkbox {
   gap: var(--space-field);
   align-items: center;
 }
-.draft-panel,
 .connection-details,
 .story-details {
   border-top: 1px solid var(--line);
@@ -939,21 +961,6 @@ summary {
   padding-block: var(--space-field);
   line-height: 1.6;
 }
-.draft-panel p {
-  margin-top: 16px;
-}
-.draft-panel label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-field);
-}
-.draft-result dl {
-  font-size: 0.875rem;
-}
-.draft-result dd {
-  margin: 0 0 14px;
-  color: var(--muted);
-}
 .confirmation {
   border: 1px solid var(--control-line);
   border-radius: var(--radius-control);
@@ -965,9 +972,6 @@ summary {
 .settings-grid {
   max-width: 600px;
   margin-top: 30px;
-}
-.connection-details .page {
-  padding: 24px 0;
 }
 .selection-grid {
   display: grid;
@@ -1069,22 +1073,13 @@ fieldset,
   gap: var(--space-group);
 }
 
-.profile-layout {
+.editor-layout-single {
   grid-template-columns: minmax(0, 1fr);
-}
-.profile-layout .editor-preview {
-  display: none;
 }
 .details-content {
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   display: grid;
-  gap: var(--space-group);
-}
-.runtime-views,
-.runtime-views > div {
-  display: flex;
-  flex-wrap: wrap;
   gap: var(--space-group);
 }
 .image-file {
@@ -1465,6 +1460,22 @@ details > .details-content {
 .modal-heading h2 {
   margin: 0;
 }
+.draft-dialog,
+.draft-review {
+  display: grid;
+  gap: var(--space-group);
+}
+.draft-dialog p,
+.draft-review dl {
+  margin: 0;
+}
+.draft-review dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.draft-review dt {
+  font-weight: 600;
+}
 .navigation-modal {
   top: 0;
   left: 0;
@@ -1485,10 +1496,6 @@ details > .details-content {
 .navigation-modal .navigation {
   width: 100%;
   flex: 1;
-}
-.visual-review {
-  max-width: var(--reading-width);
-  margin-inline: auto;
 }
 .latest-reply {
   position: absolute;

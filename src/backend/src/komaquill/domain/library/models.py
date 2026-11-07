@@ -24,6 +24,9 @@ class CharacterInput(CharacterDefinition):
 class StoryInput(StoryDefinition):
     name: str = Field(min_length=1, max_length=120, pattern=r"\S")
     character_id: UUID | None = None
+    tone: str = Field(default="", max_length=2000)
+    topics: str = Field(default="", max_length=3000)
+    avoid: str = Field(default="", max_length=3000)
 
 
 class SavedPreset(Record):
@@ -70,9 +73,6 @@ class PresetRef(Record):
 
 
 class ConversationStart(Record):
-    tone: str = Field(default="", max_length=2000)
-    topics: str = Field(default="", max_length=3000)
-    avoid: str = Field(default="", max_length=3000)
     player_revision: int = Field(ge=0)
     character: PresetRef
     story: PresetRef

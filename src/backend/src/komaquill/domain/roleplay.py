@@ -51,7 +51,22 @@ class PersonDefinition(Record):
     gender: str = Field(default="", max_length=120)
     initial_clothing: str | None = Field(default=None, max_length=MAX_CLOTHING_LENGTH)
     initial_held_objects: PhysicalObjects = Field(default_factory=list)
-    visual_review_required: bool = False
+    visual_review_required: bool = Field(
+        default=False, description="Retained marker for older unclassified appearance text."
+    )
+
+
+def visual_appearance(
+    person: PersonDefinition, clothing: str | None, *, field: str
+) -> dict[str, str]:
+    """Project retained mixed text only when clothing has no explicit value."""
+    if person.visual_review_required:
+        return (
+            {"appearance_reference": person.appearance}
+            if clothing is None and person.appearance
+            else {}
+        )
+    return {field: person.appearance}
 
 
 class CharacterDefinition(PersonDefinition):

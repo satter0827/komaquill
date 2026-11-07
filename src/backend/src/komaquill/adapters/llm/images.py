@@ -21,6 +21,7 @@ def visual_facts(text: str) -> dict[str, str]:
             "gender",
             "physical_features",
             "appearance",
+            "appearance_reference",
             "clothing",
             "initial_clothing",
             "expression",

@@ -389,7 +389,7 @@
   "storage.repair_inspected": "Inspection {identity}: {ready} repairable, {skipped} skipped. Apply with repair-images --apply {identity}.",
   "storage.repair_applied": "Repair {identity}: {repaired} repaired, {already} already applied, {skipped} skipped.",
   "storage.repair_stop_required": "Close applications using this workspace before repairing image links. Repair is blocked until file usage can be verified.",
-  "error.visual_review_required": "Review physical features and clothing before generating a new scene.",
+  "error.visual_review_required": "An earlier operation waited for an appearance review. Send a new request to continue.",
   "chat.action_json": "A typed player action as JSON.",
   "chat.action_id": "An operation ID for safe confirmation.",
   "chat.actions": "Show confirmed player actions.",

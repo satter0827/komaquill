@@ -5,7 +5,7 @@ import { useAvailability } from '../../shared/availability'
 import { objectLines, parseObjects } from '../../shared/forms/physical-objects'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Plus, UserRound } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import * as api from '../../api/generated/sdk.gen'
@@ -27,6 +27,7 @@ import {
   useFormatMessage,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { Dialog, Modal } from '../../shared/ui/popup'
 import { QueryNotice } from '../../shared/ui/query-notice'
 import { CreationStatus, useCreation } from '../../shared/creation'
 import {
@@ -70,9 +71,21 @@ const fields = {
     'background',
     'relationship',
   ],
-  story: ['name', 'description', 'world', 'opening', 'place', 'goal'],
+  story: [
+    'name',
+    'description',
+    'world',
+    'opening',
+    'place',
+    'goal',
+    'tone',
+    'topics',
+    'avoid',
+  ],
 } as const
+type FieldName = (typeof fields)[Kind][number]
 type Fields = PlayerInput & Partial<CharacterInput & StoryInput>
+type DraftValues = Partial<Record<FieldName, string>>
 type PresetSaveOptions = Omit<CharacterSaveRequest, 'value'>
 type SaveSubmission = {
   value: Fields
@@ -93,7 +106,6 @@ async function save(
     appearance: value.appearance ?? '',
     initial_clothing: value.initial_clothing ?? null,
     initial_held_objects: value.initial_held_objects ?? [],
-    visual_review_required: false,
     role: value.role ?? '',
     address: value.address ?? '',
     age: value.age ?? '',
@@ -122,6 +134,9 @@ async function save(
     place: value.place ?? '',
     goal: value.goal ?? '',
     character_id: value.character_id || null,
+    tone: value.tone ?? '',
+    topics: value.topics ?? '',
+    avoid: value.avoid ?? '',
   }
   return (await api.saveStory({ body: { ...options, value: body } })).data!
 }
@@ -189,20 +204,10 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
       <div className="preset-cover">
         {preset.image_id ? (
           <OriginalImage identity={preset.image_id} alt={preset.name} />
+        ) : kind === 'story' ? (
+          <BookOpen size={38} aria-hidden="true" />
         ) : (
-          <Link
-            to={`${paths[kind]}/${preset.id}`}
-            aria-label={formatMessage(
-              preset.sample ? 'editSamplePresetLabel' : 'editPresetLabel',
-              { name: preset.name },
-            )}
-          >
-            {kind === 'story' ? (
-              <BookOpen size={38} />
-            ) : (
-              <UserRound size={38} />
-            )}
-          </Link>
+          <UserRound size={38} aria-hidden="true" />
         )}
         {preset.sample && <span className="sample-badge">{m.sample}</span>}
       </div>
@@ -240,9 +245,21 @@ export function PresetCard({ preset, kind }: { preset: Preset; kind: Kind }) {
             recoveryPath={`${paths[kind]}/${preset.id}`}
           />
         )}
-        <Link className="text-button" to={`/new?${kind}=${preset.id}`}>
-          {m.use} →
-        </Link>
+        <div className="actions">
+          <Link
+            className="text-button"
+            to={`${paths[kind]}/${preset.id}`}
+            aria-label={formatMessage(
+              preset.sample ? 'editSamplePresetLabel' : 'editPresetLabel',
+              { name: preset.name },
+            )}
+          >
+            {m.edit}
+          </Link>
+          <Link className="text-button" to={`/new?${kind}=${preset.id}`}>
+            {m.use} →
+          </Link>
+        </div>
       </div>
     </article>
   )
@@ -354,6 +371,153 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
   )
 }
 
+function PresetDraftDialog({
+  kind,
+  disabled,
+  onApply,
+}: {
+  kind: 'character' | 'story'
+  disabled: boolean
+  onApply: (values: DraftValues) => void
+}) {
+  const m = useMessages()
+  const preferences = usePreferences()
+  const [open, setOpen] = useState(false)
+  const [idea, setIdea] = useState('')
+  const [handledDraftId, setHandledDraftId] = useState<string>()
+  const [availabilityId] = useState(() => crypto.randomUUID())
+  const reviewNotice = useRef<HTMLParagraphElement>(null)
+  const draft = useCreation()
+  const job = draft.job.data
+  const result: Partial<Fields> | null | undefined =
+    job?.state === 'complete' && job.id !== handledDraftId ? job.result : null
+  const reviewing = !!result
+  useEffect(() => {
+    if (open && reviewing) reviewNotice.current?.focus()
+  }, [open, reviewing])
+  const suggestions = result
+    ? fields[kind].flatMap((field) => {
+        const value = result[field]
+        const text =
+          typeof value === 'string'
+            ? value
+            : Array.isArray(value)
+              ? objectLines(value)
+              : ''
+        return text.trim() ? [{ field, text }] : []
+      })
+    : []
+  const request = {
+    kind:
+      kind === 'character'
+        ? ('character_draft' as const)
+        : ('story_draft' as const),
+    prompt: idea,
+    locale: preferences.value.locale,
+    llm_profile: preferences.value.llm_profile,
+    allow_real_llm: true,
+  }
+  const availability = useAvailability(
+    open && !result && idea.trim()
+      ? {
+          kind: 'creation',
+          creation: { ...request, operation_id: availabilityId },
+        }
+      : undefined,
+  )
+  const canGenerate =
+    !disabled && !draft.busy && !!idea.trim() && availability.ready
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger render={<Button disabled={disabled} />}>
+        {m.createDraft}
+      </Dialog.Trigger>
+      <Modal
+        label={m.createDraft}
+        closeLabel={m.closePanel}
+        className="draft-dialog"
+      >
+        {result ? (
+          <div className="draft-review">
+            <p
+              className="subtle"
+              role="status"
+              ref={reviewNotice}
+              tabIndex={-1}
+            >
+              {suggestions.length ? m.draftReady : m.draftEmpty}
+            </p>
+            {suggestions.length > 0 && (
+              <dl>
+                {suggestions.map(({ field, text }) => (
+                  <div key={field}>
+                    <dt>{m[field]}</dt>
+                    <dd>{text}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            <div className="actions">
+              {suggestions.length > 0 && (
+                <Button
+                  variant="primary"
+                  disabled={disabled}
+                  onClick={() => {
+                    onApply(
+                      Object.fromEntries(
+                        suggestions.map(({ field, text }) => [field, text]),
+                      ),
+                    )
+                    setHandledDraftId(job?.id)
+                    setOpen(false)
+                  }}
+                >
+                  {m.useDraft}
+                </Button>
+              )}
+              <Button onClick={() => setHandledDraftId(job?.id)}>
+                {m.reviseDraft}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (canGenerate) draft.start(request)
+            }}
+          >
+            <p className="subtle">{m.draftDescription}</p>
+            <label>
+              {m.draftPrompt}
+              <textarea
+                rows={4}
+                value={idea}
+                onChange={(event) => setIdea(event.target.value)}
+              />
+            </label>
+            <div className="actions">
+              <Button type="submit" variant="primary" disabled={!canGenerate}>
+                {m.generateDraft}
+              </Button>
+            </div>
+            {idea.trim() &&
+              (availability.error || availability.data?.ready === false) && (
+                <p className="subtle">{m.draftConnectionUnavailable}</p>
+              )}
+            {(draft.busy ||
+              draft.mutation.error ||
+              draft.job.error ||
+              (job && job.id !== handledDraftId)) && (
+              <CreationStatus creation={draft} />
+            )}
+          </form>
+        )}
+      </Modal>
+    </Dialog.Root>
+  )
+}
+
 function PresetEditor({
   kind,
   preset,
@@ -390,10 +554,9 @@ function PresetEditor({
     preset && preset.id === current?.id && preset.revision >= current.revision
       ? preset
       : current
-  const [idea, setIdea] = useState('')
+  const details = useRef<HTMLDetailsElement>(null)
   const [notice, setNotice] = useState(preset ? m.saved : '')
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const draft = useCreation()
   const [pendingSave, setPendingSave] = useState<SaveSubmission | null>(null)
   const imageCreation = useCreation()
   const [availabilityId] = useState(() => crypto.randomUUID())
@@ -413,34 +576,25 @@ function PresetEditor({
   const imageAvailability = useAvailability(
     imageRequest ? { kind: 'creation', creation: imageRequest } : undefined,
   )
-  const draftAvailability = useAvailability(
-    kind !== 'player' && idea.trim()
-      ? {
-          kind: 'creation',
-          creation: {
-            operation_id: availabilityId,
-            kind: kind === 'character' ? 'character_draft' : 'story_draft',
-            prompt: idea,
-            locale: preferences.value.locale,
-            llm_profile: generationProfile,
-            allow_real_llm: true,
-          },
-        }
-      : undefined,
-  )
   const dirty =
     !current ||
-    fields[kind].some((field) =>
-      field === 'initial_held_objects'
-        ? heldObjects !==
+    fields[kind].some((field) => {
+      if (field === 'initial_held_objects')
+        return (
+          heldObjects !==
           objectLines(
             'initial_held_objects' in current
               ? (current.initial_held_objects ?? [])
               : [],
           )
-        : (value[field] ?? '') !==
-          (current[field as keyof typeof current] ?? ''),
-    )
+        )
+      const saved = current[field as keyof typeof current]
+      return field === 'initial_clothing'
+        ? (value[field] ?? null) !== (saved ?? null)
+        : (value[field] ?? '') !== (saved ?? '')
+    }) ||
+    ('character_id' in current &&
+      (value.character_id || null) !== (current.character_id ?? null))
   const characters = useQuery({
     ...q.listCharactersOptions(),
     enabled: kind === 'story',
@@ -470,6 +624,7 @@ function PresetEditor({
         const url = new URL(returnTo, 'http://localhost')
         if (url.pathname === '/new') {
           if (kind !== 'player') url.searchParams.set(kind, record.id)
+          if (kind === 'story' && !preset) url.searchParams.delete('character')
           navigate(url.pathname + url.search)
           return
         }
@@ -565,9 +720,31 @@ function PresetEditor({
             ? m.charactersEyebrow
             : m.playersEyebrow}
       </div>
-      <h1>{current ? current.name : m.new}</h1>
+      <div className="page-heading">
+        <h1>{current ? current.name : m.new}</h1>
+        {kind !== 'player' && (
+          <PresetDraftDialog
+            kind={kind}
+            disabled={!canMutate || mutation.isPending || !!pendingSave}
+            onApply={({ initial_held_objects, ...changes }) => {
+              if (initial_held_objects !== undefined)
+                setHeldObjects(initial_held_objects)
+              setValue((previous) => ({ ...previous, ...changes }))
+              setNotice('')
+              if (
+                details.current &&
+                (initial_held_objects !== undefined ||
+                  Object.keys(changes).some(
+                    (field) => field !== 'name' && field !== 'description',
+                  ))
+              )
+                details.current.open = true
+            }}
+          />
+        )}
+      </div>
       <div
-        className={`editor-layout ${kind === 'player' ? 'profile-layout' : ''}`}
+        className={`editor-layout ${kind === 'player' || !preset ? 'editor-layout-single' : ''}`}
       >
         <form
           onSubmit={(event) => {
@@ -581,7 +758,7 @@ function PresetEditor({
             {fields[kind]
               .filter((field) => field === 'name' || field === 'description')
               .map(renderField)}
-            <details>
+            <details ref={details}>
               <summary>{m.basicDetails}</summary>
               <div className="details-content">
                 {fields[kind]
@@ -680,26 +857,23 @@ function PresetEditor({
             </div>
           )}
         </form>
-        <aside className="editor-preview">
-          {kind !== 'player' && (
-            <>
+        {kind !== 'player' && preset && (
+          <aside className="editor-preview">
+            {imageRecord?.image_id && (
               <div
                 className={`cover-preview ${kind === 'story' ? 'wide' : ''}`}
               >
-                {imageRecord?.image_id ? (
-                  <OriginalImage
-                    identity={imageRecord.image_id}
-                    alt={imageRecord.name}
-                  />
-                ) : (
-                  <UserRound size={52} strokeWidth={1} />
-                )}
+                <OriginalImage
+                  identity={imageRecord.image_id}
+                  alt={imageRecord.name}
+                />
               </div>
-
-              {!imageRecord?.image_job_id && !imageRecord?.image_id && (
-                <p className="subtle">{m.noImage}</p>
-              )}
-              {current && preset && (
+            )}
+            {!imageRecord?.image_job_id && !imageRecord?.image_id && (
+              <p className="subtle">{m.noImage}</p>
+            )}
+            <div className="actions">
+              {current && (
                 <Button
                   onClick={() => {
                     if (imageRequest && imageAvailability.ready && !dirty)
@@ -717,106 +891,23 @@ function PresetEditor({
                   {m.createImage}
                 </Button>
               )}
-              {dirty && <p className="subtle">{m.saveBeforeImage}</p>}
               {current && !dirty && kind === 'character' && (
                 <Link className="button" to={`/new?character=${current.id}`}>
                   {m.useCharacter}
                 </Link>
               )}
-              {imageRecord?.image_stale && (
-                <p className="subtle">{m.imageNeedsUpdate}</p>
+            </div>
+            {dirty && <p className="subtle">{m.saveBeforeImage}</p>}
+            {imageRecord?.image_stale && (
+              <p className="subtle">{m.imageNeedsUpdate}</p>
+            )}
+            <CreationStatus creation={imageCreation} />
+            {imageRecord?.image_job_id &&
+              imageRecord.image_job_id !== imageCreation.job.data?.id && (
+                <PresetImageStatus identity={imageRecord.image_job_id} />
               )}
-
-              <CreationStatus creation={imageCreation} />
-              {imageRecord?.image_job_id &&
-                imageRecord.image_job_id !== imageCreation.job.data?.id && (
-                  <PresetImageStatus identity={imageRecord.image_job_id} />
-                )}
-              <details className="draft-panel">
-                <summary>{m.createDraft}</summary>
-                <div className="details-content">
-                  <p className="subtle">{m.draftDescription}</p>
-                  <label>
-                    {m.draftPrompt}
-                    <textarea
-                      rows={4}
-                      value={idea}
-                      onChange={(event) => setIdea(event.target.value)}
-                    />
-                  </label>
-                  <Button
-                    onClick={() => {
-                      draft.start({
-                        kind:
-                          kind === 'character'
-                            ? 'character_draft'
-                            : 'story_draft',
-                        prompt: idea,
-                        locale: preferences.value.locale,
-                        llm_profile: generationProfile,
-                        allow_real_llm: true,
-                      })
-                    }}
-                    disabled={
-                      !canMutate ||
-                      draft.busy ||
-                      !idea.trim() ||
-                      !draftAvailability.ready
-                    }
-                  >
-                    {m.createDraft}
-                  </Button>
-
-                  <CreationStatus creation={draft} />
-                  {draft.job.data?.result && (
-                    <div className="draft-result">
-                      <p>{m.draftReady}</p>
-                      <dl>
-                        {Object.entries(draft.job.data.result)
-                          .filter(
-                            ([key, value]) =>
-                              fields[kind].some((field) => field === key) &&
-                              value,
-                          )
-                          .map(([key, value]) => (
-                            <div key={key}>
-                              <dt>{m[key as MessageKey]}</dt>
-                              <dd>{String(value)}</dd>
-                            </div>
-                          ))}
-                      </dl>
-                      <Button
-                        onClick={() => {
-                          const result = draft.job.data!.result!
-                          if (
-                            'initial_held_objects' in result &&
-                            Array.isArray(result.initial_held_objects)
-                          )
-                            setHeldObjects(
-                              objectLines(result.initial_held_objects),
-                            )
-                          setValue((previous) => ({
-                            ...previous,
-                            ...(Object.fromEntries(
-                              Object.entries(draft.job.data!.result!).filter(
-                                ([key, v]) =>
-                                  fields[kind].some((field) => field === key) &&
-                                  typeof v === 'string',
-                              ),
-                            ) as Fields),
-                          }))
-                          setNotice('')
-                        }}
-                      >
-                        {m.useDraft}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </details>
-            </>
-          )}
-        </aside>
+          </aside>
+        )}
       </div>
     </section>
   )

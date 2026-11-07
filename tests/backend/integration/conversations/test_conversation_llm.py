@@ -156,6 +156,8 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
     assert context["people"]["assistant_character"]["age"] == "32"
     assert context["story"]["description"] == "A quiet bookshop"
     assert context["current_state"]["place"] == "tower"
+    assert all("place" not in person for person in context["people"].values())
+    assert "Decide player_move independently" in calls[0][4]
     assert context["people"]["assistant_character"]["clothing"] == "blue shirt"
     assert context["current_state"]["goal"] == "find a book"
     assert api.conversations.get(current.id).turns == current.turns
@@ -181,9 +183,11 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
         )
     )
     calls = []
+    corrections = []
 
-    def invoke(*args, **_kwargs):
+    def invoke(*args, **kwargs):
         calls.append(args)
+        corrections.append(kwargs["correction"])
         return NarrativeReply.model_validate(
             {
                 "player_move": None,
@@ -220,12 +224,15 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     assert context["people"]["human_player"]["clothing"] == ""
     assert context["people"]["assistant_character"]["clothing"] == "Black apron"
     assert context["people"]["assistant_character"]["name"] == "Mira"
+    assert calls[0][4].endswith(corrections[0])
+    assert "The completed_action is already applied" in corrections[0]
+    assert "Return player_move=null" in corrections[0]
+    assert "Decide player_move independently" not in calls[0][4]
     latest = json.loads(calls[0][5][-1][1])
     assert latest == {
         "speaker": "human_player",
-        "shared_place": scene.state.place,
         "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
-        "text": text,
+        "original_message_before_action": text,
     }
     assert operation.state == "complete"
     saved = api.conversations.get(scene.id)

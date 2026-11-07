@@ -875,7 +875,13 @@ class ConversationRepository:
             }
         )
         self._store(connection, updated)
-        result = operation.model_copy(update={"state": "complete", "image_state": "disabled"})
+        result = operation.model_copy(
+            update={
+                "state": "complete",
+                "image_state": "disabled",
+                "result_revision": updated.revision,
+            }
+        )
         self._save(connection, result)
         return result
 
@@ -906,7 +912,8 @@ class ConversationRepository:
             identity
         )
         with self.database.transaction() as connection:
-            result = Operation.model_validate_json(str(self._row(connection, identity)["payload"]))
+            row = self._row(connection, identity)
+            result = self._operation(row)
             if result.state in {"accepted", "running"}:
                 result = result.model_copy(
                     update={
@@ -914,6 +921,7 @@ class ConversationRepository:
                         "error": code,
                         "error_stage": stage,
                         "can_resume": resumable,
+                        "result_revision": row["base_revision"],
                     }
                 )
                 self._save(connection, result)
@@ -1023,6 +1031,7 @@ class ConversationRepository:
                                     "state": "interrupted",
                                     "error": retention_errors[str(value.id)],
                                     "can_resume": False,
+                                    "result_revision": row["base_revision"],
                                 }
                             ),
                         )
@@ -1040,6 +1049,7 @@ class ConversationRepository:
                                     "state": "interrupted",
                                     "error": error.code.value,
                                     "can_resume": False,
+                                    "result_revision": row["base_revision"],
                                 }
                             )
                         if value.image_state != "pending":
@@ -1053,6 +1063,7 @@ class ConversationRepository:
                     if value.state in {"accepted", "running"}:
                         safe = self._received_calls(value.id)
                         changes["can_resume"] = safe
+                        changes["result_revision"] = row["base_revision"]
                         if safe:
                             changes["error"] = "operation_failed"
                     if (
@@ -1122,6 +1133,7 @@ class ConversationRepository:
                     "error_stage": None,
                     "can_resume": False,
                     "resume_count": result.resume_count + 1,
+                    "result_revision": None,
                 }
             )
             self._save(connection, result)

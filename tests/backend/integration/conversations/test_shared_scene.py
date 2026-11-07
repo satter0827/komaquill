@@ -110,6 +110,7 @@ def test_failed_reply_keeps_the_inferred_move_and_never_applies_it_twice(scene):
     result = api.conversations.send(conversation.id, request)
     assert result.state == "failed" and result.error == "llm_unavailable"
     saved = api.conversations.get(conversation.id)
+    assert result.result_revision == saved.revision
     assert saved.state.place == "Park" and saved.turn_count == 0 and saved.revision == 1
     assert len(saved.actions) == 1
     assert api.conversations.send(conversation.id, request) == result and len(calls) == 2
@@ -331,6 +332,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
         )
         saved = api.conversations.get(conversation.id)
         assert saved.turn_count == 1 and saved.state.place == "Park"
+        assert result.result_revision == saved.revision
         assert saved.turns[0].meeting_state.place.text == "Town Hall"
         assert len(saved.actions) == 1
         assert api.conversations.send(conversation.id, request) == result

@@ -61,7 +61,7 @@ def scripted_completion(body: dict) -> dict:
             if english
             else "画面検証用の決まった返答です。",
         }
-        if body["messages"][-1]["content"] == "The password is imaginary compass.":
+        if body["messages"][-1]["content"] == "Is the imaginary compass here?":
             value["current_state"]["character"]["held_objects"] = [
                 {"id": "imaginary-compass", "name": "Imaginary compass"}
             ]

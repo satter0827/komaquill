@@ -1171,6 +1171,10 @@ export type OperationView = {
      */
     resume_count?: number;
     /**
+     * Result Revision
+     */
+    result_revision?: number | null;
+    /**
      * Can Resume
      */
     can_resume?: boolean;

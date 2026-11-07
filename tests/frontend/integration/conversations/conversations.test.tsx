@@ -178,21 +178,37 @@ describe('conversation workflow', () => {
     expect(within(meeting).queryByText('古書店の入口')).toBeNull()
   })
 
-  it('uses the completed receipt instead of a stale running list to enable the next send', async () => {
+  it('waits for the committed conversation revision before enabling the next send', async () => {
     const cache = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
     let identity = ''
+    let revision = 0
+    const submittedRevisions: number[] = []
     server.use(
+      http.get(`${base}/api/v1/conversations/one`, () =>
+        HttpResponse.json({
+          id: 'one',
+          definition: { title: 'A new scene', llm_profile: 'fake' },
+          state: {},
+          turns: [],
+          revision,
+        }),
+      ),
       http.post(
         `${base}/api/v1/conversations/one/turns`,
         async ({ request }) => {
-          identity = ((await request.json()) as { operation_id: string })
-            .operation_id
+          const submitted = (await request.json()) as {
+            operation_id: string
+            expected_revision: number
+          }
+          identity = submitted.operation_id
+          submittedRevisions.push(submitted.expected_revision)
           return HttpResponse.json({
             id: identity,
             conversation_id: 'one',
             state: 'complete',
+            result_revision: submitted.expected_revision + 1,
           })
         },
       ),
@@ -201,6 +217,7 @@ describe('conversation workflow', () => {
           id: params.identity,
           conversation_id: 'one',
           state: 'complete',
+          result_revision: 1,
         }),
       ),
       http.get(`${base}/api/v1/conversations/one/operations`, () =>
@@ -231,7 +248,18 @@ describe('conversation workflow', () => {
       ).toBe('running'),
     )
     await userEvent.type(input, 'Second')
-    expect(screen.getByRole('button', { name: m.send })).toBeEnabled()
+    const send = screen.getByRole('button', { name: m.send })
+    expect(send).toBeDisabled()
+    expect(submittedRevisions).toEqual([0])
+    revision = 1
+    await act(async () => {
+      await cache.invalidateQueries({
+        queryKey: getConversationQueryKey({ path: { identity: 'one' } }),
+      })
+    })
+    await waitFor(() => expect(send).toBeEnabled())
+    await userEvent.click(send)
+    await waitFor(() => expect(submittedRevisions).toEqual([0, 1]))
   })
   it('keeps panel opening intent before the width change notification arrives', async () => {
     const matchMedia = vi.mocked(window.matchMedia)

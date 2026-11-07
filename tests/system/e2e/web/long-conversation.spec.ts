@@ -102,7 +102,7 @@ test('exercises the conversation runner with a scripted provider and safe failur
   ).json()
   const liveFailure = await run(
     'new-operation-mismatch',
-    [messages[0], 'The password is imaginary compass.'],
+    [messages[0], 'Is the imaginary compass here?'],
     {
       conversation: other.id,
       expected_inventory: null,

@@ -7215,6 +7215,18 @@
             "title": "Resume Count",
             "default": 0
           },
+          "result_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Revision"
+          },
           "can_resume": {
             "type": "boolean",
             "title": "Can Resume",

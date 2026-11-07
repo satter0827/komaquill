@@ -458,8 +458,10 @@ function ConversationView({
     pendingResume !== null ||
     (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
-    [...retainedOperations.values()].some((value) =>
-      ['accepted', 'running'].includes(value.state),
+    [...retainedOperations.values()].some(
+      (value) =>
+        ['accepted', 'running'].includes(value.state) ||
+        (value.result_revision ?? 0) > (conversation.revision ?? 0),
     )
   const busy = actionControls.unresolved || replyPending || !!detail.error
   const canSend =

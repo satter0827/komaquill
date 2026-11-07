@@ -23,6 +23,7 @@ export function Popup({
         align="start"
         sideOffset={8}
         collisionPadding={16}
+        collisionAvoidance={{ side: 'shift', align: 'shift' }}
         className="popup-positioner"
       >
         <Popover.Popup

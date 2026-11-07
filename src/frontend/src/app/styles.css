@@ -1479,6 +1479,7 @@ details > .details-content {
   width: min(26rem, calc(100vw - 2 * var(--panel-gutter)));
   max-height: min(65dvh, var(--available-height));
   overflow: auto;
+  overscroll-behavior: contain;
   padding: var(--space-group);
   border: 1px solid var(--control-line);
   border-radius: var(--radius);
@@ -1591,6 +1592,9 @@ html[data-density='compact'] {
   }
 }
 @media (max-height: 550px) {
+  .popup-content {
+    max-height: var(--available-height);
+  }
   .turns {
     padding-block: var(--space-field);
   }

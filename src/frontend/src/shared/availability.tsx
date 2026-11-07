@@ -197,6 +197,47 @@ export function useConnectionSummary() {
   }
 }
 
+export function AvailabilityNotice({
+  availability,
+}: {
+  availability: ReturnType<typeof useAvailability>
+}) {
+  const m = useMessages()
+  const failure = useFailure()
+  if (availability.ready) return null
+  if (!availability.data && availability.isFetching && !availability.error)
+    return (
+      <p role="status" className="subtle">
+        {m.checkingConnection}
+      </p>
+    )
+
+  const reasons = [
+    ...new Set(
+      availability.data?.connections
+        ?.filter((connection) => connection.state !== 'ready')
+        .map((connection) => connection.reason)
+        .filter(Boolean),
+    ),
+  ]
+  return (
+    <div className="details-content">
+      <div role="status">
+        {availability.error ? (
+          <p>{failure(availability.error)}</p>
+        ) : reasons.length ? (
+          reasons.map((code) => <p key={code}>{failure({ code })}</p>)
+        ) : (
+          <p>{m.connectionUnavailable}</p>
+        )}
+      </div>
+      <Button onClick={availability.refresh} disabled={availability.isFetching}>
+        {m.refresh}
+      </Button>
+    </div>
+  )
+}
+
 export function ConnectionSummary({ onNavigate }: { onNavigate?: () => void }) {
   const m = useMessages()
   const failure = useFailure()

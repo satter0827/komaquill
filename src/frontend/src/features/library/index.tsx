@@ -1,8 +1,9 @@
 import { paths } from '../../shared/navigation'
 import { isRejectedRequest } from '../../api/client'
 import { OriginalImage } from '../../shared/images/original'
-import { useAvailability } from '../../shared/availability'
+import { AvailabilityNotice, useAvailability } from '../../shared/availability'
 import { objectLines, parseObjects } from '../../shared/forms/physical-objects'
+import { presetsForLocale } from '../../shared/story/presets'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, UserRound } from 'lucide-react'
 import { AlbumIcon } from '../../shared/ui/atelier-icons'
@@ -343,9 +344,9 @@ export function LibraryPage({ kind }: { kind: Exclude<Kind, 'player'> }) {
       </>
     )
   }
-  const visible = query.data.filter(
-    (preset) =>
-      !preset.sample || preset.sample_locale === preferences.value.locale,
+  const visible = presetsForLocale<CharacterPreset | StoryPreset>(
+    query.data,
+    preferences.value.locale,
   )
   return (
     <section className="page library-page">
@@ -499,10 +500,9 @@ function PresetDraftDialog({
                 {m.generateDraft}
               </Button>
             </div>
-            {idea.trim() &&
-              (availability.error || availability.data?.ready === false) && (
-                <p className="subtle">{m.draftConnectionUnavailable}</p>
-              )}
+            {idea.trim() && !draft.busy && (
+              <AvailabilityNotice availability={availability} />
+            )}
             {(draft.busy ||
               draft.mutation.error ||
               draft.job.error ||
@@ -599,6 +599,12 @@ function PresetEditor({
     ...q.listCharactersOptions(),
     enabled: kind === 'story',
   })
+  const recommendedId = value.character_id ?? ''
+  const recommendedChoices = presetsForLocale(
+    characters.data,
+    preferences.value.locale,
+    recommendedId,
+  )
   const mutation = useMutation({
     mutationFn: (submission: SaveSubmission) =>
       save(kind, submission.value, submission.previous, submission.options),
@@ -762,28 +768,41 @@ function PresetEditor({
           >
             {primaryFields.map(renderField)}
             {kind === 'story' && (
-              <label>
-                {m.defaultCharacter}
-                <select
-                  value={value.character_id ?? ''}
-                  onChange={(event) =>
-                    update('character_id', event.target.value)
-                  }
-                >
-                  <option value="">{m.noDefault}</option>
-                  {characters.data
-                    ?.filter(
-                      (item) =>
-                        !item.sample ||
-                        item.sample_locale === preferences.value.locale,
-                    )
-                    .map((item) => (
+              <div className="details-content">
+                <label>
+                  {m.defaultCharacter}
+                  <select
+                    value={recommendedId}
+                    disabled={!characters.data || !!characters.error}
+                    onChange={(event) =>
+                      update('character_id', event.target.value)
+                    }
+                  >
+                    <option value="">{m.noDefault}</option>
+                    {recommendedId &&
+                      !recommendedChoices.some(
+                        (item) => item.id === recommendedId,
+                      ) && (
+                        <option value={recommendedId} disabled>
+                          {characters.isPending
+                            ? m.loading
+                            : m.presetUnavailable}
+                        </option>
+                      )}
+                    {recommendedChoices.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
                       </option>
                     ))}
-                </select>
-              </label>
+                  </select>
+                </label>
+                <QueryNotice
+                  error={characters.error}
+                  retained={characters.data !== undefined}
+                  pending={characters.isFetching}
+                  onRetry={() => void characters.refetch()}
+                />
+              </div>
             )}
             <details ref={details} className="editor-details">
               <summary>{m.basicDetails}</summary>
@@ -867,6 +886,13 @@ function PresetEditor({
               )}
             </div>
             {dirty && <p className="subtle">{m.saveBeforeImage}</p>}
+            {imageRequest &&
+              canMutate &&
+              !dirty &&
+              !pendingSave &&
+              !imageCreation.busy && (
+                <AvailabilityNotice availability={imageAvailability} />
+              )}
             {imageRecord?.image_stale && (
               <p className="subtle">{m.imageNeedsUpdate}</p>
             )}

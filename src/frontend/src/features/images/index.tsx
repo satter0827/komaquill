@@ -11,6 +11,7 @@ import {
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
+import { QueryNotice } from '../../shared/ui/query-notice'
 import { AlbumIcon, DrawIcon } from '../../shared/ui/atelier-icons'
 import {
   imageOptions,
@@ -18,7 +19,11 @@ import {
   retainImageList,
   watchReceipt,
 } from '../../shared/operations'
-import { recheckAvailability, useAvailability } from '../../shared/availability'
+import {
+  AvailabilityNotice,
+  recheckAvailability,
+  useAvailability,
+} from '../../shared/availability'
 import {
   imageMonitorKey,
   useImageMonitorError,
@@ -224,6 +229,9 @@ export function ImagesPage() {
             >
               {m.drawRequestedScene}
             </Button>
+            {prompt.trim() && !waiting && (
+              <AvailabilityNotice availability={availability} />
+            )}
           </form>
         )}
       </div>
@@ -275,11 +283,13 @@ export function ImagesPage() {
           {failure(submit.error)}
         </p>
       )}
-      {images.error && (
-        <p role="alert" className="error">
-          {failure(images.error)}
-        </p>
-      )}
+      {images.isPending && <p role="status">{m.loading}</p>}
+      <QueryNotice
+        error={images.error}
+        retained={images.data !== undefined}
+        pending={images.isFetching}
+        onRetry={() => void images.refetch()}
+      />
       {days.length === 0 && !images.isPending && !images.error && (
         <div className="album-empty">
           <AlbumIcon size={24} />

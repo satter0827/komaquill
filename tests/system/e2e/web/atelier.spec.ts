@@ -1,6 +1,119 @@
-import { test, expect } from './fixtures'
+import { randomUUID } from 'node:crypto'
+import { test, expect, fulfillFault } from './fixtures'
 import ja from '../../../../src/frontend/src/app/locales/ja.json' with { type: 'json' }
 import en from '../../../../src/frontend/src/app/locales/en.json' with { type: 'json' }
+
+test('recovers the starting choices without treating a failed list as empty', async ({
+  page,
+  evidence,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route(
+    '**/api/v1/characters',
+    (route) =>
+      fulfillFault(route, evidence, {
+        status: 503,
+        json: { code: 'connection_failed' },
+      }),
+    { times: 1 },
+  )
+  await page.goto('/new')
+  const choice = page.locator('.selection-character')
+  await expect(choice.getByRole('alert')).toBeVisible()
+  await expect(choice.getByText(ja.noPresets)).toHaveCount(0)
+  await expect(page.getByLabel(ja.chooseStory)).toBeVisible()
+  const begin = page.getByRole('button', { name: ja.create, exact: true })
+  await expect(begin).toBeDisabled()
+  await evidence.capture('The failed list is distinct from an empty collection')
+  await choice.getByRole('button', { name: ja.reloadData }).click()
+  await expect(begin).toBeEnabled()
+  await evidence.capture('The starting choices can be used after retry')
+})
+
+test('recovers the album and drawing links from failed reads', async ({
+  page,
+  evidence,
+}) => {
+  for (const [path, route] of [
+    ['/images', '/images'],
+    ['/runtime', '/runtime/views'],
+  ]) {
+    await page.route(
+      `**/api/v1${route}`,
+      (request) =>
+        fulfillFault(request, evidence, {
+          status: 503,
+          json: { code: 'connection_failed' },
+        }),
+      { times: 1 },
+    )
+    await page.goto(path)
+    if (path === '/runtime')
+      await page.getByText(ja.drawingSettings, { exact: true }).click()
+    const main = page.getByRole('main')
+    const alert = main.getByRole('alert')
+    await expect(alert).toBeVisible()
+    const reload = alert.getByRole('button', { name: ja.reloadData })
+    await expect(reload).toBeVisible()
+    await reload.click()
+    await expect(alert).toHaveCount(0)
+    await expect(
+      path === '/images'
+        ? main.getByText(ja.albumEmpty)
+        : main.getByRole('link', { name: ja.openComfy }),
+    ).toBeVisible()
+    await evidence.capture(`The ${path} view after recovering its data`)
+  }
+})
+
+test('keeps a saved counterpart visible when the display language changes', async ({
+  page,
+  request,
+  evidence,
+}) => {
+  const characters = await (await request.get('/api/v1/characters')).json()
+  const counterpart = characters.find(
+    (item: { sample_locale: string }) => item.sample_locale === 'ja',
+  )
+  const saved = await request.post('/api/v1/stories/save', {
+    data: {
+      operation_id: randomUUID(),
+      value: { name: 'A saved pairing', character_id: counterpart.id },
+    },
+  })
+  expect(saved.ok()).toBe(true)
+  const { preset } = await saved.json()
+  const preferences = await (await request.get('/api/v1/preferences')).json()
+  expect(
+    (
+      await request.put('/api/v1/preferences', {
+        data: { ...preferences, locale: 'en' },
+      })
+    ).ok(),
+  ).toBe(true)
+
+  await page.goto(`/stories/${preset.id}`)
+  const recommended = page.getByLabel(en.defaultCharacter)
+  await expect(recommended).toHaveValue(counterpart.id)
+  await expect(recommended.locator('option:checked')).toHaveText(
+    counterpart.name,
+  )
+  await page.goto(`/new?story=${preset.id}`)
+  const begin = page.getByRole('button', { name: en.create, exact: true })
+  await expect(begin).toBeEnabled()
+  await page.locator('.start-selection > summary').click()
+  await expect(page.getByLabel(en.chooseCharacter)).toHaveValue(counterpart.id)
+  await evidence.capture(
+    'The saved pairing is displayed in a different UI language',
+  )
+  await begin.click()
+  await expect(page).toHaveURL(/\/conversations\//)
+  const identity = new URL(page.url()).pathname.split('/').at(-1)
+  const conversation = await (
+    await request.get(`/api/v1/conversations/${identity}`)
+  ).json()
+  expect(conversation.definition.character.name).toBe(counterpart.name)
+})
 
 for (const [locale, m] of [
   ['ja', ja],
@@ -138,6 +251,23 @@ test('reads and operates the expanded conversation controls at double text size'
     exact: true,
   })
   await scenePanel.getByLabel(ja.sceneName).fill('Bookshop bookmark')
+  await page.route(
+    '**/api/v1/conversations/*/bookmarks',
+    (route) =>
+      fulfillFault(route, evidence, {
+        status: 409,
+        json: { code: 'operation_conflict' },
+      }),
+    { times: 1 },
+  )
+  await scenePanel.getByRole('button', { name: ja.saveScene }).click()
+  const sceneError = scenePanel.getByRole('alert')
+  await expect(sceneError).toBeFocused()
+  await expect(sceneError).toBeInViewport({ ratio: 0.9 })
+  await expect(scenePanel.getByLabel(ja.sceneName)).toHaveValue(
+    'Bookshop bookmark',
+  )
+  await evidence.capture('The bookmark failure is shown inside its popup')
   await scenePanel.getByRole('button', { name: ja.saveScene }).click()
   await expect(scenePanel).not.toBeVisible()
   await menu.click()
@@ -163,6 +293,8 @@ test.describe('preserved stories', () => {
     await expect(main.getByText(ja.archivedNotice)).toBeVisible()
     await expect(main.getByText('I open the book.')).toBeVisible()
     await expect(main.getByText('This page is still here.')).toBeVisible()
+    await expect(main.getByText('The next page turns.')).toBeVisible()
+    await expect(main.locator('.user-message')).toHaveCount(1)
     await auditAccessibility()
     await evidence.capture('Read-only dialogue and the next story link')
     await main.getByRole('link', { name: ja.newConversation }).click()

@@ -27,7 +27,11 @@ def apply_reply(
     state = reply.state_patch.apply(before)
     if not reply.action_proposals:
         require_visible_reply(
-            before, state, reply.text, reply.action_narration, meeting_query=reply.meeting_query
+            before,
+            state,
+            reply.text,
+            reply.action_narration,
+            meeting_query=reply.meeting_query or reply.meeting_change is not None,
         )
     if (
         (

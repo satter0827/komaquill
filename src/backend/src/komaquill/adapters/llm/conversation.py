@@ -534,7 +534,8 @@ class ConversationResponder:
                     proposed,
                     value.text,
                     value.action_narration,
-                    meeting_query=value.meeting_query == "mixed",
+                    meeting_query=value.meeting_query == "mixed"
+                    or value.meeting_change is not None,
                 )
             except KomaquillError:
                 raise ResponseConstraintError("empty_response", ("response", "text")) from None

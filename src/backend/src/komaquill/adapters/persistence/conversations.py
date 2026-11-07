@@ -831,7 +831,7 @@ class ConversationRepository:
             except ValueError:
                 raise KomaquillError(code="invalid_response", retryable=False) from None
         answer = None
-        if reply.meeting_query:
+        if reply.meeting_query or reply.meeting_change is not None:
             answer = meeting.answer() if meeting else MeetingAnswer(status="unknown")
         turn = Turn(
             operation_id=identity,

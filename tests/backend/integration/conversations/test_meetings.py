@@ -19,7 +19,9 @@ def reply(change=None, *, query=True, text=""):
             "changes": [],
             "action_narration": "",
             "text": text,
-            "meeting_change": change,
+            "meeting_change": {"date": None, "time": None, "place": None, **change}
+            if change is not None
+            else None,
             "meeting_query": "only" if query else "none",
         },
     }
@@ -61,7 +63,7 @@ def test_meeting_updates_are_grounded_and_inherited_at_the_fork(tmp_path, monkey
                 reply({"kind": "correct", "quote": correction, "time": "11 AM"}),
                 reply(),
                 reply({"kind": "cancel", "quote": cancel}),
-                reply({"kind": "confirm", "quote": new, "place": "Central Station"}),
+                reply({"kind": "confirm", "quote": new, "place": "Central Station"}, query=False),
                 reply(),
             ],
         )

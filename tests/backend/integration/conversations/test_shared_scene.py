@@ -276,6 +276,7 @@ def test_two_model_stages_keep_distinct_checkpoints_and_call_evidence(
                                     "kind": "confirm",
                                     "quote": meeting,
                                     "date": "Friday",
+                                    "time": None,
                                     "place": "Town Hall",
                                 },
                             },

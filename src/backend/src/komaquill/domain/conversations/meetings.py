@@ -1,20 +1,21 @@
 """Track one agreed meeting independently of the current scene."""
 
-from typing import Literal, Self
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from komaquill.domain.conversations.evidence import SourceSpan
 from komaquill.domain.roleplay import MAX_PLACE_LENGTH, Record
 
 MEETING_FIELDS = ("date", "time", "place")
+MeetingText = Annotated[str, Field(min_length=1, max_length=MAX_PLACE_LENGTH)]
 
 
 class MeetingValues(Record):
-    date: str | None = Field(default=None, max_length=MAX_PLACE_LENGTH)
-    time: str | None = Field(default=None, max_length=MAX_PLACE_LENGTH)
-    place: str | None = Field(default=None, max_length=MAX_PLACE_LENGTH)
+    date: MeetingText | None = None
+    time: MeetingText | None = None
+    place: MeetingText | None = None
 
 
 class MeetingAnswer(MeetingValues):
@@ -47,33 +48,32 @@ class MeetingPlan(Record):
         )
 
 
-class MeetingChange(MeetingValues):
+class MeetingChange(Record):
     kind: Literal["confirm", "correct", "cancel"]
     quote: str = Field(min_length=1, description="Exact user passage expressing this decision.")
-
-    @model_validator(mode="after")
-    def supplied_values(self) -> Self:
-        values = [getattr(self, name) for name in MEETING_FIELDS]
-        if any(value is not None and not value.strip() for value in values):
-            raise ValueError("Meeting values must be nonempty.")
-        if any(value is not None for value in values) == (self.kind == "cancel"):
-            raise ValueError("Supply only the explicitly set values, or cancel without values.")
-        return self
+    date: MeetingText | None = Field(description="Exact stated date or weekday, otherwise null.")
+    time: MeetingText | None = Field(description="Exact stated time, otherwise null.")
+    place: MeetingText | None = Field(description="Exact stated rendezvous, otherwise null.")
 
     def apply(self, plan: MeetingPlan | None, text: str, turn_id: UUID) -> MeetingPlan:
         span = SourceSpan.locate(text, self.quote)
+        explicit = {
+            name: value for name in MEETING_FIELDS if (value := getattr(self, name)) is not None
+        }
         if self.kind == "cancel":
+            if explicit:
+                raise ValueError("A cancellation has no new meeting values.")
             return MeetingPlan(cancellation=MeetingSource(turn_id=turn_id, span=span))
+        if not explicit:
+            raise ValueError("A meeting decision must supply at least one value.")
         if self.kind == "correct" and (plan is None or plan.cancellation is not None):
             raise ValueError("A correction requires an active meeting.")
         values = plan.model_dump() if plan is not None and not plan.cancellation else {}
-        for name in MEETING_FIELDS:
-            value = getattr(self, name)
-            if value is not None:
-                part = SourceSpan.locate(self.quote, value)
-                values[name] = MeetingValue(
-                    text=value,
-                    turn_id=turn_id,
-                    span=SourceSpan(start=span.start + part.start, end=span.start + part.end),
-                )
+        for name, value in explicit.items():
+            part = SourceSpan.locate(self.quote, value)
+            values[name] = MeetingValue(
+                text=value,
+                turn_id=turn_id,
+                span=SourceSpan(start=span.start + part.start, end=span.start + part.end),
+            )
         return MeetingPlan.model_validate(values)

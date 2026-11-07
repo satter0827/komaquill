@@ -199,10 +199,10 @@ async function draftEditor(
     </QueryClientProvider>,
   )
   await userEvent.click(
-    await screen.findByText(m.createDraft, { selector: 'summary' }),
+    await screen.findByRole('button', { name: m.createDraft }),
   )
   await userEvent.type(screen.getByLabelText(m.draftPrompt), 'A watchmaker')
-  return screen.getByText(m.createDraft, { selector: 'button' })
+  return screen.getByRole('button', { name: m.generateDraft })
 }
 
 it('applies draft text without changing the selected counterpart or claiming it is saved', async () => {
@@ -213,6 +213,7 @@ it('applies draft text without changing the selected counterpart or claiming it 
         {
           id: 'original',
           name: 'Original',
+          description: 'An existing introduction',
           revision: 0,
           character_id: 'chosen',
         },
@@ -227,7 +228,11 @@ it('applies draft text without changing the selected counterpart or claiming it 
         id: body.operation_id,
         request: body,
         state: 'complete',
-        result: { name: 'New story', character_id: 'invented' },
+        result: {
+          name: 'New story',
+          description: '',
+          character_id: 'invented',
+        },
       }
       return HttpResponse.json(job, { status: 202 })
     }),
@@ -239,7 +244,11 @@ it('applies draft text without changing the selected counterpart or claiming it 
   expect(screen.getByText(m.saved)).toBeVisible()
   await userEvent.click(button)
   await userEvent.click(await screen.findByRole('button', { name: m.useDraft }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(screen.getByLabelText(m.requiredName)).toHaveValue('New story')
+  expect(screen.getByLabelText(m.description)).toHaveValue(
+    'An existing introduction',
+  )
   expect(screen.getByLabelText(m.defaultCharacter)).toHaveValue('chosen')
   expect(screen.getByRole('status')).toHaveTextContent(m.unsavedChanges)
 })
@@ -383,6 +392,7 @@ it('saves text without requesting generation or authorizing an LLM', async () =>
     }),
   )
   await draftEditor()
+  await userEvent.keyboard('{Escape}')
   await userEvent.type(screen.getByLabelText(m.requiredName), 'Casey')
   await userEvent.type(screen.getByLabelText(m.age), '60')
   await userEvent.type(screen.getByLabelText(m.gender), 'man')

@@ -3638,106 +3638,6 @@
         }
       }
     },
-    "/api/v1/conversations/{identity}/visuals": {
-      "put": {
-        "summary": "Review Visuals",
-        "operationId": "review_visuals",
-        "parameters": [
-          {
-            "name": "identity",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Identity"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/VisualReview"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Conversation"
-                }
-              }
-            }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorView"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorView"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorView"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorView"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorView"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorView"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        }
-      }
-    },
     "/api/v1/conversations/{identity}/resume": {
       "post": {
         "summary": "Resume",
@@ -5453,6 +5353,7 @@
           "visual_review_required": {
             "type": "boolean",
             "title": "Visual Review Required",
+            "description": "Retained marker for older unclassified appearance text.",
             "default": false
           },
           "personality": {
@@ -5552,6 +5453,7 @@
           "visual_review_required": {
             "type": "boolean",
             "title": "Visual Review Required",
+            "description": "Retained marker for older unclassified appearance text.",
             "default": false
           },
           "personality": {
@@ -5714,6 +5616,7 @@
           "visual_review_required": {
             "type": "boolean",
             "title": "Visual Review Required",
+            "description": "Retained marker for older unclassified appearance text.",
             "default": false
           },
           "personality": {
@@ -6304,24 +6207,6 @@
       },
       "ConversationStart": {
         "properties": {
-          "tone": {
-            "type": "string",
-            "maxLength": 2000,
-            "title": "Tone",
-            "default": ""
-          },
-          "topics": {
-            "type": "string",
-            "maxLength": 3000,
-            "title": "Topics",
-            "default": ""
-          },
-          "avoid": {
-            "type": "string",
-            "maxLength": 3000,
-            "title": "Avoid",
-            "default": ""
-          },
           "player_revision": {
             "type": "integer",
             "minimum": 0.0,
@@ -7412,6 +7297,7 @@
           "visual_review_required": {
             "type": "boolean",
             "title": "Visual Review Required",
+            "description": "Retained marker for older unclassified appearance text.",
             "default": false
           }
         },
@@ -7583,6 +7469,7 @@
           "visual_review_required": {
             "type": "boolean",
             "title": "Visual Review Required",
+            "description": "Retained marker for older unclassified appearance text.",
             "default": false
           }
         },
@@ -7721,6 +7608,7 @@
           "visual_review_required": {
             "type": "boolean",
             "title": "Visual Review Required",
+            "description": "Retained marker for older unclassified appearance text.",
             "default": false
           }
         },
@@ -8972,6 +8860,21 @@
             },
             "type": "array",
             "title": "Unreadable"
+          },
+          "shutdown_target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "owned",
+                  "external"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shutdown Target"
           }
         },
         "type": "object",
@@ -9092,6 +8995,24 @@
               }
             ],
             "title": "Character Id"
+          },
+          "tone": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Tone",
+            "default": ""
+          },
+          "topics": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Topics",
+            "default": ""
+          },
+          "avoid": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Avoid",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -9211,6 +9132,24 @@
               }
             ],
             "title": "Character Id"
+          },
+          "tone": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Tone",
+            "default": ""
+          },
+          "topics": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Topics",
+            "default": ""
+          },
+          "avoid": {
+            "type": "string",
+            "maxLength": 3000,
+            "title": "Avoid",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -9229,7 +9168,10 @@
           "opening",
           "place",
           "goal",
-          "character_id"
+          "character_id",
+          "tone",
+          "topics",
+          "avoid"
         ],
         "title": "StoryPreset"
       },

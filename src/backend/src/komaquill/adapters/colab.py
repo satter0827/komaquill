@@ -60,6 +60,14 @@ class Receipt(BaseModel):
     started_at: AwareDatetime | None = None
 
 
+def read_receipt(path: Path) -> Receipt | None:
+    """Read the local ownership receipt without checking provider status."""
+    try:
+        return Receipt.model_validate_json(read_bytes(path))
+    except FileNotFoundError:
+        return None
+
+
 class Colab:
     """Operate only the runtime allocated by this workspace."""
 
@@ -67,7 +75,7 @@ class Colab:
         self.project = project
         identity = hashlib.sha256(str(project.root).encode()).hexdigest()[:16]
         self.config = Path.home() / ".config/colab-cli/komaquill" / identity / "sessions.json"
-        self.receipt_file = project.state / "colab.json"
+        self.receipt_file = project.colab_receipt_file
         self.lock = FileLock(str(project.state / ".colab.lock"))
         saved = self.receipt()
         self.settings = (
@@ -151,9 +159,7 @@ class Colab:
 
     def receipt(self) -> Receipt | None:
         """Read the ownership receipt."""
-        if not self.receipt_file.is_file():
-            return None
-        return Receipt.model_validate_json(read_bytes(self.receipt_file))
+        return read_receipt(self.receipt_file)
 
     def entry(self, receipt: Receipt) -> dict[str, Any] | None:
         """Compare the owned identity with official session state."""

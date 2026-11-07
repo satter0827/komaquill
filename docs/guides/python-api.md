@@ -26,7 +26,7 @@ saved = client.conversations.get(conversation.id)
 
 `Client.player.get/update`で1件の自分を取得・編集する。`Client.characters`と`Client.stories`で一覧・作成・取得・版を指定した編集・複製・削除を行う。入力には公開型 `PlayerInput`、`CharacterInput`、`StoryInput` を使う。`Client.library.preferences()` と `save_preferences()` で表示・生成の好みを保存する。
 
-会話開始は `Client.library.start(ConversationStart(...))` に3種類の `PresetRef(id=..., revision=...)` を渡す。`llm_profile` と `locale` は開始時に指定する。開始済みの会話には解決済みの内容を保持する。
+会話開始は `Client.library.start(ConversationStart(...))` に自分の `player_revision` と、キャラクター・ストーリーの `PresetRef(id=..., revision=...)` を渡す。会話の調子、話題、避けたいことは `StoryInput.tone/topics/avoid` で保存する。開始時に `locale` を指定し、`llm_profile` を省略すると保存済みの好みを使う。開始済みの会話には解決済みの内容を保持する。
 
 下書き・代表画像・バナーは `CreationRequest` を `Client.library.accept()` へ渡し、新規受付の場合だけ `execute()` する。`job()` は保存済みの進捗を取得し、同じIDの再確認で生成を送り直さない。単発画像の日本語入力には `llm_profile` と `allow_real_llm=True` を指定する。既存DBを更新する場合は停止後に `Client.migrate()` を明示実行し、返された検証記録を確認する。
 

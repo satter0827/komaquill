@@ -102,7 +102,11 @@ def test_collector_tracks_confirmation_memory_and_recreation(
                 if missing == "objects":
                     companion["held_objects"] = [{"id": "invented", "name": "Cup"}]
                 latest = messages[-1].content
-                spoken = json.loads(latest)["text"] if latest.startswith("{") else latest
+                spoken = (
+                    json.loads(latest)["original_message_before_action"]
+                    if latest.startswith("{")
+                    else latest
+                )
                 if missing != "clothing" and (
                     spoken.startswith("あなたは緑のコート")
                     or spoken.startswith("Please wear a green coat")

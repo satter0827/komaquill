@@ -121,8 +121,9 @@ class DialogueResult(Record):
         max_length=6,
         description=(
             "Only actual new changes to assistant_character or the environment. "
-            "A completed human_player action does not change the companion's clothing, "
-            "objects or location. Return [] when unchanged."
+            "A completed human_player action does not change the companion's clothing or "
+            "objects. Both people are already at the confirmed shared place. "
+            "Return [] when unchanged."
         ),
     )
     action_narration: str = Field(
@@ -130,7 +131,8 @@ class DialogueResult(Record):
         description=(
             "Visible actions performed by assistant_character, consistent with their own clothing "
             "and held objects. Do not repeat human_player's completed action or assign their "
-            "possessions to the companion."
+            "possessions to the companion. Discuss a suggested, scheduled or conditional action "
+            "without performing it. Leave action_narration empty when only speaking."
         ),
     )
     text: str = Field(
@@ -139,8 +141,10 @@ class DialogueResult(Record):
             str(Reply.model_fields["text"].description)
             + " Answer the latest question directly before offering a follow-up question."
             " Keep response-framing JSON outside the dialogue; include literal JSON only when "
-            "the player explicitly asks to discuss it. Do not derive future arrangements from "
-            "the current scene: preserve the latest user-stated time and meeting place."
+            "the player explicitly asks to discuss it. In a recap, state the latest confirmed "
+            "arrangements from the user's messages, preserving details the user did not change. "
+            "Keep the meeting place separate from the current scene and label open ideas "
+            "as proposals."
         ),
     )
 
@@ -206,11 +210,9 @@ class ConversationResponder:
         self.execution = execution
         self.save_memory = save_memory
         self.read_history_hash = read_history_hash
-        self.instructions = (
-            files("komaquill")
-            .joinpath("resources/conversations/instructions.txt")
-            .read_text(encoding="utf-8")
-        )
+        prompts = files("komaquill").joinpath("resources/conversations")
+        self.instructions = prompts.joinpath("instructions.txt").read_text(encoding="utf-8")
+        self.intent = prompts.joinpath("intent.txt").read_text(encoding="utf-8").strip()
 
     def profiles(self) -> list[ConnectionProfile]:
         return [
@@ -242,12 +244,11 @@ class ConversationResponder:
             latest = json.dumps(
                 {
                     "speaker": "human_player",
-                    "shared_place": conversation.state.place,
                     "completed_action": {
                         "actor": "human_player",
                         **action.request.action.model_dump(mode="json", exclude_none=True),
                     },
-                    "text": request.text,
+                    "original_message_before_action": request.text,
                 },
                 ensure_ascii=False,
             )
@@ -274,9 +275,14 @@ class ConversationResponder:
                         samples["ja" if source == "player" else locale][source]
                     ).model_dump(mode="json", exclude={"character_id"})
                     try:
-                        matches = (
-                            matches and getattr(sample_definition, key).model_dump() == expected
-                        )
+                        actual = getattr(sample_definition, key).model_dump()
+                        if source == "story":
+                            actual.update(
+                                tone=sample_definition.tone,
+                                topics=sample_definition.topics,
+                                avoid=sample_definition.avoid,
+                            )
+                        matches = matches and actual == expected
                     except ValueError:
                         matches = False
                 response = pair["response"]
@@ -357,7 +363,6 @@ class ConversationResponder:
                     for key, value in facts.items()
                     if value is not None and (value != "" or key == "clothing")
                 },
-                "place": conversation.state.place,
             }
         context = {
             "story": story,
@@ -386,6 +391,20 @@ class ConversationResponder:
             "response_language": language,
         }
 
+        turn_contract = (
+            "The completed_action is already applied in current_state. "
+            "The original_message_before_action records what the user said before it happened. "
+            "Start with a direct answer to the question or discussion from the current scene. "
+            "If there is only an action, acknowledge it as complete. Keep the completed action "
+            "out of any new plan or narration of travel. "
+            "Return player_move=null and response.kind=companion."
+            if action is not None
+            else self.intent
+        )
+        reply_contract = (
+            f"Write text, action_narration and scenery changes only in {language}. {turn_contract}"
+        )
+
         def system(summary: ConversationMemory | None = None) -> str:
             values = {
                 **context,
@@ -403,24 +422,10 @@ class ConversationResponder:
                 self.instructions
                 + "\n"
                 + json.dumps(values, ensure_ascii=False, separators=(",", ":"))
-                + f"\nWrite text, action_narration and changes to scenery only in {language}."
-                + "\nThe observer is human_player at "
-                + json.dumps(conversation.state.place, ensure_ascii=False)
-                + ". Both people are together at this shared place. "
-                + "Scenery can describe only what is visible from that place. "
-                + "If no new visible detail is known, omit the scenery change; "
-                + "the confirmed player location will still be displayed."
+                + "\n"
+                + reply_contract
             )
 
-        language_contract = (
-            "Write dialogue, action_narration and scenery changes in " + language + ". "
-            "Decide player_move independently of any spoken question: an explicit immediate "
-            "destination must be recorded even when the same message asks a question. "
-            "Use response.kind=player only for another explicit immediate change to player "
-            "state or "
-            "currently adopted intention. Questions, conditional plans and appointments are "
-            "dialogue with kind=companion. Both people always share the confirmed place."
-        )
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
         purpose = "move-response-" if request.action_origin == "conversation" else ""
         retained_response = self.execution.has_response(request.operation_id, purpose)
@@ -512,7 +517,7 @@ class ConversationResponder:
                 system(active_memory),
                 messages,
                 validate=validate,
-                correction=language_contract,
+                correction=reply_contract,
                 field_language=field_language,
                 trim=False,
                 purpose=purpose,

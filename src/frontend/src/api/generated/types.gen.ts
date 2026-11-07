@@ -206,6 +206,8 @@ export type CharacterDefinition = {
     initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
+     *
+     * Retained marker for older unclassified appearance text.
      */
     visual_review_required?: boolean;
     /**
@@ -268,6 +270,8 @@ export type CharacterInput = {
     initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
+     *
+     * Retained marker for older unclassified appearance text.
      */
     visual_review_required?: boolean;
     /**
@@ -358,6 +362,8 @@ export type CharacterPreset = {
     initial_held_objects: Array<PhysicalObject>;
     /**
      * Visual Review Required
+     *
+     * Retained marker for older unclassified appearance text.
      */
     visual_review_required: boolean;
     /**
@@ -689,18 +695,6 @@ export type ConversationMemory = {
  * ConversationStart
  */
 export type ConversationStart = {
-    /**
-     * Tone
-     */
-    tone?: string;
-    /**
-     * Topics
-     */
-    topics?: string;
-    /**
-     * Avoid
-     */
-    avoid?: string;
     /**
      * Player Revision
      */
@@ -1237,6 +1231,8 @@ export type PersonDefinition = {
     initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
+     *
+     * Retained marker for older unclassified appearance text.
      */
     visual_review_required?: boolean;
 };
@@ -1327,6 +1323,8 @@ export type PlayerInput = {
     initial_held_objects?: Array<PhysicalObject>;
     /**
      * Visual Review Required
+     *
+     * Retained marker for older unclassified appearance text.
      */
     visual_review_required?: boolean;
 };
@@ -1401,6 +1399,8 @@ export type PlayerProfile = {
     initial_held_objects: Array<PhysicalObject>;
     /**
      * Visual Review Required
+     *
+     * Retained marker for older unclassified appearance text.
      */
     visual_review_required: boolean;
 };
@@ -2044,6 +2044,10 @@ export type SessionStatus = {
      * Unreadable
      */
     unreadable?: Array<string>;
+    /**
+     * Shutdown Target
+     */
+    shutdown_target?: 'owned' | 'external' | null;
 };
 
 /**
@@ -2122,6 +2126,18 @@ export type StoryInput = {
      * Character Id
      */
     character_id?: string | null;
+    /**
+     * Tone
+     */
+    tone?: string;
+    /**
+     * Topics
+     */
+    topics?: string;
+    /**
+     * Avoid
+     */
+    avoid?: string;
 };
 
 /**
@@ -2184,6 +2200,18 @@ export type StoryPreset = {
      * Character Id
      */
     character_id: string | null;
+    /**
+     * Tone
+     */
+    tone: string;
+    /**
+     * Topics
+     */
+    topics: string;
+    /**
+     * Avoid
+     */
+    avoid: string;
 };
 
 /**
@@ -4305,56 +4333,6 @@ export type DismissProposalResponses = {
 };
 
 export type DismissProposalResponse = DismissProposalResponses[keyof DismissProposalResponses];
-
-export type ReviewVisualsData = {
-    body: VisualReview;
-    path: {
-        /**
-         * Identity
-         */
-        identity: string;
-    };
-    query?: never;
-    url: '/api/v1/conversations/{identity}/visuals';
-};
-
-export type ReviewVisualsErrors = {
-    /**
-     * Bad Request
-     */
-    400: ErrorView;
-    /**
-     * Forbidden
-     */
-    403: ErrorView;
-    /**
-     * Not Found
-     */
-    404: ErrorView;
-    /**
-     * Conflict
-     */
-    409: ErrorView;
-    /**
-     * Unprocessable Entity
-     */
-    422: ErrorView;
-    /**
-     * Internal Server Error
-     */
-    500: ErrorView;
-};
-
-export type ReviewVisualsError = ReviewVisualsErrors[keyof ReviewVisualsErrors];
-
-export type ReviewVisualsResponses = {
-    /**
-     * Successful Response
-     */
-    200: Conversation;
-};
-
-export type ReviewVisualsResponse = ReviewVisualsResponses[keyof ReviewVisualsResponses];
 
 export type ResumeConversationData = {
     body?: never;

@@ -74,6 +74,10 @@ class WorkspacePaths:
     def session_file(self) -> Path:
         return self.state / "session.json"
 
+    @property
+    def colab_receipt_file(self) -> Path:
+        return self.state / "colab.json"
+
 
 class GpuPaths(WorkspacePaths):
     """Keep transient GPU files independent of local preservation categories."""

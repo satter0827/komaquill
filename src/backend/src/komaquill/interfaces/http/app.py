@@ -32,7 +32,6 @@ from komaquill.domain.conversations.models import (
     SendInput,
     Turn,
 )
-from komaquill.domain.conversations.visuals import VisualReview
 from komaquill.domain.errors import OperationStage, failure_info
 from komaquill.domain.materials import InputArtifact
 from komaquill.interfaces.http.background import execute_retained
@@ -419,14 +418,6 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         identity: UUID, proposal_id: UUID, body: ProposalDismissal
     ) -> Conversation:
         return selected().conversations.dismiss_proposal(identity, proposal_id, body)
-
-    @app.put(
-        "/api/v1/conversations/{identity}/visuals",
-        response_model=Conversation,
-        operation_id="review_visuals",
-    )
-    def review_visuals(identity: UUID, body: VisualReview) -> Conversation:
-        return selected().conversations.review_visuals(identity, body)
 
     @app.post(
         "/api/v1/conversations/{identity}/resume",

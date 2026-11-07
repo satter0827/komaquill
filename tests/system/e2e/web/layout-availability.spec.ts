@@ -73,13 +73,30 @@ for (const locale of ['ja', 'en'] as const) {
               ),
             ).toBe(true)
             if (route === '/characters/new') {
-              const before = await page.locator('.editor-page').boundingBox()
-              await page
-                .getByText(m.createDraft, { exact: true })
-                .first()
-                .click()
-              const after = await page.locator('.editor-page').boundingBox()
-              expect(after!.width).toBeCloseTo(before!.width, 0)
+              const name = page.getByLabel(m.requiredName, { exact: true })
+              const description = page.getByLabel(m.description, {
+                exact: true,
+              })
+              const trigger = page.getByRole('button', {
+                name: m.createDraft,
+                exact: true,
+              })
+              const before = (await name.boundingBox())!
+              const beforeDescription = (await description.boundingBox())!
+              await trigger.click()
+              await expect(
+                page.getByRole('dialog', { name: m.createDraft, exact: true }),
+              ).toBeVisible()
+              const after = (await name.boundingBox())!
+              const afterDescription = (await description.boundingBox())!
+              expect(after.width).toBeCloseTo(before.width, 0)
+              expect(after.height).toBeCloseTo(before.height, 0)
+              expect(afterDescription.y - after.y - after.height).toBeCloseTo(
+                beforeDescription.y - before.y - before.height,
+                0,
+              )
+              await page.keyboard.press('Escape')
+              await expect(trigger).toBeFocused()
             }
             if (route === '/player') {
               const input = await page
@@ -177,7 +194,6 @@ test('unconfirmed services disable generation and sending while text remains edi
   ).toBeDisabled()
   await evidence.capture('Disconnected conversation retains editable input')
   await page.goto('/images')
-  await page.getByRole('button', { name: ja.generate, exact: true }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet coast')
   await expect(
     page.getByRole('button', { name: ja.drawRequestedScene, exact: true }),
@@ -237,8 +253,6 @@ test('opens original image bytes and leaves saving to the native context menu', 
   expect(submitted.status()).toBe(202)
   await request.post(`/api/v1/images/${identity}/collect`)
   await page.goto('/images')
-  await expect(page.locator('.album-days img')).toHaveCount(0)
-  await page.locator('.album-days summary').first().click()
   const image = page.locator('.image-result').filter({
     has: page.locator(`img[src="/api/v1/images/${identity}/files/0"]`),
   })
@@ -274,8 +288,21 @@ test('album keeps collapsed files unloaded and reopens the accepted result witho
   await page.goto('/images')
   await expect(page.locator('.album-days img')).toHaveCount(0)
   expect(files).toHaveLength(0)
-  await page.getByRole('button', { name: ja.generate, exact: true }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet coast.')
+  const close = page.getByRole('button', {
+    name: ja.closeDrawingForm,
+    exact: true,
+  })
+  await expect(close).toHaveAttribute('aria-expanded', 'true')
+  await close.click()
+  const open = page.getByRole('button', {
+    name: ja.openDrawingForm,
+    exact: true,
+  })
+  await expect(open).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByLabel(ja.imagePrompt)).toHaveCount(0)
+  await open.click()
+  await expect(page.getByLabel(ja.imagePrompt)).toHaveValue('A quiet coast.')
   const accepted = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === '/api/v1/images' &&
@@ -299,6 +326,113 @@ test('album keeps collapsed files unloaded and reopens the accepted result witho
   expect(collections).toHaveLength(count)
   expect(readIds.filter((path) => path.endsWith(run.run_id))).toHaveLength(1)
   await evidence.capture('Album result remains reachable after closing its day')
+})
+
+test('separates connection controls and distinguishes external from owned environments', async ({
+  page,
+  evidence,
+}) => {
+  await page.setViewportSize(viewports.mobile)
+  let environment: 'external' | 'active' | 'unconfirmed' | 'none' = 'external'
+  let stops = 0
+  const status = () => ({
+    gpu:
+      environment === 'unconfirmed'
+        ? 'unknown'
+        : environment === 'active'
+          ? 'active'
+          : 'absent',
+    connection:
+      environment === 'unconfirmed'
+        ? 'preparing'
+        : environment === 'none'
+          ? 'stopped'
+          : 'connected',
+    shutdown_target:
+      environment === 'external'
+        ? 'external'
+        : environment === 'none'
+          ? null
+          : 'owned',
+    collector_running: true,
+    observed_at: '2026-11-07T03:00:00Z',
+    pending: [],
+  })
+  await page.route('**/api/v1/runtime', (route) =>
+    route.fulfill({ json: status() }),
+  )
+  await page.route('**/api/v1/runtime/views', (route) =>
+    route.fulfill({
+      json: (environment === 'external' || environment === 'active'
+        ? ['app', 'graph']
+        : []
+      ).map((view) => ({
+        profile: 'wai-illustrious',
+        view,
+        backend: environment === 'active' ? 'colab' : 'external',
+        url:
+          environment === 'active'
+            ? `http://127.0.0.1:8188/?template=${view}`
+            : 'http://127.0.0.1:8188/',
+      })),
+    }),
+  )
+  await page.route('**/api/v1/runtime/refresh', (route) =>
+    route.fulfill({ json: status() }),
+  )
+  await page.route('**/api/v1/runtime/stop', (route) => {
+    stops++
+    environment = 'none'
+    return route.fulfill({ json: status() })
+  })
+  await page.route('**/api/v1/runtime/start', (route) =>
+    fulfillFault(route, evidence, {
+      status: 503,
+      json: { code: 'connection_failed' },
+    }),
+  )
+  await page.goto('/settings')
+  await page.getByText(ja.connectionSettings, { exact: true }).click()
+  const panel = page.locator('.runtime-panel')
+  await expect(panel.getByRole('status')).toHaveText(ja.runtimeConnected)
+  const connect = panel.getByRole('button', { name: ja.start, exact: true })
+  const disconnect = panel.getByRole('button', {
+    name: ja.disconnect,
+    exact: true,
+  })
+  await expect(disconnect).toBeVisible()
+  const connectBox = (await connect.boundingBox())!
+  const disconnectBox = (await disconnect.boundingBox())!
+  expect(
+    disconnectBox.y - connectBox.y - connectBox.height,
+  ).toBeGreaterThanOrEqual(8)
+  await panel.getByText(ja.drawingSettings, { exact: true }).click()
+  await expect(panel.getByRole('link', { name: ja.openComfy })).toHaveCount(1)
+  await expect(panel.locator('a[download]')).toHaveCount(2)
+  const address = panel.getByLabel(ja.externalEndpoint)
+  await address.fill('http://127.0.0.1:8189')
+  await connect.click()
+  await expect(panel.getByRole('alert')).toBeVisible()
+  await expect(address).toHaveValue('http://127.0.0.1:8189')
+  environment = 'active'
+  await panel.getByRole('button', { name: ja.refresh, exact: true }).click()
+  const stop = panel.getByRole('button', { name: ja.stop, exact: true })
+  await expect(stop).toBeEnabled()
+  await expect(disconnect).toHaveCount(0)
+  await expect(
+    panel.getByRole('link', { name: ja.appMode, exact: true }),
+  ).toBeVisible()
+  await evidence.capture('Connection controls on a narrow screen')
+  environment = 'unconfirmed'
+  await panel.getByRole('button', { name: ja.refresh, exact: true }).click()
+  await expect(
+    panel.getByText(ja.runtimeNoViews, { exact: true }),
+  ).toBeVisible()
+  await expect(stop).toBeEnabled()
+  await expect(disconnect).toHaveCount(0)
+  await stop.click()
+  await expect(stop).toHaveCount(0)
+  expect(stops).toBe(1)
 })
 
 for (const locale of ['ja', 'en'] as const) {

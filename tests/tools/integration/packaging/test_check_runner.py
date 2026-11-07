@@ -1,9 +1,15 @@
 """Verify runner contracts within the declared test scope."""
 
+from pathlib import Path
+from subprocess import CalledProcessError
+
+import pytest
+
 from tools.packaging import build as package
 
 
-def test_package_copies_ui_into_staging_without_changing_source(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failed", [False, True])
+def test_package_cleans_staging_after_success_or_failure(tmp_path, monkeypatch, failed):
     backend = tmp_path / "src/backend/src/komaquill"
     backend.mkdir(parents=True)
     (backend / "__init__.py").write_text("# source")
@@ -11,10 +17,23 @@ def test_package_copies_ui_into_staging_without_changing_source(tmp_path, monkey
     frontend.mkdir(parents=True)
     (frontend / "index.html").write_text("<main>Built UI</main>")
     monkeypatch.setattr(package, "ROOT", tmp_path)
-    calls = []
-    monkeypatch.setattr(package.subprocess, "run", lambda command, **kwargs: calls.append(command))
-    package.main()
-    stage = next((tmp_path / ".artifacts/build/packages").iterdir())
-    assert (stage / "src/komaquill/resources/web/index.html").read_text() == "<main>Built UI</main>"
+    stages = []
+
+    def build(command, **_):
+        stage = Path(command[command.index("--project") + 1])
+        stages.append(stage)
+        assert (
+            stage / "src/komaquill/resources/web/index.html"
+        ).read_text() == "<main>Built UI</main>"
+        assert "--out-dir" in command
+        if failed:
+            raise CalledProcessError(2, command)
+
+    monkeypatch.setattr(package.subprocess, "run", build)
+    if failed:
+        with pytest.raises(CalledProcessError):
+            package.main()
+    else:
+        package.main()
+    assert len(stages) == 1 and not stages[0].exists()
     assert not (backend / "resources").exists()
-    assert "--out-dir" in calls[0]

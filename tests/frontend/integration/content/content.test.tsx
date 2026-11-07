@@ -72,7 +72,7 @@ it('keeps a delayed refresh attached to the input it checked', async () => {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
-        <Button disabled={!status.ready}>{m.generate}</Button>
+        <Button disabled={!status.ready}>{m.drawRequestedScene}</Button>
         <ConnectionSummary />
       </>
     )
@@ -89,7 +89,9 @@ it('keeps a delayed refresh attached to the input it checked', async () => {
   )
   try {
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: m.generate })).toBeEnabled(),
+      expect(
+        screen.getByRole('button', { name: m.drawRequestedScene }),
+      ).toBeEnabled(),
     )
     act(() => window.dispatchEvent(new Event('focus')))
     await waitFor(() => expect(checkingOldInput).toBe(true))
@@ -102,7 +104,9 @@ it('keeps a delayed refresh attached to the input it checked', async () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: m.refresh })).toBeEnabled(),
     )
-    expect(screen.getByRole('button', { name: m.generate })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: m.drawRequestedScene }),
+    ).toBeDisabled()
     await userEvent.click(
       screen.getByText(m.connectionSummary, { exact: true }),
     )
@@ -139,7 +143,7 @@ it('keeps execution disabled until a required connection is confirmed and refres
     const status = useAvailability({ kind: 'image', prompt: 'A coast' })
     return (
       <>
-        <Button disabled={!status.ready}>{m.generate}</Button>
+        <Button disabled={!status.ready}>{m.drawRequestedScene}</Button>
         <ConnectionSummary />
       </>
     )
@@ -154,15 +158,72 @@ it('keeps execution disabled until a required connection is confirmed and refres
       </MemoryRouter>
     </QueryClientProvider>,
   )
-  expect(screen.getByRole('button', { name: m.generate })).toBeDisabled()
+  expect(
+    screen.getByRole('button', { name: m.drawRequestedScene }),
+  ).toBeDisabled()
   await waitFor(() =>
     expect(screen.getByRole('button', { name: m.refresh })).toBeEnabled(),
   )
   await userEvent.click(screen.getByRole('button', { name: m.refresh }))
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: m.generate })).toBeEnabled(),
+    expect(
+      screen.getByRole('button', { name: m.drawRequestedScene }),
+    ).toBeEnabled(),
   )
   cache.clear()
+})
+
+it('renews in the background and blocks execution only once the observation expires', async () => {
+  let release = () => {}
+  let renewing = false
+  const pending = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  server.use(
+    http.post(`${base}/api/v1/availability`, async ({ request }) => {
+      if (new URL(request.url).searchParams.get('refresh') === 'true') {
+        renewing = true
+        await pending
+      }
+      const now = new Date()
+      return HttpResponse.json({
+        ready: true,
+        connections: [
+          {
+            kind: 'llm',
+            target: 'local',
+            state: 'ready',
+            observed_at: now.toISOString(),
+            expires_at: new Date(now.getTime() + 2400).toISOString(),
+          },
+        ],
+      })
+    }),
+  )
+  function Control() {
+    const status = useAvailability({ kind: 'conversation', identity: 'scene' })
+    return <Button disabled={!status.ready}>{m.send}</Button>
+  }
+  const cache = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={cache}>
+      <Control />
+    </QueryClientProvider>,
+  )
+  const button = screen.getByRole('button', { name: m.send })
+  try {
+    await waitFor(() => expect(button).toBeEnabled())
+    await waitFor(() => expect(renewing).toBe(true), { timeout: 3000 })
+    expect(button).toBeEnabled()
+    await waitFor(() => expect(button).toBeDisabled(), { timeout: 3000 })
+    release()
+    await waitFor(() => expect(button).toBeEnabled())
+  } finally {
+    release()
+    cache.clear()
+  }
 })
 
 it('bypasses retained connection observations after an execution failure and on focus', async () => {
@@ -192,7 +253,7 @@ it('bypasses retained connection observations after an execution failure and on 
   )
   function Control() {
     const status = useAvailability({ kind: 'image', prompt: 'A coast' })
-    return <Button disabled={!status.ready}>{m.generate}</Button>
+    return <Button disabled={!status.ready}>{m.drawRequestedScene}</Button>
   }
   const cache = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -202,7 +263,7 @@ it('bypasses retained connection observations after an execution failure and on 
       <Control />
     </QueryClientProvider>,
   )
-  const button = screen.getByRole('button', { name: m.generate })
+  const button = screen.getByRole('button', { name: m.drawRequestedScene })
   await waitFor(() => expect(button).toBeEnabled())
   connected = false
   await act(async () => {
@@ -233,7 +294,7 @@ it('disables execution when a fresh check fails even if the retained observation
     const status = useAvailability({ kind: 'image', prompt: 'A coast' })
     return (
       <>
-        <Button disabled={!status.ready}>{m.generate}</Button>
+        <Button disabled={!status.ready}>{m.drawRequestedScene}</Button>
         <ConnectionSummary />
       </>
     )
@@ -249,7 +310,7 @@ it('disables execution when a fresh check fails even if the retained observation
     </QueryClientProvider>,
   )
   await userEvent.click(screen.getByText(m.connectionSummary, { exact: true }))
-  const button = screen.getByRole('button', { name: m.generate })
+  const button = screen.getByRole('button', { name: m.drawRequestedScene })
   await waitFor(() => expect(button).toBeEnabled())
   act(() => window.dispatchEvent(new Event('focus')))
   await waitFor(() =>

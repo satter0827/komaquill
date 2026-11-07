@@ -2,12 +2,13 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from filelock import Timeout
 from pydantic import BaseModel
 
-from komaquill.adapters.colab import Colab
+from komaquill.adapters.colab import Colab, read_receipt
 from komaquill.adapters.compute.connection import connected, monitor_lock, session_project
 from komaquill.adapters.monitor_state import alive, read_monitor
 from komaquill.adapters.storage import load_runs, load_session
@@ -37,6 +38,18 @@ def pending_count[T: BaseModel](
     return None if failed else count
 
 
+def shutdown_target(project: RuntimeWorkspace) -> Literal["owned", "external"] | None:
+    """Identify the shutdown path from current local records."""
+    try:
+        if read_receipt(project.colab_receipt_file) is not None:
+            return "owned"
+        if load_session(project).backend == "external":
+            return "external"
+    except (OSError, ValueError, KomaquillError):
+        pass
+    return None
+
+
 def inspect(project: RuntimeWorkspace) -> SessionStatus:
     """Collect independent observations while preserving unreadable identities."""
     result = SessionStatus()
@@ -44,10 +57,10 @@ def inspect(project: RuntimeWorkspace) -> SessionStatus:
         project = session_project(project)
     except (OSError, ValueError, KomaquillError):
         result.unreadable.append("session.json")
-    colab = Colab(project)
     receipt = None
     active = None
     try:
+        colab = Colab(project)
         receipt = colab.receipt()
         if receipt is not None:
             with colab.lock.acquire(timeout=0):

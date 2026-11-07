@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from komaquill.adapters.atomic import atomic_json
-from komaquill.api import Client, images, runtime
+from komaquill.adapters.colab import Colab, Receipt
+from komaquill.api import Client, KomaquillError, images, runtime
 from komaquill.domain.status import SessionStatus
 from komaquill.interfaces.http.app import create_app
 
@@ -40,11 +41,42 @@ def test_http_images_and_standard_views_share_the_public_api(project, session, c
         assert image.status_code == 200 and image.headers["content-type"] == "image/png"
         assert http.get(f"/api/v1/images/{identity}/files/-1").status_code == 404
         assert http.post("/api/v1/runtime/refresh").json()["connection"] == "connected"
-        assert http.get("/api/v1/runtime").json()["observed_at"] is not None
+        observed = http.get("/api/v1/runtime").json()
+        assert observed["observed_at"] is not None
+        assert observed["shutdown_target"] == "external"
         views = http.get("/api/v1/runtime/views").json()
         assert {row["view"] for row in views} == {"app", "graph"}
         graph = http.get("/api/v1/runtime/workflows/klein-4b/graph")
         assert graph.status_code == 200 and graph.json()["extra"]["linearMode"] is False
+
+
+def test_http_runtime_keeps_owned_shutdown_without_an_endpoint(project, monkeypatch):
+    receipt = Receipt(name="owned", runtime_id=uuid4(), settings=project.settings())
+    atomic_json(project.colab_receipt_file, receipt.model_dump(mode="json"))
+
+    def unavailable(_, owned):
+        assert owned == receipt
+        raise KomaquillError(code="connection_failed")
+
+    monkeypatch.setattr(Colab, "refresh", unavailable)
+    with TestClient(create_app(Client(project.root)), base_url="http://localhost") as http:
+        assert http.get("/api/v1/runtime/views").json() == []
+        for result in (
+            http.get("/api/v1/runtime"),
+            http.post("/api/v1/runtime/refresh"),
+        ):
+            assert result.status_code == 200
+            assert result.json()["gpu"] == "unknown"
+            assert result.json()["shutdown_target"] == "owned"
+
+        cache = project.state / "runtime-observation.json"
+        cache.write_text("{", encoding="utf-8")
+        status = http.get("/api/v1/runtime").json()
+        assert status["shutdown_target"] == "owned"
+        assert status["unreadable"] == [cache.name]
+
+        project.colab_receipt_file.unlink()
+        assert http.get("/api/v1/runtime").json()["shutdown_target"] is None
 
 
 def test_http_static_cache_api_404_and_unknown_failures_are_safe(tmp_path, monkeypatch):

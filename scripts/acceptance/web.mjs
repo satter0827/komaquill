@@ -57,9 +57,16 @@ try {
   if (config.has_images) {
     await evidence.step('Read saved images', async () => {
       await page.goto('/images')
-      await page.locator('.album-days summary').first().click()
-      await page.locator('img').first().waitFor()
-      assert((await page.locator('img').count()) > 0)
+      const days = page.locator('.album-days > details')
+      const images = page.locator('.album-days img')
+      await days.first().waitFor()
+      for (const day of await days.all()) {
+        if (await images.count()) break
+        if ((await day.getAttribute('open')) === null)
+          await day.locator('summary').click()
+      }
+      await images.first().waitFor()
+      assert((await images.count()) > 0)
     })
   }
   for (const view of config.standard_views) {

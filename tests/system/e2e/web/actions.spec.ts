@@ -5,7 +5,7 @@ import en from '../../../../src/frontend/src/app/locales/en.json' with { type: '
 const REACTION_COMPLETION_TIMEOUT_MS = 15_000
 
 for (const locale of ['ja', 'en'] as const) {
-  test(`${locale}: reviews one person's appearance without changing the other`, async ({
+  test(`${locale}: continues a retained conversation without an appearance form`, async ({
     page,
     request,
     evidence,
@@ -18,9 +18,9 @@ for (const locale of ['ja', 'en'] as const) {
     })
     const created = await request.post('/api/v1/conversations', {
       data: {
-        title: 'Appearance review',
+        title: 'Retained appearance',
         locale,
-        llm_profile: 'fake',
+        llm_profile: 'lmstudio-4b',
         user: {
           name: 'Player',
           appearance: 'Brown hair',
@@ -35,47 +35,28 @@ for (const locale of ['ja', 'en'] as const) {
     })
     expect(created.ok()).toBe(true)
     const original = await created.json()
+    const path = `/api/v1/conversations/${original.id}`
     await page.goto(`/conversations/${original.id}`)
-    const appearance = page.getByLabel(m.appearance, { exact: true })
-    await expect(appearance).toHaveCount(1)
-    await appearance.fill('Silver hair')
+    await expect(page.getByLabel(m.appearance, { exact: true })).toHaveCount(0)
+    await page.getByText(m.changePlace, { exact: true }).click()
+    await page.getByLabel(m.destination, { exact: true }).fill('Park')
     await page
       .getByRole('textbox', { name: m.messageLabel })
-      .fill('Keep my message')
-    await expect(
-      page.getByRole('button', { name: m.send, exact: true }),
-    ).toBeDisabled()
+      .fill(
+        locale === 'ja' ? '公園で話しましょう。' : 'Let us talk in the park.',
+      )
+    await page.getByRole('button', { name: m.send, exact: true }).click()
+    await expect(page.locator('.assistant-message')).toHaveCount(1, {
+      timeout: REACTION_COMPLETION_TIMEOUT_MS,
+    })
+    const continued = await (await request.get(path)).json()
+    expect(continued.definition).toEqual(original.definition)
+    expect(continued.state.place).toBe('Park')
+    await page.reload()
+    await expect(page.locator('.assistant-message')).toHaveCount(1)
     await auditAccessibility()
     await evidence.capture(
-      'Only the unconfirmed companion needs appearance review',
-    )
-    const saved = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'PUT' &&
-        response.url().endsWith(`/api/v1/conversations/${original.id}/visuals`),
-    )
-    await page.getByRole('button', { name: m.confirmAppearance }).focus()
-    await page.keyboard.press('Enter')
-    expect((await saved).ok()).toBe(true)
-    await page.getByText(m.changePlace, { exact: true }).click()
-    await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
-    await expect(
-      page.getByRole('textbox', { name: m.messageLabel }),
-    ).toHaveValue('Keep my message')
-    const confirmed = await (
-      await request.get(`/api/v1/conversations/${original.id}`)
-    ).json()
-    expect(confirmed.definition.user).toEqual(original.definition.user)
-    expect(confirmed.state.player).toEqual(original.state.player)
-    expect(confirmed.definition.character.appearance).toBe('Silver hair')
-    expect(confirmed.definition.character.initial_clothing).toBeNull()
-    expect(confirmed.state.character.clothing).toBeNull()
-    await page.reload()
-    await page.getByText(m.changePlace, { exact: true }).click()
-    await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
-    await expect(appearance).toHaveCount(0)
-    await evidence.capture(
-      'Review survived reload and retained the other person and unspecified clothes',
+      'Retained conversation continues with its saved definition',
     )
   })
   test(`${locale}: confirms a player action and preserves it after reload`, async ({

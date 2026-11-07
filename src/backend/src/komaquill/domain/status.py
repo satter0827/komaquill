@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
 
 
 @dataclass
@@ -18,3 +19,4 @@ class SessionStatus:
     pending: list[str] = field(default_factory=list)
     lost_count: int = 0
     unreadable: list[str] = field(default_factory=list)
+    shutdown_target: Literal["owned", "external"] | None = None

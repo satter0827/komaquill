@@ -46,7 +46,6 @@ __all__ = [
     "WaitAction",
     "PrepareAction",
     "IntentionAction",
-    "VisualReview",
     "ImageLinkInspection",
     "ImageLinkRepairResult",
     "PresetSaveOptions",
@@ -94,7 +93,6 @@ from komaquill.domain.conversations.actions import WaitAction as WaitAction
 from komaquill.domain.conversations.editing import Bookmark as Bookmark
 from komaquill.domain.conversations.editing import NotesRequest as NotesRequest
 from komaquill.domain.conversations.editing import SceneRequest as SceneRequest
-from komaquill.domain.conversations.visuals import VisualReview as VisualReview
 from komaquill.domain.library.models import CharacterSaveRequest as CharacterSaveRequest
 from komaquill.domain.library.models import PresetSaveOptions as PresetSaveOptions
 from komaquill.domain.library.models import PresetSaveResult as PresetSaveResult

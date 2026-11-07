@@ -271,9 +271,9 @@ class LibraryService:
         return self.conversations.create(
             ConversationInput(
                 title=request.title.strip() or story.name,
-                tone=request.tone,
-                topics=request.topics,
-                avoid=request.avoid,
+                tone=story.tone,
+                topics=story.topics,
+                avoid=story.avoid,
                 scenario=StoryDefinition.model_validate(
                     story.model_dump(include=set(StoryDefinition.model_fields))
                 ),
@@ -354,8 +354,6 @@ class LibraryService:
                 raise KomaquillError(code="invalid_request", retryable=False)
             kind: PresetKind = "character" if request.kind == "portrait" else "story"
             value = self.store.get(kind, request.target_id)
-            if isinstance(value, CharacterPreset) and value.visual_review_required:
-                raise KomaquillError(code="visual_review_required", retryable=False)
             if value.revision != request.expected_revision:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             original = json.dumps(preset_image_input(kind, value), ensure_ascii=False)

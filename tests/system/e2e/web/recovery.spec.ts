@@ -186,7 +186,6 @@ test('confirms an album receipt across navigation without submitting again', asy
     if (req.method() === 'POST' && req.url().endsWith('/collect')) collections++
   })
   await page.goto('/images')
-  await page.getByRole('button', { name: ja.generate, exact: true }).click()
   await page.getByLabel(ja.imagePrompt).fill('A quiet bookshop')
   await page
     .getByRole('button', { name: ja.drawRequestedScene, exact: true })
@@ -207,7 +206,6 @@ test('confirms an album receipt across navigation without submitting again', asy
   expect(submitted).toHaveLength(1)
   expect(collections).toBe(1)
   await page.getByRole('link', { name: ja.images, exact: true }).click()
-  await page.locator('.album-days summary').first().click()
   await expect(page.locator(`#image-${submitted[0]} img`)).toHaveJSProperty(
     'naturalWidth',
     8,

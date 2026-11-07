@@ -1,7 +1,6 @@
 """Validate and apply accepted player input independently of persistence."""
 
 from komaquill.domain.conversations.actions import ActionRecord, RecordedActionRequest, apply_action
-from komaquill.domain.conversations.context import require_reviewed
 from komaquill.domain.conversations.models import Conversation, SendInput
 from komaquill.domain.errors import KomaquillError
 
@@ -9,7 +8,6 @@ from komaquill.domain.errors import KomaquillError
 def accept_input(conversation: Conversation, request: SendInput) -> Conversation:
     if conversation.revision != request.expected_revision:
         raise KomaquillError(code="operation_conflict", stage="operation", retryable=False)
-    require_reviewed(conversation)
     if request.action is None:
         return conversation
     proposals = list(conversation.proposals)

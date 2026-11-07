@@ -45,13 +45,7 @@ import {
 import { ConversationNotes, SceneActions } from './tools'
 import { ImageResult } from '../../shared/images/result'
 import { OriginalImage } from '../../shared/images/original'
-import {
-  ActionDescription,
-  PlayerActions,
-  usePlayerActions,
-  useVisualReview,
-  VisualReviewForm,
-} from './actions'
+import { ActionDescription, PlayerActions, usePlayerActions } from './actions'
 import {
   creationOptions,
   conversationOperationsOptions,
@@ -403,10 +397,6 @@ function ConversationView({
         queryKey: q.listConversationImagesQueryKey({ path: { identity } }),
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
-  const reviewControls = useVisualReview({
-    identity,
-    conversation: detail.data,
-  })
   if (detail.error && !detail.data)
     return (
       <QueryNotice
@@ -441,18 +431,9 @@ function ConversationView({
     [...retainedOperations.values()].some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
-  const busy =
-    actionControls.unresolved ||
-    !!reviewControls.prepared ||
-    replyPending ||
-    !!detail.error
-  const needsReview = !!(
-    conversation.definition.user?.visual_review_required ||
-    conversation.definition.character?.visual_review_required
-  )
+  const busy = actionControls.unresolved || replyPending || !!detail.error
   const canSend =
     !detail.error &&
-    !needsReview &&
     sendAvailability.ready &&
     (!actionControls.queued ||
       actionControls.queued.revision === conversation.revision) &&
@@ -808,15 +789,6 @@ function ConversationView({
                 </article>
               )
             })}
-            {(needsReview || reviewControls.prepared) && (
-              <div className="visual-review">
-                <VisualReviewForm
-                  conversation={conversation}
-                  busy={!!busy}
-                  controls={reviewControls}
-                />
-              </div>
-            )}
             {replyPending && (
               <p className="pending" role="status">
                 {send.isPending || (resume.isPending && pendingResume)
@@ -945,7 +917,7 @@ function ConversationView({
             <div className="composer-tools">
               <Button
                 aria-expanded={moveOpen}
-                disabled={!!busy || needsReview}
+                disabled={!!busy}
                 onClick={() => setMoveOpen(!moveOpen)}
               >
                 {messages.changePlace}
@@ -995,7 +967,6 @@ function ConversationView({
                 title={messages.drawScene}
                 disabled={
                   !!busy ||
-                  needsReview ||
                   drawing.busy ||
                   sampleDrawing ||
                   !drawAvailability.ready ||
@@ -1031,7 +1002,7 @@ function ConversationView({
                 >
                   <PlayerActions
                     conversation={conversation}
-                    busy={!!busy || needsReview}
+                    busy={!!busy}
                     controls={actionControls}
                     onQueued={() => {
                       setActionOpen(false)
@@ -1056,7 +1027,7 @@ function ConversationView({
                   form={sendFormId}
                   value={destination}
                   maxLength={MAX_DESTINATION_LENGTH}
-                  disabled={!!busy || needsReview}
+                  disabled={!!busy}
                   onChange={(event) => {
                     const value = event.target.value
                     setDestination(value)

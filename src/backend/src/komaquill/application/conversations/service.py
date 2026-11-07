@@ -21,7 +21,6 @@ from komaquill.domain.conversations.models import (
     TurnRequest,
 )
 from komaquill.domain.conversations.transitions import apply_reply
-from komaquill.domain.conversations.visuals import VisualReview
 from komaquill.domain.errors import FailureInfo, KomaquillError, OperationStage, failure_info
 
 
@@ -55,7 +54,6 @@ class Repository(Protocol):
     def dismiss_proposal(
         self, identity: UUID, proposal_id: UUID, request: ProposalDismissal
     ) -> Conversation: ...
-    def review_visuals(self, identity: UUID, review: VisualReview) -> Conversation: ...
     def operations(self, identity: UUID) -> builtins.list[Operation]: ...
     def actions(self, identity: UUID) -> builtins.list[ActionRecord]: ...
 
@@ -207,9 +205,6 @@ class ConversationService:
         self, identity: UUID, proposal_id: UUID, request: ProposalDismissal
     ) -> Conversation:
         return self.repository.dismiss_proposal(identity, proposal_id, request)
-
-    def review_visuals(self, identity: UUID, review: VisualReview) -> Conversation:
-        return self.repository.review_visuals(identity, review)
 
     def resume(self, identity: UUID) -> Conversation:
         self.repository.reconcile()

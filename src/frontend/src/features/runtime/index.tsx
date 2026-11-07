@@ -1,20 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
-
+import { recheckAvailability } from '../../shared/availability'
 import {
   useFailure,
+  useFormatMessage,
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
-import { recheckAvailability } from '../../shared/availability'
+
+const DEFAULT_EXTERNAL_ENDPOINT = 'http://127.0.0.1:8188'
 
 export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
-  const messages = useMessages()
+  const m = useMessages()
+  const format = useFormatMessage()
   const failure = useFailure()
   const preferences = usePreferences()
   const cache = useQueryClient()
+  const [endpoint, setEndpoint] = useState(DEFAULT_EXTERNAL_ENDPOINT)
+  const runtime = useQuery(q.getRuntimeOptions())
+  const views = useQuery(q.getRuntimeViewsOptions())
   const updated = async () => {
     await Promise.all([
       recheckAvailability(cache),
@@ -22,13 +28,6 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
       cache.invalidateQueries({ queryKey: q.getRuntimeViewsQueryKey() }),
     ])
   }
-  const [endpoint, setEndpoint] = useState('http://127.0.0.1:8188')
-  const runtime = useQuery({
-    ...q.getRuntimeOptions(),
-  })
-  const views = useQuery({
-    ...q.getRuntimeViewsOptions(),
-  })
   const refresh = useMutation({
     ...q.refreshRuntimeMutation(),
     onSuccess: updated,
@@ -41,82 +40,92 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
     ...q.stopRuntimeMutation(),
     onSuccess: updated,
   })
+  const busy = refresh.isPending || start.isPending || stop.isPending
+  const status = runtime.isSuccess ? runtime.data : undefined
+  const entries = views.isSuccess ? views.data : []
+  const target = status?.shutdown_target
+  const owned = target === 'owned'
+  const external = target === 'external'
+  const externalUrls = new Set(
+    entries
+      .filter((view) => view.backend === 'external')
+      .map((view) => view.url),
+  )
+  const profiles = new Map<string, typeof entries>()
+  for (const view of entries) {
+    const group = profiles.get(view.profile) ?? []
+    group.push(view)
+    profiles.set(view.profile, group)
+  }
+  const connection =
+    status?.connection === 'connected'
+      ? m.runtimeConnected
+      : status?.connection === 'disconnected' ||
+          status?.connection === 'stopped' ||
+          status?.connection === 'not_started'
+        ? m.runtimeDisconnected
+        : m.notObserved
+
   return (
-    <section className="page runtime-page">
-      <div className="eyebrow">{messages.runtimeEyebrow}</div>
-      {embedded ? <h2>{messages.runtime}</h2> : <h1>{messages.runtime}</h1>}
-      <p className="subtle">{messages.runtimeDescription}</p>
-      <div className="runtime-card">
-        <div className="section-label">{messages.currentObservation}</div>
+    <section className={embedded ? 'runtime-panel' : 'page runtime-panel'}>
+      {!embedded && <h1>{m.connectionSettings}</h1>}
+      <section className="runtime-card">
+        <h2>{m.currentObservation}</h2>
+        <p role="status" className="runtime-connection">
+          {connection}
+        </p>
         <dl>
-          <dt>{messages.gpu}</dt>
+          <dt>{m.gpu}</dt>
           <dd>
-            {runtime.data?.gpu === 'active'
-              ? messages.running
-              : runtime.data?.gpu === 'absent'
-                ? views.data?.some((view) => view.backend === 'external')
-                  ? messages.unmanagedEnvironment
-                  : messages.stopped
-                : messages.unknown}
+            {status?.gpu === 'active'
+              ? m.running
+              : status?.gpu === 'absent'
+                ? external
+                  ? m.unmanagedEnvironment
+                  : m.stopped
+                : status?.gpu === 'stopped'
+                  ? m.stopped
+                  : m.unknown}
           </dd>
-          <dt>{messages.connection}</dt>
+          <dt>{m.collector}</dt>
           <dd>
-            {runtime.data?.connection === 'connected'
-              ? messages.running
-              : runtime.data?.connection === 'disconnected'
-                ? messages.stopped
-                : messages.unknown}
+            {status?.observed_at
+              ? status.collector_running
+                ? m.running
+                : m.stopped
+              : m.unknown}
           </dd>
-          <dt>{messages.collector}</dt>
+          <dt>{m.observedAt}</dt>
           <dd>
-            {runtime.data?.observed_at
-              ? runtime.data.collector_running
-                ? messages.running
-                : messages.stopped
-              : messages.unknown}
-          </dd>
-          <dt>{messages.observedAt}</dt>
-          <dd>
-            {runtime.data?.observed_at
-              ? new Date(runtime.data.observed_at).toLocaleString(
+            {status?.observed_at
+              ? new Date(status.observed_at).toLocaleString(
                   preferences.value.locale,
                 )
-              : messages.notObserved}
+              : m.notObserved}
           </dd>
         </dl>
-        <Button onClick={() => refresh.mutate({})} disabled={refresh.isPending}>
-          {messages.refresh}
-        </Button>
-      </div>
-      <details>
-        <summary>{messages.drawingSettings}</summary>
-        <div className="details-content runtime-views">
-          {views.data?.map((view) => (
-            <div key={`${view.profile}-${view.view}`}>
-              <a href={view.url} target="_blank" rel="noopener noreferrer">
-                {view.profile} ·{' '}
-                {view.view === 'app' ? messages.appMode : messages.nodeGraph}
-              </a>
-              {view.backend === 'external' && (
-                <a
-                  href={`/api/v1/runtime/workflows/${encodeURIComponent(view.profile)}/${view.view}`}
-                  download="workflow.json"
-                >
-                  {messages.downloadWorkflow}
-                </a>
-              )}
-            </div>
-          ))}
+        <div className="actions">
+          <Button onClick={() => refresh.mutate({})} disabled={busy}>
+            {m.refresh}
+          </Button>
         </div>
-      </details>
+        {!!(runtime.error || refresh.error) && (
+          <p role="alert" className="error">
+            {failure(runtime.error || refresh.error)}
+          </p>
+        )}
+      </section>
       <form
+        className="runtime-card"
         onSubmit={(event) => {
           event.preventDefault()
-          start.mutate({ body: { backend: 'external', endpoint } })
+          if (!busy) start.mutate({ body: { backend: 'external', endpoint } })
         }}
       >
+        <h2>{m.runtimeEndpointTitle}</h2>
+        <p className="subtle">{m.runtimeDescription}</p>
         <label>
-          {messages.externalEndpoint}
+          {m.externalEndpoint}
           <input
             type="url"
             required
@@ -124,26 +133,93 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
             onChange={(event) => setEndpoint(event.target.value)}
           />
         </label>
-        <Button type="submit" variant="primary" disabled={start.isPending}>
-          {messages.start}
-        </Button>
-      </form>
-      <Button
-        variant="danger"
-        onClick={() => stop.mutate({})}
-        disabled={stop.isPending}
-      >
-        {views.data?.some((view) => view.backend === 'external')
-          ? messages.disconnect
-          : messages.stop}
-      </Button>
-      {[runtime.error, views.error, start.error, stop.error, refresh.error]
-        .filter(Boolean)
-        .map((error, index) => (
-          <p key={index} role="alert" className="error">
-            {failure(error)}
+        <div className="actions">
+          <Button type="submit" variant="primary" disabled={busy}>
+            {m.start}
+          </Button>
+        </div>
+        {!!start.error && (
+          <p role="alert" className="error">
+            {failure(start.error)}
           </p>
-        ))}
+        )}
+      </form>
+      <details className="runtime-card">
+        <summary>{m.drawingSettings}</summary>
+        <div className="details-content">
+          {views.isPending && <p>{m.loading}</p>}
+          {!!views.error && (
+            <p role="alert" className="error">
+              {failure(views.error)}
+            </p>
+          )}
+          {views.isSuccess && entries.length === 0 && (
+            <p className="subtle">{m.runtimeNoViews}</p>
+          )}
+          {[...externalUrls].map((url) => (
+            <a
+              key={url}
+              className="text-button"
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {m.openComfy}
+            </a>
+          ))}
+          {[...profiles].map(([profile, group]) => (
+            <section className="runtime-profile" key={profile}>
+              <h3>{profile}</h3>
+              <div className="actions">
+                {group.map((view) => {
+                  const mode = view.view === 'app' ? m.appMode : m.nodeGraph
+                  return view.backend === 'external' ? (
+                    <a
+                      className="text-button"
+                      key={view.view}
+                      href={`/api/v1/runtime/workflows/${encodeURIComponent(profile)}/${view.view}`}
+                      download="workflow.json"
+                    >
+                      {format('downloadWorkflow', { mode })}
+                    </a>
+                  ) : (
+                    <a
+                      className="text-button"
+                      key={view.view}
+                      href={view.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {mode}
+                    </a>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      </details>
+      <section className="runtime-card">
+        <h2>{m.runtimeEndTitle}</h2>
+        {target ? (
+          <div className="actions">
+            <Button
+              variant={owned ? 'danger' : 'secondary'}
+              disabled={busy}
+              onClick={() => stop.mutate({})}
+            >
+              {owned ? m.stop : m.disconnect}
+            </Button>
+          </div>
+        ) : (
+          <p className="subtle">{m.runtimeCheckBeforeEnd}</p>
+        )}
+        {!!stop.error && (
+          <p role="alert" className="error">
+            {failure(stop.error)}
+          </p>
+        )}
+      </section>
     </section>
   )
 }

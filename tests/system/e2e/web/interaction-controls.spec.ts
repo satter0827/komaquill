@@ -242,7 +242,6 @@ test('album preserves portrait and landscape proportions', async ({
       }),
     )
     await page.goto('/images')
-    await page.locator('.album-days summary').first().click()
     const image = page.locator(`img[src="/api/v1/images/${id}/files/0"]`)
     await expect(image).toHaveJSProperty('naturalWidth', width)
     const bounds = await image.boundingBox()

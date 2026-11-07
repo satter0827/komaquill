@@ -166,7 +166,6 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
 def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(tmp_path):
     from komaquill.adapters.llm.conversation import (
         DialogueResult,
-        NarrativeReply,
         ObjectsChange,
         ReactionReply,
     )
@@ -188,11 +187,12 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     def invoke(*args, **kwargs):
         calls.append(args)
         corrections.append(kwargs["correction"])
-        return NarrativeReply.model_validate(
+        return ReactionReply.model_validate(
             {
-                "player_move": None,
                 "response": {
                     "kind": "companion",
+                    "meeting_change": None,
+                    "meeting_query": "none",
                     "changes": [],
                     "action_narration": "",
                     "text": "Understood.",
@@ -215,7 +215,6 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     context = json.loads(next(line for line in calls[0][4].splitlines() if line.startswith("{")))
     assert calls[0][0] is ReactionReply
     assert context["response_rules"] == {
-        "player_move": ReactionReply.model_fields["player_move"].description,
         "held_objects": ObjectsChange.model_fields["value"].description,
         "action_narration": DialogueResult.model_fields["action_narration"].description,
         "text": DialogueResult.model_fields["text"].description,
@@ -226,13 +225,13 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
     assert context["people"]["assistant_character"]["name"] == "Mira"
     assert calls[0][4].endswith(corrections[0])
     assert "The completed_action is already applied" in corrections[0]
-    assert "Return player_move=null" in corrections[0]
+    assert "player_move" not in corrections[0]
     assert "Decide player_move independently" not in calls[0][4]
     latest = json.loads(calls[0][5][-1][1])
     assert latest == {
         "speaker": "human_player",
         "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
-        "original_message_before_action": text,
+        "message": text,
     }
     assert operation.state == "complete"
     saved = api.conversations.get(scene.id)
@@ -791,6 +790,8 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                         "player_move": None,
                         "response": {
                             "kind": "companion",
+                            "meeting_change": None,
+                            "meeting_query": "none",
                             "changes": [
                                 {
                                     "field": "held_objects",

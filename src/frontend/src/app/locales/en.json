@@ -220,6 +220,13 @@
     "image_composition_unavailable": "Two-person images require WAI. Select WAI before drawing both people."
   },
   "currentPlace": "Current location",
+  "meetingDetails": "Meeting details",
+  "meetingUnknown": "There is no confirmed meeting.",
+  "meetingCancelled": "The meeting was cancelled.",
+  "meetingDate": "Date",
+  "meetingTime": "Time",
+  "meetingPlace": "Meeting place",
+  "meetingUndecided": "Undecided",
   "currentTime": "Time",
   "age": "Age",
   "gender": "Gender",

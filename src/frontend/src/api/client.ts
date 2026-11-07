@@ -6,19 +6,16 @@ export const API_READ_TIMEOUT_MS = 30_000
 export const API_REQUEST_TIMEOUT_MS = 15 * 60_000
 
 client.setConfig({ baseUrl: '', throwOnError: true })
-client.interceptors.request.use(
-  (request) =>
-    new Request(request, {
-      signal: AbortSignal.any([
-        request.signal,
-        AbortSignal.timeout(
-          ['GET', 'HEAD'].includes(request.method)
-            ? API_READ_TIMEOUT_MS
-            : API_REQUEST_TIMEOUT_MS,
-        ),
-      ]),
-    }),
-)
+client.interceptors.request.use((request, { signal }) => {
+  const deadline = AbortSignal.timeout(
+    ['GET', 'HEAD'].includes(request.method)
+      ? API_READ_TIMEOUT_MS
+      : API_REQUEST_TIMEOUT_MS,
+  )
+  return new Request(request, {
+    signal: signal ? AbortSignal.any([signal, deadline]) : deadline,
+  })
+})
 
 export function failure(error: unknown, locale: Locale = 'ja'): string {
   const messages = messageCatalog(locale)

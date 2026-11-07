@@ -119,6 +119,8 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
             Conversation(definition=ConversationInput(title="Limits")),
             DialogueResult(
                 kind="companion",
+                meeting_change=None,
+                meeting_query="none",
                 movement="stay",
                 changes=[ExpressionPoseChange(field="pose", value="x" * 1001)],
                 action_narration="",
@@ -130,10 +132,17 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
 def test_movement_decision_is_required_and_cannot_be_repeated_by_a_reaction():
     from komaquill.adapters.llm.conversation import NarrativeReply, ReactionReply
 
-    response = {"kind": "companion", "changes": [], "action_narration": "", "text": ""}
+    response = {
+        "kind": "companion",
+        "meeting_change": None,
+        "meeting_query": "none",
+        "changes": [],
+        "action_narration": "",
+        "text": "",
+    }
     with pytest.raises(ValueError):
         NarrativeReply.model_validate({"response": response})
-    movement = {"kind": "move", "destination": "Cafe"}
+    movement = {"kind": "move", "destination": "Cafe", "quote": "Let's go to the cafe."}
     assert NarrativeReply.model_validate(
         {"player_move": movement, "response": response}
     ).player_move

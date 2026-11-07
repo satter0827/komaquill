@@ -59,6 +59,35 @@ const MAX_DESTINATION_LENGTH = 1000
 
 type ResumeReceipt = { operationId: string; expectedCount: number }
 
+function MeetingDetails({
+  meeting,
+}: {
+  meeting: NonNullable<Turn['meeting']>
+}) {
+  const m = useMessages()
+  return (
+    <section aria-label={m.meetingDetails}>
+      <p className="message-label">{m.meetingDetails}</p>
+      {meeting.status === 'confirmed' ? (
+        <dl>
+          <dt>{m.meetingDate}</dt>
+          <dd>{meeting.date ?? m.meetingUndecided}</dd>
+          <dt>{m.meetingTime}</dt>
+          <dd>{meeting.time ?? m.meetingUndecided}</dd>
+          <dt>{m.meetingPlace}</dt>
+          <dd>{meeting.place ?? m.meetingUndecided}</dd>
+        </dl>
+      ) : (
+        <p>
+          {meeting.status === 'cancelled'
+            ? m.meetingCancelled
+            : m.meetingUnknown}
+        </p>
+      )}
+    </section>
+  )
+}
+
 function Drawing({ job }: { job: CreationJob }) {
   const messages = useMessages()
   const failure = useFailure()
@@ -778,6 +807,7 @@ function ConversationView({
                         messages.character
                       }
                     />
+                    {turn.meeting && <MeetingDetails meeting={turn.meeting} />}
                     <SceneActions
                       conversation={conversation}
                       canMutate={!detail.error}

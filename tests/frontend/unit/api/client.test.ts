@@ -23,6 +23,7 @@ describe('HTTP request lifetime', () => {
       const timeout = vi
         .spyOn(AbortSignal, 'timeout')
         .mockReturnValue(deadline.signal)
+      const compose = vi.spyOn(AbortSignal, 'any')
       const fetch = vi.fn(
         (request: Request) =>
           new Promise<Response>((_, reject) => {
@@ -42,6 +43,7 @@ describe('HTTP request lifetime', () => {
       const rejected = expect(pending).rejects.toThrow('Stopped request')
       await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
       expect(timeout).toHaveBeenCalledWith(API_READ_TIMEOUT_MS)
+      expect(compose.mock.lastCall?.[0][0]).toBe(caller.signal)
       const request = fetch.mock.calls[0][0]
       expect(request.signal.aborted).toBe(false)
       ;(source === 'deadline' ? deadline : caller).abort(

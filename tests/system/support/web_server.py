@@ -50,7 +50,11 @@ def scripted_completion(body: dict) -> dict:
                 },
             },
             "action_narration": "",
-            "requested_player_action": {"kind": "move", "destination": "Beach"}
+            "requested_player_action": {
+                "kind": "move",
+                "destination": "Beach",
+                "quote": "I head to the beach.",
+            }
             if body["messages"][-1]["content"].split("\n")[0] == "I head to the beach."
             else None,
             "text": "A scripted reply for browser verification."
@@ -102,7 +106,12 @@ def scripted_completion(body: dict) -> dict:
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": json.dumps(wire_reply(value), ensure_ascii=False),
+                    "content": json.dumps(
+                        wire_reply(
+                            value, reaction="response" in schema and "player_move" not in schema
+                        ),
+                        ensure_ascii=False,
+                    ),
                 },
                 "finish_reason": "stop",
             }

@@ -30,7 +30,7 @@ def accept_action(service, identity, request):
     return record, created
 
 
-def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
+def wire_reply(value: dict[str, Any], *, reaction: bool = False) -> dict[str, Any]:
     """Compile a paired fixture's declared scene into the response contract."""
     if "current_state" not in value:
         return value
@@ -41,6 +41,8 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
                 "player_move": action,
                 "response": {
                     "kind": "companion",
+                    "meeting_change": None,
+                    "meeting_query": "none",
                     "changes": [],
                     "action_narration": "",
                     "text": "",
@@ -62,11 +64,17 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
     else:
         changes = scene
     return {
-        "player_move": None,
+        **({} if reaction else {"player_move": None}),
         "response": {
             "kind": "companion",
+            "meeting_change": None,
+            "meeting_query": "none",
             "changes": changes,
-            **{key: value[key] for key in ("action_narration", "text") if key in value},
+            **{
+                key: value[key]
+                for key in ("action_narration", "text", "meeting_change", "meeting_query")
+                if key in value
+            },
         },
     }
 

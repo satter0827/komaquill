@@ -137,6 +137,47 @@ async function actionDestination() {
 }
 
 describe('conversation workflow', () => {
+  it('shows a saved meeting answer even when the companion has no dialogue', async () => {
+    server.use(
+      http.get(`${base}/api/v1/conversations/one`, () =>
+        HttpResponse.json({
+          id: 'one',
+          definition: { title: 'A new scene', llm_profile: 'fake' },
+          state: { place: '古書店の入口' },
+          turn_count: 1,
+          revision: 1,
+        }),
+      ),
+      http.get(`${base}/api/v1/conversations/one/turns`, () =>
+        HttpResponse.json({
+          items: [
+            {
+              operation_id: 'meeting',
+              user: '集合予定を教えてください。',
+              assistant: '',
+              state: { place: '古書店の入口' },
+              meeting: {
+                status: 'confirmed',
+                date: '土曜日',
+                time: '午後四時',
+                place: '古書店',
+              },
+            },
+          ],
+          next_before: null,
+        }),
+      ),
+    )
+    app('/conversations/one')
+    const meeting = await screen.findByRole('region', {
+      name: m.meetingDetails,
+    })
+    expect(within(meeting).getByText('土曜日')).toBeVisible()
+    expect(within(meeting).getByText('午後四時')).toBeVisible()
+    expect(within(meeting).getByText('古書店')).toBeVisible()
+    expect(within(meeting).queryByText('古書店の入口')).toBeNull()
+  })
+
   it('uses the completed receipt instead of a stale running list to enable the next send', async () => {
     const cache = new QueryClient({
       defaultOptions: { queries: { retry: false } },

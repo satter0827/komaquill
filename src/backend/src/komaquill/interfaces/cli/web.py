@@ -12,6 +12,7 @@ import typer
 from komaquill.api import Client, CreationRequest, KomaquillError
 from komaquill.domain.conversations.models import ConversationInput, SendInput
 from komaquill.domain.roleplay import StoryDefinition
+from komaquill.resources.meeting_messages import meeting_text
 from komaquill.resources.messages import error_message, message
 
 
@@ -228,7 +229,10 @@ def bind(
                 typer.echo(turn.narration)
             if turn.action_narration:
                 typer.echo(turn.action_narration)
-            typer.echo(turn.assistant)
+            if turn.meeting is not None:
+                typer.echo(meeting_text(turn.meeting))
+            if turn.assistant:
+                typer.echo(turn.assistant)
             if result.image_id:
                 for image in client.images.get(result.image_id).images:
                     typer.echo(str(client.artifact_path(f"runs/{result.image_id}/{image}")))

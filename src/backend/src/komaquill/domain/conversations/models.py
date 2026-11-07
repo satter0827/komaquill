@@ -94,6 +94,7 @@ class TurnRequest(Record):
     operation_id: UUID
     text: str = Field(default="", max_length=20000)
     action_id: UUID | None = None
+    action_origin: Literal["explicit", "conversation"] | None = None
     expected_revision: int | None = None
     action: PlayerAction | None = None
     proposal_id: UUID | None = None
@@ -104,7 +105,7 @@ class TurnRequest(Record):
 class SendInput(Record):
     operation_id: UUID
     expected_revision: int = Field(ge=0)
-    text: str = Field(min_length=1, max_length=20000, pattern=r"\S")
+    text: str = Field(default="", max_length=20000)
     action: PlayerAction | None = None
     proposal_id: UUID | None = None
     allow_real_llm: bool = False
@@ -112,6 +113,8 @@ class SendInput(Record):
 
     @model_validator(mode="after")
     def content_required(self) -> "SendInput":
+        if not self.text.strip() and self.action is None:
+            raise ValueError("A message or an explicit action is required.")
         if self.proposal_id is not None and self.action is None:
             raise ValueError("A proposal requires its matching action.")
         return self
@@ -141,6 +144,7 @@ class AcceptedInput(Record):
 
 
 class Operation(Record):
+    resume_count: int = Field(default=0, ge=0)
     can_resume: bool = False
     nsfw_enabled: bool = False
     id: UUID

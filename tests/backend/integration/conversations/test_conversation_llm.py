@@ -19,7 +19,6 @@ def wire_state(value):
     state = ConversationState.model_validate(value)
     return {
         "relationship": state.relationship,
-        "companion_movement": "join_player" if state.place else "stay",
         "scenery": state.scenery,
         "character": state.character.model_dump(exclude={"appearance"}),
     }
@@ -42,7 +41,7 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
-                assert set(wire["properties"]) == {"response"}
+                assert set(wire["properties"]) == {"player_move", "response"}
             return self
 
         def invoke(self, messages, config):
@@ -163,7 +162,12 @@ def test_reply_context_distinguishes_people_latest_scene_and_explicit_scene_chan
 
 
 def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(tmp_path):
-    from komaquill.adapters.llm.conversation import NarrativeReply
+    from komaquill.adapters.llm.conversation import (
+        DialogueResult,
+        NarrativeReply,
+        ObjectsChange,
+        ReactionReply,
+    )
     from komaquill.api import PrepareAction
 
     api = Client.initialize(tmp_path)
@@ -182,13 +186,13 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
         calls.append(args)
         return NarrativeReply.model_validate(
             {
+                "player_move": None,
                 "response": {
                     "kind": "companion",
                     "changes": [],
-                    "movement": "stay",
                     "action_narration": "",
                     "text": "Understood.",
-                }
+                },
             }
         )
 
@@ -205,16 +209,21 @@ def test_completed_player_action_identifies_its_actor_and_keeps_companion_facts(
         ),
     )
     context = json.loads(next(line for line in calls[0][4].splitlines() if line.startswith("{")))
+    assert calls[0][0] is ReactionReply
+    assert context["response_rules"] == {
+        "player_move": ReactionReply.model_fields["player_move"].description,
+        "held_objects": ObjectsChange.model_fields["value"].description,
+        "action_narration": DialogueResult.model_fields["action_narration"].description,
+        "text": DialogueResult.model_fields["text"].description,
+    }
+    assert all(isinstance(rule, str) and rule for rule in context["response_rules"].values())
     assert context["people"]["human_player"]["clothing"] == ""
     assert context["people"]["assistant_character"]["clothing"] == "Black apron"
     assert context["people"]["assistant_character"]["name"] == "Mira"
     latest = json.loads(calls[0][5][-1][1])
     assert latest == {
         "speaker": "human_player",
-        "current_places": {
-            "human_player": scene.state.place,
-            "assistant_character": scene.state.character_place,
-        },
+        "shared_place": scene.state.place,
         "completed_action": {"actor": "human_player", "kind": "prepare", "clothing": ""},
         "text": text,
     }
@@ -238,7 +247,7 @@ def test_story_drafts_cannot_invent_a_saved_character_reference(tmp_path, monkey
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
-                assert set(wire["properties"]) == {"response"}
+                assert set(wire["properties"]) == {"player_move", "response"}
             return self
 
         def invoke(self, messages, config):
@@ -677,7 +686,7 @@ def test_language_switch_schema_and_repair_target_narration(
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
             if "response" in wire.get("properties", {}):
-                assert set(wire["properties"]) == {"response"}
+                assert set(wire["properties"]) == {"player_move", "response"}
                 for field in ("text", "action_narration"):
                     assert (
                         language
@@ -772,6 +781,7 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
             return AIMessage(
                 content=json.dumps(
                     {
+                        "player_move": None,
                         "response": {
                             "kind": "companion",
                             "changes": [
@@ -782,10 +792,9 @@ def test_owned_object_repair_identifies_the_path_without_copying_its_value(tmp_p
                             ]
                             if len(calls) == 1
                             else [],
-                            "movement": "stay",
                             "action_narration": "",
                             "text": "Hello, Akari.",
-                        }
+                        },
                     }
                 ),
                 response_metadata={"model_name": self.model},

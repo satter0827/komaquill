@@ -346,7 +346,6 @@ def test_explicit_resume_reuses_response_after_validation_storage_failure(tmp_pa
                     {
                         "current_state": {
                             "relationship": "",
-                            "companion_movement": "stay",
                             "scenery": "A quiet room.",
                             "character": {
                                 "clothing": None,
@@ -396,33 +395,45 @@ def test_explicit_resume_reuses_response_after_validation_storage_failure(tmp_pa
         )
     with pytest.raises(KomaquillError, match="real_llm_not_allowed"):
         api.conversations.resume_operation(result.id)
-    monkeypatch.setattr(responder, "check_language", original)
+    assert api.operations.get(result.id).resume_count == 0
     monkeypatch.setattr(
         execution, "budget", lambda *_: pytest.fail("A retained response must not count tokens")
     )
     monkeypatch.setattr(
         execution, "_model", lambda *_: pytest.fail("A retained response must not create a model")
     )
+    accepted = api.conversations.resume_operation(result.id, allow_real_llm=True, execute=False)
+    assert accepted.resume_count == 1 and accepted.state == "accepted"
+    assert accepted.error is None and accepted.error_stage is None
+    with pytest.raises(KomaquillError, match="submission_unknown"):
+        api.conversations.resume_operation(result.id, allow_real_llm=True, execute=False)
+    assert api.operations.get(result.id).resume_count == 1
+    interrupted = api.conversations.execute(result.id)
+    assert interrupted.state == "interrupted" and interrupted.resume_count == 1
+    monkeypatch.setattr(responder, "check_language", original)
     assert api.conversations.resume_operation(result.id, allow_real_llm=True).state == "complete"
+    assert api.operations.get(result.id).resume_count == 2
     assert len(calls) == 1 and len(api.conversations.get(scene.id).turns) == 1
     assert api.conversations.resume_operation(result.id).state == "complete"
+    api.close()
+    with Client(tmp_path) as reopened:
+        assert reopened.operations.get(result.id).resume_count == 2
+        assert reopened.conversations.resume_operation(result.id).resume_count == 2
 
 
-def test_drawing_pair_requires_presence_and_wai(tmp_path, monkeypatch):
+def test_drawing_pair_uses_the_shared_place_and_requires_supported_composition(
+    tmp_path, monkeypatch
+):
     from komaquill.api import CreationRequest
     from komaquill.domain.conversations.context import drawing_context
 
-    from tests.backend.support.conversations import set_state
-
     api = Client.initialize(tmp_path)
     scene = api.conversations.create(
-        ConversationInput(
-            title="Pair", initial_state={"place": "Room", "character_place": "Elsewhere"}
-        )
+        ConversationInput(title="Pair", initial_state={"place": "Room"})
     )
-    with pytest.raises(KomaquillError, match="invalid_request"):
-        drawing_context(scene, "pair", "observer")
-    scene = set_state(api, scene.id, scene.state.model_copy(update={"character_place": "Room"}), 0)
+    context = drawing_context(scene, "pair", "observer")
+    assert context["setting"]["place"] == "Room"
+    assert set(context["subjects"]) == {"player", "character"}
     request = CreationRequest(
         operation_id=uuid4(),
         kind="conversation_image",

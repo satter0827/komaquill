@@ -5138,6 +5138,15 @@
       },
       "ActionRecord": {
         "properties": {
+          "origin": {
+            "type": "string",
+            "enum": [
+              "explicit",
+              "conversation"
+            ],
+            "title": "Origin",
+            "default": "explicit"
+          },
           "request": {
             "$ref": "#/components/schemas/RecordedActionRequest"
           },
@@ -6386,12 +6395,6 @@
             "title": "Relationship",
             "default": ""
           },
-          "character_place": {
-            "type": "string",
-            "maxLength": 1000,
-            "title": "Character Place",
-            "default": ""
-          },
           "scenery": {
             "type": "string",
             "maxLength": 4000,
@@ -7161,6 +7164,12 @@
       },
       "OperationView": {
         "properties": {
+          "resume_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Resume Count",
+            "default": 0
+          },
           "can_resume": {
             "type": "boolean",
             "title": "Can Resume",
@@ -8798,9 +8807,8 @@
           "text": {
             "type": "string",
             "maxLength": 20000,
-            "minLength": 1,
-            "pattern": "\\S",
-            "title": "Text"
+            "title": "Text",
+            "default": ""
           },
           "action": {
             "anyOf": [
@@ -8872,8 +8880,7 @@
         "type": "object",
         "required": [
           "operation_id",
-          "expected_revision",
-          "text"
+          "expected_revision"
         ],
         "title": "SendInput"
       },

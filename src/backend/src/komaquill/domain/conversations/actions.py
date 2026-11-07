@@ -10,6 +10,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.roleplay import (
     MAX_CLOTHING_LENGTH,
     MAX_EXPRESSION_POSE_LENGTH,
+    MAX_PLACE_LENGTH,
     ConversationState,
     PersonStatePatch,
     PhysicalObjects,
@@ -22,7 +23,7 @@ MAX_WAIT_MINUTES = 60 * 24 * 30
 
 class MoveAction(Record):
     kind: Literal["move"] = "move"
-    destination: str = Field(min_length=1, max_length=1000, pattern=r"\S")
+    destination: str = Field(min_length=1, max_length=MAX_PLACE_LENGTH, pattern=r"\S")
 
 
 class WaitAction(Record):
@@ -73,6 +74,7 @@ class RecordedActionRequest(Record):
 
 
 class ActionRecord(Record):
+    origin: Literal["explicit", "conversation"] = "explicit"
     request: RecordedActionRequest
     before: ConversationState
     after: ConversationState

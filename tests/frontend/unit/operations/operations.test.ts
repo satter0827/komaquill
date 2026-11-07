@@ -10,9 +10,119 @@ import {
   operationOptions,
   watchReceipt,
   imageOptions,
+  conversationOperationsOptions,
 } from '../../../../src/frontend/src/shared/operations'
 
 describe('late operation observations', () => {
+  it('waits for the required receipt generation before confirming it once', () => {
+    const cache = new QueryClient()
+    const key = operationOptions('turn').queryKey
+    const old: OperationView = {
+      id: 'turn',
+      conversation_id: 'scene',
+      state: 'interrupted',
+      resume_count: 0,
+    }
+    cache.setQueryData(key, old)
+    const confirm = vi.fn()
+    const unsubscribe = watchReceipt<OperationView>(
+      cache,
+      key,
+      'turn',
+      confirm,
+      (value) => (value.resume_count ?? 0) >= 1,
+    )
+    expect(confirm).not.toHaveBeenCalled()
+    cache.setQueryData(key, old)
+    const accepted = { ...old, state: 'accepted' as const, resume_count: 1 }
+    cache.setQueryData(key, accepted)
+    cache.setQueryData(key, { ...accepted, state: 'complete' })
+    expect(confirm).toHaveBeenCalledExactlyOnceWith(accepted)
+    unsubscribe()
+    cache.clear()
+  })
+  it('orders resumptions before terminal states in individual and list observations', async () => {
+    const cache = new QueryClient()
+    const single = operationOptions('turn')
+    const list = conversationOperationsOptions('scene')
+    const interrupted: OperationView = {
+      id: 'turn',
+      conversation_id: 'scene',
+      state: 'interrupted',
+      can_resume: true,
+      resume_count: 0,
+    }
+    const running: OperationView = {
+      ...interrupted,
+      state: 'running',
+      can_resume: false,
+      resume_count: 1,
+    }
+    const complete: OperationView = { ...running, state: 'complete' }
+    cache.setQueryData(single.queryKey, interrupted)
+    cache.setQueryData(list.queryKey, [interrupted])
+    await cache.fetchQuery({ ...single, queryFn: async () => running })
+    await cache.fetchQuery({ ...list, queryFn: async () => [running] })
+    expect(cache.getQueryData(single.queryKey)).toEqual(running)
+    expect(cache.getQueryData(list.queryKey)).toEqual([running])
+    await cache.fetchQuery({ ...single, queryFn: async () => interrupted })
+    await cache.fetchQuery({ ...list, queryFn: async () => [interrupted] })
+    expect(cache.getQueryData(single.queryKey)).toEqual(running)
+    expect(cache.getQueryData(list.queryKey)).toEqual([running])
+    await cache.fetchQuery({ ...single, queryFn: async () => complete })
+    await cache.fetchQuery({ ...list, queryFn: async () => [complete] })
+    await cache.fetchQuery({ ...single, queryFn: async () => running })
+    await cache.fetchQuery({ ...list, queryFn: async () => [running] })
+    expect(cache.getQueryData(single.queryKey)).toEqual(complete)
+    expect(cache.getQueryData(list.queryKey)).toEqual([complete])
+    cache.clear()
+  })
+  it('keeps observing the old interruption until the requested resumption is visible', async () => {
+    const cache = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    let calls = 0
+    const observer = new QueryObserver(cache, {
+      ...operationOptions('turn', 1),
+      queryFn: async (): Promise<OperationView> => ({
+        id: 'turn',
+        conversation_id: 'scene',
+        state: ++calls === 1 ? 'interrupted' : 'complete',
+        resume_count: calls === 1 ? 0 : 1,
+      }),
+    })
+    const unsubscribe = observer.subscribe(() => {})
+    try {
+      await vi.waitFor(
+        () => expect(observer.getCurrentResult().data?.state).toBe('complete'),
+        { timeout: 3000 },
+      )
+      expect(calls).toBe(2)
+    } finally {
+      unsubscribe()
+      cache.clear()
+    }
+  })
+  it('retains completed operations when an earlier list response arrives later', async () => {
+    const cache = new QueryClient()
+    const options = conversationOperationsOptions('scene')
+    let resolve!: (values: OperationView[]) => void
+    const response = new Promise<OperationView[]>((done) => {
+      resolve = done
+    })
+    const pending = cache.fetchQuery({ ...options, queryFn: () => response })
+    const complete: OperationView = {
+      id: 'turn',
+      conversation_id: 'scene',
+      state: 'complete',
+      input: { text: 'Saved' },
+    }
+    cache.setQueryData(options.queryKey, [complete])
+    resolve([{ ...complete, state: 'running' }])
+    await pending
+    expect(cache.getQueryData(options.queryKey)).toEqual([complete])
+    cache.clear()
+  })
   it('consumes an already cached image receipt once without waiting for another response', () => {
     const cache = new QueryClient()
     const key = imageOptions('image').queryKey

@@ -28,7 +28,7 @@ def test_budget_counts_incomplete_calls_and_survives_recreation(tmp_path):
 
     api = Client.initialize(tmp_path / "workspace")
     ledger = tmp_path / "budget.sqlite3"
-    api.limit_llm_calls(ledger, max_calls=1, max_seconds=60)
+    api.limit_llm_calls(ledger, max_calls=1, max_seconds=60, create=True)
     CallBudget(database(ledger), 1, 60).reserve()
     reopened = Client(api.workspace)
     assert reopened.llm_usage()["reserved_calls"] == 1
@@ -71,7 +71,6 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
                 else {
                     "current_state": {
                         "relationship": "",
-                        "companion_movement": "stay",
                         "scenery": "",
                         "character": {
                             "clothing": None,

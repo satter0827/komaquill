@@ -12,6 +12,7 @@ from uuid import uuid4
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from tools.observations import observe, owner
 from tools.reporting import atomic_json, comparison_base, input_fingerprint, policy, source_revision
 from tools.runtime.processes import run_owned
 
@@ -35,6 +36,7 @@ def main(scope: str = "daily", *, plan: bool = False) -> bool:
         ]
         return subprocess.run(command, cwd=ROOT, check=False).returncode == 0
     report.mkdir(parents=True, exist_ok=True)
+    observe(ROOT)
     fingerprint = input_fingerprint(ROOT)
     payload: dict[str, object] = {
         "scope": scope,
@@ -44,13 +46,13 @@ def main(scope: str = "daily", *, plan: bool = False) -> bool:
         "input_sha256": fingerprint,
         "started_at": datetime.now(UTC).isoformat(),
         "status": "running",
-        "owner_pid": os.getpid(),
+        **owner(),
     }
     atomic_json(report / "checks.json", payload)
     env = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith(("KOMAQUILL_ALLOW_", "LANGCHAIN_", "LANGSMITH_"))
+        if not key.startswith(("KOMAQUILL_ALLOW_", "KOMAQUILL_LIVE", "LANGCHAIN_", "LANGSMITH_"))
         and key != "PYTEST_ADDOPTS"
     }
     env.update(PYTHONUTF8="1", KOMAQUILL_PYTHON=sys.executable, NX_BASE=base)

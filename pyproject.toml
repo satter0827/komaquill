@@ -24,6 +24,8 @@ testpaths = ["tests"]
 cache_dir = ".artifacts/cache/pytest"
 addopts = ["-ra", "--tb=short", "--strict-config", "--strict-markers", "-p", "no:langsmith_plugin"]
 xfail_strict = true
+tmp_path_retention_count = 3
+tmp_path_retention_policy = "failed"
 
 [tool.coverage.run]
 source = ["src/backend/src", "tools", "scripts", "bootstrap"]
@@ -81,6 +83,7 @@ torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux'" }]
 
 [tool.komaquill.quality]
+browser_environment_retention_count = 2
 step_timeout = 900
 pipeline_timeout = 1800
 

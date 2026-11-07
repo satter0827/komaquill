@@ -1,4 +1,6 @@
 {
+  "web.workspace_cleanup_boundary": "The isolated workspace is outside its owned directory. Keep it for inspection.",
+  "quality.invalid_retention": "The browser environment retention count must be positive.",
   "recovery.description": "Verify retained real-model results without resending accepted operations.",
   "recovery.budget": "Existing shared real-model call budget.",
   "recovery.output": "Keep live evidence and its call budget in .artifacts.",
@@ -72,6 +74,7 @@
   "acceptance.model_required": "Select the exact loaded model for live acceptance checks.",
   "web.invalid_failure_expectation": "Declare an exact request, error status, and bounded failure count.",
   "acceptance.help": "Verify model and GPU operations with explicit permission and persistent budgets.",
+  "acceptance.llm_profile": "Use the selected connection profile for a new conversation.",
   "acceptance.new_conversation": "Start another isolated conversation without resetting the shared allowance.",
   "acceptance.fork_after_turn": "Branch after a saved turn without resetting the shared allowance or deadline.",
   "acceptance.through_turn": "Stop at this scenario turn without increasing the shared allowance.",

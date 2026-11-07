@@ -391,6 +391,8 @@ textarea {
   flex-wrap: wrap;
   min-height: var(--control-height);
   overflow-y: auto;
+  max-height: 20%;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-group);
@@ -436,7 +438,10 @@ textarea {
 }
 .turn {
   max-width: var(--reading-width);
-  margin: 0 auto var(--space-page);
+  margin: 0 auto;
+}
+.turn:not(:last-child) {
+  margin-bottom: var(--space-page);
 }
 .message-label {
   display: inline-flex;
@@ -488,6 +493,7 @@ textarea {
   gap: var(--space-field);
   min-height: 0;
   overflow-y: auto;
+  scroll-padding-block: var(--space-field);
   padding: var(--space-field);
   margin: calc(-1 * var(--space-field));
 }
@@ -769,7 +775,7 @@ html[data-font-size='large'] {
 html[data-density='compact'] .page {
   padding-top: var(--space-section);
 }
-html[data-density='compact'] .turn {
+html[data-density='compact'] .turn:not(:last-child) {
   margin-bottom: var(--space-group);
 }
 fieldset {
@@ -1232,19 +1238,8 @@ details > .details-content {
   display: grid;
   gap: var(--space-group);
 }
-.presence-notice {
-  display: grid;
-  gap: var(--space-field);
-  padding: var(--space-group);
-  background: var(--surface-soft);
-  border-radius: var(--radius-control);
-}
-.presence-notice p,
 .query-notice p {
   margin: 0;
-}
-.presence-notice .button {
-  justify-self: start;
 }
 .query-notice {
   display: flex;
@@ -1528,8 +1523,11 @@ html[data-density='compact'] {
   .conversation-header {
     padding: var(--space-field) var(--space-group);
   }
-  .composer-area {
-    max-height: calc(100% - 2 * var(--control-height));
+  .conversation-header {
+    padding-block: calc(var(--space-field) / 2);
+  }
+  .conversation-header .eyebrow {
+    display: none;
   }
   .composer textarea {
     min-height: 44px;

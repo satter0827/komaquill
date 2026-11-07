@@ -1,11 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, existsSync } from 'node:fs'
+import { mkdtempSync, existsSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { nodeEnvironment } from '../../../../bootstrap/node-environment.mjs'
 
-test('Node tools share contained artifact directories', () => {
+test('Node tools share contained artifact directories', (t) => {
   const root = mkdtempSync(path.resolve('.artifacts/tmp/node-environment-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
   const before = process.env.NX_WORKSPACE_DATA_DIRECTORY
   const env = nodeEnvironment(root)
   for (const key of [

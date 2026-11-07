@@ -30,6 +30,10 @@ export type AcceptedInput = {
  * ActionRecord
  */
 export type ActionRecord = {
+    /**
+     * Origin
+     */
+    origin?: 'explicit' | 'conversation';
     request: RecordedActionRequest;
     before: ConversationState;
     after: ConversationState;
@@ -738,10 +742,6 @@ export type ConversationState = {
      */
     relationship?: string;
     /**
-     * Character Place
-     */
-    character_place?: string;
-    /**
      * Scenery
      */
     scenery?: string;
@@ -1113,6 +1113,10 @@ export type OperationStage = 'model_discovery' | 'prompt_template' | 'tokenizati
  * OperationView
  */
 export type OperationView = {
+    /**
+     * Resume Count
+     */
+    resume_count?: number;
     /**
      * Can Resume
      */
@@ -1967,7 +1971,7 @@ export type SendInput = {
     /**
      * Text
      */
-    text: string;
+    text?: string;
     /**
      * Action
      */

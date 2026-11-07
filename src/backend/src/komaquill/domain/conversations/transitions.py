@@ -9,13 +9,14 @@ def require_visible_reply(
     before: ConversationState, state: ConversationState, text: str, action_narration: str
 ) -> None:
     content = bool(text.strip() or action_narration.strip())
-    present = state.character_place == state.place
     new_scenery = bool(state.scenery.strip() and state.scenery != before.scenery)
-    if (not present and content) or (present and not content and not new_scenery):
+    if not content and not new_scenery:
         raise KomaquillError(code="invalid_response", retryable=False)
 
 
-def apply_reply(conversation: Conversation, reply: Reply) -> ConversationState:
+def apply_reply(
+    conversation: Conversation, reply: Reply, *, action_confirmed: bool = False
+) -> ConversationState:
     before = conversation.state
     state = reply.state_patch.apply(before)
     if not reply.action_proposals:
@@ -23,7 +24,13 @@ def apply_reply(conversation: Conversation, reply: Reply) -> ConversationState:
     if (
         (
             reply.action_proposals
-            and (reply.text or reply.narration or reply.action_narration or state != before)
+            and (
+                action_confirmed
+                or reply.text
+                or reply.narration
+                or reply.action_narration
+                or state != before
+            )
         )
         or state.player != before.player
         or state.place != before.place

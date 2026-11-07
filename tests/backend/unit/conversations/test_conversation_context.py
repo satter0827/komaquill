@@ -11,7 +11,6 @@ from komaquill.domain.roleplay import ConversationState, StatePatch
 def test_prose_never_overrides_current_people_or_location():
     state = ConversationState(
         place="sea",
-        character_place="sea",
         player={"clothing": "red coat"},
         character={"clothing": "black apron", "pose": "standing"},
     )
@@ -112,7 +111,7 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
     ):
         schema = model.model_json_schema()
         assert set(schema["required"]) == set(schema["properties"])
-    assert set(NarrativeReply.model_fields) == {"response"}
+    assert set(NarrativeReply.model_fields) == {"player_move", "response"}
     with pytest.raises(ValueError):
         ExpressionPoseChange(field="place", value="Another place")
     with pytest.raises(ValueError):
@@ -125,6 +124,27 @@ def test_wire_changes_exclude_player_fields_and_preserve_canonical_limits():
                 action_narration="",
                 text="Hello",
             ),
+        )
+
+
+def test_movement_decision_is_required_and_cannot_be_repeated_by_a_reaction():
+    from komaquill.adapters.llm.conversation import NarrativeReply, ReactionReply
+
+    response = {"kind": "companion", "changes": [], "action_narration": "", "text": ""}
+    with pytest.raises(ValueError):
+        NarrativeReply.model_validate({"response": response})
+    movement = {"kind": "move", "destination": "Cafe"}
+    assert NarrativeReply.model_validate(
+        {"player_move": movement, "response": response}
+    ).player_move
+    with pytest.raises(ValueError):
+        ReactionReply.model_validate({"player_move": movement, "response": response})
+    with pytest.raises(ValueError):
+        NarrativeReply.model_validate(
+            {
+                "player_move": None,
+                "response": {"kind": "player", "action": movement},
+            }
         )
 
 

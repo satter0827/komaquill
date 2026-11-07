@@ -7,6 +7,7 @@ import {
 import { Send, Feather, PanelRight, Sparkles } from 'lucide-react'
 import {
   useCallback,
+  useId,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -14,7 +15,7 @@ import {
 } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
 import { Link, useParams } from 'react-router'
-import { isRejectedRequest, POLL_INTERVAL_MS } from '../../api/client'
+import { isRejectedRequest } from '../../api/client'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type {
   CreationJob,
@@ -53,11 +54,15 @@ import {
 } from './actions'
 import {
   creationOptions,
-  keepTerminal,
+  conversationOperationsOptions,
+  retainOperation,
   operationOptions,
-  operationPending,
   watchReceipt,
 } from '../../shared/operations'
+
+const MAX_DESTINATION_LENGTH = 1000
+
+type ResumeReceipt = { operationId: string; expectedCount: number }
 
 function Drawing({ job }: { job: CreationJob }) {
   const messages = useMessages()
@@ -85,7 +90,7 @@ function AcceptedTurn({ operation }: { operation: OperationView }) {
   if (!accepted) return null
   return (
     <article className="turn" data-operation-id={operation.id}>
-      {accepted.text && (
+      {accepted.text?.trim() && (
         <div className="user-message">
           <span className="message-label">{messages.you}</span>
           <p>{accepted.text}</p>
@@ -136,6 +141,11 @@ function ConversationView({
   const preferences = usePreferences()
   const [text, setText] = useState('')
   const [actionOpen, setActionOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [destination, setDestination] = useState('')
+  const moveRevision = useRef<number | null>(null)
+  const destinationInput = useRef<HTMLInputElement>(null)
+  const sendFormId = useId()
   const actionEditor = useRef<HTMLDivElement>(null)
   const messageInput = useRef<HTMLTextAreaElement>(null)
   const stateTrigger = useRef<HTMLButtonElement>(null)
@@ -152,6 +162,7 @@ function ConversationView({
     version: number
   } | null>(null)
   const [operationId, setOperationId] = useState<string | null>(null)
+  const [pendingResume, setPendingResume] = useState<ResumeReceipt | null>(null)
   const [prepared, setPrepared] = useState<SendInput | null>(null)
   const narrow = useMediaQuery('(max-width: 1279px)')
   const [showState, setShowState] = useState(false)
@@ -163,9 +174,14 @@ function ConversationView({
     conversation: detail.data,
   })
   useLayoutEffect(() => {
-    if (actionControls.queued && composerOptions.current)
+    if (actionControls.queued && moveOpen)
+      destinationInput.current?.scrollIntoView({ block: 'nearest' })
+    else if (actionControls.queued && composerOptions.current)
       composerOptions.current.scrollTop = 0
-  }, [actionControls.queued])
+  }, [actionControls.queued, moveOpen])
+  useLayoutEffect(() => {
+    if (moveOpen) destinationInput.current?.focus()
+  }, [moveOpen])
   const sendAvailability = useAvailability(
     detail.data ? { kind: 'conversation', identity } : undefined,
   )
@@ -204,12 +220,15 @@ function ConversationView({
       })
   }, [cache, identity, detail.data?.revision, detail.data?.turn_count])
   const savedOperations = useQuery({
-    ...q.getConversationOperationsOptions({ path: { identity } }),
-    refetchInterval: (query) =>
-      query.state.data?.some(operationPending) ? POLL_INTERVAL_MS : false,
+    ...conversationOperationsOptions(identity),
   })
   const operation = useQuery({
-    ...operationOptions(operationId ?? ''),
+    ...operationOptions(
+      operationId ?? '',
+      pendingResume?.operationId === operationId
+        ? pendingResume.expectedCount
+        : 0,
+    ),
     enabled: !!operationId,
   })
   useAvailabilityRecovery(
@@ -227,7 +246,7 @@ function ConversationView({
     (result: OperationView, submitted: SendInput) => {
       cache.setQueryData<OperationView>(
         q.getOperationQueryKey({ path: { identity: result.id } }),
-        (previous) => keepTerminal(previous, result),
+        (previous) => retainOperation(previous, result),
       )
       setOperationId(result.id)
       if (
@@ -237,6 +256,9 @@ function ConversationView({
         setText('')
       setPrepared(null)
       clearQueuedAction()
+      moveRevision.current = null
+      setDestination('')
+      setMoveOpen(false)
       void cache.invalidateQueries({
         queryKey: q.getConversationQueryKey({ path: { identity } }),
       })
@@ -274,14 +296,71 @@ function ConversationView({
       },
     )
   }, [cache, send.isError, prepared, confirmSend, resetSend])
+  const clearResumeReceipt = useCallback(
+    (receipt: ResumeReceipt | undefined) => {
+      if (!receipt) return
+      // Unreceived retries share the expected server count; keep request identity.
+      setPendingResume((current) => (current === receipt ? null : current))
+    },
+    [],
+  )
+  const checkResumeReceipt = useCallback(
+    async (receipt: ResumeReceipt | undefined) => {
+      if (!receipt) return
+      try {
+        await cache.cancelQueries(
+          {
+            queryKey: q.getOperationQueryKey({
+              path: { identity: receipt.operationId },
+            }),
+            exact: true,
+          },
+          { revert: false },
+        )
+        const observed = await cache.fetchQuery({
+          ...operationOptions(receipt.operationId),
+          staleTime: 0,
+        })
+        if (observed.state === 'interrupted' && observed.can_resume)
+          clearResumeReceipt(receipt)
+      } catch {
+        // The query retains the failure; keep read-only receipt checking available.
+      }
+    },
+    [cache, clearResumeReceipt],
+  )
   const resume = useMutation({
     ...q.resumeOperationMutation(),
-    onSuccess: async (value) => {
-      await cache.resetQueries({
-        queryKey: q.getOperationQueryKey({ path: { identity: value.id } }),
-        exact: true,
-      })
-      setOperationId(value.id)
+    onMutate: ({ path }) => {
+      const previous = cache.getQueryData<OperationView>(
+        q.getOperationQueryKey({ path }),
+      )
+      const listed = savedOperations.data?.find(
+        (value) => value.id === path.identity,
+      )
+      const receipt = {
+        operationId: path.identity,
+        expectedCount:
+          Math.max(previous?.resume_count ?? 0, listed?.resume_count ?? 0) + 1,
+      }
+      setPendingResume(receipt)
+      setOperationId(path.identity)
+      return receipt
+    },
+    onError: async (error, { path }, receipt) => {
+      if (isRejectedRequest(error)) {
+        clearResumeReceipt(receipt)
+        void cache.invalidateQueries({
+          queryKey: q.getOperationQueryKey({ path }),
+        })
+      } else await checkResumeReceipt(receipt)
+    },
+    onSuccess: (value, _submitted, receipt) => {
+      cache.setQueryData<OperationView>(
+        q.getOperationQueryKey({ path: { identity: value.id } }),
+        (previous) => retainOperation(previous, value),
+      )
+      clearResumeReceipt(receipt)
       void cache.invalidateQueries({
         queryKey: q.getConversationOperationsQueryKey({ path: { identity } }),
       })
@@ -290,6 +369,30 @@ function ConversationView({
       })
     },
   })
+  useEffect(() => {
+    if (!resume.context) return
+    const receipt = resume.context
+    return watchReceipt<OperationView>(
+      cache,
+      q.getOperationQueryKey({ path: { identity: receipt.operationId } }),
+      receipt.operationId,
+      () => {
+        clearResumeReceipt(receipt)
+      },
+      (value) =>
+        value.state === 'complete' ||
+        (value.resume_count ?? 0) >= receipt.expectedCount,
+    )
+  }, [cache, resume.context, clearResumeReceipt])
+  const resumeReceiptKnown =
+    !!resume.context &&
+    operation.data?.id === resume.context.operationId &&
+    (operation.data.state === 'complete' ||
+      (operation.data.resume_count ?? 0) >= resume.context.expectedCount)
+  const resumeError =
+    operationId === resume.context?.operationId && !resumeReceiptKnown
+      ? resume.error
+      : null
   const drawing = useCreation()
   const drawings = useQuery({
     ...q.listConversationImagesOptions({ path: { identity } }),
@@ -319,12 +422,23 @@ function ConversationView({
       ? [...history.data.pages].reverse().flatMap((page) => page.items)
       : (detail.data.turns ?? []),
   }
-  const companionPlace = conversation.state?.character_place
+  const retainedOperations = new Map(
+    (savedOperations.data ?? []).map((value) => [value.id, value]),
+  )
+  if (operation.data)
+    retainedOperations.set(
+      operation.data.id,
+      retainOperation(
+        retainedOperations.get(operation.data.id),
+        operation.data,
+      ),
+    )
   const replyPending =
     send.isPending ||
+    pendingResume !== null ||
     (send.isError && prepared !== null) ||
     ['accepted', 'running'].includes(operation.data?.state ?? '') ||
-    savedOperations.data?.some((value) =>
+    [...retainedOperations.values()].some((value) =>
       ['accepted', 'running'].includes(value.state),
     )
   const busy =
@@ -343,16 +457,8 @@ function ConversationView({
     (!actionControls.queued ||
       actionControls.queued.revision === conversation.revision) &&
     !busy &&
-    !!text.trim()
+    (!!text.trim() || !!actionControls.queued)
   const latestOperation = operation.data ?? savedOperations.data?.[0]
-  const retainedOperations = new Map(
-    (savedOperations.data ?? []).map((value) => [value.id, value]),
-  )
-  if (operation.data)
-    retainedOperations.set(
-      operation.data.id,
-      keepTerminal(retainedOperations.get(operation.data.id), operation.data),
-    )
   const completedIds = new Set(
     (conversation.turns ?? []).map((turn) => turn.operation_id),
   )
@@ -420,10 +526,6 @@ function ConversationView({
             <p>{value}</p>
           </div>
         ))}
-        <div>
-          <span>{messages.companionPlace}</span>
-          <p>{conversation.state?.character_place || messages.notSpecified}</p>
-        </div>
         <details>
           <summary>{messages.peopleDetails}</summary>
           <div className="details-content">
@@ -620,7 +722,7 @@ function ConversationView({
               const turn = entry.value
               return (
                 <article className="turn" key={turn.operation_id}>
-                  {turn.user && (
+                  {turn.user?.trim() && (
                     <div className="user-message">
                       <span className="message-label">{messages.you}</span>
                       <p>{turn.user}</p>
@@ -706,20 +808,20 @@ function ConversationView({
                 </article>
               )
             })}
-            <div className="visual-review">
-              {needsReview || reviewControls.prepared ? (
+            {(needsReview || reviewControls.prepared) && (
+              <div className="visual-review">
                 <VisualReviewForm
                   conversation={conversation}
                   busy={!!busy}
                   controls={reviewControls}
                 />
-              ) : null}
-            </div>
+              </div>
+            )}
             {replyPending && (
               <p className="pending" role="status">
-                {send.isPending
+                {send.isPending || (resume.isPending && pendingResume)
                   ? messages.requestSending
-                  : prepared && send.isError
+                  : (prepared && send.isError) || (pendingResume && resumeError)
                     ? messages.receiptUnknown
                     : messages.pending}
               </p>
@@ -736,32 +838,6 @@ function ConversationView({
             </Button>
           )}
           <div className="composer-options" ref={composerOptions}>
-            {conversation.state?.character_place !==
-              conversation.state?.place && (
-              <div className="presence-notice" role="status">
-                <p>
-                  {formatMessage('companionAway', {
-                    place:
-                      conversation.state?.character_place ||
-                      messages.notSpecified,
-                  })}
-                </p>
-                {!!companionPlace && !actionControls.queued && (
-                  <Button
-                    disabled={!!busy}
-                    onClick={() => {
-                      actionControls.clear()
-                      actionControls.queue({
-                        kind: 'move',
-                        destination: companionPlace,
-                      })
-                    }}
-                  >
-                    {messages.joinCompanion}
-                  </Button>
-                )}
-              </div>
-            )}
             {send.error && (
               <p role="alert" className="error">
                 {failure(send.error)}
@@ -783,7 +859,7 @@ function ConversationView({
             )}
             {latestOperation?.can_resume && (
               <Button
-                disabled={resume.isPending || !!busy}
+                disabled={!!busy}
                 onClick={() =>
                   resume.mutate({
                     path: { identity: latestOperation.id },
@@ -794,9 +870,15 @@ function ConversationView({
                 {messages.resumeOperation}
               </Button>
             )}
-            {resume.error && (
+            {resumeError && (
               <p role="alert" className="error">
-                {failure(resume.error)}
+                {failure(resumeError)}
+                <Button
+                  onClick={() => void checkResumeReceipt(resume.context)}
+                  disabled={operation.isFetching}
+                >
+                  {messages.retryRequest}
+                </Button>
               </p>
             )}
             {sampleDrawing && (
@@ -814,7 +896,11 @@ function ConversationView({
                     <p>{messages.reviewAction}</p>
                     <Button
                       disabled={!!busy}
-                      onClick={actionControls.confirmRevision}
+                      onClick={() => {
+                        actionControls.confirmRevision()
+                        if (actionControls.queued?.action.kind === 'move')
+                          moveRevision.current = conversation.revision ?? 0
+                      }}
                     >
                       {messages.confirmCurrentAction}
                     </Button>
@@ -824,8 +910,14 @@ function ConversationView({
                   disabled={!!busy}
                   aria-label={messages.editQueuedAction}
                   onClick={() => {
-                    actionControls.edit()
-                    setActionOpen(true)
+                    if (actionControls.queued?.action.kind === 'move') {
+                      moveRevision.current = actionControls.queued.revision
+                      setDestination(actionControls.queued.action.destination)
+                      setMoveOpen(true)
+                    } else {
+                      actionControls.edit()
+                      setActionOpen(true)
+                    }
                   }}
                 >
                   {messages.edit}
@@ -833,7 +925,12 @@ function ConversationView({
                 <Button
                   disabled={!!busy}
                   aria-label={messages.removeQueuedAction}
-                  onClick={actionControls.clear}
+                  onClick={() => {
+                    actionControls.clear()
+                    moveRevision.current = null
+                    setDestination('')
+                    setMoveOpen(false)
+                  }}
                 >
                   {messages.cancel}
                 </Button>
@@ -846,6 +943,13 @@ function ConversationView({
               </p>
             )}
             <div className="composer-tools">
+              <Button
+                aria-expanded={moveOpen}
+                disabled={!!busy || needsReview}
+                onClick={() => setMoveOpen(!moveOpen)}
+              >
+                {messages.changePlace}
+              </Button>
               <Popover.Root>
                 <Popover.Trigger render={<Button />}>
                   {messages.drawingSettings}
@@ -931,6 +1035,7 @@ function ConversationView({
                     controls={actionControls}
                     onQueued={() => {
                       setActionOpen(false)
+                      setMoveOpen(false)
                     }}
                   />
                 </Popup>
@@ -943,8 +1048,33 @@ function ConversationView({
                   </p>
                 )}
             </div>
+            {moveOpen && (
+              <label>
+                {messages.destination}
+                <input
+                  ref={destinationInput}
+                  form={sendFormId}
+                  value={destination}
+                  maxLength={MAX_DESTINATION_LENGTH}
+                  disabled={!!busy || needsReview}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setDestination(value)
+                    moveRevision.current ??= conversation.revision ?? 0
+                    if (value.trim())
+                      actionControls.queue(
+                        { kind: 'move', destination: value },
+                        undefined,
+                        moveRevision.current,
+                      )
+                    else actionControls.setQueued(null)
+                  }}
+                />
+              </label>
+            )}
           </div>
           <form
+            id={sendFormId}
             className="composer"
             onSubmit={(event) => {
               event.preventDefault()

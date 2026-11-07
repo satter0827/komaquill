@@ -95,13 +95,15 @@ test('action popover retains its draft and returns focus without a separate send
   const message = page.getByRole('textbox', { name: ja.messageLabel })
   await message.fill('Come with me?')
   await page.getByRole('button', { name: ja.addAction, exact: true }).click()
-  await page.getByLabel(ja.destination, { exact: true }).fill('Garden')
+  await page
+    .getByRole('textbox', { name: ja.preparationValue, exact: true })
+    .fill('Blue coat')
   await page.keyboard.press('Escape')
   await expect(message).toBeFocused()
   await page.getByRole('button', { name: ja.addAction, exact: true }).click()
-  await expect(page.getByLabel(ja.destination, { exact: true })).toHaveValue(
-    'Garden',
-  )
+  await expect(
+    page.getByRole('textbox', { name: ja.preparationValue, exact: true }),
+  ).toHaveValue('Blue coat')
   await page.getByRole('button', { name: ja.queueAction, exact: true }).click()
   await expect(
     page.getByRole('dialog', { name: ja.addAction, exact: true }),
@@ -122,7 +124,7 @@ test('action popover retains its draft and returns focus without a separate send
       await request.get(`/api/v1/conversations/${scene.id}/actions`)
     ).json(),
   ).toHaveLength(1)
-  expect(after.state.place).toBe('Garden')
+  expect(after.state.player.clothing).toBe('Blue coat')
 })
 
 test('privacy covers portals and preserves focus, draft and history position', async ({

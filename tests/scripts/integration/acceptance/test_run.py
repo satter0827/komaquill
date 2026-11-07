@@ -67,6 +67,23 @@ def test_unowned_runtime_is_never_stopped_or_allocated(tmp_path):
     assert calls == []
 
 
+def test_saved_observation_uses_the_recorded_turn_count(tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    identity = uuid4()
+    captured = []
+    api = SimpleNamespace(
+        conversations=SimpleNamespace(overview=lambda _: SimpleNamespace(turn_count=20)),
+        images=SimpleNamespace(list=lambda: []),
+    )
+    monkeypatch.setattr(
+        run, "browse", lambda api, output, report, scenario: captured.append(scenario)
+    )
+    run.observe(api, tmp_path, {}, [identity])
+    assert captured[0]["format_version"] == 1
+    assert captured[0]["conversation_turn_counts"] == {str(identity): 20}
+
+
 @pytest.mark.parametrize(
     "stage,shutdown,saved_only",
     [
@@ -77,8 +94,9 @@ def test_unowned_runtime_is_never_stopped_or_allocated(tmp_path):
         (None, "stopped", True),
     ],
 )
+@pytest.mark.parametrize("conversation_only", [False, True])
 def test_owned_gpu_reservations_and_cleanup_survive_every_failure(
-    tmp_path, monkeypatch, stage, shutdown, saved_only
+    tmp_path, monkeypatch, stage, shutdown, saved_only, conversation_only
 ):
     from datetime import UTC, datetime
     from uuid import uuid4
@@ -130,19 +148,66 @@ def test_owned_gpu_reservations_and_cleanup_survive_every_failure(
     report = {"cases": []}
     if stage or shutdown == "unknown":
         with pytest.raises(KomaquillError):
-            run.gpu(api, tmp_path, report, [uuid4()], saved_only=saved_only)
+            run.gpu(
+                api,
+                tmp_path,
+                report,
+                [uuid4()],
+                saved_only=saved_only,
+                conversation_only=conversation_only,
+            )
     else:
-        run.gpu(api, tmp_path, report, [uuid4()], saved_only=saved_only)
+        run.gpu(
+            api,
+            tmp_path,
+            report,
+            [uuid4()],
+            saved_only=saved_only,
+            conversation_only=conversation_only,
+        )
     assert calls.count("start") == calls.count("stop") == 1
     ledger = budget.read(tmp_path)
     assert ledger.allocations[-1].ownership_released == (shutdown == "stopped")
     if saved_only:
         assert not ledger.reservations and "drawing" not in calls
+    elif stage is None:
+        assert len(ledger.reservations) == (2 if conversation_only else 4)
     if stage:
         assert report["gpu"]["failure"]["code"] == (
             "connection_failed" if stage == "start" else "generation_failed"
         )
     assert json.loads((tmp_path / "run.json").read_bytes())["gpu"]
+
+
+@pytest.mark.parametrize("failure", ["budget", "close"])
+def test_finalization_failure_is_retained_without_private_exception_text(
+    tmp_path, monkeypatch, failure
+):
+    root = tmp_path / ".artifacts/live"
+    Client.initialize(root / "workspace").close()
+    calls = []
+
+    def usage():
+        calls.append("usage")
+        if failure == "budget" and len(calls) > 1:
+            raise OSError("private-budget-detail")
+        return {"reserved_calls": 0}
+
+    def close():
+        if failure == "close":
+            raise OSError("private-close-detail")
+
+    api = SimpleNamespace(llm_usage=usage, close=close, limit_llm_calls=lambda *a, **k: None)
+    monkeypatch.setattr(run, "Client", lambda *args: api)
+    monkeypatch.setattr(run, "ROOT", tmp_path)
+    monkeypatch.setattr(run, "conversations", lambda api, *args: (api, []))
+    monkeypatch.setattr(run, "observe", lambda *args: None)
+    output = root / "failed"
+    monkeypatch.setattr(sys, "argv", ["live", "--allow-real-llm", "--output", str(output)])
+    assert run.main() == 1
+    raw = (output / "run.json").read_text()
+    assert "private-" not in raw
+    assert json.loads(raw)["status"] == "failed"
 
 
 def test_saved_result_resume_uses_no_new_inference(tmp_path, monkeypatch):

@@ -52,12 +52,10 @@ def test_action_inherits_english_and_freezes_effective_locale(tmp_path):
     assert seen == ["en"]
 
 
-def test_explicit_unknown_companion_location_is_not_replaced(tmp_path):
+def test_unknown_shared_location_remains_unknown(tmp_path):
     api = Client.initialize(tmp_path)
-    c = api.conversations.create(
-        ConversationInput(title="Separate", initial_state={"place": "Beach", "character_place": ""})
-    )
-    assert c.state.character_place == ""
+    c = api.conversations.create(ConversationInput(title="Shared", initial_state={"place": ""}))
+    assert c.state.place == ""
 
 
 @pytest.mark.parametrize("phase", ["checkpoint", "commit"])
@@ -236,12 +234,12 @@ def test_http_reply_commit_recovers_while_server_process_stays_alive(tmp_path, m
 
 
 @pytest.mark.parametrize("role", ["user", "character"])
-def test_drawing_cannot_bypass_an_unreviewed_offscreen_person(tmp_path, role):
+def test_drawing_cannot_bypass_an_unreviewed_person(tmp_path, role):
     api = Client.initialize(tmp_path)
     c = api.conversations.create(
         ConversationInput(
             title="Review",
-            initial_state={"place": "Beach", "character_place": "Bookshop"},
+            initial_state={"place": "Beach"},
             **{role: {"appearance": "Mixed", "visual_review_required": True}},
         )
     )

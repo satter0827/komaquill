@@ -8,6 +8,7 @@ MAX_RELATIONSHIP_LENGTH = 2000
 MAX_SCENERY_LENGTH = 4000
 MAX_CLOTHING_LENGTH = 3000
 MAX_EXPRESSION_POSE_LENGTH = 1000
+MAX_PLACE_LENGTH = 1000
 
 
 class Record(BaseModel):
@@ -65,7 +66,7 @@ class StoryDefinition(Record):
     description: str = Field(default="", max_length=2000)
     world: str = Field(default="", max_length=6000)
     opening: str = Field(default="", max_length=4000)
-    place: str = Field(default="", max_length=1000)
+    place: str = Field(default="", max_length=MAX_PLACE_LENGTH)
     goal: str = Field(default="", max_length=2000)
 
 
@@ -89,7 +90,6 @@ class ConversationState(Record):
     time: str = Field(default="", max_length=1000)
     goal: str = Field(default="", max_length=2000)
     relationship: str = Field(default="", max_length=MAX_RELATIONSHIP_LENGTH)
-    character_place: str = Field(default="", max_length=1000)
     scenery: str = Field(default="", max_length=MAX_SCENERY_LENGTH)
     intention: str = Field(default="", max_length=2000)
     elapsed_minutes: int = Field(default=0, ge=0)
@@ -115,11 +115,10 @@ class PersonStatePatch(Record):
 class StatePatch(Record):
     """Omitted fields retain values; null clears a value; lists replace values."""
 
-    place: str | None = Field(default=None, max_length=1000)
+    place: str | None = Field(default=None, max_length=MAX_PLACE_LENGTH)
     time: str | None = Field(default=None, max_length=1000)
     goal: str | None = Field(default=None, max_length=2000)
     relationship: str | None = Field(default=None, max_length=MAX_RELATIONSHIP_LENGTH)
-    character_place: str | None = Field(default=None, max_length=1000)
     scenery: str | None = Field(default=None, max_length=MAX_SCENERY_LENGTH)
     player: PersonStatePatch | None = None
     character: PersonStatePatch | None = None

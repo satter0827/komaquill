@@ -9,6 +9,31 @@ from typer.testing import CliRunner
 pytestmark = pytest.mark.usefixtures("scripted_services")
 
 
+def test_cli_action_only_uses_the_same_conversation_processing(project, monkeypatch):
+    from komaquill.api import Client, ConversationInput
+    from komaquill.domain.conversations.models import Reply
+    from komaquill.interfaces.cli import web
+
+    with Client(project.root) as client:
+        scene = client.conversations.create(
+            ConversationInput(title="Together", llm_profile="fake", locale="en")
+        )
+        client.conversations.responder.reply = lambda *_: Reply(
+            text="We are here together.", state_patch={}
+        )
+        monkeypatch.setattr(web, "Client", lambda _: client)
+        prefix = ["--project", str(project.root), "chat", "send", str(scene.id)]
+        result = CliRunner().invoke(
+            app, [*prefix, "--action", '{"kind":"move","destination":"Garden"}']
+        )
+        assert result.exit_code == 0, result.output
+        saved = client.conversations.get(scene.id)
+        assert saved.state.place == "Garden" and saved.turns[0].user == ""
+        assert "We are here together." in result.output
+        assert CliRunner().invoke(app, prefix).exit_code == 1
+        assert client.conversations.get(scene.id).turn_count == 1
+
+
 def test_cli_chat_create_send_read_and_failure_are_safe(project):
     runner = CliRunner()
     prefix = ["--project", str(project.root), "chat"]

@@ -16,6 +16,7 @@ import {
 } from '../../shared/preferences'
 import { Button } from '../../shared/ui/button'
 type PlayerAction = NonNullable<SendInput['action']>
+type EditableAction = Exclude<PlayerAction, { kind: 'move' }>
 const PREPARATION_FIELDS = [
   'clothing',
   'pose',
@@ -67,7 +68,7 @@ export function usePlayerActions({
   conversation: Conversation | undefined
 }) {
   const cache = useQueryClient()
-  const [kind, setKind] = useState<PlayerAction['kind']>('move')
+  const [kind, setKind] = useState<EditableAction['kind']>('prepare')
   const [value, setValue] = useState('')
   const [editingAction, setEditingAction] = useState<PlayerAction | null>(null)
   const [prepareField, setPrepareField] = useState<
@@ -101,23 +102,28 @@ export function usePlayerActions({
       void refresh()
     },
   })
-  const queue = (action: PlayerAction, proposal_id?: string) =>
+  const queue = (
+    action: PlayerAction,
+    proposal_id?: string,
+    revision?: number,
+  ) =>
     setQueued({
       action,
       proposal_id,
-      revision: proposal_id
-        ? (conversation!.revision ?? 0)
-        : (draftRevisionRef.current ?? conversation!.revision ?? 0),
+      revision:
+        revision ??
+        (proposal_id
+          ? (conversation!.revision ?? 0)
+          : (draftRevisionRef.current ?? conversation!.revision ?? 0)),
     })
   return {
     edit: () => {
-      if (!queued) return
+      if (!queued || queued.action.kind === 'move') return
       const action = queued.action
       setEditingAction(action)
       draftRevisionRef.current = queued.revision
       setKind(action.kind)
-      if (action.kind === 'move') setValue(action.destination)
-      else if (action.kind === 'wait') setValue(String(action.minutes))
+      if (action.kind === 'wait') setValue(String(action.minutes))
       else if (action.kind === 'intention') setValue(action.text)
       else {
         const field =
@@ -241,29 +247,25 @@ export function PlayerActions({
         onSubmit={(event) => {
           event.preventDefault()
           const selected: PlayerAction =
-            kind === 'move'
-              ? { kind, destination: value }
-              : kind === 'wait'
-                ? { kind, minutes: Number(value) }
-                : kind === 'intention'
-                  ? { kind, text: value }
-                  : {
-                      ...(editingAction?.kind === 'prepare'
-                        ? editingAction
-                        : {}),
-                      kind,
-                      [prepareField]:
-                        prepareField === 'held_objects'
-                          ? parseObjects(
-                              value,
-                              (editingAction?.kind === 'prepare'
-                                ? editingAction.held_objects
-                                : undefined) ??
-                                conversation.state?.player?.held_objects ??
-                                [],
-                            )
-                          : value,
-                    }
+            kind === 'wait'
+              ? { kind, minutes: Number(value) }
+              : kind === 'intention'
+                ? { kind, text: value }
+                : {
+                    ...(editingAction?.kind === 'prepare' ? editingAction : {}),
+                    kind,
+                    [prepareField]:
+                      prepareField === 'held_objects'
+                        ? parseObjects(
+                            value,
+                            (editingAction?.kind === 'prepare'
+                              ? editingAction.held_objects
+                              : undefined) ??
+                              conversation.state?.player?.held_objects ??
+                              [],
+                          )
+                        : value,
+                  }
           queue(selected)
         }}
       >
@@ -290,14 +292,13 @@ export function PlayerActions({
                       : '',
                   )
                 } else {
-                  setKind(selected as PlayerAction['kind'])
+                  setKind(selected as EditableAction['kind'])
                   setEditingAction(null)
                   setValue('')
                   draftRevisionRef.current = null
                 }
               }}
             >
-              <option value="move">{m.actionMove}</option>
               <option value="wait">{m.actionWait}</option>
               <option value="clothing">{m.playerClothing}</option>
               <option value="pose">{m.pose}</option>
@@ -308,15 +309,13 @@ export function PlayerActions({
           </label>
 
           <label>
-            {kind === 'move'
-              ? m.destination
-              : kind === 'wait'
-                ? m.waitMinutes
-                : kind === 'prepare'
-                  ? prepareField === 'held_objects'
-                    ? m.heldObjectsInput
-                    : m.preparationValue
-                  : m.currentIntention}
+            {kind === 'wait'
+              ? m.waitMinutes
+              : kind === 'prepare'
+                ? prepareField === 'held_objects'
+                  ? m.heldObjectsInput
+                  : m.preparationValue
+                : m.currentIntention}
             {kind === 'prepare' || kind === 'intention' ? (
               <textarea
                 rows={
@@ -327,7 +326,7 @@ export function PlayerActions({
               />
             ) : (
               <input
-                required={kind === 'move' || kind === 'wait'}
+                required
                 type={kind === 'wait' ? 'number' : 'text'}
                 min={kind === 'wait' ? 1 : undefined}
                 value={value}

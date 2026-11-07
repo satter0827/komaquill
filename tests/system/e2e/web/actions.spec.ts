@@ -57,7 +57,7 @@ for (const locale of ['ja', 'en'] as const) {
     await page.getByRole('button', { name: m.confirmAppearance }).focus()
     await page.keyboard.press('Enter')
     expect((await saved).ok()).toBe(true)
-    await page.getByText(m.addAction, { exact: true }).click()
+    await page.getByText(m.changePlace, { exact: true }).click()
     await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
     await expect(
       page.getByRole('textbox', { name: m.messageLabel }),
@@ -71,7 +71,7 @@ for (const locale of ['ja', 'en'] as const) {
     expect(confirmed.definition.character.initial_clothing).toBeNull()
     expect(confirmed.state.character.clothing).toBeNull()
     await page.reload()
-    await page.getByText(m.addAction, { exact: true }).click()
+    await page.getByText(m.changePlace, { exact: true }).click()
     await expect(page.getByLabel(m.destination, { exact: true })).toBeEnabled()
     await expect(appearance).toHaveCount(0)
     await evidence.capture(
@@ -92,14 +92,13 @@ for (const locale of ['ja', 'en'] as const) {
     await page.getByRole('button', { name: m.create, exact: true }).click()
     await expect(page).toHaveURL(/\/conversations\//)
     const identity = page.url().split('/').at(-1)!
-    await page.getByText(m.addAction, { exact: true }).click()
+    await page.getByText(m.changePlace, { exact: true }).click()
     await page.getByLabel(m.destination, { exact: true }).fill('Beach')
     const receipt = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' &&
         response.url().endsWith(`/api/v1/conversations/${identity}/turns`),
     )
-    await page.getByRole('button', { name: m.queueAction, exact: true }).click()
     await page
       .getByRole('textbox', { name: m.messageLabel })
       .fill(locale === 'ja' ? '海へ行きます。' : 'I am leaving for the beach.')
@@ -125,15 +124,13 @@ for (const locale of ['ja', 'en'] as const) {
       await request.get(`/api/v1/conversations/${identity}`)
     ).json()
     expect(saved.state.place).toBe('Beach')
-    expect(saved.state.character_place).not.toBe('Beach')
+    expect(saved.state).not.toHaveProperty('character_place')
     expect(
       await (
         await request.get(`/api/v1/conversations/${identity}/actions`)
       ).json(),
     ).toHaveLength(1)
-    await evidence.capture(
-      'Confirmed player movement with an independent companion location',
-    )
+    await evidence.capture('One shared location and dialogue saved together')
     await page.reload()
     await page.getByRole('button', { name: m.showState, exact: true }).click()
     await expect(page.getByText('Beach', { exact: true }).first()).toBeVisible()
@@ -149,76 +146,39 @@ for (const locale of ['ja', 'en'] as const) {
   })
 }
 
-test('a chat action remains a proposal until the player confirms it', async ({
+test('a natural movement and dialogue complete in one send', async ({
   page,
   request,
   evidence,
 }) => {
-  const preferences = await (await request.get('/api/v1/preferences')).json()
-  await request.put('/api/v1/preferences', {
-    data: { ...preferences, locale: 'ja' },
-  })
-  await page.goto('/new')
-  await page.getByRole('button', { name: ja.create, exact: true }).click()
-  await expect(page).toHaveURL(/\/conversations\//)
-  const identity = page.url().split('/').at(-1)!
+  const scene = await (
+    await request.post('/api/v1/conversations', {
+      data: {
+        title: 'Together',
+        locale: 'ja',
+        llm_profile: 'lmstudio-4b',
+        initial_state: { place: 'Bookshop' },
+      },
+    })
+  ).json()
+  await page.goto(`/conversations/${scene.id}`)
   await page
     .getByRole('textbox', { name: ja.messageLabel })
     .fill('I head to the beach.')
   await page.getByRole('button', { name: ja.send, exact: true }).click()
-  await page.getByText(ja.addAction, { exact: true }).click()
-  const proposal = page.locator('.action-proposal')
-  await expect(proposal).toHaveCount(1)
-  const pending = await (
-    await request.get(`/api/v1/conversations/${identity}`)
+  await expect(page.locator('.assistant-message')).toHaveCount(1)
+  const saved = await (
+    await request.get(`/api/v1/conversations/${scene.id}`)
   ).json()
-  expect(pending.state.place).not.toBe('Beach')
-  expect(pending.actions).toHaveLength(0)
-  await evidence.capture(
-    'An unconfirmed action leaves the current scene unchanged',
-  )
-  const receipt = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      response.url().endsWith(`/api/v1/conversations/${identity}/turns`),
-  )
-  await proposal
-    .getByRole('button', { name: ja.queueAction, exact: true })
-    .click()
-  await page
-    .getByRole('textbox', { name: ja.messageLabel })
-    .fill('海へ行きます。')
-  await page.getByRole('button', { name: ja.send, exact: true }).click()
-  const accepted = await receipt
-  expect(accepted.status()).toBe(202)
-  const action = await accepted.json()
-  await expect
-    .poll(
-      async () =>
-        (await (await request.get(`/api/v1/operations/${action.id}`)).json())
-          .state,
-      { timeout: REACTION_COMPLETION_TIMEOUT_MS },
-    )
-    .toBe('complete')
-  await expect(proposal).toHaveCount(0)
-  await expect(page.locator('.scene-narration')).toHaveCount(1)
-  const confirmed = await (
-    await request.get(`/api/v1/conversations/${identity}`)
+  expect(saved.state.place).toBe('Beach')
+  expect(saved.turn_count).toBe(1)
+  expect(saved.proposals).toHaveLength(0)
+  const actions = await (
+    await request.get(`/api/v1/conversations/${scene.id}/actions`)
   ).json()
-  expect(confirmed.state.place).toBe('Beach')
-  expect(
-    await (
-      await request.get(`/api/v1/conversations/${identity}/actions`)
-    ).json(),
-  ).toHaveLength(1)
-  expect(confirmed.proposals).toHaveLength(0)
-  const recorded = await (
-    await request.get(`/api/v1/conversations/${identity}/actions`)
-  ).json()
-  expect(recorded[0].request.proposal_id).toBe(pending.proposals[0].id)
-  await evidence.capture(
-    'Confirmation applies the action once before the next reaction',
-  )
+  expect(actions).toHaveLength(1)
+  expect(actions[0].origin).toBe('conversation')
+  await evidence.capture('Natural movement and reply saved under one operation')
 })
 
 test('edits combined preparation on a narrow screen without losing fields or object identities', async ({

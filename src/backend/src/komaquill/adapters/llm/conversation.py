@@ -63,7 +63,7 @@ class ProposedIntention(IntentionAction):
 
 
 GeneratedAction = Annotated[
-    ProposedMove | ProposedWait | ProposedPreparation | ProposedIntention,
+    ProposedWait | ProposedPreparation | ProposedIntention,
     Field(discriminator="kind"),
 ]
 
@@ -98,8 +98,13 @@ class ObjectsChange(Record):
     field: Literal["held_objects"]
     value: PhysicalObjects = Field(
         description=(
-            "The complete physical objects held by assistant_character after their own action. "
-            "Human_player's objects remain with human_player unless explicitly handed over."
+            "Emit this change only after an actual physical pickup, release or handover by "
+            "assistant_character in this turn, explained in action_narration. The value is the "
+            "complete inventory after that action, preserving other objects. Do not emit an "
+            "inventory merely to answer information or recall questions, and never restore "
+            "an earlier inventory. "
+            "Passwords, titles and quoted words never grant possession of a physical object. "
+            "A handover cannot originate from a person who does not hold that object."
         )
     )
 
@@ -112,9 +117,6 @@ SceneChange = Annotated[
 
 class DialogueResult(Record):
     kind: Literal["companion"]
-    movement: Literal["stay", "join_player"] = Field(
-        description="Explicitly stay at the companion's current place or join the player."
-    )
     changes: list[SceneChange] = Field(
         max_length=6,
         description=(
@@ -131,7 +133,16 @@ class DialogueResult(Record):
             "possessions to the companion."
         ),
     )
-    text: str = Field(max_length=20000, description=Reply.model_fields["text"].description)
+    text: str = Field(
+        max_length=20000,
+        description=(
+            str(Reply.model_fields["text"].description)
+            + " Answer the latest question directly before offering a follow-up question."
+            " Keep response-framing JSON outside the dialogue; include literal JSON only when "
+            "the player explicitly asks to discuss it. Do not derive future arrangements from "
+            "the current scene: preserve the latest user-stated time and meeting place."
+        ),
+    )
 
     @model_validator(mode="after")
     def unique_changes(self) -> Self:
@@ -146,17 +157,31 @@ class ProposalResult(Record):
 
 
 class NarrativeReply(Record):
+    player_move: ProposedMove | None = Field(
+        description=(
+            "Required independent decision: the human player's explicit immediate destination, "
+            "including movement combined with dialogue or a question. Both people move together. "
+            "Null for questions about moving, conditional plans, future appointments or no move."
+        )
+    )
     response: Annotated[ProposalResult | DialogueResult, Field(discriminator="kind")]
+
+    @model_validator(mode="after")
+    def one_player_action(self) -> Self:
+        if self.player_move is not None and isinstance(self.response, ProposalResult):
+            raise ValueError("A movement cannot include another player action proposal.")
+        return self
 
 
 class ReactionReply(NarrativeReply):
+    player_move: None = Field(
+        description="Always null: the accepted player action has already been applied."
+    )
     response: DialogueResult
 
 
 def resolve_scene(conversation: Conversation, generated: DialogueResult) -> ConversationState:
-    changes: dict[str, Any] = (
-        {"character_place": conversation.state.place} if generated.movement == "join_player" else {}
-    )
+    changes: dict[str, Any] = {}
     for change in generated.changes:
         if change.field in {"relationship", "scenery"}:
             changes[change.field] = change.value
@@ -217,10 +242,7 @@ class ConversationResponder:
             latest = json.dumps(
                 {
                     "speaker": "human_player",
-                    "current_places": {
-                        "human_player": conversation.state.place,
-                        "assistant_character": conversation.state.character_place,
-                    },
+                    "shared_place": conversation.state.place,
                     "completed_action": {
                         "actor": "human_player",
                         **action.request.action.model_dump(mode="json", exclude_none=True),
@@ -303,6 +325,7 @@ class ConversationResponder:
         if not request.allow_real_llm:
             raise KomaquillError(code="real_llm_not_allowed", retryable=False)
         language = "Japanese" if locale == "ja" else "English"
+        reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         definition = conversation.definition
         story = definition.scenario.model_dump(exclude_defaults=True, exclude={"place", "goal"})
         if conversation.turns:
@@ -334,9 +357,7 @@ class ConversationResponder:
                     for key, value in facts.items()
                     if value is not None and (value != "" or key == "clothing")
                 },
-                "place": conversation.state.place
-                if state_role == "player"
-                else conversation.state.character_place,
+                "place": conversation.state.place,
             }
         context = {
             "story": story,
@@ -355,6 +376,12 @@ class ConversationResponder:
                 else {}
             ),
             "response_length": definition.response_length,
+            "response_rules": {
+                "player_move": reply_schema.model_fields["player_move"].description,
+                "held_objects": ObjectsChange.model_fields["value"].description,
+                "action_narration": DialogueResult.model_fields["action_narration"].description,
+                "text": DialogueResult.model_fields["text"].description,
+            },
             "response_policy": definition.instructions,
             "response_language": language,
         }
@@ -379,21 +406,24 @@ class ConversationResponder:
                 + f"\nWrite text, action_narration and changes to scenery only in {language}."
                 + "\nThe observer is human_player at "
                 + json.dumps(conversation.state.place, ensure_ascii=False)
-                + ". Scenery can describe only what is visible from that place. "
-                + "The companion is currently at "
-                + json.dumps(conversation.state.character_place, ensure_ascii=False)
-                + ". If you stay elsewhere, do not describe your own surroundings. "
+                + ". Both people are together at this shared place. "
+                + "Scenery can describe only what is visible from that place. "
                 + "If no new visible detail is known, omit the scenery change; "
                 + "the confirmed player location will still be displayed."
             )
 
         language_contract = (
             "Write dialogue, action_narration and scenery changes in " + language + ". "
-            "Use kind=player for a future player action; use kind=companion otherwise."
+            "Decide player_move independently of any spoken question: an explicit immediate "
+            "destination must be recorded even when the same message asks a question. "
+            "Use response.kind=player only for another explicit immediate change to player "
+            "state or "
+            "currently adopted intention. Questions, conditional plans and appointments are "
+            "dialogue with kind=companion. Both people always share the confirmed place."
         )
-        reply_schema = ReactionReply if request.action_id is not None else NarrativeReply
         field_language = "Japanese (日本語)" if locale == "ja" else "English"
-        retained_response = self.execution.has_response(request.operation_id)
+        purpose = "move-response-" if request.action_origin == "conversation" else ""
+        retained_response = self.execution.has_response(request.operation_id, purpose)
         messages: list[tuple[str, str]] = []
         active_memory = conversation.memory
         if not retained_response:
@@ -425,7 +455,7 @@ class ConversationResponder:
         ]
 
         def validate(reply: NarrativeReply) -> None:
-            if isinstance(reply.response, ProposalResult):
+            if reply.player_move is not None or isinstance(reply.response, ProposalResult):
                 return
             value = reply.response
             desired = resolve_scene(conversation, value)
@@ -435,11 +465,7 @@ class ConversationResponder:
                     conversation.state, proposed, value.text, value.action_narration
                 )
             except KomaquillError:
-                present = proposed.character_place == proposed.place
-                raise ResponseConstraintError(
-                    "empty_response" if present else "companion_presence",
-                    ("response", "text" if present else "movement"),
-                ) from None
+                raise ResponseConstraintError("empty_response", ("response", "text")) from None
             for field, content in (
                 ("action_narration", value.action_narration),
                 ("text", value.text),
@@ -475,6 +501,7 @@ class ConversationResponder:
                 system(active_memory),
                 validate,
                 field_language,
+                purpose=purpose,
             )
         else:
             generated = self.execution.invoke(
@@ -488,6 +515,15 @@ class ConversationResponder:
                 correction=language_contract,
                 field_language=field_language,
                 trim=False,
+                purpose=purpose,
+            )
+        if generated.player_move is not None:
+            return Reply(
+                text="",
+                state_patch=StatePatch(),
+                action_proposals=[
+                    MoveAction(kind="move", destination=generated.player_move.destination)
+                ],
             )
         value = generated.response
         if isinstance(value, ProposalResult):

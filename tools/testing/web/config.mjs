@@ -27,8 +27,8 @@ export function webConfig(mode = 'assertion') {
     ],
     use: {
       viewport: { width: 1440, height: 960 },
-      screenshot: 'on',
-      trace: 'on',
+      screenshot: 'only-on-failure',
+      trace: mode === 'exploration' ? 'on' : 'retain-on-failure',
     },
   }
 }

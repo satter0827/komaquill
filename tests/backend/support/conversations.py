@@ -35,7 +35,18 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
     if "current_state" not in value:
         return value
     if value.get("requested_player_action") is not None:
-        return {"response": {"kind": "player", "action": value["requested_player_action"]}}
+        action = value["requested_player_action"]
+        if action["kind"] == "move":
+            return {
+                "player_move": action,
+                "response": {
+                    "kind": "companion",
+                    "changes": [],
+                    "action_narration": "",
+                    "text": "",
+                },
+            }
+        return {"player_move": None, "response": {"kind": "player", "action": action}}
     scene = value["current_state"]
     changes = []
     if isinstance(scene, dict):
@@ -46,19 +57,17 @@ def wire_reply(value: dict[str, Any]) -> dict[str, Any]:
                     for name, entry in item.items()
                     if entry is not None
                 )
-            elif key != "companion_movement":
+            else:
                 changes.append({"field": key, "value": item})
     else:
         changes = scene
     return {
+        "player_move": None,
         "response": {
             "kind": "companion",
-            "movement": scene.get("companion_movement", "stay")
-            if isinstance(scene, dict)
-            else "stay",
             "changes": changes,
             **{key: value[key] for key in ("action_narration", "text") if key in value},
-        }
+        },
     }
 
 
@@ -75,7 +84,6 @@ def set_state(client, identity, state, expected_revision):
 def wire_scene(state):
     return {
         "relationship": state.relationship,
-        "companion_movement": "stay",
         "scenery": state.scenery,
         "character": state.character.model_dump(exclude={"appearance"}),
     }

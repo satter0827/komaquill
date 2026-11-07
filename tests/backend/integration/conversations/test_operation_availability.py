@@ -22,13 +22,13 @@ from tests.backend.support.storage import sqlite_connection
 )
 def test_wire_and_parser_reject_the_same_invalid_changes(field, value):
     response = {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": [{"field": field, "value": value}],
-            "movement": "stay",
             "action_narration": "",
             "text": "Hello",
-        }
+        },
     }
     assert not Draft202012Validator(NarrativeReply.model_json_schema()).is_valid(response)
     with pytest.raises(ValidationError):
@@ -45,13 +45,13 @@ def test_wire_text_limits_match_the_scene_state(field, extra):
     model = StatePatch if field in {"relationship", "scenery"} else PersonStatePatch
     limit = next(item.max_length for item in model.model_fields[field].metadata)
     response = {
+        "player_move": None,
         "response": {
             "kind": "companion",
             "changes": [{"field": field, "value": "x" * (limit + extra)}],
-            "movement": "stay",
             "action_narration": "",
             "text": "Hello",
-        }
+        },
     }
     assert Draft202012Validator(NarrativeReply.model_json_schema()).is_valid(response) == (
         extra == 0
@@ -198,7 +198,9 @@ def test_unavailable_send_does_not_persist_action_and_duplicate_does_not_probe(
     monkeypatch.setattr(
         client.availability, "observe", lambda kind, target, **_: observed(kind, target)
     )
-    monkeypatch.setattr(service.responder, "reply", lambda *_: Reply(text="", state_patch={}))
+    monkeypatch.setattr(
+        service.responder, "reply", lambda *_: Reply(text="Let us talk here.", state_patch={})
+    )
     result = service.send(scene.id, request)
     assert result.state == "complete"
     monkeypatch.setattr(
@@ -215,13 +217,19 @@ def test_unavailable_send_does_not_persist_action_and_duplicate_does_not_probe(
 
 
 @pytest.mark.parametrize("text", ["", "  ", "\n\t"])
-def test_an_action_requires_a_nonblank_message(text):
+def test_an_action_can_be_sent_without_dummy_speech(text):
+    accepted = SendInput(
+        operation_id=uuid4(),
+        expected_revision=0,
+        text=text,
+        action=MoveAction(destination="Beach"),
+    )
+    assert accepted.text == text and accepted.action.destination == "Beach"
     with pytest.raises(ValidationError):
         SendInput(
             operation_id=uuid4(),
             expected_revision=0,
             text=text,
-            action=MoveAction(destination="Beach"),
         )
 
 

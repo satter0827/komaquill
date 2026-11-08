@@ -219,3 +219,27 @@ def test_completed_portrait_cannot_reattach_a_trashed_image(tmp_path):
     assert completed.image_id == run.run_id
     saved = api.characters.get(character.id)
     assert saved.image_id is None and saved.image_job_id is None
+
+
+def test_saved_scene_is_protected_before_its_creation_job_is_reconciled(tmp_path):
+    api = Client.initialize(tmp_path)
+    conversation = api.conversations.create(ConversationInput(title="Scene"))
+    request = CreationRequest(
+        operation_id=uuid4(),
+        kind="conversation_image",
+        target_id=conversation.id,
+        expected_revision=0,
+    )
+    job, _ = api.library.store.accept(request, "{}")
+    run = saved_image(job.id)
+    api._project.repository.save(run)
+    target = WorkRef(kind="image", id=run.run_id)
+    trash = WorkChange(target=target, action="trash", operation_id=uuid4(), expected_revision=0)
+    with pytest.raises(KomaquillError, match="operation_busy"):
+        api.works.change(trash)
+    assert api.library.job(job.id).state == "complete"
+    with pytest.raises(KomaquillError, match="image_in_use"):
+        api.works.change(trash)
+    (use,) = api.works.image_uses(target)
+    api.works.detach(ImageDetach(image=target, use=use))
+    assert api.works.change(trash).trashed

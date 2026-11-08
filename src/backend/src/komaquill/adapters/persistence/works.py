@@ -379,7 +379,11 @@ class WorkRepository:
         ):
             return True
         if ref.kind in {"conversation", "character", "story", "image"}:
-            column = "$.image_id" if ref.kind == "image" else "$.request.target_id"
+            linked_id = (
+                creation_jobs.c.id
+                if ref.kind == "image"
+                else func.json_extract(creation_jobs.c.payload, "$.request.target_id")
+            )
             state = func.json_extract(creation_jobs.c.payload, "$.state")
             terminal = (
                 select(images.c.id)
@@ -389,7 +393,7 @@ class WorkRepository:
             return (
                 connection.execute(
                     select(creation_jobs.c.id).where(
-                        func.json_extract(creation_jobs.c.payload, column) == identity,
+                        linked_id == identity,
                         state.in_(["accepted", "running"]) | ((state == "submitted") & ~terminal),
                     )
                 ).first()

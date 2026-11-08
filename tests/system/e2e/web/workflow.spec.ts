@@ -160,6 +160,22 @@ test('saves a banner and starts with the recommended character', async ({
     topics: 'Clock repair',
     avoid: 'Violence',
   })
+  await page.goto('/stories/' + storyId)
+  await page.getByRole('button', { name: ja.manageWork, exact: true }).click()
+  await page
+    .getByRole('dialog', { name: ja.manageWork })
+    .getByRole('button', { name: ja.moveToTrash })
+    .click()
+  await expect(page).toHaveURL(/\/stories$/)
+  await page.goto('/trash')
+  const story = page.getByRole('listitem').filter({ hasText: name })
+  await story.getByRole('button', { name: ja.restoreWork }).click()
+  await expect(story).toHaveCount(0)
+  await page.goto('/stories/' + storyId)
+  await expect(page.locator('.cover-preview.wide img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
 })
 
 test('uses English for dialogue and narration after changing language', async ({
@@ -271,9 +287,7 @@ test('renames and restores a conversation from the trash', async ({ page }) => {
   )
 })
 
-test('generates and automatically collects a standalone image', async ({
-  page,
-}) => {
+test('collects, trashes and restores a standalone image', async ({ page }) => {
   await page.goto('/images')
   await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page
@@ -288,9 +302,21 @@ test('generates and automatically collects a standalone image', async ({
     .getByRole('button', { name: ja.drawRequestedScene, exact: true })
     .click()
   const created = await (await receipt).json()
-  await expect(
-    page.locator(`img[src="/api/v1/images/${created.run_id}/files/0"]`),
-  ).toHaveJSProperty('naturalWidth', 8)
+  const result = page.locator(`#image-${created.run_id}`)
+  const image = result.locator('img')
+  await expect(image).toHaveJSProperty('naturalWidth', 8)
+  await result.getByRole('button', { name: ja.manageWork }).click()
+  await page
+    .getByRole('dialog', { name: ja.manageWork })
+    .getByRole('button', { name: ja.moveToTrash })
+    .click()
+  await expect(image).toHaveCount(0)
+  await page.goto('/trash')
+  const item = page.getByRole('listitem')
+  await item.getByRole('button', { name: ja.restoreWork }).click()
+  await expect(item).toHaveCount(0)
+  await page.goto('/images')
+  await expect(image).toHaveJSProperty('naturalWidth', 8)
 })
 
 test('saves and applies both common prompts in the next album drawing', async ({

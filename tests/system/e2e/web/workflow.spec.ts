@@ -176,6 +176,22 @@ test('saves a banner and starts with the recommended character', async ({
     'naturalWidth',
     8,
   )
+  const character = started.definition.presets.character
+  const removed = await request.delete('/api/v1/characters/' + character.id, {
+    params: { expected_revision: character.revision },
+  })
+  expect(removed.ok()).toBe(true)
+  await page.reload()
+  await expect(
+    page.getByLabel(ja.defaultCharacter).locator('option:checked'),
+  ).toHaveText(ja.presetUnavailable)
+  const duplicate = page.waitForResponse((response) =>
+    response.url().endsWith(`/api/v1/stories/${storyId}/duplicate`),
+  )
+  await page.getByRole('button', { name: ja.duplicate, exact: true }).click()
+  const copied = await duplicate
+  expect(copied.ok()).toBe(true)
+  expect(await copied.json()).toMatchObject({ character_id: character.id })
 })
 
 test('uses English for dialogue and narration after changing language', async ({

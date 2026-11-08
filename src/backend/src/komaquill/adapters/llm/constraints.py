@@ -9,6 +9,7 @@ class ResponseConstraintError(ValueError):
         rule: Literal[
             "object_ownership",
             "empty_response",
+            "empty_visual_field",
             "move_source",
             "meeting_source",
             "meeting_query",
@@ -22,6 +23,8 @@ class ResponseConstraintError(ValueError):
 
     @property
     def correction(self) -> str:
+        if self.rule == "empty_visual_field":
+            return "Write a non-empty English value for the specified image field."
         if self.rule == "move_source":
             return (
                 "Quote the exact immediate travel clause once, excluding any other question "

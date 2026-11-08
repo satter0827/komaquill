@@ -53,14 +53,8 @@ class Store(CreationStore, Protocol):
     def resolve(
         self, references: dict[PresetKind, tuple[UUID, int]]
     ) -> dict[PresetKind, Preset]: ...
-    def create(
-        self,
-        kind: PresetKind,
-        value: PresetInput,
-        *,
-        image_id: UUID | None = None,
-        image_stale: bool = False,
-    ) -> Preset: ...
+    def create(self, kind: PresetKind, value: PresetInput) -> Preset: ...
+    def duplicate(self, kind: PresetKind, identity: UUID) -> Preset: ...
     def update(
         self, kind: PresetKind, identity: UUID, revision: int, value: PresetInput
     ) -> Preset: ...
@@ -123,11 +117,9 @@ class Images(Protocol):
 
 
 class PresetService[Input: BaseModel, Output: BaseModel]:
-    def __init__(
-        self, store: Store, kind: PresetKind, input_type: type[Input], output_type: type[Output]
-    ) -> None:
+    def __init__(self, store: Store, kind: PresetKind, output_type: type[Output]) -> None:
         self.store, self.kind = store, kind
-        self.input_type, self.output_type = input_type, output_type
+        self.output_type = output_type
 
     def list(self) -> list[Output]:
         return [self.output_type.model_validate(value) for value in self.store.list(self.kind)]
@@ -136,37 +128,20 @@ class PresetService[Input: BaseModel, Output: BaseModel]:
         return self.output_type.model_validate(self.store.get(self.kind, identity))
 
     def create(self, value: Input) -> Output:
-        self._validate(value)
         return self.output_type.model_validate(
             self.store.create(self.kind, cast(PresetInput, value))
         )
 
     def update(self, identity: UUID, revision: int, value: Input) -> Output:
-        self._validate(value)
         return self.output_type.model_validate(
             self.store.update(self.kind, identity, revision, cast(PresetInput, value))
         )
 
     def duplicate(self, identity: UUID) -> Output:
-        value = self.get(identity)
-        fields = self.input_type.model_fields
-        content = self.input_type.model_validate(value.model_dump(include=set(fields)))
-        self._validate(content)
-        return self.output_type.model_validate(
-            self.store.create(
-                self.kind,
-                cast(PresetInput, content),
-                image_id=cast(Preset, value).image_id,
-                image_stale=cast(Preset, value).image_stale,
-            )
-        )
+        return self.output_type.model_validate(self.store.duplicate(self.kind, identity))
 
     def delete(self, identity: UUID, revision: int) -> None:
         self.store.delete(self.kind, identity, revision)
-
-    def _validate(self, value: Input) -> None:
-        if isinstance(value, StoryInput) and value.character_id is not None:
-            self.store.get("character", value.character_id)
 
 
 class PlayerService:
@@ -213,8 +188,12 @@ class LibraryService:
         self.image_lookup = image_lookup or images.get
         self.image_describer = image_describer
         self.player = PlayerService(store)
-        self.characters = PresetService(store, "character", CharacterInput, CharacterPreset)
-        self.stories = PresetService(store, "story", StoryInput, StoryPreset)
+        self.characters: PresetService[CharacterInput, CharacterPreset] = PresetService(
+            store, "character", CharacterPreset
+        )
+        self.stories: PresetService[StoryInput, StoryPreset] = PresetService(
+            store, "story", StoryPreset
+        )
         values: list[tuple[PresetKind, Preset]] = []
         models: dict[
             PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]

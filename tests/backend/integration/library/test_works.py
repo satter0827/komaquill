@@ -9,6 +9,7 @@ from komaquill.api import (
     Client,
     ConversationInput,
     CreationRequest,
+    PresetSaveOptions,
     SceneRequest,
     SendInput,
     StoryInput,
@@ -135,6 +136,44 @@ def test_image_output_requires_detachment_and_preserves_other_indices(tmp_path):
         )
     )
     assert [item.index for item in api.works.image_outputs([run])[run.run_id]] == [0, 1]
+
+
+def test_story_edits_and_copies_preserve_an_existing_trashed_character(tmp_path):
+    api = Client.initialize(tmp_path)
+    character = api.characters.create(CharacterInput(name="Companion"))
+    story = api.stories.create(StoryInput(name="Story", character_id=character.id))
+    unrelated = api.stories.create(StoryInput(name="Unrelated"))
+    api.characters.delete(character.id, character.revision)
+
+    content = StoryInput(name="Edited story", character_id=character.id)
+    edited = api.stories.update(story.id, story.revision, content)
+    copied = api.stories.duplicate(edited.id)
+    saved = api.library.save_preset(
+        "story",
+        content,
+        PresetSaveOptions(
+            operation_id=uuid4(), target_id=edited.id, expected_revision=edited.revision
+        ),
+    ).preset
+    assert saved.character_id == edited.character_id == copied.character_id == character.id
+    assert edited.name == copied.name == content.name and edited.id != copied.id
+    with pytest.raises(KomaquillError, match="request_not_found"):
+        api.stories.create(content)
+    with pytest.raises(KomaquillError, match="request_not_found"):
+        api.stories.update(unrelated.id, unrelated.revision, content)
+    with pytest.raises(KomaquillError, match="request_not_found"):
+        api.library.save_preset("story", content, PresetSaveOptions(operation_id=uuid4()))
+
+    (trashed,) = api.works.trash()
+    api.works.change(
+        WorkChange(
+            target=WorkRef(kind="character", id=character.id),
+            operation_id=uuid4(),
+            action="restore",
+            expected_revision=trashed.revision,
+        )
+    )
+    assert api.characters.get(api.stories.get(copied.id).character_id).id == character.id
 
 
 def test_bookmark_name_and_visibility_follow_the_conversation(tmp_path):

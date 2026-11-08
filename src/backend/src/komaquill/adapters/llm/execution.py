@@ -198,10 +198,14 @@ class StructuredExecution:
             ).encode()
         ).hexdigest()
 
-    def has_response(self, operation: UUID, purpose: str = "") -> bool:
+    def has_response(
+        self, operation: UUID, purpose: str = "", *, attempt: int | None = None
+    ) -> bool:
         return any(
-            path.stem.startswith(purpose) and path.stem[len(purpose) :].isdecimal()
-            for path, _ in self.call_records(operation)
+            path.stem.startswith(purpose)
+            and path.stem[len(purpose) :].isdecimal()
+            and (attempt is None or record.get("attempt") == attempt)
+            for path, record in self.call_records(operation)
         )
 
     def replay[T: BaseModel](

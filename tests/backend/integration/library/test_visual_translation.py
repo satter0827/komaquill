@@ -26,7 +26,9 @@ def test_unfounded_visual_detail_must_be_repaired_before_submission(repaired):
             text="A red umbrella." if len(calls) > 1 else "A red umbrella and a rice ball.",
         )
 
-    describer = ImageDescriber(SimpleNamespace(invoke=invoke))
+    describer = ImageDescriber(
+        SimpleNamespace(invoke=invoke, has_response=lambda *_args, **_kwargs: False)
+    )
     arguments = ("赤い傘が一本。", uuid4(), "lmstudio-4b", True)
     if repaired:
         assert describer.prepare_image(*arguments) == "A red umbrella."
@@ -111,7 +113,7 @@ def test_portrait_keeps_explicit_empty_clothing_and_detects_its_change(tmp_path,
     assert not preset_changes("character", value, saved).image_changed
 
 
-@pytest.mark.parametrize("failure", [None, "missing", "japanese", "blank"])
+@pytest.mark.parametrize("failure", [None, "missing", "japanese", "blank", "missing_and_mismatch"])
 def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, monkeypatch, failure):
     import langchain_openai
 
@@ -132,9 +134,9 @@ def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, mo
             calls.append(messages)
             result = {"gender": "man", "physical_features": "Gray hair", "pose": "Clasped hands"}
             if self.review:
-                result = {"matches": True}
+                result = {"matches": failure != "missing_and_mismatch"}
             elif len(calls) == 1:
-                if failure == "missing":
+                if failure in {"missing", "missing_and_mismatch"}:
                     result.pop("pose")
                 elif failure == "japanese":
                     result["pose"] = "手を組む"
@@ -146,24 +148,45 @@ def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, mo
             )
 
     monkeypatch.setattr(langchain_openai, "ChatOpenAI", Model)
-    result = Client.initialize(tmp_path).library.image_describer.prepare_image(
-        json.dumps(
-            {
-                "age": "60",
-                "gender": "男",
-                "appearance": "Gray hair",
-                "physical_features": "白髪",
-                "pose": "手を組む",
-            },
-            ensure_ascii=False,
-        ),
-        uuid4(),
-        "lmstudio-4b",
-        True,
-        compose=True,
-        purpose="portrait",
-    )
+
+    def prepare():
+        return Client.initialize(tmp_path).library.image_describer.prepare_image(
+            json.dumps(
+                {
+                    "age": "60",
+                    "gender": "男",
+                    "appearance": "Gray hair",
+                    "physical_features": "白髪",
+                    "pose": "手を組む",
+                },
+                ensure_ascii=False,
+            ),
+            uuid4(),
+            "lmstudio-4b",
+            True,
+            compose=True,
+            purpose="portrait",
+        )
+
+    if failure == "missing_and_mismatch":
+        with pytest.raises(KomaquillError, match="image_description_invalid"):
+            prepare()
+    else:
+        result = prepare()
+        assert "age: 60." in result and "pose: Clasped hands." in result
     assert len(calls) == (2 if failure is None else 3)
-    assert "age: 60." in result and "pose: Clasped hands." in result
     sent = json.loads(calls[0][-1].content)
     assert sent == {"gender": "男", "physical_features": "白髪", "pose": "手を組む"}
+    if failure:
+        prior, correction = calls[1][-2:]
+        assert prior.type == "ai" and correction.type == "human"
+        assert json.loads(prior.content).get("pose") == {"japanese": "手を組む", "blank": "  "}.get(
+            failure
+        )
+        assert "pose" in correction.content
+        assert {
+            "missing": "missing",
+            "japanese": "English",
+            "blank": "empty_visual_field",
+            "missing_and_mismatch": "missing",
+        }[failure] in correction.content

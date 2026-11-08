@@ -579,6 +579,7 @@ class ConversationResponder:
                 )
             except KomaquillError:
                 raise ResponseConstraintError("empty_response", ("response", "text")) from None
+            wrong_language = []
             for field, content in (
                 ("action_narration", value.action_narration),
                 ("text", value.text),
@@ -589,8 +590,10 @@ class ConversationResponder:
             ):
                 try:
                     check_language(content, locale, tuple(names))
-                except ValueError:
-                    raise ResponseLanguageError(field) from None
+                except ResponseLanguageError:
+                    wrong_language.append(field)
+            if wrong_language:
+                raise ResponseLanguageError(*wrong_language)
             if (
                 proposed.player != conversation.state.player
                 or proposed.place != conversation.state.place

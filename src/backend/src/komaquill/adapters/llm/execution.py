@@ -470,6 +470,13 @@ class StructuredExecution:
             return value
 
         def repair_prompt(invalid: ValueError) -> str:
+            if isinstance(invalid, ResponseLanguageError) and field_language:
+                fields = ", ".join(invalid.fields)
+                return (
+                    f"Translate the full values of these fields into {field_language}: {fields}. "
+                    "Preserve names and facts. Keep the other fields unchanged. "
+                    "Return the complete corrected JSON object."
+                )
             issues: list[dict[str, object]] = []
             if isinstance(invalid, ResponseConstraintError):
                 issues.append({"path": list(invalid.path), "constraint": invalid.rule})
@@ -481,10 +488,6 @@ class StructuredExecution:
             detail = (
                 " The response uses the wrong language. "
                 "Use the requested language for all visible fields."
-                if isinstance(invalid, ResponseLanguageError) and invalid.field == "output"
-                else f" The {invalid.field} field uses the wrong language. "
-                "Translate that entire field; "
-                "changing only the other field is insufficient."
                 if isinstance(invalid, ResponseLanguageError)
                 else ""
             )

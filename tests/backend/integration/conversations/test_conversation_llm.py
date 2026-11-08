@@ -721,7 +721,7 @@ def test_language_switch_schema_and_repair_target_narration(
                 content=json.dumps(
                     wire_reply(
                         {
-                            "action_narration": "",
+                            "action_narration": wrong if len(calls) == 1 else right,
                             "requested_player_action": None,
                             "current_state": wire_state(
                                 {"scenery": wrong if len(calls) == 1 else right}
@@ -772,7 +772,9 @@ def test_language_switch_schema_and_repair_target_narration(
     )
     assert operation.state == "complete" and len(calls) == 2
     assert language in calls[0][0].content
-    assert "scenery" in calls[-1][-1].content
+    repair = calls[-1][-1].content
+    assert language in repair and "action_narration, scenery" in repair
+    assert "player_move" not in repair
     assert sum(message.type == "system" for message in calls[-1]) == 1
 
 

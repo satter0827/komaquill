@@ -4,7 +4,7 @@ format_version = 1
 summary = "LangGraphで構造化LLM要求と有限の修正を実行する"
 status = "implemented"
 implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期記憶はREQ-CHAT-MEMORYで扱う。公式チェックポイントで受信済み応答から再開し、会話の意味整合性と画質の未達は実出力の受入で管理する。"
-acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
+acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "会話応答の言語が混在したときは対象となる全項目を一度に指定する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
 sources = ["src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
 tests = ["tests/backend/unit/llm/test_llm_graph.py", "tests/backend/integration/conversations/test_conversation_llm.py", "tests/backend/integration/conversations/test_conversation_durability.py"]
 

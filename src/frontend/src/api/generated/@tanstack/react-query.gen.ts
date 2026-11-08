@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { approveDevice, checkAvailability, checkDeviceAccess, collectImage, createConversation, createJob, deleteCharacter, deleteStory, dismissProposal, drawConversation, duplicateCharacter, duplicateStory, exportConversation, forkConversation, getActions, getArchivedConversation, getBookmarks, getCharacter, getConversation, getConversationOperations, getImage, getImageFile, getJob, getOperation, getPlayer, getPreferences, getRuntime, getRuntimeViews, getRuntimeWorkflow, getSettings, getStory, getTurns, importInput, listArchivedConversations, listCharacters, listConversationImages, listConversations, listDevices, listImages, listStories, type Options, refreshRuntime, resumeConversation, resumeOperation, revokeDevice, saveBookmark, saveCharacter, saveNotes, savePreferences, saveStory, sendTurn, startConversation, startRuntime, stopRuntime, submitImage, updatePlayer } from '../sdk.gen';
-import type { ApproveDeviceData, ApproveDeviceError, CheckAvailabilityData, CheckAvailabilityError, CheckAvailabilityResponse, CheckDeviceAccessData, CheckDeviceAccessError, CheckDeviceAccessResponse, CollectImageData, CollectImageError, CollectImageResponse, CreateConversationData, CreateConversationError, CreateConversationResponse, CreateJobData, CreateJobError, CreateJobResponse, DeleteCharacterData, DeleteCharacterError, DeleteCharacterResponse, DeleteStoryData, DeleteStoryError, DeleteStoryResponse, DismissProposalData, DismissProposalError, DismissProposalResponse, DrawConversationData, DrawConversationError, DrawConversationResponse, DuplicateCharacterData, DuplicateCharacterError, DuplicateCharacterResponse, DuplicateStoryData, DuplicateStoryError, DuplicateStoryResponse, ExportConversationData, ExportConversationError, ForkConversationData, ForkConversationError, ForkConversationResponse, GetActionsData, GetActionsError, GetActionsResponse, GetArchivedConversationData, GetArchivedConversationError, GetArchivedConversationResponse, GetBookmarksData, GetBookmarksError, GetBookmarksResponse, GetCharacterData, GetCharacterError, GetCharacterResponse, GetConversationData, GetConversationError, GetConversationOperationsData, GetConversationOperationsError, GetConversationOperationsResponse, GetConversationResponse, GetImageData, GetImageError, GetImageFileData, GetImageFileError, GetImageResponse, GetJobData, GetJobError, GetJobResponse, GetOperationData, GetOperationError, GetOperationResponse, GetPlayerData, GetPlayerError, GetPlayerResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetRuntimeData, GetRuntimeError, GetRuntimeResponse, GetRuntimeViewsData, GetRuntimeViewsError, GetRuntimeViewsResponse, GetRuntimeWorkflowData, GetRuntimeWorkflowError, GetSettingsData, GetSettingsError, GetSettingsResponse, GetStoryData, GetStoryError, GetStoryResponse, GetTurnsData, GetTurnsError, GetTurnsResponse, ImportInputData, ImportInputError, ImportInputResponse, ListArchivedConversationsData, ListArchivedConversationsError, ListArchivedConversationsResponse, ListCharactersData, ListCharactersError, ListCharactersResponse, ListConversationImagesData, ListConversationImagesError, ListConversationImagesResponse, ListConversationsData, ListConversationsError, ListConversationsResponse, ListDevicesData, ListDevicesError, ListImagesData, ListImagesError, ListImagesResponse, ListStoriesData, ListStoriesError, ListStoriesResponse, RefreshRuntimeData, RefreshRuntimeError, RefreshRuntimeResponse, ResumeConversationData, ResumeConversationError, ResumeConversationResponse, ResumeOperationData, ResumeOperationError, ResumeOperationResponse, RevokeDeviceData, RevokeDeviceError, SaveBookmarkData, SaveBookmarkError, SaveBookmarkResponse, SaveCharacterData, SaveCharacterError, SaveCharacterResponse, SaveNotesData, SaveNotesError, SaveNotesResponse, SavePreferencesData, SavePreferencesError, SavePreferencesResponse, SaveStoryData, SaveStoryError, SaveStoryResponse, SendTurnData, SendTurnError, SendTurnResponse, StartConversationData, StartConversationError, StartConversationResponse, StartRuntimeData, StartRuntimeError, StartRuntimeResponse, StopRuntimeData, StopRuntimeError, StopRuntimeResponse, SubmitImageData, SubmitImageError, SubmitImageResponse, UpdatePlayerData, UpdatePlayerError, UpdatePlayerResponse } from '../types.gen';
+import { approveDevice, changeWork, checkAvailability, checkDeviceAccess, collectImage, createConversation, createJob, deleteCharacter, deleteStory, detachImage, dismissProposal, drawConversation, duplicateCharacter, duplicateStory, exportConversation, forkConversation, getActions, getArchivedConversation, getBookmarks, getCharacter, getConversation, getConversationOperations, getDetachedImages, getImage, getImageFile, getJob, getOperation, getPlayer, getPreferences, getRuntime, getRuntimeViews, getRuntimeWorkflow, getSettings, getStory, getTurns, getWork, importInput, listArchivedConversations, listCharacters, listConversationImages, listConversations, listDevices, listImageOutputs, listImages, listImageUses, listStories, listTrash, type Options, refreshRuntime, resumeConversation, resumeOperation, revokeDevice, saveBookmark, saveCharacter, saveNotes, savePreferences, saveStory, sendTurn, startConversation, startRuntime, stopRuntime, submitImage, updatePlayer } from '../sdk.gen';
+import type { ApproveDeviceData, ApproveDeviceError, ChangeWorkData, ChangeWorkError, ChangeWorkResponse, CheckAvailabilityData, CheckAvailabilityError, CheckAvailabilityResponse, CheckDeviceAccessData, CheckDeviceAccessError, CheckDeviceAccessResponse, CollectImageData, CollectImageError, CollectImageResponse, CreateConversationData, CreateConversationError, CreateConversationResponse, CreateJobData, CreateJobError, CreateJobResponse, DeleteCharacterData, DeleteCharacterError, DeleteCharacterResponse, DeleteStoryData, DeleteStoryError, DeleteStoryResponse, DetachImageData, DetachImageError, DetachImageResponse, DismissProposalData, DismissProposalError, DismissProposalResponse, DrawConversationData, DrawConversationError, DrawConversationResponse, DuplicateCharacterData, DuplicateCharacterError, DuplicateCharacterResponse, DuplicateStoryData, DuplicateStoryError, DuplicateStoryResponse, ExportConversationData, ExportConversationError, ForkConversationData, ForkConversationError, ForkConversationResponse, GetActionsData, GetActionsError, GetActionsResponse, GetArchivedConversationData, GetArchivedConversationError, GetArchivedConversationResponse, GetBookmarksData, GetBookmarksError, GetBookmarksResponse, GetCharacterData, GetCharacterError, GetCharacterResponse, GetConversationData, GetConversationError, GetConversationOperationsData, GetConversationOperationsError, GetConversationOperationsResponse, GetConversationResponse, GetDetachedImagesData, GetDetachedImagesError, GetDetachedImagesResponse, GetImageData, GetImageError, GetImageFileData, GetImageFileError, GetImageResponse, GetJobData, GetJobError, GetJobResponse, GetOperationData, GetOperationError, GetOperationResponse, GetPlayerData, GetPlayerError, GetPlayerResponse, GetPreferencesData, GetPreferencesError, GetPreferencesResponse, GetRuntimeData, GetRuntimeError, GetRuntimeResponse, GetRuntimeViewsData, GetRuntimeViewsError, GetRuntimeViewsResponse, GetRuntimeWorkflowData, GetRuntimeWorkflowError, GetSettingsData, GetSettingsError, GetSettingsResponse, GetStoryData, GetStoryError, GetStoryResponse, GetTurnsData, GetTurnsError, GetTurnsResponse, GetWorkData, GetWorkError, GetWorkResponse, ImportInputData, ImportInputError, ImportInputResponse, ListArchivedConversationsData, ListArchivedConversationsError, ListArchivedConversationsResponse, ListCharactersData, ListCharactersError, ListCharactersResponse, ListConversationImagesData, ListConversationImagesError, ListConversationImagesResponse, ListConversationsData, ListConversationsError, ListConversationsResponse, ListDevicesData, ListDevicesError, ListImageOutputsData, ListImageOutputsError, ListImageOutputsResponse, ListImagesData, ListImagesError, ListImagesResponse, ListImageUsesData, ListImageUsesError, ListImageUsesResponse, ListStoriesData, ListStoriesError, ListStoriesResponse, ListTrashData, ListTrashError, ListTrashResponse, RefreshRuntimeData, RefreshRuntimeError, RefreshRuntimeResponse, ResumeConversationData, ResumeConversationError, ResumeConversationResponse, ResumeOperationData, ResumeOperationError, ResumeOperationResponse, RevokeDeviceData, RevokeDeviceError, SaveBookmarkData, SaveBookmarkError, SaveBookmarkResponse, SaveCharacterData, SaveCharacterError, SaveCharacterResponse, SaveNotesData, SaveNotesError, SaveNotesResponse, SavePreferencesData, SavePreferencesError, SavePreferencesResponse, SaveStoryData, SaveStoryError, SaveStoryResponse, SendTurnData, SendTurnError, SendTurnResponse, StartConversationData, StartConversationError, StartConversationResponse, StartRuntimeData, StartRuntimeError, StartRuntimeResponse, StopRuntimeData, StopRuntimeError, StopRuntimeResponse, SubmitImageData, SubmitImageError, SubmitImageResponse, UpdatePlayerData, UpdatePlayerError, UpdatePlayerResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -38,6 +38,130 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
     }
     return [params];
 };
+
+export const listTrashQueryKey = (options?: Options<ListTrashData>) => createQueryKey('listTrash', options);
+
+/**
+ * Trash
+ */
+export const listTrashOptions = (options?: Options<ListTrashData>) => queryOptions<ListTrashResponse, ListTrashError, ListTrashResponse, ReturnType<typeof listTrashQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listTrash({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listTrashQueryKey(options)
+});
+
+export const getWorkQueryKey = (options: Options<GetWorkData>) => createQueryKey('getWork', options);
+
+/**
+ * Work
+ */
+export const getWorkOptions = (options: Options<GetWorkData>) => queryOptions<GetWorkResponse, GetWorkError, GetWorkResponse, ReturnType<typeof getWorkQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getWork({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getWorkQueryKey(options)
+});
+
+/**
+ * Change Work
+ */
+export const changeWorkMutation = (options?: Partial<Options<ChangeWorkData>>): UseMutationOptions<ChangeWorkResponse, ChangeWorkError, Options<ChangeWorkData>> => {
+    const mutationOptions: UseMutationOptions<ChangeWorkResponse, ChangeWorkError, Options<ChangeWorkData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await changeWork({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const listImageOutputsQueryKey = (options?: Options<ListImageOutputsData>) => createQueryKey('listImageOutputs', options);
+
+/**
+ * Image Outputs
+ */
+export const listImageOutputsOptions = (options?: Options<ListImageOutputsData>) => queryOptions<ListImageOutputsResponse, ListImageOutputsError, ListImageOutputsResponse, ReturnType<typeof listImageOutputsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listImageOutputs({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listImageOutputsQueryKey(options)
+});
+
+export const listImageUsesQueryKey = (options: Options<ListImageUsesData>) => createQueryKey('listImageUses', options);
+
+/**
+ * Image Uses
+ */
+export const listImageUsesOptions = (options: Options<ListImageUsesData>) => queryOptions<ListImageUsesResponse, ListImageUsesError, ListImageUsesResponse, ReturnType<typeof listImageUsesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listImageUses({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listImageUsesQueryKey(options)
+});
+
+/**
+ * Detach Image
+ */
+export const detachImageMutation = (options?: Partial<Options<DetachImageData>>): UseMutationOptions<DetachImageResponse, DetachImageError, Options<DetachImageData>> => {
+    const mutationOptions: UseMutationOptions<DetachImageResponse, DetachImageError, Options<DetachImageData>> = {
+        mutationFn: async (fnOptions) => {
+            const { data } = await detachImage({
+                ...options,
+                ...fnOptions,
+                throwOnError: true
+            });
+            return data;
+        }
+    };
+    return mutationOptions;
+};
+
+export const getDetachedImagesQueryKey = (options: Options<GetDetachedImagesData>) => createQueryKey('getDetachedImages', options);
+
+/**
+ * Detached Images
+ */
+export const getDetachedImagesOptions = (options: Options<GetDetachedImagesData>) => queryOptions<GetDetachedImagesResponse, GetDetachedImagesError, GetDetachedImagesResponse, ReturnType<typeof getDetachedImagesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await getDetachedImages({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: getDetachedImagesQueryKey(options)
+});
 
 export const listArchivedConversationsQueryKey = (options?: Options<ListArchivedConversationsData>) => createQueryKey('listArchivedConversations', options);
 

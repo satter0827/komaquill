@@ -84,6 +84,8 @@ def scripted_completion(body: dict) -> dict:
             "opening": "A visitor enters the bookshop.",
             "character_id": None,
         }
+    elif "matches" in schema:
+        value = {"matches": True}
     elif "location" in schema:
         value = {
             "location": "An old bookshop.",

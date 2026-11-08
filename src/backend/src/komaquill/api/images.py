@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from komaquill.adapters.image_text import ImageTextPreparation
 from uuid import UUID
 
-from komaquill.adapters.compute.connection import connected
+from komaquill.adapters.compute.connection import connected, session_project
 from komaquill.adapters.diagnostics import operation_scope
 from komaquill.adapters.materials import MaterialCollector
 from komaquill.adapters.preparation import capabilities
@@ -27,8 +27,10 @@ from komaquill.application.library.service import ImageDescriber
 from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
 from komaquill.domain.images import ImagePurpose, PromptSource
+from komaquill.domain.library.models import ImagePromptDefaults
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import Run
+from komaquill.domain.prompts import joined
 
 
 class ImageService:
@@ -58,6 +60,16 @@ class ImageService:
             if settings is not None:
                 self.__dict__["_generation_workspace"] = self._project.configured(settings)
             self._project = self._generation_workspace
+
+    def supports_negative(
+        self, model: str | None = None, operation: Literal["generate", "edit"] = "generate"
+    ) -> bool:
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            settings = session_project(self._generation_workspace).settings()
+            return isinstance(settings, RuntimeSettings) and (
+                settings.presets[settings.profile_for(model, operation)].negative_default
+                is not None
+            )
 
     def supports_pair(self) -> bool:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
@@ -96,6 +108,8 @@ class ImageService:
         llm_profile: str = "fake",
         allow_real_llm: bool = False,
         purpose: ImagePurpose | None = None,
+        image_prompts: ImagePromptDefaults | None = None,
+        use_prompt_preferences: bool = False,
     ) -> Run:
         from uuid import uuid4
 
@@ -126,7 +140,14 @@ class ImageService:
             }
         )
         with FileLock(str(self._generation_workspace.state / f".image-submit-{identity}.lock")):
-            if not reserve(self._generation_workspace, identity, fingerprint):
+            defaults = reserve(
+                self._generation_workspace,
+                identity,
+                fingerprint,
+                use_preferences=use_prompt_preferences,
+                image_prompts=image_prompts,
+            )
+            if defaults is None:
                 try:
                     return self.get(identity)
                 except KomaquillError as error:
@@ -136,10 +157,32 @@ class ImageService:
                         ) from None
                     raise
             try:
-                self._preflight(prompt, subjects, negative, llm_profile)
-                descriptions = self._text_preparation.prepare(
-                    identity, prompt, subjects, negative, llm_profile, allow_real_llm
+                common_positive = defaults.positive.strip()
+                negative_preference = defaults.negative.strip()
+                common_negative = (
+                    negative_preference
+                    if negative_preference and self.supports_negative(model, operation)
+                    else ""
                 )
+                requested_negative = (
+                    joined(negative or "", common_negative) if common_negative else negative
+                )
+                all_subjects = (*subjects, common_positive) if common_positive else subjects
+                self._preflight(prompt, all_subjects, requested_negative, llm_profile)
+                descriptions = self._text_preparation.prepare(
+                    identity,
+                    prompt,
+                    all_subjects,
+                    requested_negative,
+                    llm_profile,
+                    allow_real_llm,
+                )
+                prepared_prompt = descriptions.prompt
+                common_prompt = descriptions.subjects[-1] if common_positive else ""
+                prepared_subjects = (
+                    descriptions.subjects[:-1] if common_positive else descriptions.subjects
+                )
+                prepared_negative = descriptions.negative
                 with (
                     api_operation(OperationStage.GENERATION),
                     connected(self._generation_workspace) as (backend, session),
@@ -148,11 +191,15 @@ class ImageService:
                     if not isinstance(settings, RuntimeSettings):
                         raise KomaquillError(code="invalid_configuration", stage="generation")
                     profile = settings.profile_for(model, operation)
-                    from komaquill.domain.prompts import joined
-
                     selected = settings.presets[profile]
-                    prepared_prompt = descriptions.prompt
-                    prepared_negative = descriptions.negative
+                    if negative_preference and (
+                        bool(common_negative) != (selected.negative_default is not None)
+                    ):
+                        raise KomaquillError(code="operation_conflict", stage="preparation")
+                    if common_negative and negative is None and selected.negative_default:
+                        prepared_negative = joined(
+                            selected.negative_default, prepared_negative or ""
+                        )
                     purpose_sources = []
                     if purpose:
                         import hashlib
@@ -194,7 +241,8 @@ class ImageService:
                         profile,
                         run_id=identity,
                         negative=prepared_negative,
-                        subjects=descriptions.subjects,
+                        subjects=prepared_subjects,
+                        common_prompt=common_prompt,
                         candidates=candidates,
                         input_sources=(*input_sources, *descriptions.sources, *purpose_sources),
                         inputs=inputs,

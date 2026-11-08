@@ -36,12 +36,22 @@ export function failure(error: unknown, locale: Locale = 'ja'): string {
 
 export const POLL_INTERVAL_MS = 1000
 
+export function isMissing(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'request_not_found'
+  )
+}
+
 const REJECTED_REQUEST_CODES = new Set([
   'invalid_request',
   'request_not_found',
   'operation_conflict',
   'operation_busy',
   'visual_review_required',
+  'image_description_invalid',
   'real_llm_not_allowed',
   'fake_input_mismatch',
   'invalid_configuration',

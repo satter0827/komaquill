@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
+import { isMissing } from '../../api/client'
 import { StoryReply } from '../../shared/story/reply'
 import { useMessages } from '../../shared/preferences'
+import { useNavigate } from 'react-router'
+import { WorkActions } from '../../shared/ui/work-actions'
 import { QueryNotice } from '../../shared/ui/query-notice'
 
 export function ArchivedConversations() {
@@ -37,6 +40,7 @@ export function ArchivedConversations() {
 
 export function ArchivedConversationPage() {
   const { identity = '' } = useParams()
+  const navigate = useNavigate()
   const m = useMessages()
   const query = useQuery({
     ...q.getArchivedConversationOptions({ path: { identity } }),
@@ -49,7 +53,7 @@ export function ArchivedConversationPage() {
       onRetry={() => void query.refetch()}
     />
   )
-  if (query.error && !query.data) return notice
+  if (query.error && (!query.data || isMissing(query.error))) return notice
   if (!query.data)
     return (
       <p role="status" className="page">
@@ -60,6 +64,10 @@ export function ArchivedConversationPage() {
     <section className="page archive-page">
       {notice}
       <h1>{query.data.title}</h1>
+      <WorkActions
+        target={{ kind: 'archived', id: identity }}
+        afterTrash={() => navigate('/')}
+      />
       <p className="subtle">{m.archivedNotice}</p>
       {!query.data.readable && <p role="alert">{m.unreadableConversation}</p>}
       {query.data.turns.map((turn, index) => (

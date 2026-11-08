@@ -7,7 +7,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psutil
 from sqlalchemy import case, func, select
@@ -22,6 +22,7 @@ from komaquill.adapters.persistence.schema import (
     preset_saves,
     presets,
 )
+from komaquill.adapters.persistence.works import WorkRepository, image_visible, visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.models import Conversation
 from komaquill.domain.errors import KomaquillError
@@ -44,6 +45,7 @@ from komaquill.domain.library.rendering import (
     preset_changes,
     preset_image_input,
 )
+from komaquill.domain.library.works import WorkChange, WorkRef
 
 MODELS: dict[PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]] = {
     "player": PlayerProfile,
@@ -116,20 +118,37 @@ class LibraryRepository:
     @stored
     def get(self, kind: PresetKind, identity: UUID) -> Preset:
         with self.database.engine.connect() as connection:
-            row = (
-                connection.execute(
-                    select(presets).where(
-                        presets.c.kind == kind,
-                        presets.c.id == str(identity),
-                        presets.c.deleted == False,  # noqa: E712
-                    )
-                )
-                .mappings()
-                .one_or_none()
+            return self._get(connection, kind, identity)
+
+    def _get(self, connection: Connection, kind: PresetKind, identity: UUID) -> Preset:
+        payload = connection.execute(
+            select(presets.c.payload).where(
+                presets.c.kind == kind,
+                presets.c.id == str(identity),
+                presets.c.deleted.is_(False),
             )
-            if row is None:
-                raise missing()
-            return self._decode(kind, row["id"], row["payload"])
+        ).scalar_one_or_none()
+        if payload is None:
+            raise missing()
+        return self._decode(kind, str(identity), payload)
+
+    def _validate_character_reference(
+        self, connection: Connection, value: PresetInput, previous: Preset | None = None
+    ) -> None:
+        if not isinstance(value, StoryInput) or value.character_id is None:
+            return
+        if isinstance(previous, StoryPreset) and value.character_id == previous.character_id:
+            return
+        self._get(connection, "character", value.character_id)
+
+    def _insert(self, connection: Connection, kind: PresetKind, result: Preset) -> None:
+        if not image_visible(connection, result.image_id):
+            raise conflict()
+        connection.execute(
+            presets.insert().values(
+                id=str(result.id), kind=kind, payload=result.model_dump_json(), deleted=False
+            )
+        )
 
     @stored
     def resolve(self, references: dict[PresetKind, tuple[UUID, int]]) -> dict[PresetKind, Preset]:
@@ -158,38 +177,36 @@ class LibraryRepository:
         value: PresetInput,
         *,
         image_id: UUID | None = None,
-        image_stale: bool = False,
     ) -> Preset:
-        result = MODELS[kind].model_validate(
-            {**value.model_dump(), "image_id": image_id, "image_stale": image_stale}
-        )
+        result = MODELS[kind].model_validate({**value.model_dump(), "image_id": image_id})
         with self.database.write() as connection:
-            connection.execute(
-                presets.insert().values(
-                    id=str(result.id), kind=kind, payload=result.model_dump_json(), deleted=False
-                )
+            self._validate_character_reference(connection, value)
+            self._insert(connection, kind, result)
+        return result
+
+    @stored
+    def duplicate(self, kind: PresetKind, identity: UUID) -> Preset:
+        with self.database.write() as connection:
+            original = self._get(connection, kind, identity)
+            result = original.model_copy(
+                update={
+                    "id": uuid4(),
+                    "revision": 0,
+                    "sample": False,
+                    "sample_locale": None,
+                    "image_job_id": None,
+                }
             )
+            self._insert(connection, kind, result)
         return result
 
     @stored
     def update(self, kind: PresetKind, identity: UUID, revision: int, value: PresetInput) -> Preset:
         with self.database.transaction() as connection:
-            row = (
-                connection.execute(
-                    select(presets).where(
-                        presets.c.id == str(identity),
-                        presets.c.kind == kind,
-                        presets.c.deleted == False,  # noqa: E712
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
-            if row is None:
-                raise missing()
-            previous = self._decode(kind, str(identity), row["payload"])
+            previous = self._get(connection, kind, identity)
             if previous.revision != revision:
                 raise conflict()
+            self._validate_character_reference(connection, value, previous)
             value = preserve_appearance_reference(value, previous)
             changes = preset_changes(kind, value, previous)
             result = MODELS[kind].model_validate(
@@ -215,50 +232,20 @@ class LibraryRepository:
 
     @stored
     def delete(self, kind: PresetKind, identity: UUID, revision: int) -> None:
-        with self.database.transaction() as connection:
-            row = (
-                connection.execute(
-                    select(presets).where(
-                        presets.c.id == str(identity),
-                        presets.c.kind == kind,
-                        presets.c.deleted == False,  # noqa: E712
-                    )
-                )
-                .mappings()
-                .one_or_none()
+        if kind == "player":
+            raise conflict()
+        ref = WorkRef(kind=kind, id=identity)
+        works = WorkRepository(self.database)
+        item = works.get(ref)
+        works.change(
+            WorkChange(
+                target=ref,
+                action="trash",
+                operation_id=uuid4(),
+                expected_revision=item.revision,
+                expected_content_revision=revision,
             )
-            if row is None:
-                raise missing()
-            if self._decode(kind, str(identity), row["payload"]).revision != revision:
-                raise conflict()
-            connection.execute(
-                presets.update().where(presets.c.id == str(identity)).values(deleted=True)
-            )
-            if kind == "character":
-                rows = (
-                    connection.execute(
-                        select(presets).where(
-                            presets.c.kind == "story", presets.c.deleted.is_(False)
-                        )
-                    )
-                    .mappings()
-                    .all()
-                )  # noqa: E712
-                for row in rows:
-                    story = cast(StoryPreset, self._decode("story", row["id"], row["payload"]))
-                    if story.character_id == identity:
-                        changed = story.model_copy(
-                            update={
-                                "character_id": None,
-                                "revision": story.revision + 1,
-                            }
-                        )
-                        connection.execute(
-                            presets.update()
-                            .where(presets.c.id == row["id"])
-                            .values(payload=changed.model_dump_json())
-                        )
-            connection.commit()
+        )
 
     @stored
     def attach(
@@ -279,7 +266,11 @@ class LibraryRepository:
             if row is None:
                 return False
             value = self._decode(kind, str(identity), row["payload"])
-            if value.revision != revision or (image and value.image_job_id != job):
+            if (
+                value.revision != revision
+                or (image and value.image_job_id != job)
+                or not image_visible(connection, image)
+            ):
                 return False
             updated = value.model_copy(
                 update={
@@ -388,7 +379,10 @@ class LibraryRepository:
         value = None
         if request.kind == "conversation_image":
             payload = connection.execute(
-                select(conversations.c.payload).where(conversations.c.id == str(request.target_id))
+                select(conversations.c.payload).where(
+                    conversations.c.id == str(request.target_id),
+                    visible_work("conversation", conversations.c.id),
+                )
             ).scalar_one_or_none()
             if payload is None:
                 raise missing()
@@ -409,7 +403,16 @@ class LibraryRepository:
             value = self._decode(kind, str(request.target_id), payload)
             if value.revision != request.expected_revision:
                 raise conflict()
+        prompt_preferences = connection.execute(
+            select(preferences.c.payload).where(preferences.c.id == 1)
+        ).scalar_one_or_none()
+        settings = (
+            Preferences()
+            if prompt_preferences is None
+            else Preferences.model_validate_json(prompt_preferences)
+        )
         job = CreationJob(
+            image_prompts=settings.image_prompts,
             id=request.operation_id,
             request=request,
             original=original,
@@ -475,34 +478,12 @@ class LibraryRepository:
                 return PresetSaveResult.model_validate_json(previous_receipt["payload"])
             previous = None
             if options.target_id is not None:
-                payload = connection.execute(
-                    select(presets.c.payload).where(
-                        presets.c.id == str(options.target_id),
-                        presets.c.kind == kind,
-                        presets.c.deleted.is_(False),
-                    )
-                ).scalar_one_or_none()
-                if payload is None:
-                    raise missing()
-                previous = self._decode(kind, str(options.target_id), payload)
+                previous = self._get(connection, kind, options.target_id)
                 if previous.revision != options.expected_revision:
                     raise conflict()
             elif options.expected_revision is not None:
                 raise conflict()
-            if (
-                kind == "story"
-                and isinstance(value, StoryInput)
-                and value.character_id is not None
-                and connection.execute(
-                    select(presets.c.id).where(
-                        presets.c.id == str(value.character_id),
-                        presets.c.kind == "character",
-                        presets.c.deleted.is_(False),
-                    )
-                ).first()
-                is None
-            ):
-                raise missing()
+            self._validate_character_reference(connection, value, previous)
             value = preserve_appearance_reference(value, previous)
             changes = preset_changes(kind, value, previous)
             record = MODELS[kind].model_validate(
@@ -527,14 +508,7 @@ class LibraryRepository:
                 }
             )
             if previous is None:
-                connection.execute(
-                    presets.insert().values(
-                        id=str(record.id),
-                        kind=kind,
-                        payload=record.model_dump_json(),
-                        deleted=False,
-                    )
-                )
+                self._insert(connection, kind, record)
             elif changes.content_changed:
                 connection.execute(
                     presets.update()
@@ -638,7 +612,7 @@ class LibraryRepository:
             self._decode_job(str(value.id), value.model_dump_json())
             if any(
                 getattr(previous, key) != getattr(value, key)
-                for key in ("request", "original", "turn_id", "created_at")
+                for key in ("request", "original", "turn_id", "created_at", "image_prompts")
             ) or (
                 previous.prompt_en is not None
                 and value.prompt_en is not None
@@ -680,9 +654,12 @@ class LibraryRepository:
                         target.revision == request.expected_revision
                         or preset_image_input(kind, target) == json.loads(value.original)
                     ) and target.image_job_id == value.id:
-                        target = target.model_copy(
-                            update={"image_id": value.image_id, "image_stale": False}
+                        update = (
+                            {"image_id": value.image_id, "image_stale": False}
+                            if image_visible(connection, value.image_id)
+                            else {"image_job_id": None}
                         )
+                        target = target.model_copy(update=update)
                         connection.execute(
                             presets.update()
                             .where(presets.c.id == str(target.id))

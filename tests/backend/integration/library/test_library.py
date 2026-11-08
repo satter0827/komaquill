@@ -221,7 +221,7 @@ def test_deleting_default_selections_does_not_block_preferences_or_story_edits(t
     story = api.stories.create(StoryInput(name="Story", character_id=character.id))
     api.characters.delete(character.id, 0)
     updated = api.stories.get(story.id)
-    assert updated.character_id is None and updated.revision == 1
+    assert updated.character_id == character.id and updated.revision == 0
     assert (
         api.stories.update(updated.id, updated.revision, StoryInput(name="Edited")).name == "Edited"
     )
@@ -317,7 +317,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     calls = []
     runs = {}
 
-    def submit(prompt, *, run_id, parameters, purpose=None):
+    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
         calls.append((prompt, parameters))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]
@@ -344,14 +344,19 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     if change == "edit":
         service.update(value.id, 0, model(name="Edited"))
     elif change == "delete":
-        service.delete(value.id, 0)
+        with pytest.raises(KomaquillError, match="operation_busy"):
+            service.delete(value.id, 0)
     elif change == "newer_job":
         with pytest.raises(KomaquillError, match="operation_busy"):
             library.accept(request.model_copy(update={"operation_id": uuid4()}))
     runs[job.id].state = "saved"
     runs[job.id].images = ["image.png"]
     assert library.job(job.id).state == "complete"
-    if change != "delete":
+    if change == "delete":
+        service.delete(value.id, 0)
+        with pytest.raises(KomaquillError, match="request_not_found"):
+            service.get(value.id)
+    else:
         assert service.get(value.id).image_id == (
             job.id if change in {"none", "newer_job"} else None
         )

@@ -15,8 +15,8 @@ import {
   useState,
 } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { Link, useParams } from 'react-router'
-import { isRejectedRequest } from '../../api/client'
+import { Link, useNavigate, useParams } from 'react-router'
+import { isMissing, isRejectedRequest } from '../../api/client'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type {
   CreationJob,
@@ -28,10 +28,10 @@ import type {
 } from '../../api/generated/types.gen'
 import {
   useFailure,
-  useFormatMessage,
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
+import { WorkActions } from '../../shared/ui/work-actions'
 import { Button } from '../../shared/ui/button'
 import { QueryNotice } from '../../shared/ui/query-notice'
 import { Dialog, Modal, Popover, Popup } from '../../shared/ui/popup'
@@ -43,6 +43,7 @@ import {
   useAvailability,
   useAvailabilityRecovery,
 } from '../../shared/availability'
+import { StartedSettings, CurrentSituation } from './situation'
 import { ConversationNotes, SceneActions } from './tools'
 import { ImageResult } from '../../shared/images/result'
 import { OriginalImage } from '../../shared/images/original'
@@ -88,7 +89,13 @@ function MeetingDetails({
   )
 }
 
-function Drawing({ job }: { job: CreationJob }) {
+function Drawing({
+  job,
+  excluded,
+}: {
+  job: CreationJob
+  excluded: (slot: string, image: string) => number[]
+}) {
   const messages = useMessages()
   const failure = useFailure()
   const current = useQuery({
@@ -99,7 +106,10 @@ function Drawing({ job }: { job: CreationJob }) {
   })
   const value = current.data ?? job
   return value.image_id ? (
-    <ImageResult identity={value.image_id} />
+    <ImageResult
+      identity={value.image_id}
+      excluded={excluded('job:' + job.id, value.image_id)}
+    />
   ) : (
     <p className="subtle">
       {value.error ? failure({ code: value.error }) : messages.imagePreparing}
@@ -107,7 +117,21 @@ function Drawing({ job }: { job: CreationJob }) {
   )
 }
 
-function AcceptedTurn({ operation }: { operation: OperationView }) {
+function ReplyStatus({ text }: { text: string }) {
+  return (
+    <p className="pending" role="status">
+      {text}
+    </p>
+  )
+}
+
+function AcceptedTurn({
+  operation,
+  status,
+}: {
+  operation: OperationView
+  status?: string
+}) {
   const messages = useMessages()
   const failure = useFailure()
   const accepted = operation.input
@@ -126,7 +150,8 @@ function AcceptedTurn({ operation }: { operation: OperationView }) {
           <ActionDescription action={accepted.action} />
         </div>
       )}
-      {operation.error && (
+      {status && <ReplyStatus text={status} />}
+      {operation.error && !status && (
         <p role="alert" className="error">
           {messages.replyFailedAfterAcceptance}{' '}
           {failure({ code: operation.error })}
@@ -159,9 +184,9 @@ function ConversationView({
   screenHidden: boolean
 }) {
   const cache = useQueryClient()
+  const navigate = useNavigate()
   const messages = useMessages()
   const failure = useFailure()
-  const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
   const [actionOpen, setActionOpen] = useState(false)
@@ -228,6 +253,13 @@ function ConversationView({
         }
       : undefined,
   )
+  const detached = useQuery(
+    q.getDetachedImagesOptions({
+      path: { kind: 'conversation', identity },
+    }),
+  )
+  const excluded = (slot: string, image: string) =>
+    detached.data?.[slot + ':' + image] ?? []
   const history = useInfiniteQuery({
     ...q.getTurnsInfiniteOptions({ path: { identity } }),
     initialPageParam: { path: { identity } },
@@ -427,7 +459,7 @@ function ConversationView({
         queryKey: q.listConversationImagesQueryKey({ path: { identity } }),
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
-  if (detail.error && !detail.data)
+  if (detail.error && (!detail.data || isMissing(detail.error)))
     return (
       <QueryNotice
         error={detail.error}
@@ -453,16 +485,35 @@ function ConversationView({
         operation.data,
       ),
     )
-  const replyPending =
-    send.isPending ||
-    pendingResume !== null ||
-    (send.isError && prepared !== null) ||
-    ['accepted', 'running'].includes(operation.data?.state ?? '') ||
-    [...retainedOperations.values()].some(
-      (value) =>
-        ['accepted', 'running'].includes(value.state) ||
-        (value.result_revision ?? 0) > (conversation.revision ?? 0),
-    )
+  const completedIds = new Set(
+    (conversation.turns ?? []).map((turn) => turn.operation_id),
+  )
+  const currentReply = [...retainedOperations.values()].find(
+    (value) =>
+      ['accepted', 'running'].includes(value.state) ||
+      (value.result_revision ?? 0) > (conversation.revision ?? 0) ||
+      (value.state === 'complete' &&
+        value.id === operationId &&
+        value.result_revision != null &&
+        history.isFetching &&
+        !completedIds.has(value.id)),
+  )
+  const replyStatus =
+    send.isPending || (resume.isPending && pendingResume)
+      ? messages.requestSending
+      : (prepared && send.isError) || (pendingResume && resumeError)
+        ? messages.receiptUnknown
+        : currentReply?.state === 'complete'
+          ? messages.replyLoading
+          : currentReply?.state === 'accepted' ||
+              currentReply?.state === 'running'
+            ? messages.pending
+            : undefined
+  const statusTurn =
+    currentReply?.input && !completedIds.has(currentReply.id)
+      ? currentReply.id
+      : undefined
+  const replyPending = !!replyStatus || !!currentReply || pendingResume !== null
   const busy = actionControls.unresolved || replyPending || !!detail.error
   const canSend =
     !detail.error &&
@@ -472,12 +523,11 @@ function ConversationView({
     !busy &&
     (!!text.trim() || !!actionControls.queued)
   const latestOperation = operation.data ?? savedOperations.data?.[0]
-  const completedIds = new Set(
-    (conversation.turns ?? []).map((turn) => turn.operation_id),
-  )
   const acceptedOperations = [...retainedOperations.values()].filter(
     (value) =>
-      value.input && value.state !== 'complete' && !completedIds.has(value.id),
+      value.input &&
+      (value.state !== 'complete' || value.id === statusTurn) &&
+      !completedIds.has(value.id),
   )
   const timeline: (
     { kind: 'turn'; value: Turn } | { kind: 'input'; value: OperationView }
@@ -494,23 +544,6 @@ function ConversationView({
       Date.parse(b.value.created_at ?? ''),
   )
   const snapshots = conversation.definition.presets
-  const stateLabels = {
-    place: messages.currentPlace,
-    time: messages.currentTime,
-    intention: messages.currentIntention,
-    scenery: messages.narrationLabel,
-    relationship: messages.relationship,
-  }
-  const visibleState = Object.entries(stateLabels)
-    .map(
-      ([key, label]) =>
-        [
-          key,
-          label,
-          conversation.state?.[key as keyof typeof stateLabels],
-        ] as const,
-    )
-    .filter(([, , value]) => !!value)
   const content = (value: PersonDefinition | StoryDefinition | undefined) =>
     value
       ? ('opening' in value && value.opening) ||
@@ -523,127 +556,13 @@ function ConversationView({
       : ''
   const sampleDrawing = conversation.definition.llm_profile === 'fake'
   const statePanel = (
-    <aside className="state-panel">
-      {!narrow && <h2>{messages.currentState}</h2>}
-      <div className="state-items">
-        {visibleState.map(([key, label, value]) => (
-          <div key={key}>
-            <span>{label}</span>
-            <p>{value}</p>
-          </div>
-        ))}
-        <details>
-          <summary>{messages.peopleDetails}</summary>
-          <div className="details-content">
-            {(['player', 'character'] as const).map((role) => (
-              <div key={role}>
-                <span>
-                  {role === 'player' ? messages.you : messages.character}
-                </span>
-                <dl>
-                  {(
-                    ['clothing', 'pose', 'expression', 'held_objects'] as const
-                  ).map((field) => {
-                    const value = conversation.state?.[role]?.[field]
-                    return (
-                      <div key={field}>
-                        <dt>
-                          {field === 'held_objects'
-                            ? messages.heldObjects
-                            : messages[field]}
-                        </dt>
-                        <dd>
-                          {value == null
-                            ? messages.notSpecified
-                            : (Array.isArray(value)
-                                ? value.map((item) => item.name).join(', ')
-                                : value) || messages.emptyValue}
-                        </dd>
-                      </div>
-                    )
-                  })}
-                </dl>
-              </div>
-            ))}
-          </div>
-        </details>
-        {!!conversation.state?.elapsed_minutes && (
-          <p>
-            {formatMessage('elapsedTime', {
-              minutes: conversation.state.elapsed_minutes,
-            })}
-          </p>
-        )}
-      </div>
-      <details>
-        <summary>{messages.actionHistory}</summary>
-        <div className="details-content">
-          {!conversation.actions?.length && (
-            <p className="subtle">{messages.noActionHistory}</p>
-          )}
-          {conversation.actions?.map((record) => (
-            <ActionDescription
-              key={record.request.operation_id}
-              action={record.request.action}
-            />
-          ))}
-        </div>
-      </details>
-      {snapshots?.character?.image_id && (
-        <OriginalImage
-          className="character-portrait"
-          identity={snapshots.character.image_id}
-          alt={snapshots.character.name}
-        />
-      )}
-      <h3>{messages.scenario}</h3>
-      <p className="state-description">
-        {content(conversation.definition.scenario) || messages.openConversation}
-      </p>
-      {content(conversation.definition.character) && (
-        <>
-          <h3>{messages.character}</h3>
-          <p className="state-description">
-            {content(conversation.definition.character)}
-          </p>
-        </>
-      )}
-      <details className="story-details">
-        <summary>{messages.fixedSettings}</summary>
-        <div className="details-content">
-          <p>{conversation.state?.goal}</p>
-          {(['user', 'character'] as const).map((role) => (
-            <div key={role}>
-              <h3>{role === 'user' ? messages.you : messages.character}</h3>
-              <dl>
-                {(
-                  [
-                    'name',
-                    'age',
-                    'gender',
-                    'appearance',
-                    'initial_clothing',
-                  ] as const
-                ).map((field) => (
-                  <div key={field}>
-                    <dt>{messages[field]}</dt>
-                    <dd>
-                      {conversation.definition[role]?.[field] ||
-                        messages.notSpecified}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ))}
-          <span className="revision">
-            {formatMessage('revision', {
-              revision: conversation.revision ?? 0,
-            })}
-          </span>
-        </div>
-      </details>
-    </aside>
+    <CurrentSituation conversation={conversation} showHeading={!narrow} />
+  )
+  const recordedActions = new Map(
+    conversation.actions?.map(({ request }) => [
+      request.operation_id,
+      request.action,
+    ]),
   )
   return (
     <div className={`conversation-layout ${showState ? '' : 'state-hidden'}`}>
@@ -651,7 +570,9 @@ function ConversationView({
         <header className="conversation-header">
           <div>
             <span className="eyebrow">{messages.conversationLabel}</span>
-            <h2>{conversation.definition.title}</h2>
+            <h2>
+              {conversation.display_name || conversation.definition.title}
+            </h2>
           </div>
           <Popover.Root>
             <Popover.Trigger
@@ -663,6 +584,21 @@ function ConversationView({
               <ConversationNotes
                 conversation={conversation}
                 canMutate={!detail.error}
+              />
+              <WorkActions
+                target={{ kind: 'conversation', id: identity }}
+                screenHidden={screenHidden}
+                afterTrash={() => navigate('/')}
+              />
+              <StartedSettings
+                definition={conversation.definition}
+                showPortrait={
+                  !snapshots?.character?.image_id ||
+                  !excluded('character', snapshots.character.image_id).includes(
+                    0,
+                  )
+                }
+                screenHidden={screenHidden}
               />
             </Popup>
           </Popover.Root>
@@ -688,19 +624,20 @@ function ConversationView({
           ref={scrollRef}
         >
           <div ref={contentRef}>
-            {snapshots?.story?.image_id && (
-              <div className="conversation-banner">
-                <OriginalImage
-                  identity={snapshots.story.image_id}
-                  alt={snapshots.story.name}
-                />
-              </div>
-            )}
+            {snapshots?.story?.image_id &&
+              !excluded('story', snapshots.story.image_id).includes(0) && (
+                <div className="conversation-banner">
+                  <OriginalImage
+                    identity={snapshots.story.image_id}
+                    alt={snapshots.story.name}
+                  />
+                </div>
+              )}
             {(drawings.data ?? [])
               .filter((job) => !job.turn_id)
               .map((job) => (
                 <div className="turn" key={job.id}>
-                  <Drawing job={job} />
+                  <Drawing job={job} excluded={excluded} />
                 </div>
               ))}
             {timeline.length === 0 && !conversation.turn_count && (
@@ -733,9 +670,20 @@ function ConversationView({
             {timeline.map((entry) => {
               if (entry.kind === 'input')
                 return (
-                  <AcceptedTurn key={entry.value.id} operation={entry.value} />
+                  <AcceptedTurn
+                    key={entry.value.id}
+                    operation={entry.value}
+                    status={
+                      entry.value.id === statusTurn ? replyStatus : undefined
+                    }
+                  />
                 )
               const turn = entry.value
+              const action =
+                turn.action ??
+                (turn.action_id
+                  ? recordedActions.get(turn.action_id)
+                  : undefined)
               return (
                 <article className="turn" key={turn.operation_id}>
                   {turn.user?.trim() && (
@@ -770,34 +718,14 @@ function ConversationView({
                         )}
                       </div>
                     ))}
-                  {turn.action && (
+                  {action && (
                     <div className="user-action">
                       <span className="message-label">
                         {messages.myActions}
                       </span>
-                      <ActionDescription action={turn.action} />
+                      <ActionDescription action={action} />
                     </div>
                   )}
-                  {!turn.action &&
-                    turn.action_id &&
-                    conversation.actions?.find(
-                      (record) =>
-                        record.request.operation_id === turn.action_id,
-                    ) && (
-                      <div className="user-action">
-                        <span className="message-label">
-                          {messages.myActions}
-                        </span>
-                        <ActionDescription
-                          action={
-                            conversation.actions.find(
-                              (record) =>
-                                record.request.operation_id === turn.action_id,
-                            )!.request.action
-                          }
-                        />
-                      </div>
-                    )}
                   <div className="assistant-message">
                     <StoryReply
                       narration={turn.narration}
@@ -815,24 +743,28 @@ function ConversationView({
                       canMutate={!detail.error}
                       turnId={turn.operation_id}
                     />
-                    {turn.image_id && <ImageResult identity={turn.image_id} />}
+                    {turn.image_id && (
+                      <ImageResult
+                        identity={turn.image_id}
+                        excluded={excluded(
+                          'turn:' + turn.operation_id,
+                          turn.image_id,
+                        )}
+                      />
+                    )}
                     {(drawings.data ?? [])
                       .filter((job) => job.turn_id === turn.operation_id)
                       .map((job) => (
-                        <Drawing key={job.id} job={job} />
+                        <Drawing key={job.id} job={job} excluded={excluded} />
                       ))}
                   </div>
                 </article>
               )
             })}
-            {replyPending && (
-              <p className="pending" role="status">
-                {send.isPending || (resume.isPending && pendingResume)
-                  ? messages.requestSending
-                  : (prepared && send.isError) || (pendingResume && resumeError)
-                    ? messages.receiptUnknown
-                    : messages.pending}
-              </p>
+            {replyStatus && !statusTurn && (
+              <div className="turn">
+                <ReplyStatus text={replyStatus} />
+              </div>
             )}
           </div>
         </div>

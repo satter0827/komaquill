@@ -17,7 +17,7 @@ from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.domain.availability import Availability, AvailabilityRequest, ConnectionObservation
 from komaquill.domain.conversations.models import Conversation, Operation
 from komaquill.domain.errors import ErrorCode, KomaquillError
-from komaquill.domain.library.models import CreationRequest
+from komaquill.domain.library.models import CreationRequest, ImagePromptDefaults
 from komaquill.domain.models import Run
 
 
@@ -36,10 +36,14 @@ class AvailabilityService:
         creation_source: Callable[[CreationRequest], tuple[str, UUID | None]],
         image: Callable[[UUID], Run],
         operation: Callable[[UUID], Operation],
+        image_prompts: Callable[[], ImagePromptDefaults],
+        supports_negative: Callable[[], bool],
     ) -> None:
         self.project, self.execution = project, execution
         self.conversation, self.creation_source = conversation, creation_source
         self.image, self.operation = image, operation
+        self.image_prompts = image_prompts
+        self.supports_negative = supports_negative
         self._observations: dict[tuple[str, str], _ObservedProbe] = {}
         self._sequence = 0
         self._lock = Lock()
@@ -63,7 +67,12 @@ class AvailabilityService:
             required.append(("comfy", "current"))
             if any(
                 needs_image_llm(value)
-                for value in (request.prompt, *request.subjects, request.negative or "")
+                for value in (
+                    request.prompt,
+                    *request.subjects,
+                    request.negative or "",
+                    *(self.common_prompts() if request.use_prompt_preferences else ()),
+                )
             ):
                 required.append(("llm", request.llm_profile))
         elif request.kind == "collection":
@@ -81,11 +90,20 @@ class AvailabilityService:
             ready=all(c.state == "ready" for c in connections), connections=connections
         )
 
+    def common_prompts(self) -> tuple[str, str]:
+        defaults = self.image_prompts()
+        return (
+            defaults.positive,
+            defaults.negative if defaults.negative and self.supports_negative() else "",
+        )
+
     def creation_dependencies(self, request: CreationRequest, source: str) -> list[tuple[str, str]]:
         if request.kind.endswith("_draft"):
             return [("llm", request.llm_profile)]
         result = [("comfy", "current")]
-        if needs_image_llm(source, compose=True, purpose=request.kind):
+        if needs_image_llm(source, compose=True, purpose=request.kind) or any(
+            needs_image_llm(value) for value in self.common_prompts()
+        ):
             result.append(("llm", request.llm_profile))
         return result
 

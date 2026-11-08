@@ -61,11 +61,32 @@ class ImageTextPreparation:
                 raise KomaquillError(code="operation_conflict", retryable=False)
             return value
         sources: list[PromptSource] = []
-        translated: list[str] = []
+        roles = {
+            (
+                "description"
+                if index == 0
+                else "negative"
+                if index == len(values) - 1
+                else f"direction_{index}"
+            ): original
+            for index, original in enumerate(values)
+        }
+        if sum(bool(JAPANESE_TEXT.search(value)) for value in values) > 1:
+            translated = list(
+                self.describer.translate_fields(
+                    roles, uuid5(identity, "descriptions"), profile, permitted
+                ).values()
+            )
+        else:
+            translated = [
+                self.describer.prepare_image(
+                    original, uuid5(identity, f"description:{index}"), profile, permitted
+                )
+                for index, original in enumerate(values)
+            ]
         for index, original in enumerate(values):
             operation = uuid5(identity, f"description:{index}")
-            english = self.describer.prepare_image(original, operation, profile, permitted)
-            translated.append(english)
+            english = translated[index]
             if english != original:
                 role: Literal["negative", "positive"] = (
                     "negative" if index == len(values) - 1 else "positive"

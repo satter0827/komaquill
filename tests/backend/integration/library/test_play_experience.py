@@ -115,7 +115,7 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    def submit(prompt, *, run_id, parameters, purpose=None):
+    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
         runs[run_id] = SimpleNamespace(state="queued", images=[], run_id=run_id)
 
     api.library.images = SimpleNamespace(submit=submit, get=get)

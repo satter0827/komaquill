@@ -156,6 +156,8 @@
   "error.invalid_configuration": "Invalid configuration. Check the operation report.",
   "error.invalid_output": "The generated output is incomplete or invalid. Run collect to retry collection; inspect the saved graph before starting a new rendering.",
   "error.invalid_request": "Invalid request. Check the operation report.",
+  "error.image_in_use": "This image is still attached to a work. Remove its attachments before moving it to trash.",
+  "error.image_description_invalid": "The image description could not be verified. Review the description and draw again.",
   "error.invalid_response": "The server returned invalid data. Check the model or server settings and saved operation record.",
   "error.log_timeout": "Log timeout. Check the operation report.",
   "error.log_unavailable": "Log unavailable. Check the operation report.",

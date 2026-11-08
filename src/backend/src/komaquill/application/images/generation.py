@@ -519,6 +519,7 @@ def submit_generation(
     *,
     run_id: UUID | None = None,
     compiled_input: CompiledImageInput | None = None,
+    common_prompt: str = "",
     subjects: tuple[str, ...] = (),
     negative: str | None = None,
     candidates: int | None = None,
@@ -555,7 +556,12 @@ def submit_generation(
             raise KomaquillError(code="invalid_request", retryable=False)
         try:
             compiled_input = compile_image_input(
-                settings.presets[selected], prompt, subjects, inputs, negative=negative
+                settings.presets[selected],
+                prompt,
+                subjects,
+                inputs,
+                common_prompt=common_prompt,
+                negative=negative,
             )
         except ValueError:
             raise KomaquillError(

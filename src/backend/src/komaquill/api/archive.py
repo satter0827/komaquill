@@ -24,7 +24,7 @@ class ArchiveService:
 
     def conversations(self) -> list[ArchivedConversation]:
         storage = database(self.project.data / "komaquill.sqlite3")
-        return [item for item in list_conversations(storage)]
+        return list_conversations(storage)
 
     def conversation(self, identity: UUID) -> ArchivedConversation:
         return get_conversation(database(self.project.data / "komaquill.sqlite3"), identity)

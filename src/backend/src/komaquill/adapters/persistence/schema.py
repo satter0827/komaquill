@@ -163,6 +163,7 @@ image_submissions = Table(
     metadata,
     Column("id", String, primary_key=True),
     Column("fingerprint", String, nullable=False),
+    Column("image_prompts", Text, nullable=True),
 )
 
 
@@ -292,3 +293,26 @@ device_events = Table(
     CheckConstraint("state IN ('pending','approved','revoked')", name="device_event_state"),
 )
 Index("ix_device_events_device", device_events.c.device_id, device_events.c.recorded_at)
+
+
+work_metadata = Table(
+    "work_metadata",
+    metadata,
+    Column("kind", String, primary_key=True),
+    Column("id", String, primary_key=True),
+    Column("output_index", Integer, primary_key=True),
+    Column("name", String, nullable=True),
+    Column("revision", Integer, nullable=False),
+    Column("trashed", Boolean, nullable=False),
+    Column("updated_at", String, nullable=False),
+)
+
+image_detachments = Table(
+    "image_detachments",
+    metadata,
+    Column("owner_kind", String, primary_key=True),
+    Column("owner_id", String, primary_key=True),
+    Column("slot", String, primary_key=True),
+    Column("run_id", String, primary_key=True),
+    Column("output_index", Integer, primary_key=True),
+)

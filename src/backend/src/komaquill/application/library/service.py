@@ -23,6 +23,7 @@ from komaquill.domain.library.models import (
     ConversationStart,
     CreationJob,
     CreationRequest,
+    ImagePromptDefaults,
     PlayerInput,
     PlayerProfile,
     Preferences,
@@ -52,14 +53,8 @@ class Store(CreationStore, Protocol):
     def resolve(
         self, references: dict[PresetKind, tuple[UUID, int]]
     ) -> dict[PresetKind, Preset]: ...
-    def create(
-        self,
-        kind: PresetKind,
-        value: PresetInput,
-        *,
-        image_id: UUID | None = None,
-        image_stale: bool = False,
-    ) -> Preset: ...
+    def create(self, kind: PresetKind, value: PresetInput) -> Preset: ...
+    def duplicate(self, kind: PresetKind, identity: UUID) -> Preset: ...
     def update(
         self, kind: PresetKind, identity: UUID, revision: int, value: PresetInput
     ) -> Preset: ...
@@ -88,6 +83,10 @@ class Creator(Protocol):
 
 
 class ImageDescriber(Protocol):
+    def translate_fields(
+        self, facts: dict[str, str], operation: UUID, profile: str, allow_real_llm: bool
+    ) -> dict[str, str]: ...
+
     def prepare_image(
         self,
         text: str,
@@ -110,16 +109,17 @@ class Images(Protocol):
         run_id: UUID | None = None,
         parameters: dict[str, bool | int | float | str] | None = None,
         purpose: ImagePurpose | None = None,
+        image_prompts: ImagePromptDefaults | None = None,
+        llm_profile: str = "fake",
+        allow_real_llm: bool = False,
     ) -> Run: ...
     def get(self, run_id: UUID) -> Run: ...
 
 
 class PresetService[Input: BaseModel, Output: BaseModel]:
-    def __init__(
-        self, store: Store, kind: PresetKind, input_type: type[Input], output_type: type[Output]
-    ) -> None:
+    def __init__(self, store: Store, kind: PresetKind, output_type: type[Output]) -> None:
         self.store, self.kind = store, kind
-        self.input_type, self.output_type = input_type, output_type
+        self.output_type = output_type
 
     def list(self) -> list[Output]:
         return [self.output_type.model_validate(value) for value in self.store.list(self.kind)]
@@ -128,37 +128,20 @@ class PresetService[Input: BaseModel, Output: BaseModel]:
         return self.output_type.model_validate(self.store.get(self.kind, identity))
 
     def create(self, value: Input) -> Output:
-        self._validate(value)
         return self.output_type.model_validate(
             self.store.create(self.kind, cast(PresetInput, value))
         )
 
     def update(self, identity: UUID, revision: int, value: Input) -> Output:
-        self._validate(value)
         return self.output_type.model_validate(
             self.store.update(self.kind, identity, revision, cast(PresetInput, value))
         )
 
     def duplicate(self, identity: UUID) -> Output:
-        value = self.get(identity)
-        fields = self.input_type.model_fields
-        content = self.input_type.model_validate(value.model_dump(include=set(fields)))
-        self._validate(content)
-        return self.output_type.model_validate(
-            self.store.create(
-                self.kind,
-                cast(PresetInput, content),
-                image_id=cast(Preset, value).image_id,
-                image_stale=cast(Preset, value).image_stale,
-            )
-        )
+        return self.output_type.model_validate(self.store.duplicate(self.kind, identity))
 
     def delete(self, identity: UUID, revision: int) -> None:
         self.store.delete(self.kind, identity, revision)
-
-    def _validate(self, value: Input) -> None:
-        if isinstance(value, StoryInput) and value.character_id is not None:
-            self.store.get("character", value.character_id)
 
 
 class PlayerService:
@@ -205,8 +188,12 @@ class LibraryService:
         self.image_lookup = image_lookup or images.get
         self.image_describer = image_describer
         self.player = PlayerService(store)
-        self.characters = PresetService(store, "character", CharacterInput, CharacterPreset)
-        self.stories = PresetService(store, "story", StoryInput, StoryPreset)
+        self.characters: PresetService[CharacterInput, CharacterPreset] = PresetService(
+            store, "character", CharacterPreset
+        )
+        self.stories: PresetService[StoryInput, StoryPreset] = PresetService(
+            store, "story", StoryPreset
+        )
         values: list[tuple[PresetKind, Preset]] = []
         models: dict[
             PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]
@@ -429,6 +416,9 @@ class LibraryService:
                     run_id=job.id,
                     parameters=self.image_parameters.get(image_purpose),
                     purpose=image_purpose,
+                    image_prompts=job.image_prompts,
+                    llm_profile=job.request.llm_profile,
+                    allow_real_llm=job.request.allow_real_llm,
                 )
                 job = job.model_copy(update={"state": "submitted", "image_id": job.id})
         except KomaquillError as error:

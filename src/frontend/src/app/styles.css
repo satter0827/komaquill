@@ -587,37 +587,48 @@ textarea {
   font-weight: 500;
   margin: 0;
 }
-.state-items {
+.situation-facts,
+.situation-person {
   display: grid;
-  gap: var(--space-group);
-  margin-bottom: var(--space-section);
+  gap: var(--space-field);
+  margin: 0;
 }
-.state-items > div {
+.situation-person > * {
+  margin-block: 0;
+}
+.situation-person h3 {
+  font-size: 0.875rem;
+}
+.work-list {
+  display: grid;
+  gap: var(--space-field);
+  list-style: none;
+  padding: 0;
+}
+.work-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-field);
+  padding-block: var(--space-field);
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.situation-facts > div {
   border-bottom: 1px solid var(--line);
   padding-bottom: var(--space-field);
 }
-.state-items span {
-  font-size: 0.875rem;
+.situation-facts :is(dt, dd) {
+  overflow-wrap: anywhere;
+}
+.situation-facts dt {
+  font-size: 0.8125rem;
   color: var(--muted);
 }
-.state-items p {
-  margin: 7px 0 0;
-  font-size: 0.875rem;
-}
-.state-panel h3 {
-  font-size: 0.875rem;
-}
-.state-panel dl {
-  margin: 0;
-  gap: var(--space-field);
-}
-.state-panel dl > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
-  gap: var(--space-field);
-}
-.state-panel :is(dt, dd, .state-description) {
-  overflow-wrap: anywhere;
+.situation-facts dd {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
 }
 .action-proposal dl {
   margin: 8px 0;
@@ -642,12 +653,6 @@ textarea {
   color: var(--muted);
   line-height: 1.9;
   white-space: pre-wrap;
-}
-.revision {
-  display: block;
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin: 30px 0 14px;
 }
 .image-result {
   border: 1px solid var(--line);
@@ -961,11 +966,6 @@ fieldset .checkbox {
   align-items: center;
 }
 .connection-details,
-.story-details {
-  border-top: 1px solid var(--line);
-  padding: 20px 0;
-  margin-top: 24px;
-}
 summary {
   cursor: pointer;
   font-weight: 600;
@@ -1472,7 +1472,7 @@ details > .details-content {
   background: #ffffff18;
 }
 .popup-positioner {
-  z-index: 110;
+  z-index: 90;
   max-width: calc(100vw - 2 * var(--panel-gutter));
 }
 .popup-content {
@@ -1506,7 +1506,7 @@ details > .details-content {
   position: fixed;
   inset: 0;
   background: #30132366;
-  z-index: 90;
+  z-index: 100;
 }
 .modal-content {
   position: fixed;
@@ -1522,7 +1522,7 @@ details > .details-content {
   border-radius: var(--radius);
   padding: var(--space-group);
   box-shadow: var(--shadow);
-  z-index: 100;
+  z-index: 110;
 }
 .modal-heading {
   position: sticky;

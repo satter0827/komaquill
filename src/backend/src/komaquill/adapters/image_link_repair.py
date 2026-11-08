@@ -55,6 +55,17 @@ def _folder(project: RuntimeWorkspace, identity: UUID) -> Path:
     return artifact_path(project.records, f"image-link-repairs/{identity}")
 
 
+def _image_visible(connection: sqlite3.Connection, identity: UUID) -> bool:
+    return (
+        connection.execute(
+            "SELECT 1 FROM work_metadata "
+            "WHERE kind='image' AND id=? AND output_index=0 AND trashed=1",
+            (str(identity),),
+        ).fetchone()
+        is None
+    )
+
+
 def _files(
     project: RuntimeWorkspace, connection: sqlite3.Connection, job: CreationJob
 ) -> dict[str, str]:
@@ -125,7 +136,7 @@ def _inspect(project: RuntimeWorkspace, connection: sqlite3.Connection) -> Plan:
                     raise KomaquillError(code="storage_failed", stage="storage", retryable=False)
                 if job.id == failed.id or job.state not in {"submitted", "complete"}:
                     continue
-                if matches_image_input(kind, target, job):
+                if _image_visible(connection, job.id) and matches_image_input(kind, target, job):
                     candidates.append(job.id)
             if len(candidates) > 1:
                 reason = "ambiguous"
@@ -228,6 +239,9 @@ def _repair(project: RuntimeWorkspace, identity: UUID) -> ImageLinkRepairResult:
                 CharacterPreset if item.kind == "character" else StoryPreset
             ).model_validate_json(item.target)
             job = CreationJob.model_validate_json(item.job)
+            if not _image_visible(connection, job.id):
+                skipped[target.id] = "changed_since_inspection"
+                continue
             desired_target = target.model_copy(update={"image_id": job.id, "image_job_id": job.id})
             desired_job = job.model_copy(
                 update={"state": "complete", "image_id": job.id, "error": None}

@@ -28,6 +28,7 @@ import {
   usePreferences,
   useFormatMessage,
 } from '../../shared/preferences'
+import { WorkActions } from '../../shared/ui/work-actions'
 import { Button } from '../../shared/ui/button'
 import { Dialog, Modal } from '../../shared/ui/popup'
 import { QueryNotice } from '../../shared/ui/query-notice'
@@ -150,15 +151,6 @@ async function duplicate(kind: Kind, identity: string) {
   const options = { path: { identity } }
   if (kind === 'character') return api.duplicateCharacter(options)
   return api.duplicateStory(options)
-}
-
-async function remove(kind: Kind, preset: Preset) {
-  const options = {
-    path: { identity: preset.id },
-    query: { expected_revision: preset.revision ?? 0 },
-  }
-  if (kind === 'character') return api.deleteCharacter(options)
-  return api.deleteStory(options)
 }
 
 function PresetImageStatus({
@@ -554,7 +546,6 @@ function PresetEditor({
       : current
   const details = useRef<HTMLDetailsElement>(null)
   const [notice, setNotice] = useState(preset ? m.saved : '')
-  const deleteCancel = useRef<HTMLButtonElement>(null)
   const [pendingSave, setPendingSave] = useState<SaveSubmission | null>(null)
   const imageCreation = useCreation()
   const [availabilityId] = useState(() => crypto.randomUUID())
@@ -664,19 +655,6 @@ function PresetEditor({
     mutationFn: () => duplicate(kind, current!.id),
     onSuccess: async () => {
       await cache.invalidateQueries({ queryKey: presetKey(kind) })
-      navigate(paths[kind])
-    },
-  })
-  const deletion = useMutation({
-    mutationFn: () => remove(kind, current!),
-    onSuccess: async () => {
-      await Promise.all(
-        [
-          presetKey(kind),
-          q.getPreferencesQueryKey(),
-          q.listStoriesQueryKey(),
-        ].map((queryKey) => cache.invalidateQueries({ queryKey })),
-      )
       navigate(paths[kind])
     },
   })
@@ -917,41 +895,14 @@ function PresetEditor({
           >
             {m.duplicate}
           </Button>
-          <Dialog.Root disablePointerDismissal>
-            <Dialog.Trigger
-              render={
-                <Button
-                  disabled={!canMutate || mutation.isPending || !!pendingSave}
-                />
-              }
-            >
-              {m.delete}
-            </Dialog.Trigger>
-            <Modal
-              label={m.delete}
-              closeLabel={m.closePanel}
-              initialFocus={deleteCancel}
-            >
-              <p>{m.removeNotice}</p>
-              {!!deletion.error && (
-                <p role="alert" className="error">
-                  {failure(deletion.error)}
-                </p>
-              )}
-              <div className="actions">
-                <Dialog.Close render={<Button ref={deleteCancel} />}>
-                  {m.cancel}
-                </Dialog.Close>
-                <Button
-                  variant="danger"
-                  onClick={() => deletion.mutate()}
-                  disabled={!canMutate || deletion.isPending}
-                >
-                  {m.delete}
-                </Button>
-              </div>
-            </Modal>
-          </Dialog.Root>
+          {canMutate && !mutation.isPending && !pendingSave && (
+            <WorkActions
+              target={{ kind, id: current.id }}
+              contentRevision={current.revision}
+              canRename={false}
+              afterTrash={() => navigate(paths[kind])}
+            />
+          )}
         </div>
       )}
     </section>

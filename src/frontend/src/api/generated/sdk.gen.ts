@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ApproveDeviceData, ApproveDeviceErrors, ApproveDeviceResponses, CheckAvailabilityData, CheckAvailabilityErrors, CheckAvailabilityResponses, CheckDeviceAccessData, CheckDeviceAccessErrors, CheckDeviceAccessResponses, CollectImageData, CollectImageErrors, CollectImageResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateJobData, CreateJobErrors, CreateJobResponses, DeleteCharacterData, DeleteCharacterErrors, DeleteCharacterResponses, DeleteStoryData, DeleteStoryErrors, DeleteStoryResponses, DismissProposalData, DismissProposalErrors, DismissProposalResponses, DrawConversationData, DrawConversationErrors, DrawConversationResponses, DuplicateCharacterData, DuplicateCharacterErrors, DuplicateCharacterResponses, DuplicateStoryData, DuplicateStoryErrors, DuplicateStoryResponses, ExportConversationData, ExportConversationErrors, ExportConversationResponses, ForkConversationData, ForkConversationErrors, ForkConversationResponses, GetActionsData, GetActionsErrors, GetActionsResponses, GetArchivedConversationData, GetArchivedConversationErrors, GetArchivedConversationResponses, GetBookmarksData, GetBookmarksErrors, GetBookmarksResponses, GetCharacterData, GetCharacterErrors, GetCharacterResponses, GetConversationData, GetConversationErrors, GetConversationOperationsData, GetConversationOperationsErrors, GetConversationOperationsResponses, GetConversationResponses, GetImageData, GetImageErrors, GetImageFileData, GetImageFileErrors, GetImageFileResponses, GetImageResponses, GetJobData, GetJobErrors, GetJobResponses, GetOperationData, GetOperationErrors, GetOperationResponses, GetPlayerData, GetPlayerErrors, GetPlayerResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetRuntimeData, GetRuntimeErrors, GetRuntimeResponses, GetRuntimeViewsData, GetRuntimeViewsErrors, GetRuntimeViewsResponses, GetRuntimeWorkflowData, GetRuntimeWorkflowErrors, GetRuntimeWorkflowResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetStoryData, GetStoryErrors, GetStoryResponses, GetTurnsData, GetTurnsErrors, GetTurnsResponses, ImportInputData, ImportInputErrors, ImportInputResponses, ListArchivedConversationsData, ListArchivedConversationsErrors, ListArchivedConversationsResponses, ListCharactersData, ListCharactersErrors, ListCharactersResponses, ListConversationImagesData, ListConversationImagesErrors, ListConversationImagesResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDevicesData, ListDevicesErrors, ListDevicesResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListStoriesData, ListStoriesErrors, ListStoriesResponses, RefreshRuntimeData, RefreshRuntimeErrors, RefreshRuntimeResponses, ResumeConversationData, ResumeConversationErrors, ResumeConversationResponses, ResumeOperationData, ResumeOperationErrors, ResumeOperationResponses, RevokeDeviceData, RevokeDeviceErrors, RevokeDeviceResponses, SaveBookmarkData, SaveBookmarkErrors, SaveBookmarkResponses, SaveCharacterData, SaveCharacterErrors, SaveCharacterResponses, SaveNotesData, SaveNotesErrors, SaveNotesResponses, SavePreferencesData, SavePreferencesErrors, SavePreferencesResponses, SaveStoryData, SaveStoryErrors, SaveStoryResponses, SendTurnData, SendTurnErrors, SendTurnResponses, StartConversationData, StartConversationErrors, StartConversationResponses, StartRuntimeData, StartRuntimeErrors, StartRuntimeResponses, StopRuntimeData, StopRuntimeErrors, StopRuntimeResponses, SubmitImageData, SubmitImageErrors, SubmitImageResponses, UpdatePlayerData, UpdatePlayerErrors, UpdatePlayerResponses } from './types.gen';
+import type { ApproveDeviceData, ApproveDeviceErrors, ApproveDeviceResponses, ChangeWorkData, ChangeWorkErrors, ChangeWorkResponses, CheckAvailabilityData, CheckAvailabilityErrors, CheckAvailabilityResponses, CheckDeviceAccessData, CheckDeviceAccessErrors, CheckDeviceAccessResponses, CollectImageData, CollectImageErrors, CollectImageResponses, CreateConversationData, CreateConversationErrors, CreateConversationResponses, CreateJobData, CreateJobErrors, CreateJobResponses, DeleteCharacterData, DeleteCharacterErrors, DeleteCharacterResponses, DeleteStoryData, DeleteStoryErrors, DeleteStoryResponses, DetachImageData, DetachImageErrors, DetachImageResponses, DismissProposalData, DismissProposalErrors, DismissProposalResponses, DrawConversationData, DrawConversationErrors, DrawConversationResponses, DuplicateCharacterData, DuplicateCharacterErrors, DuplicateCharacterResponses, DuplicateStoryData, DuplicateStoryErrors, DuplicateStoryResponses, ExportConversationData, ExportConversationErrors, ExportConversationResponses, ForkConversationData, ForkConversationErrors, ForkConversationResponses, GetActionsData, GetActionsErrors, GetActionsResponses, GetArchivedConversationData, GetArchivedConversationErrors, GetArchivedConversationResponses, GetBookmarksData, GetBookmarksErrors, GetBookmarksResponses, GetCharacterData, GetCharacterErrors, GetCharacterResponses, GetConversationData, GetConversationErrors, GetConversationOperationsData, GetConversationOperationsErrors, GetConversationOperationsResponses, GetConversationResponses, GetDetachedImagesData, GetDetachedImagesErrors, GetDetachedImagesResponses, GetImageData, GetImageErrors, GetImageFileData, GetImageFileErrors, GetImageFileResponses, GetImageResponses, GetJobData, GetJobErrors, GetJobResponses, GetOperationData, GetOperationErrors, GetOperationResponses, GetPlayerData, GetPlayerErrors, GetPlayerResponses, GetPreferencesData, GetPreferencesErrors, GetPreferencesResponses, GetRuntimeData, GetRuntimeErrors, GetRuntimeResponses, GetRuntimeViewsData, GetRuntimeViewsErrors, GetRuntimeViewsResponses, GetRuntimeWorkflowData, GetRuntimeWorkflowErrors, GetRuntimeWorkflowResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetStoryData, GetStoryErrors, GetStoryResponses, GetTurnsData, GetTurnsErrors, GetTurnsResponses, GetWorkData, GetWorkErrors, GetWorkResponses, ImportInputData, ImportInputErrors, ImportInputResponses, ListArchivedConversationsData, ListArchivedConversationsErrors, ListArchivedConversationsResponses, ListCharactersData, ListCharactersErrors, ListCharactersResponses, ListConversationImagesData, ListConversationImagesErrors, ListConversationImagesResponses, ListConversationsData, ListConversationsErrors, ListConversationsResponses, ListDevicesData, ListDevicesErrors, ListDevicesResponses, ListImageOutputsData, ListImageOutputsErrors, ListImageOutputsResponses, ListImagesData, ListImagesErrors, ListImagesResponses, ListImageUsesData, ListImageUsesErrors, ListImageUsesResponses, ListStoriesData, ListStoriesErrors, ListStoriesResponses, ListTrashData, ListTrashErrors, ListTrashResponses, RefreshRuntimeData, RefreshRuntimeErrors, RefreshRuntimeResponses, ResumeConversationData, ResumeConversationErrors, ResumeConversationResponses, ResumeOperationData, ResumeOperationErrors, ResumeOperationResponses, RevokeDeviceData, RevokeDeviceErrors, RevokeDeviceResponses, SaveBookmarkData, SaveBookmarkErrors, SaveBookmarkResponses, SaveCharacterData, SaveCharacterErrors, SaveCharacterResponses, SaveNotesData, SaveNotesErrors, SaveNotesResponses, SavePreferencesData, SavePreferencesErrors, SavePreferencesResponses, SaveStoryData, SaveStoryErrors, SaveStoryResponses, SendTurnData, SendTurnErrors, SendTurnResponses, StartConversationData, StartConversationErrors, StartConversationResponses, StartRuntimeData, StartRuntimeErrors, StartRuntimeResponses, StopRuntimeData, StopRuntimeErrors, StopRuntimeResponses, SubmitImageData, SubmitImageErrors, SubmitImageResponses, UpdatePlayerData, UpdatePlayerErrors, UpdatePlayerResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,55 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
+
+/**
+ * Trash
+ */
+export const listTrash = <ThrowOnError extends boolean = false>(options?: Options<ListTrashData, ThrowOnError>): RequestResult<ListTrashResponses, ListTrashErrors, ThrowOnError> => (options?.client ?? client).get<ListTrashResponses, ListTrashErrors, ThrowOnError>({ url: '/api/v1/trash', ...options });
+
+/**
+ * Work
+ */
+export const getWork = <ThrowOnError extends boolean = false>(options: Options<GetWorkData, ThrowOnError>): RequestResult<GetWorkResponses, GetWorkErrors, ThrowOnError> => (options.client ?? client).get<GetWorkResponses, GetWorkErrors, ThrowOnError>({ url: '/api/v1/works/{kind}/{identity}', ...options });
+
+/**
+ * Change Work
+ */
+export const changeWork = <ThrowOnError extends boolean = false>(options: Options<ChangeWorkData, ThrowOnError>): RequestResult<ChangeWorkResponses, ChangeWorkErrors, ThrowOnError> => (options.client ?? client).post<ChangeWorkResponses, ChangeWorkErrors, ThrowOnError>({
+    url: '/api/v1/works/change',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Image Outputs
+ */
+export const listImageOutputs = <ThrowOnError extends boolean = false>(options?: Options<ListImageOutputsData, ThrowOnError>): RequestResult<ListImageOutputsResponses, ListImageOutputsErrors, ThrowOnError> => (options?.client ?? client).get<ListImageOutputsResponses, ListImageOutputsErrors, ThrowOnError>({ url: '/api/v1/image-outputs', ...options });
+
+/**
+ * Image Uses
+ */
+export const listImageUses = <ThrowOnError extends boolean = false>(options: Options<ListImageUsesData, ThrowOnError>): RequestResult<ListImageUsesResponses, ListImageUsesErrors, ThrowOnError> => (options.client ?? client).get<ListImageUsesResponses, ListImageUsesErrors, ThrowOnError>({ url: '/api/v1/images/{identity}/uses/{index}', ...options });
+
+/**
+ * Detach Image
+ */
+export const detachImage = <ThrowOnError extends boolean = false>(options: Options<DetachImageData, ThrowOnError>): RequestResult<DetachImageResponses, DetachImageErrors, ThrowOnError> => (options.client ?? client).post<DetachImageResponses, DetachImageErrors, ThrowOnError>({
+    url: '/api/v1/images/detach',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Detached Images
+ */
+export const getDetachedImages = <ThrowOnError extends boolean = false>(options: Options<GetDetachedImagesData, ThrowOnError>): RequestResult<GetDetachedImagesResponses, GetDetachedImagesErrors, ThrowOnError> => (options.client ?? client).get<GetDetachedImagesResponses, GetDetachedImagesErrors, ThrowOnError>({ url: '/api/v1/works/{kind}/{identity}/detached-images', ...options });
 
 /**
  * Archived Conversations

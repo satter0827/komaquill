@@ -134,24 +134,33 @@ def test_frozen_migration_does_not_import_current_business_or_schema():
             assert not (node.module or "").startswith("komaquill")
 
 
-def test_current_metadata_matches_the_frozen_schema():
-    import json
-
+def test_current_metadata_matches_the_migrated_database(tmp_path):
+    from komaquill.adapters.persistence.connection import Database
     from komaquill.adapters.persistence.schema import metadata
+    from sqlalchemy import inspect
     from sqlalchemy.dialects.sqlite import dialect
-    from sqlalchemy.schema import CreateIndex, CreateTable
 
-    actual = [
-        {
-            "name": table.name,
-            "create": str(CreateTable(table).compile(dialect=dialect())),
-            "columns": [column.name for column in table.columns if column.computed is None],
-            "indexes": [
-                str(CreateIndex(index).compile(dialect=dialect()))
-                for index in sorted(table.indexes, key=lambda index: index.name)
-            ],
-        }
-        for table in metadata.sorted_tables
-    ]
-    frozen = ROOT / "src/backend/src/komaquill/adapters/persistence/migrations/schema_v2.json"
-    assert actual == json.loads(frozen.read_bytes())
+    storage = Database(tmp_path / "schema.sqlite3", create=True)
+    try:
+        with storage.engine.connect() as connection:
+            inspector = inspect(connection)
+            for table in metadata.sorted_tables:
+                assert [
+                    (column["name"], str(column["type"]), column["nullable"])
+                    for column in inspector.get_columns(table.name)
+                ] == [
+                    (column.name, column.type.compile(dialect=dialect()), column.nullable)
+                    for column in table.columns
+                ], table.name
+                assert inspector.get_pk_constraint(table.name)["constrained_columns"] == [
+                    column.name for column in table.primary_key.columns
+                ], table.name
+                assert {
+                    (index["name"], tuple(index["column_names"]), bool(index["unique"]))
+                    for index in inspector.get_indexes(table.name)
+                } == {
+                    (index.name, tuple(column.name for column in index.columns), bool(index.unique))
+                    for index in table.indexes
+                }, table.name
+    finally:
+        storage.engine.dispose()

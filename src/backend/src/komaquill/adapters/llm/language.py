@@ -17,6 +17,6 @@ def check_language(text: str, locale: str, names: tuple[str, ...] = ()) -> None:
 
 
 class ResponseLanguageError(ValueError):
-    def __init__(self, field: str) -> None:
-        self.field = field
+    def __init__(self, *fields: str) -> None:
+        self.fields = fields
         super().__init__()

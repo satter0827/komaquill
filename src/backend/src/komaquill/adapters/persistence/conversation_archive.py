@@ -3,10 +3,12 @@
 import json
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import Select, and_, select
 
 from komaquill.adapters.persistence.connection import Database
 from komaquill.adapters.persistence.errors import missing
+from komaquill.adapters.persistence.schema import archived_conversations, work_metadata
+from komaquill.adapters.persistence.works import visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.roleplay import Record
 
@@ -41,26 +43,49 @@ def decode(identity: str, payload: str) -> ArchivedConversation:
         return ArchivedConversation(id=UUID(identity), title=identity, turns=[], readable=False)
 
 
+def _visible_archive() -> Select[str, str, str | None]:
+    return (
+        select(archived_conversations.c.id, archived_conversations.c.payload, work_metadata.c.name)
+        .select_from(
+            archived_conversations.outerjoin(
+                work_metadata,
+                and_(
+                    work_metadata.c.kind == "archived",
+                    work_metadata.c.id == archived_conversations.c.id,
+                    work_metadata.c.output_index == 0,
+                ),
+            )
+        )
+        .where(visible_work("archived", archived_conversations.c.id))
+    )
+
+
+def _named(identity: str, payload: str, name: str | None) -> ArchivedConversation:
+    record = decode(identity, payload)
+    return record.model_copy(update={"title": name}) if name else record
+
+
 @stored
 def list_conversations(database: Database) -> list[ArchivedConversation]:
     with database.engine.connect() as connection:
-        return [
-            decode(str(row[0]), str(row[1]))
-            for row in connection.execute(
-                text(
-                    "SELECT id,payload FROM archived_conversations "
-                    "WHERE reason!='converted' ORDER BY id"
-                )
-            )
-        ]
+        rows = connection.execute(
+            _visible_archive()
+            .where(archived_conversations.c.reason != "converted")
+            .order_by(archived_conversations.c.id)
+        )
+        return [_named(str(identity), str(payload), name) for identity, payload, name in rows]
 
 
 @stored
 def get_conversation(database: Database, identity: UUID) -> ArchivedConversation:
     with database.engine.connect() as connection:
-        payload = connection.execute(
-            text("SELECT payload FROM archived_conversations WHERE id=:id"), {"id": str(identity)}
-        ).scalar_one_or_none()
-        if payload is None:
+        row = connection.execute(
+            _visible_archive().where(
+                archived_conversations.c.id == str(identity),
+                (archived_conversations.c.reason != "converted")
+                | visible_work("conversation", archived_conversations.c.id),
+            )
+        ).one_or_none()
+        if row is None:
             raise missing()
-        return decode(str(identity), payload)
+        return _named(str(row[0]), str(row[1]), row[2])

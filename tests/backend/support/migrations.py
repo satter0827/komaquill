@@ -5,7 +5,13 @@ import json
 from sqlalchemy import text
 
 
+def legacy_work_tables(execute):
+    execute("DROP TABLE work_metadata")
+    execute("DROP TABLE image_detachments")
+
+
 def legacy_execution(connection):
+    legacy_work_tables(connection.exec_driver_sql)
     connection.exec_driver_sql("PRAGMA ignore_check_constraints=ON")
     for identity, payload in connection.execute(text("SELECT id,payload FROM conversations")).all():
         try:

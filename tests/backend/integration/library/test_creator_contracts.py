@@ -133,11 +133,12 @@ def test_migration_failure_is_recorded_without_rewriting_existing_data(
 def test_image_translation_is_frozen_and_includes_original_sources(tmp_path, monkeypatch):
     prepare = ImageTextPreparation(tmp_path, Client.initialize(tmp_path).library.image_describer)
     calls = []
-    monkeypatch.setattr(
-        prepare.describer,
-        "prepare_image",
-        lambda text, *args: calls.append(text) or ("English scene" if text else ""),
-    )
+
+    def translate_fields(fields, *_):
+        calls.append(fields)
+        return {key: "English scene" for key in fields}
+
+    monkeypatch.setattr(prepare.describer, "translate_fields", translate_fields)
     identity = uuid4()
     result = prepare.prepare(identity, "雨の本屋", ("銀髪の女性",), "低画質", "lmstudio-4b", True)
     assert result.prompt == "English scene" and result.subjects == ("English scene",)
@@ -150,11 +151,11 @@ def test_image_translation_is_frozen_and_includes_original_sources(tmp_path, mon
         prepare.prepare(identity, "雨の本屋", ("銀髪の女性",), "低画質", "lmstudio-4b", False)
         == result
     )
-    assert len(calls) == 3
+    assert len(calls) == 1
     with pytest.raises(KomaquillError, match="operation_conflict"):
         prepare.prepare(identity, "別の画像", (), None, "lmstudio-4b", True)
     unchanged = prepare.prepare(uuid4(), "a bookshop", (), None, "fake", False)
-    assert unchanged.prompt == "a bookshop" and unchanged.sources == () and len(calls) == 3
+    assert unchanged.prompt == "a bookshop" and unchanged.sources == () and len(calls) == 1
 
 
 def test_corrupt_translation_and_unapproved_inference_stop_before_images(tmp_path):

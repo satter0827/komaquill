@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Run } from '../../api/generated/types.gen'
+import type { Run, WorkItem } from '../../api/generated/types.gen'
 import { useMessages, useFailure } from '../preferences'
+import { WorkActions } from '../ui/work-actions'
 import { Button } from '../ui/button'
 import { imageOptions, isTerminal } from '../operations'
 import {
@@ -14,9 +15,13 @@ import { OriginalImage } from './original'
 export function ImageResult({
   identity,
   run,
+  excluded = [],
+  outputs,
 }: {
   identity: string
   run?: Run
+  excluded?: number[]
+  outputs?: WorkItem[]
 }) {
   const m = useMessages()
   const failure = useFailure()
@@ -34,9 +39,30 @@ export function ImageResult({
   )
   return (
     <div className="image-result" id={`image-${identity}`} tabIndex={-1}>
-      {value?.images?.map((filename, index) => (
-        <OriginalImage key={filename} identity={identity} index={index} />
-      ))}
+      {outputs
+        ? outputs.map((output) => (
+            <div key={output.index}>
+              <OriginalImage
+                identity={identity}
+                index={output.index}
+                alt={output.revision ? output.name : undefined}
+              />
+              {!!output.revision && <p>{output.name}</p>}
+              <WorkActions
+                target={{ kind: 'image', id: identity, index: output.index }}
+              />
+            </div>
+          ))
+        : value?.images?.map(
+            (filename, index) =>
+              !excluded.includes(index) && (
+                <OriginalImage
+                  key={filename}
+                  identity={identity}
+                  index={index}
+                />
+              ),
+          )}
       {value &&
         !value.images?.length &&
         !value.failure &&

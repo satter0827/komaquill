@@ -160,6 +160,38 @@ test('saves a banner and starts with the recommended character', async ({
     topics: 'Clock repair',
     avoid: 'Violence',
   })
+  await page.goto('/stories/' + storyId)
+  await page.getByRole('button', { name: ja.manageWork, exact: true }).click()
+  await page
+    .getByRole('dialog', { name: ja.manageWork })
+    .getByRole('button', { name: ja.moveToTrash })
+    .click()
+  await expect(page).toHaveURL(/\/stories$/)
+  await page.goto('/trash')
+  const story = page.getByRole('listitem').filter({ hasText: name })
+  await story.getByRole('button', { name: ja.restoreWork }).click()
+  await expect(story).toHaveCount(0)
+  await page.goto('/stories/' + storyId)
+  await expect(page.locator('.cover-preview.wide img')).toHaveJSProperty(
+    'naturalWidth',
+    8,
+  )
+  const character = started.definition.presets.character
+  const removed = await request.delete('/api/v1/characters/' + character.id, {
+    params: { expected_revision: character.revision },
+  })
+  expect(removed.ok()).toBe(true)
+  await page.reload()
+  await expect(
+    page.getByLabel(ja.defaultCharacter).locator('option:checked'),
+  ).toHaveText(ja.presetUnavailable)
+  const duplicate = page.waitForResponse((response) =>
+    response.url().endsWith(`/api/v1/stories/${storyId}/duplicate`),
+  )
+  await page.getByRole('button', { name: ja.duplicate, exact: true }).click()
+  const copied = await duplicate
+  expect(copied.ok()).toBe(true)
+  expect(await copied.json()).toMatchObject({ character_id: character.id })
 })
 
 test('uses English for dialogue and narration after changing language', async ({
@@ -205,9 +237,83 @@ test('closes narrow scene details with Escape and restores focus', async ({
   ).toBe(true)
 })
 
-test('generates and automatically collects a standalone image', async ({
+test('separates the current situation from the starting settings', async ({
   page,
+  request,
+  evidence,
 }) => {
+  const created = await request.post('/api/v1/conversations', {
+    data: {
+      title: 'The lighthouse',
+      scenario: {
+        opening: 'The door swings open.',
+        world: 'A coastal town without electricity.',
+        place: 'The lighthouse',
+      },
+    },
+  })
+  expect(created.ok()).toBe(true)
+  await page.goto('/conversations/' + (await created.json()).id)
+  await page.getByRole('button', { name: ja.showState, exact: true }).click()
+  const situation = page.locator('.state-panel')
+  await expect(situation).toBeVisible()
+  await expect(situation).not.toContainText(/版 \d|未指定|これまでの行動/)
+  await page.keyboard.press('Escape')
+  await page
+    .getByRole('button', { name: ja.conversationMenu, exact: true })
+    .click()
+  const showSettings = page.getByRole('button', {
+    name: ja.startedSettings,
+    exact: true,
+  })
+  await showSettings.click()
+  const settings = page.getByRole('dialog', { name: ja.startedSettings })
+  await expect(settings).toContainText('The door swings open.')
+  await expect(settings).toContainText('A coastal town without electricity.')
+  await expect(
+    settings.getByRole('heading', { name: ja.you, exact: true }),
+  ).toHaveCount(0)
+  await evidence.capture('Starting settings above the conversation menu')
+  await settings.getByRole('button', { name: ja.closePanel }).click()
+  await expect(settings).toBeHidden()
+  await expect(showSettings).toBeFocused()
+})
+
+test('renames and restores a conversation from the trash', async ({ page }) => {
+  await page.goto('/new')
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(page).toHaveURL(/\/conversations\//)
+  const conversationUrl = page.url()
+  const menu = page.getByRole('button', {
+    name: ja.conversationMenu,
+    exact: true,
+  })
+  const openManagement = async () => {
+    if ((await menu.getAttribute('aria-expanded')) !== 'true')
+      await menu.click()
+    await page.getByRole('button', { name: ja.manageWork, exact: true }).click()
+    return page.getByRole('dialog', { name: ja.manageWork })
+  }
+  const rename = await openManagement()
+  await rename.getByRole('textbox', { name: ja.name }).fill('雨のアトリエ')
+  await rename.getByRole('button', { name: ja.renameWork }).click()
+  await expect(page.locator('.conversation-header')).toContainText(
+    '雨のアトリエ',
+  )
+  const trash = await openManagement()
+  await trash.getByRole('button', { name: ja.moveToTrash }).click()
+  await page.waitForURL((url) => url.pathname === '/')
+  await page.goto('/trash')
+  const work = page.getByRole('listitem').filter({ hasText: '雨のアトリエ' })
+  await work.getByRole('button', { name: ja.restoreWork }).click()
+  await expect(work).toHaveCount(0)
+  await page.goto(conversationUrl)
+  await expect(page.locator('.conversation-header')).toContainText(
+    '雨のアトリエ',
+  )
+})
+
+test('collects, trashes and restores a standalone image', async ({ page }) => {
   await page.goto('/images')
   await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page
@@ -222,9 +328,55 @@ test('generates and automatically collects a standalone image', async ({
     .getByRole('button', { name: ja.drawRequestedScene, exact: true })
     .click()
   const created = await (await receipt).json()
-  await expect(
-    page.locator(`img[src="/api/v1/images/${created.run_id}/files/0"]`),
-  ).toHaveJSProperty('naturalWidth', 8)
+  const result = page.locator(`#image-${created.run_id}`)
+  const image = result.locator('img')
+  await expect(image).toHaveJSProperty('naturalWidth', 8)
+  await result.getByRole('button', { name: ja.manageWork }).click()
+  await page
+    .getByRole('dialog', { name: ja.manageWork })
+    .getByRole('button', { name: ja.moveToTrash })
+    .click()
+  await expect(image).toHaveCount(0)
+  await page.goto('/trash')
+  const item = page.getByRole('listitem')
+  await item.getByRole('button', { name: ja.restoreWork }).click()
+  await expect(item).toHaveCount(0)
+  await page.goto('/images')
+  await expect(image).toHaveJSProperty('naturalWidth', 8)
+})
+
+test('saves and applies both common prompts in the next album drawing', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/settings')
+  const positive = page.getByRole('textbox', { name: ja.commonPositivePrompt })
+  const negative = page.getByRole('textbox', { name: ja.commonNegativePrompt })
+  await positive.fill('soft afternoon light')
+  await negative.fill('lettering')
+  await negative.press('Tab')
+  await expect
+    .poll(async () => {
+      const saved = await (await request.get('/api/v1/preferences')).json()
+      return saved.image_prompts
+    })
+    .toEqual({ positive: 'soft afternoon light', negative: 'lettering' })
+  await page.goto('/images')
+  await page.getByRole('button', { name: ja.openDrawingForm }).click()
+  await page
+    .getByRole('textbox', { name: ja.imagePrompt })
+    .fill('A quiet bookshop')
+  const accepted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/images') &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: ja.drawRequestedScene }).click()
+  const response = await accepted
+  expect(response.ok()).toBe(true)
+  const image = await response.json()
+  expect(image.compiled_input.body).toContain('soft afternoon light')
+  expect(image.compiled_input.negative).toContain('lettering')
 })
 
 test('shows a library error and recovers saved content', async ({

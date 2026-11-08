@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from komaquill.adapters.configuration import WorkspaceConfiguration
     from komaquill.adapters.llm.execution import StructuredExecution
     from komaquill.adapters.persistence.devices import DeviceStore
+    from komaquill.adapters.persistence.works import WorkRepository
     from komaquill.adapters.web_configuration import WebSettings
     from komaquill.api.archive import ArchiveService
     from komaquill.api.availability import AvailabilityService
@@ -112,6 +113,8 @@ class Client:
             lambda request: self._library.source(request),
             lambda identity: self.images.read(identity),
             lambda identity: self.conversations.repository.operation_snapshot(identity),
+            lambda: self._library.store.preferences().image_prompts,
+            lambda: self.images.supports_negative(),
         )
 
     @cached_property
@@ -229,20 +232,48 @@ class Client:
         self, identity: UUID, *, include_images: bool = True, include_conditions: bool = False
     ) -> Path:
         from komaquill.adapters.conversation_export import export_conversation
+        from komaquill.domain.library.works import WorkRef
 
         with api_operation(OperationStage.STORAGE):
             conversation = self.conversations.get(identity)
+            name = self.works.get(WorkRef(kind="conversation", id=identity)).name
+            conversation = conversation.model_copy(
+                update={"definition": conversation.definition.model_copy(update={"title": name})}
+            )
+            detached = self.works.detached("conversation", identity)
             assets = []
             if include_images or include_conditions:
                 for job in self.library.conversation_images(identity):
                     if job.image_id is not None:
                         run = self.images.get(job.image_id)
+                        visible = self.works.image_outputs([run])[run.run_id]
+                        excluded = detached.get(f"job:{job.id}:{run.run_id}", [])
+                        visible = [value for value in visible if value.index not in excluded]
+                        if not visible:
+                            continue
+                        indices = {item.index for item in visible}
                         paths = (
-                            [self.artifact_path(f"runs/{run.run_id}/{name}") for name in run.images]
+                            [
+                                self.artifact_path(f"runs/{run.run_id}/{name}")
+                                if index in indices
+                                else None
+                                for index, name in enumerate(run.images)
+                            ]
                             if include_images
                             else []
                         )
-                        assets.append((run, paths))
+                        filenames = [run.images[item.index] for item in visible]
+                        exported = run.model_copy(
+                            update={
+                                "images": filenames,
+                                "image_metadata": {
+                                    name: item
+                                    for name, item in run.image_metadata.items()
+                                    if name in filenames
+                                },
+                            }
+                        )
+                        assets.append((exported, paths))
             return export_conversation(
                 self.workspace,
                 conversation,
@@ -261,6 +292,13 @@ class Client:
         from komaquill.api.archive import ArchiveService
 
         return ArchiveService(self._project)
+
+    @cached_property
+    def works(self) -> "WorkRepository":
+        from komaquill.adapters.persistence.connection import database
+        from komaquill.adapters.persistence.works import WorkRepository
+
+        return WorkRepository(database(self._project.data / "komaquill.sqlite3"))
 
     @cached_property
     def images(self) -> ImageService:

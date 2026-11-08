@@ -5,7 +5,56 @@ import {
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
-import type { ReactNode } from 'react'
+import { Link } from 'react-router'
+import { useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { getSettingsOptions } from '../../api/generated/@tanstack/react-query.gen'
+
+function DrawingPreferences() {
+  const m = useMessages()
+  const preferences = usePreferences()
+  const settings = useQuery(getSettingsOptions())
+  const [draft, setDraft] = useState<NonNullable<
+    Preferences['image_prompts']
+  > | null>(null)
+  const current = preferences.value.image_prompts
+  const values = draft ?? current
+
+  return (
+    <section className="settings-grid">
+      <h2>{m.imageGenerationPreferences}</h2>
+      <p className="subtle">{m.commonImagePromptsScope}</p>
+      {(['positive', 'negative'] as const).map((field) => (
+        <label key={field}>
+          {field === 'positive'
+            ? m.commonPositivePrompt
+            : m.commonNegativePrompt}
+          <textarea
+            rows={3}
+            value={values[field] ?? ''}
+            onChange={(event) =>
+              setDraft({ ...values, [field]: event.target.value })
+            }
+            onBlur={() => {
+              if (!draft || (draft[field] ?? '') === (current[field] ?? ''))
+                return
+              const saved = draft
+              void preferences
+                .update({ image_prompts: saved })
+                .then(() =>
+                  setDraft((latest) => (latest === saved ? null : latest)),
+                )
+                .catch(() => {})
+            }}
+          />
+        </label>
+      ))}
+      {settings.data?.supports_negative_prompt === false && (
+        <p className="subtle">{m.negativePromptUnavailable}</p>
+      )}
+    </section>
+  )
+}
 
 export function PreferencesPage({ connections }: { connections: ReactNode }) {
   const m = useMessages()
@@ -69,6 +118,10 @@ export function PreferencesPage({ connections }: { connections: ReactNode }) {
         {renderOption('response_length')}
         <p className="subtle">{m.responseLengthScope}</p>
       </div>
+      <DrawingPreferences />
+      <Link className="button" to="/trash">
+        {m.trashTitle}
+      </Link>
       {!!preferences.error && (
         <p className="error" role="alert">
           {failure(preferences.error)}

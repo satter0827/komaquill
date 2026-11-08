@@ -5,6 +5,679 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/trash": {
+      "get": {
+        "summary": "Trash",
+        "operationId": "list_trash",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Trash"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/works/{kind}/{identity}": {
+      "get": {
+        "summary": "Work",
+        "operationId": "get_work",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "conversation",
+                "archived",
+                "character",
+                "story",
+                "image",
+                "bookmark"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          },
+          {
+            "name": "index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/v1/works/change": {
+      "post": {
+        "summary": "Change Work",
+        "operationId": "change_work",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/image-outputs": {
+      "get": {
+        "summary": "Image Outputs",
+        "operationId": "list_image_outputs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "items": {
+                      "$ref": "#/components/schemas/WorkItem"
+                    },
+                    "type": "array"
+                  },
+                  "propertyNames": {
+                    "format": "uuid"
+                  },
+                  "type": "object",
+                  "title": "Response List Image Outputs"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/images/{identity}/uses/{index}": {
+      "get": {
+        "summary": "Image Uses",
+        "operationId": "list_image_uses",
+        "parameters": [
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ImageUse"
+                  },
+                  "title": "Response List Image Uses"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/v1/images/detach": {
+      "post": {
+        "summary": "Detach Image",
+        "operationId": "detach_image",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageDetach"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/works/{kind}/{identity}/detached-images": {
+      "get": {
+        "summary": "Detached Images",
+        "operationId": "get_detached_images",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "conversation",
+                "archived",
+                "character",
+                "story",
+                "image",
+                "bookmark"
+              ],
+              "type": "string",
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "title": "Response Get Detached Images"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorView"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
     "/api/v1/archive/conversations": {
       "get": {
         "summary": "Archived Conversations",
@@ -2279,7 +2952,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/Conversation"
+                    "$ref": "#/components/schemas/ConversationView"
                   },
                   "type": "array",
                   "title": "Response List Conversations"
@@ -2558,7 +3231,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Conversation"
+                  "$ref": "#/components/schemas/ConversationView"
                 }
               }
             }
@@ -5243,6 +5916,11 @@
             "type": "string",
             "title": "Llm Profile",
             "default": "fake"
+          },
+          "use_prompt_preferences": {
+            "type": "boolean",
+            "title": "Use Prompt Preferences",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6319,6 +6997,137 @@
         "type": "object",
         "title": "ConversationState"
       },
+      "ConversationView": {
+        "properties": {
+          "turn_count": {
+            "type": "integer",
+            "title": "Turn Count",
+            "default": 0
+          },
+          "turn_offset": {
+            "type": "integer",
+            "title": "Turn Offset",
+            "default": 0
+          },
+          "history_prefix_sha256": {
+            "type": "string",
+            "title": "History Prefix Sha256",
+            "default": ""
+          },
+          "history_anchor": {
+            "type": "string",
+            "title": "History Anchor",
+            "default": ""
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "source_conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Conversation Id"
+          },
+          "source_turn_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Turn Id"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/ConversationInput"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConversationState"
+          },
+          "memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationMemory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "type": "array",
+            "title": "Turns"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ActionRecord"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedAction"
+            },
+            "type": "array",
+            "title": "Proposals"
+          },
+          "visual_reviews": {
+            "items": {
+              "$ref": "#/components/schemas/VisualReviewRecord"
+            },
+            "type": "array",
+            "title": "Visual Reviews"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition"
+        ],
+        "title": "ConversationView"
+      },
       "CreationJob": {
         "properties": {
           "nsfw_enabled": {
@@ -6350,6 +7159,9 @@
             "type": "string",
             "title": "Original",
             "default": ""
+          },
+          "image_prompts": {
+            "$ref": "#/components/schemas/ImagePromptDefaults"
           },
           "prompt_en": {
             "anyOf": [
@@ -6562,6 +7374,8 @@
           "invalid_output",
           "invalid_request",
           "invalid_response",
+          "image_description_invalid",
+          "image_in_use",
           "log_timeout",
           "log_unavailable",
           "missing_image",
@@ -6654,6 +7468,23 @@
         ],
         "title": "FailureInfo",
         "description": "Describe a failure without copying exception messages or response bodies."
+      },
+      "ImageDetach": {
+        "properties": {
+          "image": {
+            "$ref": "#/components/schemas/WorkRef"
+          },
+          "use": {
+            "$ref": "#/components/schemas/ImageUse"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "image",
+          "use"
+        ],
+        "title": "ImageDetach"
       },
       "ImageInput": {
         "properties": {
@@ -6799,6 +7630,25 @@
         "title": "ImageMetadata",
         "description": "Describe bytes that were verified and written to local storage."
       },
+      "ImagePromptDefaults": {
+        "properties": {
+          "positive": {
+            "type": "string",
+            "maxLength": 12000,
+            "title": "Positive",
+            "default": ""
+          },
+          "negative": {
+            "type": "string",
+            "maxLength": 12000,
+            "title": "Negative",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImagePromptDefaults"
+      },
       "ImageRef": {
         "properties": {
           "filename": {
@@ -6826,6 +7676,41 @@
         ],
         "title": "ImageRef",
         "description": "Reference an image reported by ComfyUI."
+      },
+      "ImageUse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "character",
+              "story"
+            ],
+            "title": "Kind"
+          },
+          "owner": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Owner"
+          },
+          "slot": {
+            "type": "string",
+            "title": "Slot"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "owner",
+          "slot",
+          "name"
+        ],
+        "title": "ImageUse"
       },
       "InputArtifact": {
         "properties": {
@@ -7856,6 +8741,9 @@
             "type": "string",
             "title": "Llm Profile",
             "default": "lmstudio-4b"
+          },
+          "image_prompts": {
+            "$ref": "#/components/schemas/ImagePromptDefaults"
           }
         },
         "additionalProperties": false,
@@ -9065,6 +9953,17 @@
           "sample_input": {
             "type": "string",
             "title": "Sample Input"
+          },
+          "supports_negative_prompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supports Negative Prompt"
           }
         },
         "type": "object",
@@ -9683,6 +10582,163 @@
           "minutes"
         ],
         "title": "WaitAction"
+      },
+      "WorkChange": {
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/WorkRef"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Operation Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "expected_content_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Content Revision"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "rename",
+              "trash",
+              "restore"
+            ],
+            "title": "Action"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target",
+          "operation_id",
+          "expected_revision",
+          "action"
+        ],
+        "title": "WorkChange"
+      },
+      "WorkItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "archived",
+              "character",
+              "story",
+              "image",
+              "bookmark"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index",
+            "default": 0
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Revision",
+            "default": 0
+          },
+          "trashed": {
+            "type": "boolean",
+            "title": "Trashed",
+            "default": false
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "title": "WorkItem"
+      },
+      "WorkRef": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "archived",
+              "character",
+              "story",
+              "image",
+              "bookmark"
+            ],
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "WorkRef"
       }
     }
   }

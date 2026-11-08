@@ -8,6 +8,7 @@ from fastapi import BackgroundTasks, FastAPI, Response
 from komaquill.adapters.persistence.conversation_archive import ArchivedConversation
 from komaquill.api import Client
 from komaquill.domain.conversations.models import Conversation
+from komaquill.domain.errors import KomaquillError
 from komaquill.domain.library.models import (
     CharacterPreset,
     CharacterSaveRequest,
@@ -23,10 +24,53 @@ from komaquill.domain.library.models import (
     StoryPreset,
     StorySaveRequest,
 )
+from komaquill.domain.library.works import (
+    ImageDetach,
+    ImageUse,
+    WorkChange,
+    WorkItem,
+    WorkKind,
+    WorkRef,
+)
 from komaquill.interfaces.http.background import execute_retained
 
 
 def bind_library(app: FastAPI, selected: Callable[[], Client]) -> None:
+    @app.get("/api/v1/trash", operation_id="list_trash")
+    def trash() -> list[WorkItem]:
+        return selected().works.trash()
+
+    @app.get("/api/v1/works/{kind}/{identity}", operation_id="get_work")
+    def work(kind: WorkKind, identity: UUID, index: int = 0) -> WorkItem:
+        if index < 0 or (index and kind != "image"):
+            raise KomaquillError(code="invalid_request", retryable=False)
+        return selected().works.get(WorkRef(kind=kind, id=identity, index=index))
+
+    @app.post("/api/v1/works/change", operation_id="change_work")
+    def change_work(body: WorkChange) -> WorkItem:
+        return selected().works.change(body)
+
+    @app.get("/api/v1/image-outputs", operation_id="list_image_outputs")
+    def image_outputs() -> dict[UUID, list[WorkItem]]:
+        client = selected()
+        return client.works.image_outputs(client.images.list())
+
+    @app.get("/api/v1/images/{identity}/uses/{index}", operation_id="list_image_uses")
+    def image_uses(identity: UUID, index: int) -> list[ImageUse]:
+        if index < 0:
+            raise KomaquillError(code="invalid_request", retryable=False)
+        return selected().works.image_uses(WorkRef(kind="image", id=identity, index=index))
+
+    @app.post("/api/v1/images/detach", status_code=204, operation_id="detach_image")
+    def detach_image(body: ImageDetach) -> Response:
+        selected().works.detach(body)
+        return Response(status_code=204)
+
+    @app.get("/api/v1/works/{kind}/{identity}/detached-images", operation_id="get_detached_images")
+    def detached_images(kind: WorkKind, identity: UUID) -> dict[str, list[int]]:
+        selected().works.get(WorkRef(kind=kind, id=identity))
+        return selected().works.detached(kind, identity)
+
     @app.get(
         "/api/v1/archive/conversations",
         response_model=list[ArchivedConversation],

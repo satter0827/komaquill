@@ -20,7 +20,7 @@ def prepared(tmp_path):
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    def submit(prompt, *, run_id, parameters, purpose=None):
+    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
         calls.append((prompt, run_id, parameters))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]
@@ -115,7 +115,7 @@ def test_concurrent_same_id_is_one_local_save(tmp_path):
         assert connection.execute(select(creation_jobs.c.id)).first() is None
 
 
-def test_stale_image_completion_does_not_attach_to_changed_or_deleted_preset(tmp_path):
+def test_stale_image_completion_and_pending_image_protect_the_preset(tmp_path):
     api, _, runs, _ = prepared(tmp_path)
     value = CharacterInput(name="Mira", initial_clothing="Apron")
     preset = api.library.save_preset("character", value, options()).preset
@@ -129,9 +129,11 @@ def test_stale_image_completion_does_not_attach_to_changed_or_deleted_preset(tmp
     api.library.reconcile()
     assert api.characters.get(preset.id).image_id is None
     new_job = draw(api, changed)
-    api.characters.delete(changed.id, changed.revision)
+    with pytest.raises(KomaquillError, match="operation_busy"):
+        api.characters.delete(changed.id, changed.revision)
     runs[new_job.id].state, runs[new_job.id].images = "saved", ["new.png"]
-    assert api.library.reconcile() == []
+    api.library.reconcile()
+    api.characters.delete(changed.id, changed.revision)
     assert api.library.job(new_job.id).state == "complete"
 
 

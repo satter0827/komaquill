@@ -4,7 +4,7 @@ format_version = 1
 summary = "LangGraphで構造化LLM要求と有限の修正を実行する"
 status = "implemented"
 implementation_note = "既存SQLiteを保存の正本とし、一要求の実行分岐をLangGraphへ移行する。長期記憶はREQ-CHAT-MEMORYで扱う。公式チェックポイントで受信済み応答から再開し、会話の意味整合性と画質の未達は実出力の受入で管理する。"
-acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
+acceptance = ["会話・下書き・英訳が同じ固定グラフを使う", "型・言語の不正だけを修正上限内で処理する", "会話応答の言語が混在したときは対象となる全項目を一度に指定する", "通信失敗・拒否・モデル不一致を自動再送しない", "system・最新発言・完全な直近履歴を文脈上限内で保持する", "修正要求で入力上限を超えたら追加送信しない", "有効な親トレースがあっても外部トレースを無効にする", "SDKとグラフの型を業務処理やGPUへ持ち込まない", "既存の操作ID・排他・応答チェックポイントと再開を維持する"]
 sources = ["src/backend/src/komaquill/adapters/llm/graph.py", "src/backend/src/komaquill/adapters/llm/execution.py"]
 tests = ["tests/backend/unit/llm/test_llm_graph.py", "tests/backend/integration/conversations/test_conversation_llm.py", "tests/backend/integration/conversations/test_conversation_durability.py"]
 
@@ -25,7 +25,7 @@ tests = ["tests/backend/integration/library/test_library.py", "tests/system/e2e/
 [requirements.REQ-APP-PREFERENCES]
 summary = "表示と生成の好みを保存して明示した範囲へ適用する"
 status = "implemented"
-acceptance = ["言語・文字の大きさ・表示密度・描写量を保存できる", "表示設定は再起動後も維持する", "生成設定の不正で言語や文字サイズの保存を妨げない", "生成条件は要求の受付時に固定する", "通常の会話は設定済み4Bを使い、固定応答は検証で明示指定する", "固定サンプルは対応入力だけを扱い実モデルへ自動切替しない", "接続先とモデルの識別を設定で扱い手元の4Bとの一致を検査する"]
+acceptance = ["言語・文字の大きさ・表示密度・描写量・描画の共通プロンプトを保存できる", "表示設定は再起動後も維持する", "生成設定の不正で言語や文字サイズの保存を妨げない", "生成条件は要求の受付時に固定する", "通常の会話は設定済み4Bを使い、固定応答は検証で明示指定する", "固定サンプルは対応入力だけを扱い実モデルへ自動切替しない", "接続先とモデルの識別を設定で扱い手元の4Bとの一致を検査する"]
 sources = ["src/backend/src/komaquill/domain/library/models.py", "src/backend/src/komaquill/application/library/service.py", "src/frontend/src/shared/preferences.tsx", "src/frontend/src/features/preferences/index.tsx"]
 tests = ["tests/backend/integration/library/test_library.py", "tests/system/e2e/web/workflow.spec.ts"]
 
@@ -63,7 +63,7 @@ tests = ["tests/bootstrap/integration/environment/node-environment.test.mjs", "t
 [requirements.REQ-IMAGE-TRANSLATION]
 summary = "日本語の画像説明を英語化し原文と実行条件を保持して生成へ渡す"
 status = "implemented"
-acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "表示用本文・場面説明と明示操作時の画像用英語を分ける", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
+acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "表示用本文・場面説明と明示操作時の画像用英語を分ける", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "英訳の修正には元の応答と検証項目を渡し、形式・言語・内容を通じて修正上限を共有する", "英訳を原文と照合し、入力した項目の欠落や内容の不一致を修正できなければ画像を送信しない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
 sources = ["src/backend/src/komaquill/adapters/image_text.py", "src/backend/src/komaquill/adapters/llm/execution.py", "src/backend/src/komaquill/application/library/service.py"]
 tests = ["tests/backend/integration/library/test_creator_contracts.py", "tests/scripts/integration/acceptance/test_run.py"]
 implementation_note = "人物別の画像入力と保存済みグラフを照合した。2026年11月7日のT4では二人の描き分けが未達であり、入力の保持と実画像の品質を区別する。結果はdocs/verification/results/shared-location-t4-20261107.mdで管理する。"
@@ -86,7 +86,7 @@ tests = ["tests/scripts/integration/acceptance/test_run.py", "tests/system/e2e/w
 [requirements.REQ-CHAT-LIBRARY]
 summary = "wheelから導入する独立した汎用チャットBOTライブラリとしシナリオや人物を引数・設定で指定する"
 status = "implemented"
-acceptance = ["公開入口をkomaquill.apiとしCLIも同じ処理を呼ぶ", "利用アプリからシナリオ・キャラ・ユーザー・初期状態・応答方針・接続先を渡せる", "日常・SF・中世・空想世界を作例への固定なしで扱う", "キャラ設定と画像接続なしでも文章チャットを使える", "wheel導入後に別アプリから作成・反復入力・状態取得・再開できる", "旧作品の読取り専用の一覧・取得・書き出しをarchiveへ分離する", "GPU・DB・LLMの具体的SDKやドライバーの型を業務処理と公開入力へ漏らさない"]
+acceptance = [ "作品・しおり・画像を個別にごみ箱へ移して復元できる", "保存済みの相手がごみ箱にあってもストーリーを編集・複製できる", "使用中の画像は参照を解除するまでごみ箱へ移せない", "ごみ箱の画像は複製・会話開始・生成完了・画像リンクの修復で関連付けられない", "公開入口をkomaquill.apiとしCLIも同じ処理を呼ぶ", "利用アプリからシナリオ・キャラ・ユーザー・初期状態・応答方針・接続先を渡せる", "日常・SF・中世・空想世界を作例への固定なしで扱う", "キャラ設定と画像接続なしでも文章チャットを使える", "wheel導入後に別アプリから作成・反復入力・状態取得・再開できる", "旧作品の読取り専用の一覧・取得・書き出しをarchiveへ分離する", "GPU・DB・LLMの具体的SDKやドライバーの型を業務処理と公開入力へ漏らさない"]
 sources = ["src/backend/src/komaquill/domain/conversations/models.py", "src/backend/src/komaquill/application/conversations/service.py", "src/backend/src/komaquill/adapters/persistence/connection.py"]
 tests = ["tests/backend/integration/conversations/test_conversations.py", "tests/backend/integration/conversations/test_conversation_llm.py"]
 
@@ -491,6 +491,7 @@ acceptance = [
     "WCAG 2.1のA・AAを対象にaxeの適用可能なルール違反を解消し、検査範囲とルール・対象版を記録する",
     "判定不能や未実行を合格と扱わず、画面全体や問題のあるルールを一括除外して成功にしない",
     "キーボード操作・フォーカス移動と復帰・拡大・狭い画面・読み上げ名を既存の操作検査と合わせて確認する",
+    "小窓から開いたダイアログは手前に表示し、閉じる操作を遮らずに起点へフォーカスを戻す",
     "判定はtestsへ置き、レビュー用収集はscriptsへ置いて同じ対象と証跡へ関連付ける",
     "検査は隔離環境と擬似APIで行い、実LLMとGPUを呼ばず、開発依存を製品やGPUへ追加しない",
 ]
@@ -550,7 +551,8 @@ acceptance = [
     "受付応答の喪失、表示・回収・生成の失敗で入力・操作ID・保存済み画像を保持する",
     "今回送信した描画の受付不明では画面遷移後も同じIDの照会を続け、受付確認前に回収や生成の再送をしない",
     "手動の受付確認は同じIDのGETだけを行い、生成を伴うPOSTを再実行しない",
-    "受付不明を応答生成中と表示せず、送信中・受付確認中・応答生成中を区別する",
+    "送信・受付確認・応答生成・保存済み応答の読込を区別し、確定した失敗は履歴の入力のそばに表示する",
+    "今の状況は現在の状態に絞り、開始時の人物や舞台設定は物語のメニューから見返せる",
     "画像表示失敗の説明と取得再試行を固定画像枠で切り落とさず、別画像への更新を妨げない",
     "アルバムとしおりの読み込み失敗は該当箇所で再確認でき、保存失敗は場面の小窓内で確認できる",
 ]

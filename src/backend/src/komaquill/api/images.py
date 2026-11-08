@@ -61,11 +61,14 @@ class ImageService:
                 self.__dict__["_generation_workspace"] = self._project.configured(settings)
             self._project = self._generation_workspace
 
-    def supports_negative(self) -> bool:
+    def supports_negative(
+        self, model: str | None = None, operation: Literal["generate", "edit"] = "generate"
+    ) -> bool:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
             settings = session_project(self._generation_workspace).settings()
             return isinstance(settings, RuntimeSettings) and (
-                settings.presets[settings.profile_for(None)].negative_default is not None
+                settings.presets[settings.profile_for(model, operation)].negative_default
+                is not None
             )
 
     def supports_pair(self) -> bool:
@@ -154,14 +157,12 @@ class ImageService:
                         ) from None
                     raise
             try:
-                settings = session_project(self._generation_workspace).settings()
-                if not isinstance(settings, RuntimeSettings):
-                    raise KomaquillError(code="invalid_configuration", stage="generation")
-                profile = settings.profile_for(model, operation)
-                selected = settings.presets[profile]
                 common_positive = defaults.positive.strip()
+                negative_preference = defaults.negative.strip()
                 common_negative = (
-                    defaults.negative.strip() if selected.negative_default is not None else ""
+                    negative_preference
+                    if negative_preference and self.supports_negative(model, operation)
+                    else ""
                 )
                 requested_negative = (
                     joined(negative or "", common_negative) if common_negative else negative
@@ -182,45 +183,54 @@ class ImageService:
                     descriptions.subjects[:-1] if common_positive else descriptions.subjects
                 )
                 prepared_negative = descriptions.negative
-                if common_negative and negative is None and selected.negative_default:
-                    prepared_negative = joined(selected.negative_default, prepared_negative or "")
-                purpose_sources = []
-                if purpose:
-                    import hashlib
-
-                    positive = selected.purpose_prefixes.get(purpose, "")
-                    negative_constraint = (
-                        selected.purpose_negatives.get(purpose, "")
-                        if selected.negative_default is not None
-                        else ""
-                    )
-                    prepared_prompt = joined(positive, prepared_prompt)
-                    if negative_constraint and selected.negative_default is not None:
-                        prepared_negative = joined(
-                            prepared_negative
-                            if prepared_negative is not None
-                            else selected.negative_default,
-                            negative_constraint,
-                        )
-                    for role, content in (
-                        ("positive", positive),
-                        ("negative", negative_constraint),
-                    ):
-                        if content:
-                            purpose_sources.append(
-                                PromptSource(
-                                    name=f"purpose-{purpose}-{role}.txt",
-                                    content=content,
-                                    role=cast(Literal["positive", "negative"], role),
-                                    sha256=hashlib.sha256(content.encode()).hexdigest(),
-                                )
-                            )
                 with (
                     api_operation(OperationStage.GENERATION),
                     connected(self._generation_workspace) as (backend, session),
                 ):
-                    if (session.settings or self._generation_workspace.settings()) != settings:
+                    settings = session.settings or self._generation_workspace.settings()
+                    if not isinstance(settings, RuntimeSettings):
+                        raise KomaquillError(code="invalid_configuration", stage="generation")
+                    profile = settings.profile_for(model, operation)
+                    selected = settings.presets[profile]
+                    if negative_preference and (
+                        bool(common_negative) != (selected.negative_default is not None)
+                    ):
                         raise KomaquillError(code="operation_conflict", stage="preparation")
+                    if common_negative and negative is None and selected.negative_default:
+                        prepared_negative = joined(
+                            selected.negative_default, prepared_negative or ""
+                        )
+                    purpose_sources = []
+                    if purpose:
+                        import hashlib
+
+                        positive = selected.purpose_prefixes.get(purpose, "")
+                        negative_constraint = (
+                            selected.purpose_negatives.get(purpose, "")
+                            if selected.negative_default is not None
+                            else ""
+                        )
+                        prepared_prompt = joined(positive, prepared_prompt)
+                        if negative_constraint and selected.negative_default is not None:
+                            prepared_negative = joined(
+                                prepared_negative
+                                if prepared_negative is not None
+                                else selected.negative_default,
+                                negative_constraint,
+                            )
+                        for role, content in (
+                            ("positive", positive),
+                            ("negative", negative_constraint),
+                        ):
+                            if content:
+                                purpose_sources.append(
+                                    PromptSource(
+                                        name=f"purpose-{purpose}-{role}.txt",
+                                        content=content,
+                                        role=cast(Literal["positive", "negative"], role),
+                                        sha256=hashlib.sha256(content.encode()).hexdigest(),
+                                    )
+                                )
                     # Persist the deduplication key before any external submission.
                     return submit_generation(
                         self._generation_workspace,

@@ -28,7 +28,6 @@ import type {
 } from '../../api/generated/types.gen'
 import {
   useFailure,
-  useFormatMessage,
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
@@ -177,7 +176,6 @@ function ConversationView({
   const cache = useQueryClient()
   const messages = useMessages()
   const failure = useFailure()
-  const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
   const [actionOpen, setActionOpen] = useState(false)

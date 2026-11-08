@@ -1,7 +1,14 @@
-# Fixed bounds for one explicitly authorized before/after comparison.
-max_calls = 52
-max_seconds = 3600
+# Fixed bounds and model settings for one authorized before/after comparison.
+[common]
 history_turns = 14
 context_window_tokens = 32768
 max_output_tokens = 1536
 request_timeout = 180.0
+
+[short]
+max_calls = 24
+max_seconds = 1800
+
+[full]
+max_calls = 140
+max_seconds = 7200

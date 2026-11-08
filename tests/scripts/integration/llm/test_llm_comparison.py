@@ -1,8 +1,8 @@
 """Exercise collection and its budgets with paired fake responses, never a live model."""
 
 import json
+import subprocess
 import sys
-import time
 from types import SimpleNamespace
 
 import pytest
@@ -13,12 +13,6 @@ from tests.backend.support.conversations import wire_reply
 from tools.reporting import atomic_json
 
 pytestmark = pytest.mark.usefixtures("scripted_services")
-
-
-def budget(path, *, max_calls=52, deadline=None):
-    atomic_json(
-        path, {"max_calls": max_calls, "deadline": deadline or time.time() + 60, "calls": []}
-    )
 
 
 def test_budget_counts_incomplete_calls_and_survives_recreation(tmp_path):
@@ -96,7 +90,9 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
     original_path = list(sys.path)
     output = tmp_path / "output"
     output.mkdir()
-    budget(output / "budget.json")
+    limits = comparison.limits_for("full")
+    atomic_json(output / "budget.json", limits.model_dump())
+    monkeypatch.setattr(comparison, "limits_for", lambda _: pytest.fail("Use the saved limits"))
     atomic_json(
         output / "fixtures.json",
         [comparison.fixture(locale, long, 14) for locale in ("ja", "en") for long in (False, True)],
@@ -108,17 +104,20 @@ def test_full_child_uses_explicit_permission_and_saves_actual_failures(
     collected = json.loads((output / "after.json").read_bytes())
     calls = collected["calls"]
     rows = collected["results"]
-    # Each direct move in a short fixture needs a separate arrival reply.
-    assert len(calls) == (4 if failed else 42)
+    assert len(calls) == (4 if failed else 40)
     assert all(item["status"] == ("failed" if failed else "response_received") for item in calls)
     assert len(rows) == (4 if failed else 40)
     assert all(item["operation"]["state"] == ("failed" if failed else "complete") for item in rows)
     if not failed:
         assert all(item["usage"]["total_tokens"] == 20 for item in calls)
         assert rows[-1]["conversation"]["memory"] is None
+        assert sum(item.get("reopened_without_resend", False) for item in rows) == 4
 
 
-def test_parent_creates_frozen_inputs_and_uses_separate_interpreters(tmp_path, monkeypatch):
+@pytest.mark.parametrize("timed_out", [False, True])
+def test_parent_creates_frozen_inputs_and_uses_separate_interpreters(
+    tmp_path, monkeypatch, timed_out
+):
     monkeypatch.setattr(comparison, "ROOT", tmp_path)
     source = tmp_path / "before"
     source.mkdir()
@@ -135,6 +134,27 @@ def test_parent_creates_frozen_inputs_and_uses_separate_interpreters(tmp_path, m
 
     def run(command, **options):
         commands.append(command)
+        if timed_out:
+            atomic_json(
+                output / "before.json",
+                {
+                    "results": [
+                        {
+                            "operation": {"state": "complete"},
+                            "usage": {
+                                "unknown_calls": 0,
+                                "known_usage": {
+                                    "input_tokens": 15,
+                                    "output_tokens": 5,
+                                    "total_tokens": 20,
+                                },
+                                "call_count": 1,
+                            },
+                        }
+                    ]
+                },
+            )
+            raise subprocess.TimeoutExpired(command, options["timeout"])
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(comparison.subprocess, "run", run)
@@ -143,10 +163,31 @@ def test_parent_creates_frozen_inputs_and_uses_separate_interpreters(tmp_path, m
         "argv",
         ["compare_llm", "--allow-real-llm", "--baseline", str(source), "--output", str(output)],
     )
-    comparison.main()
-    assert len(commands) == 2 and commands[0][-1] == "before" and commands[1][-1] == "after"
+    with pytest.raises(SystemExit, match="1"):
+        comparison.main()
+    assert [command[-1] for command in commands] == (
+        ["before"] if timed_out else ["before", "after"]
+    )
     assert json.loads((output / "sources.json").read_bytes())["before"]["sample.py"]
-    assert len(json.loads((output / "fixtures.json").read_bytes())) == 4
+    fixtures = json.loads((output / "fixtures.json").read_bytes())
+    assert {case["id"] for case in fixtures} == {
+        "ja-short",
+        "en-short",
+        "ja-long",
+        "en-long",
+        "meeting-ja",
+        "meeting-en",
+    }
+    limits = json.loads((output / "budget.json").read_bytes())
+    assert limits["minimum_calls"] == 104 < limits["max_calls"]
+    completion = json.loads((output / "completion.json").read_bytes())
+    assert completion["comparable"] is False
+    before, after = (completion["variants"][variant] for variant in ("before", "after"))
+    if timed_out:
+        assert before["status"] == "timed_out" and after["status"] == "not_started"
+        assert before["completed_turns"] == 1 and before["total_tokens"] == 20
+    else:
+        assert before["status"] == after["status"] == "exited"
     monkeypatch.setattr(
         sys,
         "argv",

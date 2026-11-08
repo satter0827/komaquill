@@ -103,7 +103,7 @@ def test_source_memory_migration_preserves_original_header_and_turns(tmp_path, s
     report = api.migrate()
     assert json.loads(report.read_bytes())["state"] == "complete"
     with sqlite_connection(path) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0012"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0013"
         assert (
             connection.execute(
                 "SELECT payload FROM execution_migration_originals WHERE kind='conversation_memory'"

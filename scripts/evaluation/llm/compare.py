@@ -9,15 +9,19 @@ import sys
 import time
 import tomllib
 from pathlib import Path
-from typing import Any
-from uuid import uuid5
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from tools.reporting import atomic_json, message
 
+if TYPE_CHECKING:
+    from komaquill.api import Client
+
 ROOT = Path(__file__).resolve().parents[3]
 LONG_CASES = ROOT / "scripts/acceptance/conversations/long.toml"
+FINALIZE_SECONDS = 30
 
 
 class Limits(BaseModel):
@@ -140,19 +144,36 @@ def fixtures(suite: str, limits: Limits) -> list[dict[str, Any]]:
     return cases
 
 
-def child(source: Path, output: Path, variant: str) -> None:
-    """Build history through public operations and preserve all rejected results."""
+def load_source(source: Path) -> None:
     sys.path.insert(0, str(source))
     import komaquill
-    from komaquill.api import Client, ConversationInput, SendInput
 
     if not Path(str(komaquill.__file__)).resolve().is_relative_to(source.resolve()):
         raise RuntimeError(message("efficiency.source_mismatch"))
+
+
+def accounted_usage(api: "Client", identity: UUID, reserved_before: int) -> dict[str, Any]:
+    usage = api.operation_usage(identity)
+    reserved = cast(int, api.llm_usage()["reserved_calls"]) - reserved_before
+    # A process can exit between reserving a call and storing its first record.
+    missing = max(0, reserved - usage["call_count"])
+    usage["call_count"] += missing
+    usage["unknown_calls"] += missing
+    usage["usage_complete"] = usage["unknown_calls"] == 0
+    return usage
+
+
+def child(source: Path, output: Path, variant: str) -> None:
+    """Build history through public operations and preserve all rejected results."""
+    load_source(source)
+    from komaquill.api import Client, ConversationInput, SendInput
+
     budget = json.loads((output / "budget.json").read_bytes())
     limits = Limits.model_validate({name: budget[name] for name in Limits.model_fields})
     cases = json.loads((output / "fixtures.json").read_bytes())
     results = []
     calls = []
+    checkpoint = output / f"{variant}-pending.json"
     for case in cases:
         locale = case["locale"]
         workspace = output / variant / case["id"]
@@ -205,6 +226,16 @@ def child(source: Path, output: Path, variant: str) -> None:
                     "action": case.get("actions", {}).get(str(index)),
                 }
             )
+            reserved_before = cast(int, api.llm_usage()["reserved_calls"])
+            atomic_json(
+                checkpoint,
+                {
+                    "case": case["id"],
+                    "index": index,
+                    "operation_id": str(request.operation_id),
+                    "reserved_before": reserved_before,
+                },
+            )
             operation = api.conversations.send(conversation.id, request)
             calls.extend(api.llm_records(operation.id))
             saved = api.conversations.get(conversation.id)
@@ -215,7 +246,7 @@ def child(source: Path, output: Path, variant: str) -> None:
                 "index": index,
                 "operation": operation.model_dump(mode="json"),
                 "conversation": saved.model_dump(mode="json"),
-                "usage": api.operation_usage(operation.id),
+                "usage": accounted_usage(api, operation.id, reserved_before),
             }
             if index == len(inputs) - 1 and operation.state == "complete":
                 reserved = api.llm_usage()["reserved_calls"]
@@ -239,6 +270,7 @@ def child(source: Path, output: Path, variant: str) -> None:
                     "quality": "not_evaluated",
                 },
             )
+            checkpoint.unlink()
             print(
                 message(
                     "efficiency.progress",
@@ -255,11 +287,33 @@ def child(source: Path, output: Path, variant: str) -> None:
         api.close()
 
 
-def summarize(report: dict[str, Any], case_count: int, expected_turns: int) -> dict[str, Any]:
+def collect_interrupted(source: Path, output: Path, variant: str) -> None:
+    """Read retained evidence after the generating interpreter has exited."""
+    load_source(source)
+    from komaquill.api import Client
+
+    pending = json.loads((output / f"{variant}-pending.json").read_bytes())
+    identity = UUID(pending["operation_id"])
+    with Client(output / variant / pending["case"]) as api:
+        usage = accounted_usage(api, identity, pending["reserved_before"])
+        calls = api.llm_records(identity)
+    atomic_json(output / f"{variant}-interrupted.json", {**pending, "usage": usage, "calls": calls})
+
+
+def summarize(
+    report: dict[str, Any],
+    case_count: int,
+    expected_turns: int,
+    interrupted: dict[str, Any] | None,
+    *,
+    evidence_complete: bool,
+) -> dict[str, Any]:
     rows = report["results"]
     complete = sum(row["operation"]["state"] == "complete" for row in rows)
     reopened = sum(row.get("reopened_without_resend", False) for row in rows)
     usages = [row["usage"] for row in rows]
+    if interrupted is not None:
+        usages.append(interrupted["usage"])
     unknown = sum(usage["unknown_calls"] for usage in usages)
     known = [usage["known_usage"] or {} for usage in usages]
     return {
@@ -267,14 +321,33 @@ def summarize(report: dict[str, Any], case_count: int, expected_turns: int) -> d
         "completed_turns": complete,
         "reopened_cases": reopened,
         "expected_turns": expected_turns,
-        "unknown_calls": unknown,
-        "calls": sum(usage["call_count"] for usage in usages),
+        "unknown_calls": unknown if evidence_complete else None,
+        "calls": sum(usage["call_count"] for usage in usages) if evidence_complete else None,
         "known_input_tokens": sum(usage.get("input_tokens", 0) for usage in known),
         "known_output_tokens": sum(usage.get("output_tokens", 0) for usage in known),
         "total_tokens": sum(usage.get("total_tokens", 0) for usage in known)
-        if not unknown
+        if evidence_complete and not unknown
         else None,
     }
+
+
+def invoke(command: list[str], deadline: float) -> tuple[str, int | None]:
+    remaining = deadline - time.time()
+    if remaining <= 0:
+        return "not_started", None
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
+            check=False,
+            timeout=remaining,
+        )
+    except subprocess.TimeoutExpired:
+        return "timed_out", None
+    except OSError:
+        return "launch_failed", None
+    return "exited", result.returncode
 
 
 def main() -> None:
@@ -294,12 +367,14 @@ def main() -> None:
         "--suite", choices=("short", "full"), default="full", help=message("efficiency.suite")
     )
     parser.add_argument("--child", choices=("before", "after"), help=argparse.SUPPRESS)
+    parser.add_argument("--collect-interrupted", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     output = args.output.resolve()
     if not output.is_relative_to(ROOT / ".artifacts"):
         parser.error(message("efficiency.output"))
     if args.child:
-        child(args.baseline, output, args.child)
+        action = collect_interrupted if args.collect_interrupted else child
+        action(args.baseline, output, args.child)
         return
     limits = limits_for(args.suite)
     cases = fixtures(args.suite, limits)
@@ -329,46 +404,49 @@ def main() -> None:
     atomic_json(output / "sources.json", manifest)
     runner_hash = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     runs = {}
-    timed_out = False
+    generation_deadline = deadline - FINALIZE_SECONDS
     for variant, source in sources.items():
-        remaining = deadline - time.time()
-        exit_code = None
-        if timed_out or remaining <= 0:
-            status = "not_started"
-        else:
-            try:
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        "-B",
-                        "-m",
-                        "scripts.evaluation.llm.compare",
-                        "--allow-real-llm",
-                        "--baseline",
-                        str(source),
-                        "--output",
-                        str(output),
-                        "--child",
-                        variant,
-                    ],
-                    cwd=ROOT,
-                    env={**os.environ, "PYTHONPATH": str(ROOT)},
-                    check=False,
-                    timeout=remaining,
-                )
-                exit_code = result.returncode
-                status = "exited"
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                status = "timed_out"
-        report = output / f"{variant}.json"
+        command = [
+            sys.executable,
+            "-B",
+            "-m",
+            "scripts.evaluation.llm.compare",
+            "--allow-real-llm",
+            "--baseline",
+            str(source),
+            "--output",
+            str(output),
+            "--child",
+            variant,
+        ]
+        status, exit_code = invoke(command, generation_deadline)
+        if status == "timed_out":
+            generation_deadline = 0
+        report_path = output / f"{variant}.json"
+        report = json.loads(report_path.read_bytes()) if report_path.is_file() else {"results": []}
+        checkpoint = output / f"{variant}-pending.json"
+        evidence_complete = True
+        interrupted = None
+        if checkpoint.is_file():
+            pending = json.loads(checkpoint.read_bytes())
+            if not any(
+                row["operation"]["id"] == pending["operation_id"] for row in report["results"]
+            ):
+                invoke([*command, "--collect-interrupted"], deadline)
+                evidence = output / f"{variant}-interrupted.json"
+                evidence_complete = evidence.is_file()
+                if evidence_complete:
+                    interrupted = json.loads(evidence.read_bytes())
         runs[variant] = {
             "status": status,
             "exit_code": exit_code,
-            **(
-                summarize(json.loads(report.read_bytes()), len(cases), minimum_calls // 2)
-                if report.is_file()
-                else {"complete": False}
+            "evidence_complete": evidence_complete,
+            **summarize(
+                report,
+                len(cases),
+                minimum_calls // 2,
+                interrupted,
+                evidence_complete=evidence_complete,
             ),
         }
     unchanged = (

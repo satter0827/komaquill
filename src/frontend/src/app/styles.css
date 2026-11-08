@@ -1472,7 +1472,7 @@ details > .details-content {
   background: #ffffff18;
 }
 .popup-positioner {
-  z-index: 110;
+  z-index: 90;
   max-width: calc(100vw - 2 * var(--panel-gutter));
 }
 .popup-content {
@@ -1506,7 +1506,7 @@ details > .details-content {
   position: fixed;
   inset: 0;
   background: #30132366;
-  z-index: 90;
+  z-index: 100;
 }
 .modal-content {
   position: fixed;
@@ -1522,7 +1522,7 @@ details > .details-content {
   border-radius: var(--radius);
   padding: var(--space-group);
   box-shadow: var(--shadow);
-  z-index: 100;
+  z-index: 110;
 }
 .modal-heading {
   position: sticky;

@@ -146,6 +146,15 @@ export function StartedSettings({
                 value ? [[String(label), String(value)]] : [],
               )
               const description = person.description?.trim()
+              const portraitId =
+                role === 'character' && showPortrait ? portrait?.image_id : null
+              if (
+                !person.name?.trim() &&
+                !description &&
+                !items.length &&
+                !portraitId
+              )
+                return null
               return (
                 <section className="situation-person" key={role}>
                   <h3>
@@ -155,15 +164,13 @@ export function StartedSettings({
                     <p className="state-description">{description}</p>
                   )}
                   {items.length > 0 && <Facts items={items} />}
-                  {role === 'character' &&
-                    showPortrait &&
-                    portrait?.image_id && (
-                      <OriginalImage
-                        className="character-portrait"
-                        identity={portrait.image_id}
-                        alt={portrait.name}
-                      />
-                    )}
+                  {portraitId && (
+                    <OriginalImage
+                      className="character-portrait"
+                      identity={portraitId}
+                      alt={portrait?.name || person.name || m.character}
+                    />
+                  )}
                 </section>
               )
             })}

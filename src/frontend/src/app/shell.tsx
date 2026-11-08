@@ -49,20 +49,20 @@ function Application() {
   const navigationTrigger = useRef<HTMLButtonElement>(null)
   const narrow = useMediaQuery('(max-width: 850px)')
   return (
-    <Dialog.Root
-      open={navigation && narrow && !privateScreen}
-      onOpenChange={setNavigation}
-    >
-      <div className="application">
-        <div className="workspace">
-          {!narrow && (
-            <Navigation
-              onNavigate={() => setNavigation(false)}
-              privacyHandle={privacyHandle}
-            />
-          )}
-          <main className="main-area">
-            <header className="mobile-header">
+    <div className="application">
+      <div className="workspace">
+        {!narrow && (
+          <Navigation
+            onNavigate={() => setNavigation(false)}
+            privacyHandle={privacyHandle}
+          />
+        )}
+        <main className="main-area">
+          <header className="mobile-header">
+            <Dialog.Root
+              open={navigation && narrow && !privateScreen}
+              onOpenChange={setNavigation}
+            >
               <Dialog.Trigger
                 ref={navigationTrigger}
                 render={
@@ -87,78 +87,75 @@ function Application() {
                   />
                 </Modal>
               )}
-              <span className="mobile-brand">
-                <AtelierMark size={18} />
-                {m.brand}
-              </span>
-            </header>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/new" element={<NewConversation />} />
+            </Dialog.Root>
+            <span className="mobile-brand">
+              <AtelierMark size={18} />
+              {m.brand}
+            </span>
+          </header>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/new" element={<NewConversation />} />
+            <Route
+              path="/conversations/:identity"
+              element={<ConversationPage screenHidden={privateScreen} />}
+            />
+            <Route
+              path="/archive/conversations/:identity"
+              element={<ArchivedConversationPage />}
+            />
+            <Route path="/player" element={<PlayerPage />} />
+            {(['character', 'story'] as const).map((kind) => (
               <Route
-                path="/conversations/:identity"
-                element={<ConversationPage screenHidden={privateScreen} />}
-              />
-              <Route
-                path="/archive/conversations/:identity"
-                element={<ArchivedConversationPage />}
-              />
-              <Route path="/player" element={<PlayerPage />} />
-              {(['character', 'story'] as const).map((kind) => (
-                <Route
-                  key={kind}
-                  path={`/${kind === 'story' ? 'stories' : 'characters'}`}
-                >
-                  <Route index element={<LibraryPage kind={kind} />} />
-                  <Route
-                    path=":identity"
-                    element={<LibraryPage kind={kind} />}
-                  />
-                </Route>
-              ))}
-              <Route
-                path="/settings"
-                element={
-                  <PreferencesPage connections={<RuntimePage embedded />} />
-                }
-              />
-              <Route path="/images" element={<ImagesPage />} />
-              <Route path="/trash" element={<TrashPage />} />
-              <Route path="/runtime" element={<RuntimePage />} />
-              <Route path="*" element={<Home />} />
-            </Routes>
-          </main>
-        </div>
-        <Dialog.Root
-          open={privateScreen}
-          handle={privacyHandle}
-          disablePointerDismissal
-          onOpenChange={(open, details) => {
-            if (!open && details.reason !== 'close-press') {
-              details.cancel()
-              return
-            }
-            setPrivateScreen(open)
-          }}
-        >
-          <Dialog.Portal>
-            <Dialog.Popup
-              className="privacy-overlay"
-              finalFocus={() =>
-                document.querySelector<HTMLButtonElement>('.privacy-button') ??
-                navigationTrigger.current ??
-                true
+                key={kind}
+                path={`/${kind === 'story' ? 'stories' : 'characters'}`}
+              >
+                <Route index element={<LibraryPage kind={kind} />} />
+                <Route path=":identity" element={<LibraryPage kind={kind} />} />
+              </Route>
+            ))}
+            <Route
+              path="/settings"
+              element={
+                <PreferencesPage connections={<RuntimePage embedded />} />
               }
-            >
-              <Dialog.Title className="sr-only">{m.hideScreen}</Dialog.Title>
-              <Dialog.Close render={<Button variant="primary" />}>
-                {m.showScreen}
-              </Dialog.Close>
-            </Dialog.Popup>
-          </Dialog.Portal>
-        </Dialog.Root>
+            />
+            <Route path="/images" element={<ImagesPage />} />
+            <Route path="/trash" element={<TrashPage />} />
+            <Route path="/runtime" element={<RuntimePage />} />
+            <Route path="*" element={<Home />} />
+          </Routes>
+        </main>
       </div>
-    </Dialog.Root>
+      <Dialog.Root
+        open={privateScreen}
+        handle={privacyHandle}
+        disablePointerDismissal
+        onOpenChange={(open, details) => {
+          if (!open && details.reason !== 'close-press') {
+            details.cancel()
+            return
+          }
+          setPrivateScreen(open)
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Popup
+            className="privacy-overlay"
+            finalFocus={() =>
+              document.querySelector<HTMLButtonElement>('.privacy-button') ??
+              navigationTrigger.current ??
+              true
+            }
+          >
+            <Dialog.Title className="sr-only">{m.hideScreen}</Dialog.Title>
+            <Dialog.Close render={<Button variant="primary" />}>
+              {m.showScreen}
+            </Dialog.Close>
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
   )
 }
 

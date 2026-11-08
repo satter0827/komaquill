@@ -205,6 +205,27 @@ test('closes narrow scene details with Escape and restores focus', async ({
   ).toBe(true)
 })
 
+test('separates the current situation from the starting settings', async ({
+  page,
+}) => {
+  await page.goto('/new')
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await page.getByRole('button', { name: ja.showState, exact: true }).click()
+  const situation = page.locator('.state-panel')
+  await expect(situation).toBeVisible()
+  await expect(situation).not.toContainText(/版 \d|未指定|これまでの行動/)
+  await page.keyboard.press('Escape')
+  await page
+    .getByRole('button', { name: ja.conversationMenu, exact: true })
+    .click()
+  await page
+    .getByRole('button', { name: ja.startedSettings, exact: true })
+    .click()
+  await expect(
+    page.getByRole('dialog', { name: ja.startedSettings }),
+  ).toBeVisible()
+})
+
 test('generates and automatically collects a standalone image', async ({
   page,
 }) => {

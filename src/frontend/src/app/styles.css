@@ -587,37 +587,31 @@ textarea {
   font-weight: 500;
   margin: 0;
 }
-.state-items {
+.situation-facts,
+.situation-person {
   display: grid;
-  gap: var(--space-group);
-  margin-bottom: var(--space-section);
+  gap: var(--space-field);
+  margin: 0;
 }
-.state-items > div {
+.situation-person > * {
+  margin-block: 0;
+}
+.situation-person h3 {
+  font-size: 0.875rem;
+}
+.situation-facts > div {
   border-bottom: 1px solid var(--line);
   padding-bottom: var(--space-field);
 }
-.state-items span {
-  font-size: 0.875rem;
+.situation-facts :is(dt, dd) {
+  overflow-wrap: anywhere;
+}
+.situation-facts dt {
+  font-size: 0.8125rem;
   color: var(--muted);
 }
-.state-items p {
-  margin: 7px 0 0;
-  font-size: 0.875rem;
-}
-.state-panel h3 {
-  font-size: 0.875rem;
-}
-.state-panel dl {
-  margin: 0;
-  gap: var(--space-field);
-}
-.state-panel dl > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
-  gap: var(--space-field);
-}
-.state-panel :is(dt, dd, .state-description) {
-  overflow-wrap: anywhere;
+.situation-facts dd {
+  margin: 0.25rem 0 0;
 }
 .action-proposal dl {
   margin: 8px 0;
@@ -642,12 +636,6 @@ textarea {
   color: var(--muted);
   line-height: 1.9;
   white-space: pre-wrap;
-}
-.revision {
-  display: block;
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin: 30px 0 14px;
 }
 .image-result {
   border: 1px solid var(--line);

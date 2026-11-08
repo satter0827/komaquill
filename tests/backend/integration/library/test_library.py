@@ -344,14 +344,19 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     if change == "edit":
         service.update(value.id, 0, model(name="Edited"))
     elif change == "delete":
-        service.delete(value.id, 0)
+        with pytest.raises(KomaquillError, match="operation_busy"):
+            service.delete(value.id, 0)
     elif change == "newer_job":
         with pytest.raises(KomaquillError, match="operation_busy"):
             library.accept(request.model_copy(update={"operation_id": uuid4()}))
     runs[job.id].state = "saved"
     runs[job.id].images = ["image.png"]
     assert library.job(job.id).state == "complete"
-    if change != "delete":
+    if change == "delete":
+        service.delete(value.id, 0)
+        with pytest.raises(KomaquillError, match="request_not_found"):
+            service.get(value.id)
+    else:
         assert service.get(value.id).image_id == (
             job.id if change in {"none", "newer_job"} else None
         )

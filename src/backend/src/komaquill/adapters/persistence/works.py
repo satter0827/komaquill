@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import Connection, and_, func, select, true
+from sqlalchemy import Connection, and_, case, func, select, true
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -114,7 +114,13 @@ class WorkRepository:
                 table = archived_conversations if ref.kind == "archived" else conversations
                 statement = select(
                     func.coalesce(
-                        func.json_extract(table.c.payload, "$.definition.title"), table.c.id
+                        case(
+                            (
+                                func.json_valid(table.c.payload),
+                                func.json_extract(table.c.payload, "$.definition.title"),
+                            )
+                        ),
+                        table.c.id,
                     )
                 ).where(table.c.id == identity)
                 if ref.kind == "archived":

@@ -231,10 +231,13 @@ test('renames and restores a conversation from the trash', async ({ page }) => {
   await page.getByRole('button', { name: ja.create, exact: true }).click()
   await expect(page).toHaveURL(/\/conversations\//)
   const conversationUrl = page.url()
+  const menu = page.getByRole('button', {
+    name: ja.conversationMenu,
+    exact: true,
+  })
   const openManagement = async () => {
-    await page
-      .getByRole('button', { name: ja.conversationMenu, exact: true })
-      .click()
+    if ((await menu.getAttribute('aria-expanded')) !== 'true')
+      await menu.click()
     await page.getByRole('button', { name: ja.manageWork, exact: true }).click()
     return page.getByRole('dialog', { name: ja.manageWork })
   }
@@ -277,6 +280,40 @@ test('generates and automatically collects a standalone image', async ({
   await expect(
     page.locator(`img[src="/api/v1/images/${created.run_id}/files/0"]`),
   ).toHaveJSProperty('naturalWidth', 8)
+})
+
+test('saves and applies both common prompts in the next album drawing', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/settings')
+  const positive = page.getByRole('textbox', { name: ja.commonPositivePrompt })
+  const negative = page.getByRole('textbox', { name: ja.commonNegativePrompt })
+  await positive.fill('soft afternoon light')
+  await negative.fill('lettering')
+  await negative.press('Tab')
+  await expect
+    .poll(async () => {
+      const saved = await (await request.get('/api/v1/preferences')).json()
+      return saved.image_prompts
+    })
+    .toEqual({ positive: 'soft afternoon light', negative: 'lettering' })
+  await page.goto('/images')
+  await page.getByRole('button', { name: ja.openDrawingForm }).click()
+  await page
+    .getByRole('textbox', { name: ja.imagePrompt })
+    .fill('A quiet bookshop')
+  const accepted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/images') &&
+      response.request().method() === 'POST',
+  )
+  await page.getByRole('button', { name: ja.drawRequestedScene }).click()
+  const response = await accepted
+  expect(response.ok()).toBe(true)
+  const image = await response.json()
+  expect(image.compiled_input.body).toContain('soft afternoon light')
+  expect(image.compiled_input.negative).toContain('lettering')
 })
 
 test('shows a library error and recovers saved content', async ({

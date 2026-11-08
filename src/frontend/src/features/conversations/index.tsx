@@ -16,7 +16,7 @@ import {
 } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
 import { Link, useNavigate, useParams } from 'react-router'
-import { isRejectedRequest } from '../../api/client'
+import { isMissing, isRejectedRequest } from '../../api/client'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type {
   CreationJob,
@@ -459,7 +459,7 @@ function ConversationView({
         queryKey: q.listConversationImagesQueryKey({ path: { identity } }),
       })
   }, [cache, identity, drawing.mutation.data, drawing.job.data])
-  if (detail.error && !detail.data)
+  if (detail.error && (!detail.data || isMissing(detail.error)))
     return (
       <QueryNotice
         error={detail.error}

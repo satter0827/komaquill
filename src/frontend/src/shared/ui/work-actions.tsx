@@ -25,7 +25,7 @@ const workQueries = new Set([
 
 function useRefreshWorks() {
   const cache = useQueryClient()
-  return () =>
+  return (removed?: WorkItem) =>
     cache.invalidateQueries({
       predicate: ({ queryKey }) =>
         queryKey.some(
@@ -33,7 +33,15 @@ function useRefreshWorks() {
             !!part &&
             typeof part === 'object' &&
             '_id' in part &&
-            workQueries.has(String(part._id)),
+            workQueries.has(String(part._id)) &&
+            !(
+              removed &&
+              'path' in part &&
+              part.path &&
+              typeof part.path === 'object' &&
+              'identity' in part.path &&
+              part.path.identity === removed.id
+            ),
         ),
     })
 }
@@ -42,7 +50,10 @@ export function RestoreWork({ item }: { item: WorkItem }) {
   const m = useMessages()
   const failure = useFailure()
   const refresh = useRefreshWorks()
-  const restore = useMutation({ ...q.changeWorkMutation(), onSuccess: refresh })
+  const restore = useMutation({
+    ...q.changeWorkMutation(),
+    onSuccess: () => refresh(),
+  })
   return (
     <>
       <Button
@@ -83,6 +94,7 @@ export function WorkActions({
   const [open, setOpen] = useState(false)
   const [name, setName] = useState<string | null>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
   const refresh = useRefreshWorks()
   const detail = useQuery({
     ...q.getWorkOptions({
@@ -102,13 +114,13 @@ export function WorkActions({
     onSuccess: async (item) => {
       setOpen(false)
       if (item.trashed) afterTrash?.()
-      await refresh()
+      await refresh(item.trashed ? item : undefined)
     },
-    onError: refresh,
+    onError: () => refresh(),
   })
   const detach = useMutation({
     ...q.detachImageMutation(),
-    onSuccess: refresh,
+    onSuccess: () => refresh(),
   })
   const active = change.isPending || detach.isPending
   const submit = (action: 'rename' | 'trash') => {
@@ -143,6 +155,7 @@ export function WorkActions({
         <Modal
           label={m.manageWork}
           closeLabel={m.closePanel}
+          initialFocus={cancel}
           finalFocus={trigger}
         >
           <div className="details-content">
@@ -211,17 +224,23 @@ export function WorkActions({
               </p>
             )}
             <p className="subtle">{m.trashDescription}</p>
-            <Button
-              disabled={
-                !detail.data ||
-                active ||
-                (target.kind === 'image' &&
-                  (!uses.isSuccess || uses.data.length > 0))
-              }
-              onClick={() => submit('trash')}
-            >
-              {m.moveToTrash}
-            </Button>
+            <div className="actions">
+              <Dialog.Close render={<Button ref={cancel} />}>
+                {m.cancel}
+              </Dialog.Close>
+              <Button
+                variant="danger"
+                disabled={
+                  !detail.data ||
+                  active ||
+                  (target.kind === 'image' &&
+                    (!uses.isSuccess || uses.data.length > 0))
+                }
+                onClick={() => submit('trash')}
+              >
+                {m.moveToTrash}
+              </Button>
+            </div>
           </div>
         </Modal>
       )}

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
+import { isMissing } from '../../api/client'
 import { StoryReply } from '../../shared/story/reply'
 import { useMessages } from '../../shared/preferences'
 import { useNavigate } from 'react-router'
@@ -52,7 +53,7 @@ export function ArchivedConversationPage() {
       onRetry={() => void query.refetch()}
     />
   )
-  if (query.error && !query.data) return notice
+  if (query.error && (!query.data || isMissing(query.error))) return notice
   if (!query.data)
     return (
       <p role="status" className="page">

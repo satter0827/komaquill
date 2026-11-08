@@ -478,6 +478,8 @@ function ConversationView({
       (value.result_revision ?? 0) > (conversation.revision ?? 0) ||
       (value.state === 'complete' &&
         value.id === operationId &&
+        value.result_revision != null &&
+        history.isFetching &&
         !completedIds.has(value.id)),
   )
   const replyStatus =

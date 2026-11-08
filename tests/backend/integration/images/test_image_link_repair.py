@@ -10,6 +10,7 @@ from komaquill.adapters.persistence.schema import creation_jobs, images, presets
 from komaquill.api import CharacterInput, Client, CreationRequest, KomaquillError, StoryInput
 from komaquill.domain.library.models import CreationJob
 from komaquill.domain.library.rendering import preset_image_input
+from komaquill.domain.library.works import WorkChange, WorkRef
 from komaquill.domain.models import ImageMetadata, ImageRef, Run
 from komaquill.interfaces.cli.main import app
 from PIL import Image
@@ -180,7 +181,7 @@ def test_unsafe_or_ambiguous_candidates_are_not_applied(tmp_path, case):
     assert api.stories.get(target.id).image_id is None
 
 
-@pytest.mark.parametrize("change", ["edit", "delete", "file", "job"])
+@pytest.mark.parametrize("change", ["edit", "delete", "file", "job", "trash"])
 def test_changes_after_inspection_are_rechecked(tmp_path, change):
     api, target, good, _, _, path = retained(tmp_path)
     inspection = api.inspect_image_links()
@@ -188,6 +189,15 @@ def test_changes_after_inspection_are_rechecked(tmp_path, change):
         api.stories.update(target.id, 0, StoryInput(name="Changed", world="Elsewhere"))
     elif change == "delete":
         api.stories.delete(target.id, 0)
+    elif change == "trash":
+        api.works.change(
+            WorkChange(
+                target=WorkRef(kind="image", id=good.id),
+                action="trash",
+                operation_id=uuid4(),
+                expected_revision=0,
+            )
+        )
     elif change == "file":
         path.write_bytes(b"changed")
     else:

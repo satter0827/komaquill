@@ -628,6 +628,7 @@ textarea {
 }
 .situation-facts dd {
   margin: 0.25rem 0 0;
+  white-space: pre-wrap;
 }
 .action-proposal dl {
   margin: 8px 0;
@@ -965,11 +966,6 @@ fieldset .checkbox {
   align-items: center;
 }
 .connection-details,
-.story-details {
-  border-top: 1px solid var(--line);
-  padding: 20px 0;
-  margin-top: 24px;
-}
 summary {
   cursor: pointer;
   font-weight: 600;

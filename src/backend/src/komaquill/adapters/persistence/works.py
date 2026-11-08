@@ -59,6 +59,23 @@ def visible_work(
     )
 
 
+def image_visible(connection: Connection, identity: UUID | None) -> bool:
+    return identity is None or bool(connection.scalar(select(visible_work("image", str(identity)))))
+
+
+def _conversation_name() -> ColumnElement[str]:
+    name = (
+        select(work_metadata.c.name)
+        .where(
+            work_metadata.c.kind == "conversation",
+            work_metadata.c.id == conversations.c.id,
+            work_metadata.c.output_index == 0,
+        )
+        .scalar_subquery()
+    )
+    return func.coalesce(name, func.json_extract(conversations.c.payload, "$.definition.title"))
+
+
 def detached_image(connection: Connection, use: ImageUse, run: UUID, index: int) -> bool:
     return (
         connection.execute(
@@ -225,7 +242,7 @@ class WorkRepository:
                 for owner, name in connection.execute(
                     select(
                         conversations.c.id,
-                        func.json_extract(conversations.c.payload, "$.definition.title"),
+                        _conversation_name(),
                     ).where(func.json_extract(conversations.c.payload, path) == identity)
                 ):
                     uses.append(
@@ -237,7 +254,7 @@ class WorkRepository:
             select(
                 conversation_turns.c.conversation_id,
                 conversation_turns.c.turn_id,
-                func.json_extract(conversations.c.payload, "$.definition.title"),
+                _conversation_name(),
             )
             .join(conversations)
             .where(func.json_extract(conversation_turns.c.payload, "$.image_id") == identity)
@@ -251,7 +268,7 @@ class WorkRepository:
             select(
                 conversations.c.id,
                 creation_jobs.c.id,
-                func.json_extract(conversations.c.payload, "$.definition.title"),
+                _conversation_name(),
             )
             .join(
                 conversations,

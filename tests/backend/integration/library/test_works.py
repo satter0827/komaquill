@@ -1,6 +1,6 @@
 """Keep work metadata and image visibility separate from immutable inputs."""
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from komaquill.adapters.persistence.schema import archived_conversations
@@ -8,6 +8,7 @@ from komaquill.api import (
     CharacterInput,
     Client,
     ConversationInput,
+    CreationRequest,
     SceneRequest,
     SendInput,
     StoryInput,
@@ -16,6 +17,21 @@ from komaquill.domain.conversations.models import PresetSnapshot
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.library.works import ImageDetach, WorkChange, WorkRef
 from komaquill.domain.models import Run
+
+
+def saved_image(identity: UUID) -> Run:
+    return Run(
+        run_id=identity,
+        runtime_id=uuid4(),
+        state="saved",
+        app_version="test",
+        source_revision=None,
+        remote_source_revision=None,
+        comfy_revision=None,
+        frontend_version=None,
+        workflow_sha256="a" * 64,
+        images=["cover.png", "candidate.png"],
+    )
 
 
 def test_rename_trash_and_restore_conversation(tmp_path):
@@ -56,18 +72,7 @@ def test_rename_trash_and_restore_conversation(tmp_path):
 
 def test_image_output_requires_detachment_and_preserves_other_indices(tmp_path):
     api = Client.initialize(tmp_path)
-    run = Run(
-        run_id=uuid4(),
-        runtime_id=uuid4(),
-        state="saved",
-        app_version="test",
-        source_revision=None,
-        remote_source_revision=None,
-        comfy_revision=None,
-        frontend_version=None,
-        workflow_sha256="a" * 64,
-        images=["cover.png", "candidate.png"],
-    )
+    run = saved_image(uuid4())
     api._project.repository.save(run)
     character = api.library.store.create(
         "character", CharacterInput(name="Character"), image_id=run.run_id
@@ -89,7 +94,17 @@ def test_image_output_requires_detachment_and_preserves_other_indices(tmp_path):
         api.works.get(target.model_copy(update={"index": 2}))
     with pytest.raises(KomaquillError, match="image_in_use"):
         api.works.change(trash)
+    api.works.change(
+        WorkChange(
+            target=WorkRef(kind="conversation", id=conversation.id),
+            action="rename",
+            name="Renamed work",
+            operation_id=uuid4(),
+            expected_revision=0,
+        )
+    )
     cover, snapshot = api.works.image_uses(target)
+    assert snapshot.name == "Renamed work"
     with pytest.raises(KomaquillError, match="operation_conflict"):
         api.works.detach(
             ImageDetach(image=target, use=snapshot.model_copy(update={"slot": "unknown"}))
@@ -110,6 +125,10 @@ def test_image_output_requires_detachment_and_preserves_other_indices(tmp_path):
     item = api.works.change(trash)
     assert [item.index for item in api.works.image_outputs([run])[run.run_id]] == [1]
     assert api.images.get(run.run_id).images == ["cover.png", "candidate.png"]
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        api.library.store.create("character", CharacterInput(name="Copy"), image_id=run.run_id)
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        api.conversations.create(conversation.definition)
     api.works.change(
         WorkChange(
             target=target, action="restore", operation_id=uuid4(), expected_revision=item.revision
@@ -175,3 +194,28 @@ def test_unreadable_archived_work_can_be_trashed_and_restored(tmp_path):
         )
     )
     assert not api.archive.conversation(ref.id).readable
+
+
+def test_completed_portrait_cannot_reattach_a_trashed_image(tmp_path):
+    api = Client.initialize(tmp_path)
+    character = api.characters.create(CharacterInput(name="Portrait"))
+    request = CreationRequest(
+        operation_id=uuid4(), kind="portrait", target_id=character.id, expected_revision=0
+    )
+    job, _ = api.library.store.accept(request, "{}")
+    submitted = job.model_copy(update={"state": "submitted", "image_id": job.id})
+    api.library.store.save_job(submitted)
+    run = saved_image(job.id)
+    api._project.repository.save(run)
+    api.works.change(
+        WorkChange(
+            target=WorkRef(kind="image", id=run.run_id),
+            operation_id=uuid4(),
+            action="trash",
+            expected_revision=0,
+        )
+    )
+    completed = api.library.store.save_job(submitted.model_copy(update={"state": "complete"}))
+    assert completed.image_id == run.run_id
+    saved = api.characters.get(character.id)
+    assert saved.image_id is None and saved.image_job_id is None

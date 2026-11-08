@@ -41,7 +41,7 @@ from komaquill.adapters.persistence.schema import (
     images,
     operations,
 )
-from komaquill.adapters.persistence.works import visible_work
+from komaquill.adapters.persistence.works import image_visible, visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.actions import (
     ActionRecord,
@@ -344,6 +344,9 @@ class ConversationRepository:
     def create(self, definition: ConversationInput) -> Conversation:
         result = Conversation(definition=definition, state=definition.initial_state)
         with self.database.write() as connection:
+            for snapshot in definition.presets.values():
+                if not image_visible(connection, snapshot.image_id):
+                    raise conflict()
             self._store(connection, result, create=True)
         return result
 

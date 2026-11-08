@@ -178,89 +178,102 @@ describe('conversation workflow', () => {
     expect(within(meeting).queryByText('古書店の入口')).toBeNull()
   })
 
-  it('waits for the committed conversation revision before enabling the next send', async () => {
-    const cache = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    let identity = ''
-    let revision = 0
-    const submittedRevisions: number[] = []
-    server.use(
-      http.get(`${base}/api/v1/conversations/one`, () =>
-        HttpResponse.json({
-          id: 'one',
-          definition: { title: 'A new scene', llm_profile: 'fake' },
-          state: {},
-          turns: [],
-          revision,
-        }),
-      ),
-      http.post(
-        `${base}/api/v1/conversations/one/turns`,
-        async ({ request }) => {
-          const submitted = (await request.json()) as {
-            operation_id: string
-            expected_revision: number
-          }
-          identity = submitted.operation_id
-          submittedRevisions.push(submitted.expected_revision)
-          return HttpResponse.json({
-            id: identity,
-            conversation_id: 'one',
-            state: 'complete',
-            result_revision: submitted.expected_revision + 1,
-          })
-        },
-      ),
-      http.get(`${base}/api/v1/operations/:identity`, ({ params }) =>
-        HttpResponse.json({
-          id: params.identity,
-          conversation_id: 'one',
-          state: 'complete',
-          result_revision: 1,
-        }),
-      ),
-      http.get(`${base}/api/v1/conversations/one/operations`, () =>
-        HttpResponse.json(
-          identity
-            ? [
-                {
-                  id: identity,
-                  conversation_id: 'one',
-                  state: 'running',
-                  input: { text: 'First' },
-                },
-              ]
-            : [],
-        ),
-      ),
-    )
-    app('/conversations/one', cache)
-    const input = await screen.findByRole('textbox', { name: m.messageLabel })
-    await userEvent.type(input, 'First')
-    await userEvent.click(screen.getByRole('button', { name: m.send }))
-    await waitFor(() => expect(input).toHaveValue(''))
-    await waitFor(() =>
-      expect(
-        cache.getQueryData<Array<{ state: string }>>(
-          getConversationOperationsQueryKey({ path: { identity: 'one' } }),
-        )?.[0]?.state,
-      ).toBe('running'),
-    )
-    await userEvent.type(input, 'Second')
-    const send = screen.getByRole('button', { name: m.send })
-    expect(send).toBeDisabled()
-    expect(submittedRevisions).toEqual([0])
-    revision = 1
-    await act(async () => {
-      await cache.invalidateQueries({
-        queryKey: getConversationQueryKey({ path: { identity: 'one' } }),
+  it.each(['complete', 'failed'] as const)(
+    'waits for the conversation revision after a %s reply',
+    async (state) => {
+      const cache = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
       })
-    })
-    await waitFor(() => expect(send).toBeEnabled())
-    await userEvent.click(send)
-    await waitFor(() => expect(submittedRevisions).toEqual([0, 1]))
-  })
+      let identity = ''
+      let revision = 0
+      const submittedRevisions: number[] = []
+      server.use(
+        http.get(`${base}/api/v1/conversations/one`, () =>
+          HttpResponse.json({
+            id: 'one',
+            definition: { title: 'A new scene', llm_profile: 'fake' },
+            state: {},
+            turns: [],
+            revision,
+          }),
+        ),
+        http.post(
+          `${base}/api/v1/conversations/one/turns`,
+          async ({ request }) => {
+            const submitted = (await request.json()) as {
+              operation_id: string
+              expected_revision: number
+            }
+            identity = submitted.operation_id
+            submittedRevisions.push(submitted.expected_revision)
+            return HttpResponse.json({
+              id: identity,
+              conversation_id: 'one',
+              state,
+              result_revision: submitted.expected_revision + 1,
+              input: { text: 'First' },
+              ...(state === 'failed' ? { error: 'invalid_response' } : {}),
+            })
+          },
+        ),
+        http.get(`${base}/api/v1/operations/:identity`, ({ params }) =>
+          HttpResponse.json({
+            id: params.identity,
+            conversation_id: 'one',
+            state,
+            result_revision: 1,
+            input: { text: 'First' },
+            ...(state === 'failed' ? { error: 'invalid_response' } : {}),
+          }),
+        ),
+        http.get(`${base}/api/v1/conversations/one/operations`, () =>
+          HttpResponse.json(
+            identity
+              ? [
+                  {
+                    id: identity,
+                    conversation_id: 'one',
+                    state: 'running',
+                    input: { text: 'First' },
+                  },
+                ]
+              : [],
+          ),
+        ),
+      )
+      app('/conversations/one', cache)
+      const input = await screen.findByRole('textbox', { name: m.messageLabel })
+      await userEvent.type(input, 'First')
+      await userEvent.click(screen.getByRole('button', { name: m.send }))
+      await waitFor(() => expect(input).toHaveValue(''))
+      await waitFor(() =>
+        expect(
+          cache.getQueryData<Array<{ state: string }>>(
+            getConversationOperationsQueryKey({ path: { identity: 'one' } }),
+          )?.[0]?.state,
+        ).toBe('running'),
+      )
+      await userEvent.type(input, 'Second')
+      const send = screen.getByRole('button', { name: m.send })
+      expect(send).toBeDisabled()
+      expect(submittedRevisions).toEqual([0])
+      if (state === 'failed') {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          m.replyFailedAfterAcceptance,
+        )
+        expect(screen.queryByText(m.pending)).not.toBeInTheDocument()
+      }
+      revision = 1
+      await act(async () => {
+        await cache.invalidateQueries({
+          queryKey: getConversationQueryKey({ path: { identity: 'one' } }),
+        })
+      })
+      await waitFor(() => expect(send).toBeEnabled())
+      await userEvent.click(send)
+      await waitFor(() => expect(submittedRevisions).toEqual([0, 1]))
+    },
+  )
   it('keeps panel opening intent before the width change notification arrives', async () => {
     const matchMedia = vi.mocked(window.matchMedia)
     const original = matchMedia.getMockImplementation()!

@@ -22,7 +22,7 @@ from komaquill.adapters.persistence.schema import (
     preset_saves,
     presets,
 )
-from komaquill.adapters.persistence.works import WorkRepository, visible_work
+from komaquill.adapters.persistence.works import WorkRepository, image_visible, visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.models import Conversation
 from komaquill.domain.errors import KomaquillError
@@ -166,6 +166,8 @@ class LibraryRepository:
             {**value.model_dump(), "image_id": image_id, "image_stale": image_stale}
         )
         with self.database.write() as connection:
+            if not image_visible(connection, image_id):
+                raise conflict()
             connection.execute(
                 presets.insert().values(
                     id=str(result.id), kind=kind, payload=result.model_dump_json(), deleted=False
@@ -251,7 +253,11 @@ class LibraryRepository:
             if row is None:
                 return False
             value = self._decode(kind, str(identity), row["payload"])
-            if value.revision != revision or (image and value.image_job_id != job):
+            if (
+                value.revision != revision
+                or (image and value.image_job_id != job)
+                or not image_visible(connection, image)
+            ):
                 return False
             updated = value.model_copy(
                 update={
@@ -626,7 +632,7 @@ class LibraryRepository:
             self._decode_job(str(value.id), value.model_dump_json())
             if any(
                 getattr(previous, key) != getattr(value, key)
-                for key in ("request", "original", "turn_id", "created_at")
+                for key in ("request", "original", "turn_id", "created_at", "image_prompts")
             ) or (
                 previous.prompt_en is not None
                 and value.prompt_en is not None
@@ -668,9 +674,12 @@ class LibraryRepository:
                         target.revision == request.expected_revision
                         or preset_image_input(kind, target) == json.loads(value.original)
                     ) and target.image_job_id == value.id:
-                        target = target.model_copy(
-                            update={"image_id": value.image_id, "image_stale": False}
+                        update = (
+                            {"image_id": value.image_id, "image_stale": False}
+                            if image_visible(connection, value.image_id)
+                            else {"image_job_id": None}
                         )
+                        target = target.model_copy(update=update)
                         connection.execute(
                             presets.update()
                             .where(presets.c.id == str(target.id))

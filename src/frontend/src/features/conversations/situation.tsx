@@ -107,8 +107,19 @@ export function StartedSettings({
   const m = useMessages()
   const portrait = definition.presets?.character
   const story = definition.scenario
-  const scenery = [story?.opening, story?.description, story?.world].find(
-    (value) => value?.trim(),
+  const storyFields: Detail[] = [
+    [m.opening, story?.opening ?? ''],
+    [m.description, story?.description ?? ''],
+    [m.world, story?.world ?? ''],
+    [m.place, story?.place ?? ''],
+    [m.goal, story?.goal ?? ''],
+  ]
+  const setting = storyFields.filter(
+    ([, value], index) =>
+      value.trim() &&
+      storyFields.findIndex(
+        ([, previous]) => previous.trim() === value.trim(),
+      ) === index,
   )
   return (
     <Dialog.Root>
@@ -116,16 +127,17 @@ export function StartedSettings({
       {!screenHidden && (
         <Modal label={m.startedSettings} closeLabel={m.closePanel}>
           <div className="details-content">
-            {scenery && (
-              <section>
+            {setting.length > 0 && (
+              <section className="situation-person">
                 <h3>{m.scenario}</h3>
-                <p className="state-description">{scenery}</p>
+                <Facts items={setting} />
               </section>
             )}
             {(['user', 'character'] as const).map((role) => {
               const person = definition[role]
               if (!person) return null
               const items: Detail[] = [
+                [m.role, person.role],
                 [m.age, person.age],
                 [m.gender, person.gender],
                 [m.appearance, person.appearance],

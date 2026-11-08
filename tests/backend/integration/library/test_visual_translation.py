@@ -111,7 +111,7 @@ def test_portrait_keeps_explicit_empty_clothing_and_detects_its_change(tmp_path,
     assert not preset_changes("character", value, saved).image_changed
 
 
-@pytest.mark.parametrize("failure", [None, "missing", "japanese"])
+@pytest.mark.parametrize("failure", [None, "missing", "japanese", "blank"])
 def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, monkeypatch, failure):
     import langchain_openai
 
@@ -138,6 +138,8 @@ def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, mo
                     result.pop("pose")
                 elif failure == "japanese":
                     result["pose"] = "手を組む"
+                elif failure == "blank":
+                    result["pose"] = "  "
             return AIMessage(
                 content=json.dumps(result, ensure_ascii=False),
                 response_metadata={"model_name": self.model},

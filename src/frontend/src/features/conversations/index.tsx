@@ -505,14 +505,15 @@ function ConversationView({
         ? messages.receiptUnknown
         : currentReply?.state === 'complete'
           ? messages.replyLoading
-          : currentReply
+          : currentReply?.state === 'accepted' ||
+              currentReply?.state === 'running'
             ? messages.pending
             : undefined
   const statusTurn =
     currentReply?.input && !completedIds.has(currentReply.id)
       ? currentReply.id
       : undefined
-  const replyPending = !!replyStatus || pendingResume !== null
+  const replyPending = !!replyStatus || !!currentReply || pendingResume !== null
   const busy = actionControls.unresolved || replyPending || !!detail.error
   const canSend =
     !detail.error &&

@@ -207,9 +207,20 @@ test('closes narrow scene details with Escape and restores focus', async ({
 
 test('separates the current situation from the starting settings', async ({
   page,
+  request,
 }) => {
-  await page.goto('/new')
-  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  const created = await request.post('/api/v1/conversations', {
+    data: {
+      title: 'The lighthouse',
+      scenario: {
+        opening: 'The door swings open.',
+        world: 'A coastal town without electricity.',
+        place: 'The lighthouse',
+      },
+    },
+  })
+  expect(created.ok()).toBe(true)
+  await page.goto('/conversations/' + (await created.json()).id)
   await page.getByRole('button', { name: ja.showState, exact: true }).click()
   const situation = page.locator('.state-panel')
   await expect(situation).toBeVisible()
@@ -221,9 +232,9 @@ test('separates the current situation from the starting settings', async ({
   await page
     .getByRole('button', { name: ja.startedSettings, exact: true })
     .click()
-  await expect(
-    page.getByRole('dialog', { name: ja.startedSettings }),
-  ).toBeVisible()
+  const settings = page.getByRole('dialog', { name: ja.startedSettings })
+  await expect(settings).toContainText('The door swings open.')
+  await expect(settings).toContainText('A coastal town without electricity.')
 })
 
 test('renames and restores a conversation from the trash', async ({ page }) => {

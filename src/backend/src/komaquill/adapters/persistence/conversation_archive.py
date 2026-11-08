@@ -43,7 +43,7 @@ def decode(identity: str, payload: str) -> ArchivedConversation:
         return ArchivedConversation(id=UUID(identity), title=identity, turns=[], readable=False)
 
 
-def _visible_archive() -> Select[tuple[str, str, str | None]]:
+def _visible_archive() -> Select[str, str, str | None]:
     return (
         select(archived_conversations.c.id, archived_conversations.c.payload, work_metadata.c.name)
         .select_from(
@@ -72,24 +72,20 @@ def list_conversations(database: Database) -> list[ArchivedConversation]:
             _visible_archive()
             .where(archived_conversations.c.reason != "converted")
             .order_by(archived_conversations.c.id)
-        ).tuples()
+        )
         return [_named(str(identity), str(payload), name) for identity, payload, name in rows]
 
 
 @stored
 def get_conversation(database: Database, identity: UUID) -> ArchivedConversation:
     with database.engine.connect() as connection:
-        row = (
-            connection.execute(
-                _visible_archive().where(
-                    archived_conversations.c.id == str(identity),
-                    (archived_conversations.c.reason != "converted")
-                    | visible_work("conversation", archived_conversations.c.id),
-                )
+        row = connection.execute(
+            _visible_archive().where(
+                archived_conversations.c.id == str(identity),
+                (archived_conversations.c.reason != "converted")
+                | visible_work("conversation", archived_conversations.c.id),
             )
-            .tuples()
-            .one_or_none()
-        )
+        ).one_or_none()
         if row is None:
             raise missing()
         return _named(str(row[0]), str(row[1]), row[2])

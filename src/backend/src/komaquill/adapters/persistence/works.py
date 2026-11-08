@@ -54,6 +54,7 @@ def visible_work(
             work_metadata.c.output_index == index,
             work_metadata.c.trashed.is_(True),
         )
+        .correlate_except(work_metadata)
         .exists()
     )
 
@@ -362,13 +363,17 @@ class WorkRepository:
             return True
         if ref.kind in {"conversation", "character", "story", "image"}:
             column = "$.image_id" if ref.kind == "image" else "$.request.target_id"
+            state = func.json_extract(creation_jobs.c.payload, "$.state")
+            terminal = (
+                select(images.c.id)
+                .where(images.c.id == creation_jobs.c.id, images.c.state.in_(TERMINAL_RUN_STATES))
+                .exists()
+            )
             return (
                 connection.execute(
                     select(creation_jobs.c.id).where(
                         func.json_extract(creation_jobs.c.payload, column) == identity,
-                        func.json_extract(creation_jobs.c.payload, "$.state").in_(
-                            ["accepted", "running", "submitted"]
-                        ),
+                        state.in_(["accepted", "running"]) | ((state == "submitted") & ~terminal),
                     )
                 ).first()
                 is not None

@@ -14,6 +14,7 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.library.models import CreationRequest, PresetSaveOptions
 from pydantic import ValidationError
 
+from tests.backend.support.migrations import legacy_work_tables
 from tests.backend.support.storage import sqlite_connection
 
 
@@ -367,6 +368,7 @@ def test_fixed_content_migration_preserves_history_policy_and_artifacts(tmp_path
             "INSERT INTO content_labels VALUES('conversation',?,'general',0)", (str(scene.id),)
         )
         connection.execute("UPDATE preferences SET payload=json_set(payload,'$.nsfw_enabled',0)")
+        legacy_work_tables(connection.execute)
         connection.execute("UPDATE alembic_version SET version_num='0010'")
         original = {
             table: connection.execute(f"SELECT * FROM {table}").fetchall()

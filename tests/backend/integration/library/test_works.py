@@ -3,7 +3,16 @@
 from uuid import uuid4
 
 import pytest
-from komaquill.api import CharacterInput, Client, ConversationInput, StoryInput
+from komaquill.adapters.persistence.schema import archived_conversations
+from komaquill.api import (
+    CharacterInput,
+    Client,
+    ConversationInput,
+    SceneRequest,
+    SendInput,
+    StoryInput,
+)
+from komaquill.domain.conversations.models import PresetSnapshot
 from komaquill.domain.errors import KomaquillError
 from komaquill.domain.library.works import ImageDetach, WorkChange, WorkRef
 from komaquill.domain.models import Run
@@ -39,6 +48,10 @@ def test_rename_trash_and_restore_conversation(tmp_path):
     )
     assert api.conversations.get(target.id).definition.title == "Original title"
     assert api.works.get(target).name == "New title"
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        api.works.change(trash.model_copy(update={"action": "restore"}))
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        api.works.change(trash.model_copy(update={"operation_id": uuid4()}))
 
 
 def test_image_output_requires_detachment_and_preserves_other_indices(tmp_path):
@@ -60,14 +73,105 @@ def test_image_output_requires_detachment_and_preserves_other_indices(tmp_path):
         "character", CharacterInput(name="Character"), image_id=run.run_id
     )
     story = api.stories.create(StoryInput(name="Story", character_id=character.id))
+    conversation = api.conversations.create(
+        ConversationInput(
+            title="Retained character",
+            presets={
+                "character": PresetSnapshot(
+                    id=character.id, revision=0, name=character.name, image_id=run.run_id
+                )
+            },
+        )
+    )
     target = WorkRef(kind="image", id=run.run_id)
     trash = WorkChange(target=target, action="trash", operation_id=uuid4(), expected_revision=0)
+    with pytest.raises(KomaquillError, match="request_not_found"):
+        api.works.get(target.model_copy(update={"index": 2}))
     with pytest.raises(KomaquillError, match="image_in_use"):
         api.works.change(trash)
-    (use,) = api.works.image_uses(target)
-    api.works.detach(ImageDetach(image=target, use=use))
+    cover, snapshot = api.works.image_uses(target)
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        api.works.detach(
+            ImageDetach(image=target, use=snapshot.model_copy(update={"slot": "unknown"}))
+        )
+    api.works.detach(ImageDetach(image=target, use=cover))
     assert api.characters.get(character.id).image_id is None
     assert api.stories.get(story.id).character_id == character.id
-    api.works.change(trash)
+    with pytest.raises(KomaquillError, match="image_in_use"):
+        api.works.change(trash)
+    detach = ImageDetach(image=target, use=snapshot)
+    api.works.detach(detach)
+    api.works.detach(detach)
+    assert api.works.detached("conversation", conversation.id) == {f"character:{run.run_id}": [0]}
+    assert (
+        api.conversations.get(conversation.id).definition.presets["character"].image_id
+        == run.run_id
+    )
+    item = api.works.change(trash)
     assert [item.index for item in api.works.image_outputs([run])[run.run_id]] == [1]
     assert api.images.get(run.run_id).images == ["cover.png", "candidate.png"]
+    api.works.change(
+        WorkChange(
+            target=target, action="restore", operation_id=uuid4(), expected_revision=item.revision
+        )
+    )
+    assert [item.index for item in api.works.image_outputs([run])[run.run_id]] == [0, 1]
+
+
+def test_bookmark_name_and_visibility_follow_the_conversation(tmp_path):
+    api = Client.initialize(tmp_path)
+    conversation = api.conversations.create(
+        ConversationInput(title="Story", locale="en", llm_profile="fake")
+    )
+    operation = api.conversations.send(
+        conversation.id, SendInput(operation_id=uuid4(), expected_revision=0, text="Hello")
+    )
+    bookmark = api.conversations.bookmark(
+        conversation.id,
+        SceneRequest(
+            operation_id=uuid4(),
+            expected_revision=api.conversations.overview(conversation.id).revision,
+            turn_id=operation.id,
+            name="Original",
+        ),
+    )
+    ref = WorkRef(kind="bookmark", id=bookmark.id)
+    changed = api.works.change(
+        WorkChange(
+            target=ref,
+            action="rename",
+            name="New bookmark",
+            operation_id=uuid4(),
+            expected_revision=0,
+        )
+    )
+    assert changed.owner == conversation.id
+    assert api.conversations.bookmarks(conversation.id)[0].name == "New bookmark"
+    api.works.change(
+        WorkChange(
+            target=ref, action="trash", operation_id=uuid4(), expected_revision=changed.revision
+        )
+    )
+    assert api.conversations.bookmarks(conversation.id) == []
+
+
+def test_unreadable_archived_work_can_be_trashed_and_restored(tmp_path):
+    api = Client.initialize(tmp_path)
+    ref = WorkRef(kind="archived", id=uuid4())
+    with api.conversations.repository.database.write() as connection:
+        connection.execute(
+            archived_conversations.insert().values(
+                id=str(ref.id), payload="unreadable", reason="unreadable"
+            )
+        )
+    assert not api.archive.conversations()[0].readable
+    item = api.works.change(
+        WorkChange(target=ref, action="trash", operation_id=uuid4(), expected_revision=0)
+    )
+    assert api.archive.conversations() == []
+    api.works.change(
+        WorkChange(
+            target=ref, action="restore", operation_id=uuid4(), expected_revision=item.revision
+        )
+    )
+    assert not api.archive.conversation(ref.id).readable

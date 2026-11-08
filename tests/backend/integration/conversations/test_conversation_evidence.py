@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from komaquill.api import Client, ConversationInput, SendInput
 
+from tests.backend.support.migrations import legacy_work_tables
 from tests.backend.support.storage import sqlite_connection
 
 pytestmark = pytest.mark.usefixtures("scripted_services")
@@ -99,8 +100,7 @@ def test_source_memory_migration_preserves_original_header_and_turns(tmp_path, s
         connection.execute(
             "CREATE TABLE content_labels(kind TEXT,id TEXT,rating TEXT,revision INTEGER)"
         )
-        connection.execute("DROP TABLE work_metadata")
-        connection.execute("DROP TABLE image_detachments")
+        legacy_work_tables(connection.execute)
         connection.execute("UPDATE alembic_version SET version_num='0009'")
     report = api.migrate()
     assert json.loads(report.read_bytes())["state"] == "complete"

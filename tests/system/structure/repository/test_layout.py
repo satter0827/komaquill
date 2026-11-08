@@ -135,11 +135,10 @@ def test_frozen_migration_does_not_import_current_business_or_schema():
 
 
 def test_current_metadata_matches_the_migrated_database(tmp_path):
-    from sqlalchemy import inspect
-    from sqlalchemy.dialects.sqlite import dialect
-
     from komaquill.adapters.persistence.connection import Database
     from komaquill.adapters.persistence.schema import metadata
+    from sqlalchemy import inspect
+    from sqlalchemy.dialects.sqlite import dialect
 
     storage = Database(tmp_path / "schema.sqlite3", create=True)
     try:

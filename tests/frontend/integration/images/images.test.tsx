@@ -63,6 +63,22 @@ const server = setupServer(
   http.get(`${base}/api/v1/images`, () =>
     HttpResponse.json([...records.values()]),
   ),
+  http.get(`${base}/api/v1/image-outputs`, () =>
+    HttpResponse.json(
+      Object.fromEntries(
+        [...records.values()].map((run) => [
+          run.run_id,
+          (run.images ?? []).map((name, index) => ({
+            kind: 'image',
+            id: run.run_id,
+            name,
+            index,
+            revision: 0,
+          })),
+        ]),
+      ),
+    ),
+  ),
   http.get(`${base}/api/v1/images/:id`, ({ params }) => {
     reads++
     return records.has(String(params.id))

@@ -11,11 +11,9 @@ from komaquill.adapters.persistence.conversation_archive import (
     get_conversation,
     list_conversations,
 )
-from komaquill.adapters.persistence.works import WorkRepository
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
 from komaquill.domain.errors import KomaquillError, OperationStage
-from komaquill.domain.library.works import WorkRef
 from komaquill.domain.models import JsonObject
 
 
@@ -26,19 +24,10 @@ class ArchiveService:
 
     def conversations(self) -> list[ArchivedConversation]:
         storage = database(self.project.data / "komaquill.sqlite3")
-        repository = WorkRepository(storage)
-        return [
-            item.model_copy(
-                update={"title": repository.get(WorkRef(kind="archived", id=item.id)).name}
-            )
-            for item in list_conversations(storage)
-        ]
+        return list_conversations(storage)
 
     def conversation(self, identity: UUID) -> ArchivedConversation:
-        storage = database(self.project.data / "komaquill.sqlite3")
-        record = get_conversation(storage, identity)
-        name = WorkRepository(storage).get(WorkRef(kind="archived", id=identity)).name
-        return record.model_copy(update={"title": name})
+        return get_conversation(database(self.project.data / "komaquill.sqlite3"), identity)
 
     def list(self) -> JsonObject:
         with api_operation(OperationStage.STORAGE):

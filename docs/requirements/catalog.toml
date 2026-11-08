@@ -86,7 +86,7 @@ tests = ["tests/scripts/integration/acceptance/test_run.py", "tests/system/e2e/w
 [requirements.REQ-CHAT-LIBRARY]
 summary = "wheelから導入する独立した汎用チャットBOTライブラリとしシナリオや人物を引数・設定で指定する"
 status = "implemented"
-acceptance = ["公開入口をkomaquill.apiとしCLIも同じ処理を呼ぶ", "利用アプリからシナリオ・キャラ・ユーザー・初期状態・応答方針・接続先を渡せる", "日常・SF・中世・空想世界を作例への固定なしで扱う", "キャラ設定と画像接続なしでも文章チャットを使える", "wheel導入後に別アプリから作成・反復入力・状態取得・再開できる", "旧作品の読取り専用の一覧・取得・書き出しをarchiveへ分離する", "GPU・DB・LLMの具体的SDKやドライバーの型を業務処理と公開入力へ漏らさない"]
+acceptance = [ "作品・しおり・画像を個別にごみ箱へ移して復元できる", "使用中の画像は参照を解除するまでごみ箱へ移せない","公開入口をkomaquill.apiとしCLIも同じ処理を呼ぶ", "利用アプリからシナリオ・キャラ・ユーザー・初期状態・応答方針・接続先を渡せる", "日常・SF・中世・空想世界を作例への固定なしで扱う", "キャラ設定と画像接続なしでも文章チャットを使える", "wheel導入後に別アプリから作成・反復入力・状態取得・再開できる", "旧作品の読取り専用の一覧・取得・書き出しをarchiveへ分離する", "GPU・DB・LLMの具体的SDKやドライバーの型を業務処理と公開入力へ漏らさない"]
 sources = ["src/backend/src/komaquill/domain/conversations/models.py", "src/backend/src/komaquill/application/conversations/service.py", "src/backend/src/komaquill/adapters/persistence/connection.py"]
 tests = ["tests/backend/integration/conversations/test_conversations.py", "tests/backend/integration/conversations/test_conversation_llm.py"]
 

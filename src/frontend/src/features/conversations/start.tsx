@@ -45,7 +45,12 @@ export function NewConversation({ compact = false }: { compact?: boolean }) {
   const story = storyId
     ? storyChoices.find((item) => item.id === storyId)
     : storyChoices[0]
-  const characterId = search.get('character') ?? story?.character_id
+  const recommended = characters.data?.some(
+    (item) => item.id === story?.character_id,
+  )
+    ? story?.character_id
+    : undefined
+  const characterId = search.get('character') ?? recommended
   const characterChoices = presetsForLocale(
     characters.data,
     locale,

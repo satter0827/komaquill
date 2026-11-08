@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { ImageResult } from '../../shared/images/result'
 import { isRejectedRequest, POLL_INTERVAL_MS } from '../../api/client'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -81,6 +82,7 @@ export function ImagesPage() {
     structuralSharing: (previous, next) =>
       retainImageList(previous as Run[] | undefined, next as Run[]),
   })
+  const outputs = useQuery(q.listImageOutputsOptions())
   const latest = useQuery({
     ...imageOptions(latestId ?? ''),
     enabled: false,
@@ -119,6 +121,7 @@ export function ImagesPage() {
       setPrepared(null)
       track(run.run_id)
       void cache.invalidateQueries({ queryKey: q.listImagesQueryKey() })
+      void cache.invalidateQueries({ queryKey: q.listImageOutputsQueryKey() })
     },
     [cache, track],
   )
@@ -150,7 +153,10 @@ export function ImagesPage() {
       },
     )
   }, [cache, prepared, submit.isError, accept, reset])
-  const days = groupImageDays(images.data ?? [], preferences.value.locale)
+  const visibleRuns = (images.data ?? []).filter(
+    (run) => !run.images?.length || !!outputs.data?.[run.run_id]?.length,
+  )
+  const days = groupImageDays(visibleRuns, preferences.value.locale)
   const dayExpanded = (key: string) => dayOverrides[key] ?? key === days[0]?.key
   const latestDay = days.find((day) =>
     day.runs.some((run) => run.run_id === latestId),
@@ -189,6 +195,9 @@ export function ImagesPage() {
     <section className="page album-page">
       <div className="page-heading">
         <h1>{m.images}</h1>
+        <Link className="button" to="/trash">
+          {m.trashTitle}
+        </Link>
         <Button
           variant={days.length === 0 && !open ? 'primary' : 'secondary'}
           aria-expanded={open}
@@ -288,6 +297,12 @@ export function ImagesPage() {
           {failure(submit.error)}
         </p>
       )}
+      <QueryNotice
+        error={outputs.error}
+        retained={outputs.data !== undefined}
+        pending={outputs.isFetching}
+        onRetry={() => void outputs.refetch()}
+      />
       {images.isPending && <p role="status">{m.loading}</p>}
       <QueryNotice
         error={images.error}
@@ -295,12 +310,15 @@ export function ImagesPage() {
         pending={images.isFetching}
         onRetry={() => void images.refetch()}
       />
-      {days.length === 0 && !images.isPending && !images.error && (
-        <div className="album-empty">
-          <AlbumIcon size={24} />
-          <p>{m.albumEmpty}</p>
-        </div>
-      )}
+      {days.length === 0 &&
+        !images.isPending &&
+        !images.error &&
+        outputs.isSuccess && (
+          <div className="album-empty">
+            <AlbumIcon size={24} />
+            <p>{m.albumEmpty}</p>
+          </div>
+        )}
       <div className="album-days">
         {days.map((day) => {
           const expanded = dayExpanded(day.key)
@@ -319,7 +337,8 @@ export function ImagesPage() {
                 <span className="subtle">
                   {format('albumDayCount', {
                     count: day.runs.reduce(
-                      (count, run) => count + (run.images?.length ?? 0),
+                      (count, run) =>
+                        count + (outputs.data?.[run.run_id]?.length ?? 0),
                       0,
                     ),
                   })}
@@ -332,6 +351,7 @@ export function ImagesPage() {
                       key={run.run_id}
                       identity={run.run_id}
                       run={run}
+                      outputs={outputs.data?.[run.run_id] ?? []}
                     />
                   ))}
                 </div>

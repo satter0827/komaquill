@@ -757,6 +757,75 @@ export type ConversationState = {
 };
 
 /**
+ * ConversationView
+ */
+export type ConversationView = {
+    /**
+     * Turn Count
+     */
+    turn_count?: number;
+    /**
+     * Turn Offset
+     */
+    turn_offset?: number;
+    /**
+     * History Prefix Sha256
+     */
+    history_prefix_sha256?: string;
+    /**
+     * History Anchor
+     */
+    history_anchor?: string;
+    /**
+     * Notes
+     */
+    notes?: Array<string>;
+    /**
+     * Source Conversation Id
+     */
+    source_conversation_id?: string | null;
+    /**
+     * Source Turn Id
+     */
+    source_turn_id?: string | null;
+    /**
+     * Id
+     */
+    id?: string;
+    definition: ConversationInput;
+    state?: ConversationState;
+    memory?: ConversationMemory | null;
+    /**
+     * Turns
+     */
+    turns?: Array<Turn>;
+    /**
+     * Revision
+     */
+    revision?: number;
+    /**
+     * Created At
+     */
+    created_at?: string;
+    /**
+     * Actions
+     */
+    actions?: Array<ActionRecord>;
+    /**
+     * Proposals
+     */
+    proposals?: Array<ProposedAction>;
+    /**
+     * Visual Reviews
+     */
+    visual_reviews?: Array<VisualReviewRecord>;
+    /**
+     * Display Name
+     */
+    display_name?: string | null;
+};
+
+/**
  * CreationJob
  */
 export type CreationJob = {
@@ -856,7 +925,7 @@ export type CreationRequest = {
  *
  * Identify safe, machine-readable product failure categories.
  */
-export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'execution_budget_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'image_description_invalid' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
+export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'execution_budget_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'image_description_invalid' | 'image_in_use' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
  * ErrorView
@@ -897,6 +966,14 @@ export type FailureInfo = {
      * Locations
      */
     locations?: Array<CodeLocation>;
+};
+
+/**
+ * ImageDetach
+ */
+export type ImageDetach = {
+    image: WorkRef;
+    use: ImageUse;
 };
 
 /**
@@ -1006,6 +1083,28 @@ export type ImageRef = {
      * Type
      */
     type?: 'output' | 'temp';
+};
+
+/**
+ * ImageUse
+ */
+export type ImageUse = {
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'character' | 'story';
+    /**
+     * Owner
+     */
+    owner: string;
+    /**
+     * Slot
+     */
+    slot: string;
+    /**
+     * Name
+     */
+    name: string;
 };
 
 /**
@@ -2467,6 +2566,444 @@ export type WaitAction = {
     minutes: number;
 };
 
+/**
+ * WorkChange
+ */
+export type WorkChange = {
+    target: WorkRef;
+    /**
+     * Operation Id
+     */
+    operation_id: string;
+    /**
+     * Expected Revision
+     */
+    expected_revision: number;
+    /**
+     * Expected Content Revision
+     */
+    expected_content_revision?: number | null;
+    /**
+     * Action
+     */
+    action: 'rename' | 'trash' | 'restore';
+    /**
+     * Name
+     */
+    name?: string | null;
+};
+
+/**
+ * WorkItem
+ */
+export type WorkItem = {
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'archived' | 'character' | 'story' | 'image' | 'bookmark';
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Index
+     */
+    index?: number;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Revision
+     */
+    revision?: number;
+    /**
+     * Trashed
+     */
+    trashed?: boolean;
+    /**
+     * Owner
+     */
+    owner?: string | null;
+};
+
+/**
+ * WorkRef
+ */
+export type WorkRef = {
+    /**
+     * Kind
+     */
+    kind: 'conversation' | 'archived' | 'character' | 'story' | 'image' | 'bookmark';
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Index
+     */
+    index?: number;
+};
+
+export type ListTrashData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/trash';
+};
+
+export type ListTrashErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListTrashError = ListTrashErrors[keyof ListTrashErrors];
+
+export type ListTrashResponses = {
+    /**
+     * Response List Trash
+     *
+     * Successful Response
+     */
+    200: Array<WorkItem>;
+};
+
+export type ListTrashResponse = ListTrashResponses[keyof ListTrashResponses];
+
+export type GetWorkData = {
+    body?: never;
+    path: {
+        /**
+         * Kind
+         */
+        kind: 'conversation' | 'archived' | 'character' | 'story' | 'image' | 'bookmark';
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: {
+        /**
+         * Index
+         */
+        index?: number;
+    };
+    url: '/api/v1/works/{kind}/{identity}';
+};
+
+export type GetWorkErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetWorkError = GetWorkErrors[keyof GetWorkErrors];
+
+export type GetWorkResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkItem;
+};
+
+export type GetWorkResponse = GetWorkResponses[keyof GetWorkResponses];
+
+export type ChangeWorkData = {
+    body: WorkChange;
+    path?: never;
+    query?: never;
+    url: '/api/v1/works/change';
+};
+
+export type ChangeWorkErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ChangeWorkError = ChangeWorkErrors[keyof ChangeWorkErrors];
+
+export type ChangeWorkResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkItem;
+};
+
+export type ChangeWorkResponse = ChangeWorkResponses[keyof ChangeWorkResponses];
+
+export type ListImageOutputsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/image-outputs';
+};
+
+export type ListImageOutputsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListImageOutputsError = ListImageOutputsErrors[keyof ListImageOutputsErrors];
+
+export type ListImageOutputsResponses = {
+    /**
+     * Response List Image Outputs
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: Array<WorkItem>;
+    };
+};
+
+export type ListImageOutputsResponse = ListImageOutputsResponses[keyof ListImageOutputsResponses];
+
+export type ListImageUsesData = {
+    body?: never;
+    path: {
+        /**
+         * Identity
+         */
+        identity: string;
+        /**
+         * Index
+         */
+        index: number;
+    };
+    query?: never;
+    url: '/api/v1/images/{identity}/uses/{index}';
+};
+
+export type ListImageUsesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type ListImageUsesError = ListImageUsesErrors[keyof ListImageUsesErrors];
+
+export type ListImageUsesResponses = {
+    /**
+     * Response List Image Uses
+     *
+     * Successful Response
+     */
+    200: Array<ImageUse>;
+};
+
+export type ListImageUsesResponse = ListImageUsesResponses[keyof ListImageUsesResponses];
+
+export type DetachImageData = {
+    body: ImageDetach;
+    path?: never;
+    query?: never;
+    url: '/api/v1/images/detach';
+};
+
+export type DetachImageErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type DetachImageError = DetachImageErrors[keyof DetachImageErrors];
+
+export type DetachImageResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type DetachImageResponse = DetachImageResponses[keyof DetachImageResponses];
+
+export type GetDetachedImagesData = {
+    body?: never;
+    path: {
+        /**
+         * Kind
+         */
+        kind: 'conversation' | 'archived' | 'character' | 'story' | 'image' | 'bookmark';
+        /**
+         * Identity
+         */
+        identity: string;
+    };
+    query?: never;
+    url: '/api/v1/works/{kind}/{identity}/detached-images';
+};
+
+export type GetDetachedImagesErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorView;
+    /**
+     * Forbidden
+     */
+    403: ErrorView;
+    /**
+     * Not Found
+     */
+    404: ErrorView;
+    /**
+     * Conflict
+     */
+    409: ErrorView;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorView;
+    /**
+     * Internal Server Error
+     */
+    500: ErrorView;
+};
+
+export type GetDetachedImagesError = GetDetachedImagesErrors[keyof GetDetachedImagesErrors];
+
+export type GetDetachedImagesResponses = {
+    /**
+     * Response Get Detached Images
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: Array<number>;
+    };
+};
+
+export type GetDetachedImagesResponse = GetDetachedImagesResponses[keyof GetDetachedImagesResponses];
+
 export type ListArchivedConversationsData = {
     body?: never;
     path?: never;
@@ -3760,7 +4297,7 @@ export type ListConversationsResponses = {
      *
      * Successful Response
      */
-    200: Array<Conversation>;
+    200: Array<ConversationView>;
 };
 
 export type ListConversationsResponse = ListConversationsResponses[keyof ListConversationsResponses];
@@ -3905,7 +4442,7 @@ export type GetConversationResponses = {
     /**
      * Successful Response
      */
-    200: Conversation;
+    200: ConversationView;
 };
 
 export type GetConversationResponse = GetConversationResponses[keyof GetConversationResponses];

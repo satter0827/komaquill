@@ -7,7 +7,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psutil
 from sqlalchemy import case, func, select
@@ -22,6 +22,7 @@ from komaquill.adapters.persistence.schema import (
     preset_saves,
     presets,
 )
+from komaquill.adapters.persistence.works import WorkRepository, visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.models import Conversation
 from komaquill.domain.errors import KomaquillError
@@ -44,6 +45,7 @@ from komaquill.domain.library.rendering import (
     preset_changes,
     preset_image_input,
 )
+from komaquill.domain.library.works import WorkChange, WorkRef
 
 MODELS: dict[PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[StoryPreset]] = {
     "player": PlayerProfile,
@@ -215,50 +217,20 @@ class LibraryRepository:
 
     @stored
     def delete(self, kind: PresetKind, identity: UUID, revision: int) -> None:
-        with self.database.transaction() as connection:
-            row = (
-                connection.execute(
-                    select(presets).where(
-                        presets.c.id == str(identity),
-                        presets.c.kind == kind,
-                        presets.c.deleted == False,  # noqa: E712
-                    )
-                )
-                .mappings()
-                .one_or_none()
+        if kind == "player":
+            raise conflict()
+        ref = WorkRef(kind=kind, id=identity)
+        works = WorkRepository(self.database)
+        item = works.get(ref)
+        works.change(
+            WorkChange(
+                target=ref,
+                action="trash",
+                operation_id=uuid4(),
+                expected_revision=item.revision,
+                expected_content_revision=revision,
             )
-            if row is None:
-                raise missing()
-            if self._decode(kind, str(identity), row["payload"]).revision != revision:
-                raise conflict()
-            connection.execute(
-                presets.update().where(presets.c.id == str(identity)).values(deleted=True)
-            )
-            if kind == "character":
-                rows = (
-                    connection.execute(
-                        select(presets).where(
-                            presets.c.kind == "story", presets.c.deleted.is_(False)
-                        )
-                    )
-                    .mappings()
-                    .all()
-                )  # noqa: E712
-                for row in rows:
-                    story = cast(StoryPreset, self._decode("story", row["id"], row["payload"]))
-                    if story.character_id == identity:
-                        changed = story.model_copy(
-                            update={
-                                "character_id": None,
-                                "revision": story.revision + 1,
-                            }
-                        )
-                        connection.execute(
-                            presets.update()
-                            .where(presets.c.id == row["id"])
-                            .values(payload=changed.model_dump_json())
-                        )
-            connection.commit()
+        )
 
     @stored
     def attach(
@@ -388,7 +360,10 @@ class LibraryRepository:
         value = None
         if request.kind == "conversation_image":
             payload = connection.execute(
-                select(conversations.c.payload).where(conversations.c.id == str(request.target_id))
+                select(conversations.c.payload).where(
+                    conversations.c.id == str(request.target_id),
+                    visible_work("conversation", conversations.c.id),
+                )
             ).scalar_one_or_none()
             if payload is None:
                 raise missing()
@@ -502,6 +477,10 @@ class LibraryRepository:
                 kind == "story"
                 and isinstance(value, StoryInput)
                 and value.character_id is not None
+                and (
+                    not isinstance(previous, StoryPreset)
+                    or previous.character_id != value.character_id
+                )
                 and connection.execute(
                     select(presets.c.id).where(
                         presets.c.id == str(value.character_id),

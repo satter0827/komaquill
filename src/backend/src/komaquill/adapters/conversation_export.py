@@ -18,7 +18,7 @@ def export_conversation(
     workspace: Path,
     conversation: Conversation,
     rating: ContentRating,
-    assets: list[tuple[Run, list[Path]]],
+    assets: list[tuple[Run, list[Path | None]]],
     *,
     include_images: bool = True,
     include_conditions: bool = False,
@@ -59,7 +59,7 @@ def _write_export(
     destination: Path,
     conversation: Conversation,
     rating: ContentRating,
-    assets: list[tuple[Run, list[Path]]],
+    assets: list[tuple[Run, list[Path | None]]],
     transcript: list[str],
     *,
     include_images: bool,
@@ -87,6 +87,8 @@ def _write_export(
                 )
             if include_images:
                 for index, source in enumerate(paths):
+                    if source is None:
+                        continue
                     with Image.open(source) as image:
                         output = io.BytesIO()
                         clean = image.copy()

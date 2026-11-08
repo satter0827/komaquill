@@ -38,6 +38,7 @@ class ErrorCode(StrEnum):
     INVALID_REQUEST = "invalid_request"
     INVALID_RESPONSE = "invalid_response"
     IMAGE_DESCRIPTION_INVALID = "image_description_invalid"
+    IMAGE_IN_USE = "image_in_use"
     LOG_TIMEOUT = "log_timeout"
     LOG_UNAVAILABLE = "log_unavailable"
     MISSING_IMAGE = "missing_image"

@@ -226,6 +226,37 @@ test('separates the current situation from the starting settings', async ({
   ).toBeVisible()
 })
 
+test('renames and restores a conversation from the trash', async ({ page }) => {
+  await page.goto('/new')
+  await page.getByRole('button', { name: ja.create, exact: true }).click()
+  await expect(page).toHaveURL(/\/conversations\//)
+  const conversationUrl = page.url()
+  const openManagement = async () => {
+    await page
+      .getByRole('button', { name: ja.conversationMenu, exact: true })
+      .click()
+    await page.getByRole('button', { name: ja.manageWork, exact: true }).click()
+    return page.getByRole('dialog', { name: ja.manageWork })
+  }
+  const rename = await openManagement()
+  await rename.getByRole('textbox', { name: ja.name }).fill('雨のアトリエ')
+  await rename.getByRole('button', { name: ja.renameWork }).click()
+  await expect(page.locator('.conversation-header')).toContainText(
+    '雨のアトリエ',
+  )
+  const trash = await openManagement()
+  await trash.getByRole('button', { name: ja.moveToTrash }).click()
+  await page.waitForURL((url) => url.pathname === '/')
+  await page.goto('/trash')
+  const work = page.getByRole('listitem').filter({ hasText: '雨のアトリエ' })
+  await work.getByRole('button', { name: ja.restoreWork }).click()
+  await expect(work).toHaveCount(0)
+  await page.goto(conversationUrl)
+  await expect(page.locator('.conversation-header')).toContainText(
+    '雨のアトリエ',
+  )
+})
+
 test('generates and automatically collects a standalone image', async ({
   page,
 }) => {

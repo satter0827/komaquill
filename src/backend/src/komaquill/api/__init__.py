@@ -28,6 +28,11 @@ from komaquill.domain.library.models import PresetRef as PresetRef
 from komaquill.domain.library.models import StoryInput as StoryInput
 from komaquill.domain.library.recovery import ImageLinkInspection as ImageLinkInspection
 from komaquill.domain.library.recovery import ImageLinkRepairResult as ImageLinkRepairResult
+from komaquill.domain.library.works import ImageDetach as ImageDetach
+from komaquill.domain.library.works import ImageUse as ImageUse
+from komaquill.domain.library.works import WorkChange as WorkChange
+from komaquill.domain.library.works import WorkItem as WorkItem
+from komaquill.domain.library.works import WorkRef as WorkRef
 from komaquill.domain.materials import InputArtifact as InputArtifact
 from komaquill.domain.models import Run as Run
 from komaquill.domain.status import SessionStatus as SessionStatus
@@ -47,6 +52,11 @@ __all__ = [
     "PrepareAction",
     "IntentionAction",
     "ImageLinkInspection",
+    "ImageDetach",
+    "ImageUse",
+    "WorkChange",
+    "WorkItem",
+    "WorkRef",
     "ImageLinkRepairResult",
     "PresetSaveOptions",
     "PresetSaveResult",

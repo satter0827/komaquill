@@ -207,7 +207,11 @@ test('reads and operates the expanded conversation controls at double text size'
   auditAccessibility,
 }) => {
   const response = await request.post('/api/v1/conversations', {
-    data: { title: 'Expanded conversation tools', llm_profile: 'lmstudio-4b' },
+    data: {
+      title: 'Expanded conversation tools',
+      llm_profile: 'lmstudio-4b',
+      initial_state: { player: { clothing: 'Blue coat' } },
+    },
   })
   expect(response.ok()).toBe(true)
   const { id } = await response.json()
@@ -226,12 +230,9 @@ test('reads and operates the expanded conversation controls at double text size'
   await stateTrigger.click()
   const state = page.getByRole('dialog', { name: ja.currentState, exact: true })
   await state.getByText(ja.peopleDetails, { exact: true }).click()
-  await state.getByText(ja.actionHistory, { exact: true }).click()
-  await expect(state.getByText(ja.noActionHistory)).toBeVisible()
-  await state.getByText(ja.fixedSettings, { exact: true }).click()
-  await evidence.capture(
-    'Situation with the people, action history and settings expanded',
-  )
+  await expect(state.getByText('Blue coat', { exact: true })).toBeVisible()
+  await auditAccessibility()
+  await evidence.capture('Current situation with the person details expanded')
   await page.keyboard.press('Escape')
   await expect(stateTrigger).toBeFocused()
   const menu = page.getByRole('button', {

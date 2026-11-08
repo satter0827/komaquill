@@ -15,7 +15,7 @@ import {
   useState,
 } from 'react'
 import { useStickToBottom } from 'use-stick-to-bottom'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { isRejectedRequest } from '../../api/client'
 import * as q from '../../api/generated/@tanstack/react-query.gen'
 import type {
@@ -28,10 +28,10 @@ import type {
 } from '../../api/generated/types.gen'
 import {
   useFailure,
-  useFormatMessage,
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
+import { WorkActions } from '../../shared/ui/work-actions'
 import { Button } from '../../shared/ui/button'
 import { QueryNotice } from '../../shared/ui/query-notice'
 import { Dialog, Modal, Popover, Popup } from '../../shared/ui/popup'
@@ -89,7 +89,13 @@ function MeetingDetails({
   )
 }
 
-function Drawing({ job }: { job: CreationJob }) {
+function Drawing({
+  job,
+  excluded,
+}: {
+  job: CreationJob
+  excluded: (slot: string, image: string) => number[]
+}) {
   const messages = useMessages()
   const failure = useFailure()
   const current = useQuery({
@@ -100,7 +106,10 @@ function Drawing({ job }: { job: CreationJob }) {
   })
   const value = current.data ?? job
   return value.image_id ? (
-    <ImageResult identity={value.image_id} />
+    <ImageResult
+      identity={value.image_id}
+      excluded={excluded('job:' + job.id, value.image_id)}
+    />
   ) : (
     <p className="subtle">
       {value.error ? failure({ code: value.error }) : messages.imagePreparing}
@@ -175,9 +184,9 @@ function ConversationView({
   screenHidden: boolean
 }) {
   const cache = useQueryClient()
+  const navigate = useNavigate()
   const messages = useMessages()
   const failure = useFailure()
-  const formatMessage = useFormatMessage()
   const preferences = usePreferences()
   const [text, setText] = useState('')
   const [actionOpen, setActionOpen] = useState(false)
@@ -244,6 +253,13 @@ function ConversationView({
         }
       : undefined,
   )
+  const detached = useQuery(
+    q.getDetachedImagesOptions({
+      path: { kind: 'conversation', identity },
+    }),
+  )
+  const excluded = (slot: string, image: string) =>
+    detached.data?.[slot + ':' + image] ?? []
   const history = useInfiniteQuery({
     ...q.getTurnsInfiniteOptions({ path: { identity } }),
     initialPageParam: { path: { identity } },
@@ -553,7 +569,9 @@ function ConversationView({
         <header className="conversation-header">
           <div>
             <span className="eyebrow">{messages.conversationLabel}</span>
-            <h2>{conversation.definition.title}</h2>
+            <h2>
+              {conversation.display_name || conversation.definition.title}
+            </h2>
           </div>
           <Popover.Root>
             <Popover.Trigger
@@ -566,8 +584,19 @@ function ConversationView({
                 conversation={conversation}
                 canMutate={!detail.error}
               />
+              <WorkActions
+                target={{ kind: 'conversation', id: identity }}
+                screenHidden={screenHidden}
+                afterTrash={() => navigate('/')}
+              />
               <StartedSettings
                 definition={conversation.definition}
+                showPortrait={
+                  !snapshots?.character?.image_id ||
+                  !excluded('character', snapshots.character.image_id).includes(
+                    0,
+                  )
+                }
                 screenHidden={screenHidden}
               />
             </Popup>
@@ -594,19 +623,20 @@ function ConversationView({
           ref={scrollRef}
         >
           <div ref={contentRef}>
-            {snapshots?.story?.image_id && (
-              <div className="conversation-banner">
-                <OriginalImage
-                  identity={snapshots.story.image_id}
-                  alt={snapshots.story.name}
-                />
-              </div>
-            )}
+            {snapshots?.story?.image_id &&
+              !excluded('story', snapshots.story.image_id).includes(0) && (
+                <div className="conversation-banner">
+                  <OriginalImage
+                    identity={snapshots.story.image_id}
+                    alt={snapshots.story.name}
+                  />
+                </div>
+              )}
             {(drawings.data ?? [])
               .filter((job) => !job.turn_id)
               .map((job) => (
                 <div className="turn" key={job.id}>
-                  <Drawing job={job} />
+                  <Drawing job={job} excluded={excluded} />
                 </div>
               ))}
             {timeline.length === 0 && !conversation.turn_count && (
@@ -712,11 +742,19 @@ function ConversationView({
                       canMutate={!detail.error}
                       turnId={turn.operation_id}
                     />
-                    {turn.image_id && <ImageResult identity={turn.image_id} />}
+                    {turn.image_id && (
+                      <ImageResult
+                        identity={turn.image_id}
+                        excluded={excluded(
+                          'turn:' + turn.operation_id,
+                          turn.image_id,
+                        )}
+                      />
+                    )}
                     {(drawings.data ?? [])
                       .filter((job) => job.turn_id === turn.operation_id)
                       .map((job) => (
-                        <Drawing key={job.id} job={job} />
+                        <Drawing key={job.id} job={job} excluded={excluded} />
                       ))}
                   </div>
                 </article>

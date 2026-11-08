@@ -13,6 +13,7 @@ import {
   useFormatMessage,
   useMessages,
 } from '../../shared/preferences'
+import { WorkActions } from '../../shared/ui/work-actions'
 import { Button } from '../../shared/ui/button'
 import { Popover, Popup } from '../../shared/ui/popup'
 import { QueryNotice } from '../../shared/ui/query-notice'
@@ -146,6 +147,7 @@ export function ConversationNotes({
       {bookmarks.data?.map((bookmark) => (
         <div key={bookmark.id}>
           <p>{bookmark.name}</p>
+          <WorkActions target={{ kind: 'bookmark', id: bookmark.id }} />
           <SceneActions
             conversation={conversation}
             canMutate={canMutate}

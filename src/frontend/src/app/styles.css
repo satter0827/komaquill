@@ -599,6 +599,22 @@ textarea {
 .situation-person h3 {
   font-size: 0.875rem;
 }
+.work-list {
+  display: grid;
+  gap: var(--space-field);
+  list-style: none;
+  padding: 0;
+}
+.work-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-field);
+  padding-block: var(--space-field);
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
 .situation-facts > div {
   border-bottom: 1px solid var(--line);
   padding-bottom: var(--space-field);

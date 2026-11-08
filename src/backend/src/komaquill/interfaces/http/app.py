@@ -33,9 +33,14 @@ from komaquill.domain.conversations.models import (
     Turn,
 )
 from komaquill.domain.errors import OperationStage, failure_info
+from komaquill.domain.library.works import WorkRef
 from komaquill.domain.materials import InputArtifact
 from komaquill.interfaces.http.background import execute_retained
 from komaquill.resources.messages import error_message, message
+
+
+class ConversationView(Conversation):
+    display_name: str | None = None
 
 
 class TurnPage(BaseModel):
@@ -303,13 +308,17 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
         selected().devices.decide(identity, approve=False)
         return Response(status_code=204)
 
+    def conversation_view(value: Conversation) -> ConversationView:
+        name = selected().works.get(WorkRef(kind="conversation", id=value.id)).name
+        return ConversationView(**value.model_dump(), display_name=name)
+
     @app.get(
         "/api/v1/conversations",
-        response_model=list[Conversation],
+        response_model=list[ConversationView],
         operation_id="list_conversations",
     )
-    def list_conversations() -> list[Conversation]:
-        return selected().conversations.list()
+    def list_conversations() -> list[ConversationView]:
+        return [conversation_view(value) for value in selected().conversations.list()]
 
     @app.post(
         "/api/v1/availability", response_model=Availability, operation_id="check_availability"
@@ -328,11 +337,11 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
 
     @app.get(
         "/api/v1/conversations/{identity}",
-        response_model=Conversation,
+        response_model=ConversationView,
         operation_id="get_conversation",
     )
-    def conversation(identity: UUID) -> Conversation:
-        return selected().conversations.overview(identity)
+    def conversation(identity: UUID) -> ConversationView:
+        return conversation_view(selected().conversations.overview(identity))
 
     @app.get(
         "/api/v1/conversations/{identity}/turns", response_model=TurnPage, operation_id="get_turns"
@@ -490,6 +499,8 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
 
     @app.get("/api/v1/images/{identity}/files/{index}", operation_id="get_image_file")
     def image_file(identity: UUID, index: int) -> FileResponse:
+        if index >= 0:
+            selected().works.get(WorkRef(kind="image", id=identity, index=index))
         run = selected().images.get(identity)
         if index < 0 or index >= len(run.images):
             raise KomaquillError(code="request_not_found")

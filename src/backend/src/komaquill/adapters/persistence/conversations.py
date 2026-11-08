@@ -37,9 +37,11 @@ from komaquill.adapters.persistence.schema import (
     conversation_events,
     conversation_turns,
     conversations,
+    image_detachments,
     images,
     operations,
 )
+from komaquill.adapters.persistence.works import visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.actions import (
     ActionRecord,
@@ -348,7 +350,13 @@ class ConversationRepository:
     @stored
     def list(self) -> list[Conversation]:
         with self.database.engine.connect() as connection:
-            values = connection.execute(select(conversations)).mappings().all()
+            values = (
+                connection.execute(
+                    select(conversations).where(visible_work("conversation", conversations.c.id))
+                )
+                .mappings()
+                .all()
+            )
             return sorted(
                 (
                     self._conversation(
@@ -370,7 +378,10 @@ class ConversationRepository:
         with_events: bool | None = None,
     ) -> Conversation:
         row = connection.execute(
-            select(conversations.c.payload).where(conversations.c.id == str(identity))
+            select(conversations.c.payload).where(
+                conversations.c.id == str(identity),
+                visible_work("conversation", conversations.c.id),
+            )
         ).scalar_one_or_none()
         if row is None:
             raise missing()
@@ -723,12 +734,15 @@ class ConversationRepository:
     @stored
     def operation_snapshot(self, identity: UUID) -> Operation:
         with self.database.engine.connect() as connection:
-            return Operation.model_validate_json(str(self._row(connection, identity)["payload"]))
+            row = self._row(connection, identity)
+            self._get(connection, UUID(str(row["conversation_id"])), with_turns=False)
+            return Operation.model_validate_json(str(row["payload"]))
 
     @stored
     def accepted_input(self, identity: UUID) -> AcceptedInput:
         with self.database.engine.connect() as connection:
             row = self._row(connection, identity)
+            self._get(connection, UUID(str(row["conversation_id"])), with_turns=False)
             request = RecordedTurnRequest.model_validate_json(str(row["request"]))
             request = self._bind_action(connection, UUID(str(row["conversation_id"])), request)
             action = request.action
@@ -1148,11 +1162,13 @@ class ConversationRepository:
     @stored
     def bookmarks(self, identity: UUID) -> builtins.list[Bookmark]:
         with self.database.engine.connect() as reader:
+            self._get(reader, identity, with_turns=False)
             return [
                 read_bookmark(str(row[0]))
                 for row in reader.execute(
                     select(conversation_bookmarks.c.payload).where(
-                        conversation_bookmarks.c.conversation_id == str(identity)
+                        conversation_bookmarks.c.conversation_id == str(identity),
+                        visible_work("bookmark", conversation_bookmarks.c.id),
                     )
                 )
             ]
@@ -1230,6 +1246,24 @@ class ConversationRepository:
                 source_turn_id=turn.operation_id,
             )
             self._store(connection, result, create=True)
+            detachments = (
+                connection.execute(
+                    select(image_detachments).where(
+                        image_detachments.c.owner_kind == "conversation",
+                        image_detachments.c.owner_id == str(identity),
+                        image_detachments.c.slot.in_(
+                            ["story", "character", *(f"turn:{turn_id}" for turn_id in retained)]
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            if detachments:
+                connection.execute(
+                    image_detachments.insert(),
+                    [{**row, "owner_id": str(result.id)} for row in detachments],
+                )
             self._register_command(connection, identity, "fork", request)
             connection.commit()
             return result

@@ -3,10 +3,12 @@
 import json
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from komaquill.adapters.persistence.connection import Database
 from komaquill.adapters.persistence.errors import missing
+from komaquill.adapters.persistence.schema import archived_conversations
+from komaquill.adapters.persistence.works import visible_work
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.roleplay import Record
 
@@ -47,10 +49,12 @@ def list_conversations(database: Database) -> list[ArchivedConversation]:
         return [
             decode(str(row[0]), str(row[1]))
             for row in connection.execute(
-                text(
-                    "SELECT id,payload FROM archived_conversations "
-                    "WHERE reason!='converted' ORDER BY id"
+                select(archived_conversations.c.id, archived_conversations.c.payload)
+                .where(
+                    archived_conversations.c.reason != "converted",
+                    visible_work("archived", archived_conversations.c.id),
                 )
+                .order_by(archived_conversations.c.id)
             )
         ]
 

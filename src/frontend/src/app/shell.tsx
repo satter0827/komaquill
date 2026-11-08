@@ -23,6 +23,7 @@ import {
 import { ConversationPage } from '../features/conversations/index'
 import { ImagesPage } from '../features/images/index'
 import { LibraryPage, PlayerPage, PresetCard } from '../features/library/index'
+import { TrashPage } from '../features/library/trash'
 import { PreferencesPage } from '../features/preferences/index'
 import { ImageActivityProvider } from '../shared/image-activity'
 import { presetsForLocale } from '../shared/story/presets'
@@ -122,6 +123,7 @@ function Application() {
                 }
               />
               <Route path="/images" element={<ImagesPage />} />
+              <Route path="/trash" element={<TrashPage />} />
               <Route path="/runtime" element={<RuntimePage />} />
               <Route path="*" element={<Home />} />
             </Routes>
@@ -225,7 +227,9 @@ function Navigation({
             onClick={() => onNavigate()}
           >
             <MessageSquare size={14} />
-            <span>{conversation.definition.title}</span>
+            <span>
+              {conversation.display_name || conversation.definition.title}
+            </span>
           </NavLink>
         ))}
       </div>
@@ -295,7 +299,7 @@ function Home() {
                 to={`/conversations/${item.id}`}
               >
                 <MessageSquare size={20} />
-                <strong>{item.definition.title}</strong>
+                <strong>{item.display_name || item.definition.title}</strong>
                 <span>{item.turns?.at(-1)?.assistant}</span>
               </Link>
             ))}

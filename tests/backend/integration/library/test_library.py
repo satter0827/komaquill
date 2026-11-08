@@ -221,7 +221,7 @@ def test_deleting_default_selections_does_not_block_preferences_or_story_edits(t
     story = api.stories.create(StoryInput(name="Story", character_id=character.id))
     api.characters.delete(character.id, 0)
     updated = api.stories.get(story.id)
-    assert updated.character_id is None and updated.revision == 1
+    assert updated.character_id == character.id and updated.revision == 0
     assert (
         api.stories.update(updated.id, updated.revision, StoryInput(name="Edited")).name == "Edited"
     )

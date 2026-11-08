@@ -106,7 +106,10 @@ function ImageMonitor({
   useEffect(() => {
     if (!observation.data) return
     const value = observation.data
-    if (isTerminal(value.state)) void refreshPresets(cache)
+    if (isTerminal(value.state)) {
+      void refreshPresets(cache)
+      void cache.invalidateQueries({ queryKey: q.listImageOutputsQueryKey() })
+    }
     cache.setQueryData<Run>(
       q.getImageQueryKey({ path: { identity } }),
       (previous) => retainImage(previous, value),

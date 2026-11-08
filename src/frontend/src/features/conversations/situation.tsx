@@ -98,9 +98,11 @@ export function CurrentSituation({
 export function StartedSettings({
   definition,
   screenHidden,
+  showPortrait,
 }: {
   definition: ConversationInput
   screenHidden: boolean
+  showPortrait: boolean
 }) {
   const m = useMessages()
   const portrait = definition.presets?.character
@@ -141,13 +143,15 @@ export function StartedSettings({
                     <p className="state-description">{description}</p>
                   )}
                   {items.length > 0 && <Facts items={items} />}
-                  {role === 'character' && portrait?.image_id && (
-                    <OriginalImage
-                      className="character-portrait"
-                      identity={portrait.image_id}
-                      alt={portrait.name}
-                    />
-                  )}
+                  {role === 'character' &&
+                    showPortrait &&
+                    portrait?.image_id && (
+                      <OriginalImage
+                        className="character-portrait"
+                        identity={portrait.image_id}
+                        alt={portrait.name}
+                      />
+                    )}
                 </section>
               )
             })}

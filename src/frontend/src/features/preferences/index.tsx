@@ -5,6 +5,7 @@ import {
   useMessages,
   usePreferences,
 } from '../../shared/preferences'
+import { Link } from 'react-router'
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getSettingsOptions } from '../../api/generated/@tanstack/react-query.gen'
@@ -118,6 +119,9 @@ export function PreferencesPage({ connections }: { connections: ReactNode }) {
         <p className="subtle">{m.responseLengthScope}</p>
       </div>
       <DrawingPreferences />
+      <Link className="button" to="/trash">
+        {m.trashTitle}
+      </Link>
       {!!preferences.error && (
         <p className="error" role="alert">
           {failure(preferences.error)}

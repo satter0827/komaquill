@@ -40,6 +40,7 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
         def bind(self, **options):
             wire = options["response_format"]["json_schema"]["schema"]
             schemas.append(wire)
+            self.review = "matches" in wire.get("properties", {})
             if "response" in wire.get("properties", {}):
                 assert set(wire["properties"]) == {"player_move", "response"}
             return self
@@ -49,7 +50,9 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
             return AIMessage(
                 content=json.dumps(
                     wire_reply(
-                        {
+                        {"matches": True}
+                        if self.review
+                        else {
                             "location": "古書店"
                             if repair and len(calls) == 1
                             else "An old bookshop.",
@@ -73,7 +76,7 @@ def test_banner_extracts_environment_fields_instead_of_retelling_people_actions(
         purpose="banner",
     )
     assert result == "An old bookshop. Wooden shelves and a counter. Rain streaks the windows."
-    assert len(calls) == (2 if repair else 1)
+    assert len(calls) == (3 if repair else 2)
     assert set(schemas[0]["properties"]) == {"location", "scenery", "atmosphere"}
     assert calls[0][-1].content == original
 
@@ -417,6 +420,9 @@ def test_image_description_requires_english_with_one_bounded_repair(
             self.model = options["model"]
 
         def bind(self, **options):
+            self.review = (
+                "matches" in options["response_format"]["json_schema"]["schema"]["properties"]
+            )
             return self
 
         def invoke(self, messages, config):
@@ -424,10 +430,12 @@ def test_image_description_requires_english_with_one_bounded_repair(
             return AIMessage(
                 content=json.dumps(
                     wire_reply(
-                        {
+                        {"matches": True}
+                        if self.review
+                        else {
                             "status": "translated",
                             "text": first_scene
-                            if len(calls) == 1
+                            if len(calls) == 1 and first_scene is not None
                             else "An adult woman with short silver hair points at a book.",
                         }
                     )
@@ -439,7 +447,7 @@ def test_image_description_requires_english_with_one_bounded_repair(
     result = Client.initialize(tmp_path).library.image_describer.prepare_image(
         "短い銀髪の店主が本を指さす。", uuid4(), "lmstudio-4b", True
     )
-    assert len(calls) == 2 and result.startswith("An adult woman")
+    assert len(calls) == (2 if first_scene is None else 3) and result.startswith("An adult woman")
     assert all(sum(message.type == "system" for message in messages) == 1 for messages in calls)
 
 

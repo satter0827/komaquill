@@ -8,9 +8,10 @@ from sqlalchemy import select
 from komaquill.adapters.diagnostics import record_event
 from komaquill.adapters.paths import WorkspacePaths
 from komaquill.adapters.persistence.connection import database
-from komaquill.adapters.persistence.schema import image_submissions, images
+from komaquill.adapters.persistence.schema import image_submissions, images, preferences
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.library.models import ImagePromptDefaults, Preferences
 from komaquill.domain.models import Run
 
 
@@ -108,7 +109,14 @@ def save(project: WorkspacePaths, run: Run) -> None:
 
 
 @stored
-def reserve(project: WorkspacePaths, identity: UUID, fingerprint: str) -> bool:
+def reserve(
+    project: WorkspacePaths,
+    identity: UUID,
+    fingerprint: str,
+    *,
+    use_preferences: bool,
+    image_prompts: ImagePromptDefaults | None,
+) -> ImagePromptDefaults | None:
     storage = database(project.data / "komaquill.sqlite3")
     with storage.transaction() as connection:
         previous = connection.execute(
@@ -117,12 +125,22 @@ def reserve(project: WorkspacePaths, identity: UUID, fingerprint: str) -> bool:
         if previous is not None:
             if previous != fingerprint:
                 raise KomaquillError(code="operation_conflict", stage="submission")
-            return False
+            return None
+        if use_preferences:
+            payload = connection.execute(
+                select(preferences.c.payload).where(preferences.c.id == 1)
+            ).scalar_one_or_none()
+            image_prompts = (
+                Preferences.model_validate_json(payload) if payload else Preferences()
+            ).image_prompts
+        selected = image_prompts or ImagePromptDefaults()
         connection.execute(
-            image_submissions.insert().values(id=str(identity), fingerprint=fingerprint)
+            image_submissions.insert().values(
+                id=str(identity), fingerprint=fingerprint, image_prompts=selected.model_dump_json()
+            )
         )
         connection.commit()
-        return True
+        return selected
 
 
 @stored

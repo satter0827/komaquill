@@ -136,6 +136,10 @@ export type AvailabilityRequest = {
      * Llm Profile
      */
     llm_profile?: string;
+    /**
+     * Use Prompt Preferences
+     */
+    use_prompt_preferences?: boolean;
 };
 
 /**
@@ -773,6 +777,7 @@ export type CreationJob = {
      * Original
      */
     original?: string;
+    image_prompts?: ImagePromptDefaults;
     /**
      * Prompt En
      */
@@ -851,7 +856,7 @@ export type CreationRequest = {
  *
  * Identify safe, machine-readable product failure categories.
  */
-export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'execution_budget_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
+export type ErrorCode = 'preparation_timeout' | 'authentication_failed' | 'browser_failed' | 'colab_failed' | 'collection_failed' | 'connection_failed' | 'diagnostics_failed' | 'generation_failed' | 'generation_timeout' | 'http_failed' | 'identity_mismatch' | 'image_invalid' | 'internal_error' | 'invalid_evaluation' | 'real_llm_not_allowed' | 'llm_dependencies_missing' | 'llm_unavailable' | 'llm_request_invalid' | 'context_limit_exceeded' | 'execution_budget_exceeded' | 'story_plan_invalid' | 'story_replan_required' | 'invalid_story_count' | 'image_backend_unavailable' | 'fake_story_mismatch' | 'invalid_configuration' | 'invalid_output' | 'invalid_request' | 'invalid_response' | 'image_description_invalid' | 'log_timeout' | 'log_unavailable' | 'missing_image' | 'operation_failed' | 'operation_busy' | 'operation_conflict' | 'fake_input_mismatch' | 'request_not_found' | 'runtime_ended' | 'shutdown_timeout' | 'stopping' | 'publication_failed' | 'migration_required' | 'visual_review_required' | 'storage_failed' | 'image_composition_unavailable' | 'content_hidden' | 'submission_unknown' | 'unsupported_asset' | 'extension_unavailable' | 'unsupported_image' | 'unsupported_batch';
 
 /**
  * ErrorView
@@ -967,6 +972,20 @@ export type ImageMetadata = {
      * Saved At
      */
     saved_at?: string | null;
+};
+
+/**
+ * ImagePromptDefaults
+ */
+export type ImagePromptDefaults = {
+    /**
+     * Positive
+     */
+    positive?: string;
+    /**
+     * Negative
+     */
+    negative?: string;
 };
 
 /**
@@ -1496,6 +1515,7 @@ export type Preferences = {
      * Llm Profile
      */
     llm_profile?: string;
+    image_prompts?: ImagePromptDefaults;
 };
 
 /**
@@ -2125,6 +2145,10 @@ export type SettingsView = {
      * Sample Input
      */
     sample_input: string;
+    /**
+     * Supports Negative Prompt
+     */
+    supports_negative_prompt?: boolean | null;
 };
 
 /**

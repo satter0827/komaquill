@@ -97,7 +97,12 @@ export function ImagesPage() {
   )
   const availability = useAvailability(
     open && prompt.trim()
-      ? { kind: 'image', prompt, llm_profile: preferences.value.llm_profile }
+      ? {
+          kind: 'image',
+          prompt,
+          llm_profile: preferences.value.llm_profile,
+          use_prompt_preferences: true,
+        }
       : undefined,
   )
   const accept = useCallback(

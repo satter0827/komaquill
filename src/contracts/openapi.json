@@ -5243,6 +5243,11 @@
             "type": "string",
             "title": "Llm Profile",
             "default": "fake"
+          },
+          "use_prompt_preferences": {
+            "type": "boolean",
+            "title": "Use Prompt Preferences",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6351,6 +6356,9 @@
             "title": "Original",
             "default": ""
           },
+          "image_prompts": {
+            "$ref": "#/components/schemas/ImagePromptDefaults"
+          },
           "prompt_en": {
             "anyOf": [
               {
@@ -6562,6 +6570,7 @@
           "invalid_output",
           "invalid_request",
           "invalid_response",
+          "image_description_invalid",
           "log_timeout",
           "log_unavailable",
           "missing_image",
@@ -6798,6 +6807,25 @@
         ],
         "title": "ImageMetadata",
         "description": "Describe bytes that were verified and written to local storage."
+      },
+      "ImagePromptDefaults": {
+        "properties": {
+          "positive": {
+            "type": "string",
+            "maxLength": 12000,
+            "title": "Positive",
+            "default": ""
+          },
+          "negative": {
+            "type": "string",
+            "maxLength": 12000,
+            "title": "Negative",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImagePromptDefaults"
       },
       "ImageRef": {
         "properties": {
@@ -7856,6 +7884,9 @@
             "type": "string",
             "title": "Llm Profile",
             "default": "lmstudio-4b"
+          },
+          "image_prompts": {
+            "$ref": "#/components/schemas/ImagePromptDefaults"
           }
         },
         "additionalProperties": false,
@@ -9065,6 +9096,17 @@
           "sample_input": {
             "type": "string",
             "title": "Sample Input"
+          },
+          "supports_negative_prompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supports Negative Prompt"
           }
         },
         "type": "object",

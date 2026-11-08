@@ -68,6 +68,7 @@ class ProfileView(BaseModel):
 class SettingsView(BaseModel):
     profiles: list[ProfileView]
     sample_input: str
+    supports_negative_prompt: bool | None = None
 
 
 class OperationView(Operation):
@@ -268,7 +269,12 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
 
     @app.get("/api/v1/settings", response_model=SettingsView, operation_id="get_settings")
     def settings() -> dict[str, Any]:
+        try:
+            supports_negative = selected().images.supports_negative()
+        except KomaquillError:
+            supports_negative = None
         return {
+            "supports_negative_prompt": supports_negative,
             "profiles": [profile.model_dump() for profile in selected().conversations.profiles()],
             "sample_input": "Hello",
         }
@@ -470,6 +476,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
             model=body.model,
             llm_profile=body.llm_profile,
             allow_real_llm=body.allow_real_llm,
+            use_prompt_preferences=True,
         )
 
     @app.get("/api/v1/images/{identity}", response_model=Run, operation_id="get_image")

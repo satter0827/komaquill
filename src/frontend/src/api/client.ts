@@ -42,6 +42,7 @@ const REJECTED_REQUEST_CODES = new Set([
   'operation_conflict',
   'operation_busy',
   'visual_review_required',
+  'image_description_invalid',
   'real_llm_not_allowed',
   'fake_input_mismatch',
   'invalid_configuration',

@@ -19,6 +19,7 @@ class AvailabilityRequest(Record):
     subjects: tuple[str, ...] = ()
     negative: str | None = None
     llm_profile: str = "fake"
+    use_prompt_preferences: bool = False
 
     @model_validator(mode="after")
     def target_required(self) -> "AvailabilityRequest":

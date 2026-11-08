@@ -58,6 +58,14 @@ Preset = PlayerProfile | CharacterPreset | StoryPreset
 PresetInput = PlayerInput | CharacterInput | StoryInput
 
 
+MAX_IMAGE_PROMPT_LENGTH = 12000
+
+
+class ImagePromptDefaults(Record):
+    positive: str = Field(default="", max_length=MAX_IMAGE_PROMPT_LENGTH)
+    negative: str = Field(default="", max_length=MAX_IMAGE_PROMPT_LENGTH)
+
+
 class Preferences(Record):
     revision: int = Field(default=0, ge=0)
     locale: Locale = "ja"
@@ -65,6 +73,7 @@ class Preferences(Record):
     density: Literal["comfortable", "compact"] = "comfortable"
     response_length: Literal["short", "standard", "detailed"] = "standard"
     llm_profile: str = "lmstudio-4b"
+    image_prompts: ImagePromptDefaults = Field(default_factory=ImagePromptDefaults)
 
 
 class PresetRef(Record):
@@ -88,7 +97,7 @@ class CreationRequest(Record):
     kind: Literal["character_draft", "story_draft", "portrait", "banner", "conversation_image"]
     target_id: UUID | None = None
     expected_revision: int | None = Field(default=None, ge=0)
-    prompt: str = Field(default="", max_length=12000)
+    prompt: str = Field(default="", max_length=MAX_IMAGE_PROMPT_LENGTH)
     locale: Locale = "ja"
     llm_profile: str = "lmstudio-4b"
     allow_real_llm: bool = False
@@ -100,6 +109,7 @@ class CreationJob(Record):
     request: CreationRequest
     state: Literal["accepted", "running", "submitted", "complete", "failed", "interrupted"]
     original: str = ""
+    image_prompts: ImagePromptDefaults = Field(default_factory=ImagePromptDefaults)
     prompt_en: str | None = None
     result: CharacterInput | StoryInput | None = None
     image_id: UUID | None = None

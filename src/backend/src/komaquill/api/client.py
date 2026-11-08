@@ -112,6 +112,8 @@ class Client:
             lambda request: self._library.source(request),
             lambda identity: self.images.read(identity),
             lambda identity: self.conversations.repository.operation_snapshot(identity),
+            lambda: self._library.store.preferences().image_prompts,
+            lambda: self.images.supports_negative(),
         )
 
     @cached_property

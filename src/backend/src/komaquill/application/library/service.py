@@ -23,6 +23,7 @@ from komaquill.domain.library.models import (
     ConversationStart,
     CreationJob,
     CreationRequest,
+    ImagePromptDefaults,
     PlayerInput,
     PlayerProfile,
     Preferences,
@@ -88,6 +89,10 @@ class Creator(Protocol):
 
 
 class ImageDescriber(Protocol):
+    def translate_fields(
+        self, facts: dict[str, str], operation: UUID, profile: str, allow_real_llm: bool
+    ) -> dict[str, str]: ...
+
     def prepare_image(
         self,
         text: str,
@@ -110,6 +115,9 @@ class Images(Protocol):
         run_id: UUID | None = None,
         parameters: dict[str, bool | int | float | str] | None = None,
         purpose: ImagePurpose | None = None,
+        image_prompts: ImagePromptDefaults | None = None,
+        llm_profile: str = "fake",
+        allow_real_llm: bool = False,
     ) -> Run: ...
     def get(self, run_id: UUID) -> Run: ...
 
@@ -429,6 +437,9 @@ class LibraryService:
                     run_id=job.id,
                     parameters=self.image_parameters.get(image_purpose),
                     purpose=image_purpose,
+                    image_prompts=job.image_prompts,
+                    llm_profile=job.request.llm_profile,
+                    allow_real_llm=job.request.allow_real_llm,
                 )
                 job = job.model_copy(update={"state": "submitted", "image_id": job.id})
         except KomaquillError as error:

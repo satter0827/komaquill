@@ -70,6 +70,7 @@ def library_preserved(before: sqlite3.Connection, after: sqlite3.Connection) -> 
         "0010",
         "0011",
         "0012",
+        "0013",
     }:
         current = {
             row[0]: row[1:] for row in after.execute("SELECT id,kind,payload,deleted FROM presets")

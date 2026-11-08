@@ -409,7 +409,16 @@ class LibraryRepository:
             value = self._decode(kind, str(request.target_id), payload)
             if value.revision != request.expected_revision:
                 raise conflict()
+        prompt_preferences = connection.execute(
+            select(preferences.c.payload).where(preferences.c.id == 1)
+        ).scalar_one_or_none()
+        settings = (
+            Preferences()
+            if prompt_preferences is None
+            else Preferences.model_validate_json(prompt_preferences)
+        )
         job = CreationJob(
+            image_prompts=settings.image_prompts,
             id=request.operation_id,
             request=request,
             original=original,

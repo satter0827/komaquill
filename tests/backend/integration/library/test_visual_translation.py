@@ -5,11 +5,35 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from komaquill.adapters.llm.images import ImageDescriber
+from komaquill.adapters.llm.images import ImageDescriber, ImageTranslation, VisualReview
 from komaquill.api import Client
+from komaquill.domain.errors import KomaquillError
 from langchain_core.messages import AIMessage
 
 pytestmark = pytest.mark.usefixtures("scripted_counting")
+
+
+@pytest.mark.parametrize("repaired", [True, False])
+def test_unfounded_visual_detail_must_be_repaired_before_submission(repaired):
+    calls = []
+
+    def invoke(schema, _operation, _profile, _permitted, _instruction, messages, **_options):
+        calls.append(messages)
+        if schema is VisualReview:
+            return VisualReview(matches=repaired and len(calls) == 4)
+        return ImageTranslation(
+            status="translated",
+            text="A red umbrella." if len(calls) > 1 else "A red umbrella and a rice ball.",
+        )
+
+    describer = ImageDescriber(SimpleNamespace(invoke=invoke))
+    arguments = ("赤い傘が一本。", uuid4(), "lmstudio-4b", True)
+    if repaired:
+        assert describer.prepare_image(*arguments) == "A red umbrella."
+    else:
+        with pytest.raises(KomaquillError, match="image_description_invalid"):
+            describer.prepare_image(*arguments)
+    assert len(calls) == 4
 
 
 def test_english_facts_need_no_llm_and_keep_age_pose_and_empty_clothing():
@@ -99,13 +123,17 @@ def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, mo
 
         def bind(self, **options):
             schema = options["response_format"]["json_schema"]["schema"]
-            assert set(schema["required"]) == {"gender", "physical_features", "pose"}
+            self.review = "matches" in schema["required"]
+            if not self.review:
+                assert set(schema["required"]) == {"gender", "physical_features", "pose"}
             return self
 
         def invoke(self, messages, config):
             calls.append(messages)
             result = {"gender": "man", "physical_features": "Gray hair", "pose": "Clasped hands"}
-            if len(calls) == 1:
+            if self.review:
+                result = {"matches": True}
+            elif len(calls) == 1:
                 if failure == "missing":
                     result.pop("pose")
                 elif failure == "japanese":
@@ -133,7 +161,7 @@ def test_japanese_fields_translate_in_one_batch_with_bounded_repair(tmp_path, mo
         compose=True,
         purpose="portrait",
     )
-    assert len(calls) == (1 if failure is None else 2)
+    assert len(calls) == (2 if failure is None else 3)
     assert "age: 60." in result and "pose: Clasped hands." in result
     sent = json.loads(calls[0][-1].content)
     assert sent == {"gender": "男", "physical_features": "白髪", "pose": "手を組む"}

@@ -20,7 +20,7 @@ def prepared(tmp_path):
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    def submit(prompt, *, run_id, parameters, purpose=None):
+    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
         calls.append((prompt, run_id, parameters))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]

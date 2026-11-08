@@ -163,6 +163,7 @@ image_submissions = Table(
     metadata,
     Column("id", String, primary_key=True),
     Column("fingerprint", String, nullable=False),
+    Column("image_prompts", Text, nullable=True),
 )
 
 

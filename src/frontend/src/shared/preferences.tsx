@@ -17,6 +17,7 @@ export const defaultPreferences: EffectivePreferences = {
   density: 'comfortable',
   response_length: 'standard',
   llm_profile: 'lmstudio-4b',
+  image_prompts: {},
 }
 
 type PreferenceContext = {
@@ -41,6 +42,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   })
   const value = { ...defaultPreferences, ...query.data }
   const save = useMutation({
+    scope: { id: 'preferences' },
     mutationFn: async (changes: Partial<Preferences>) => {
       const current =
         cache.getQueryData<Preferences>(q.getPreferencesQueryKey()) ?? value

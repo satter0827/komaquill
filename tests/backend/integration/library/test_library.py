@@ -317,7 +317,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     calls = []
     runs = {}
 
-    def submit(prompt, *, run_id, parameters, purpose=None):
+    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
         calls.append((prompt, parameters))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]

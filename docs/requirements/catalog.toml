@@ -25,7 +25,7 @@ tests = ["tests/backend/integration/library/test_library.py", "tests/system/e2e/
 [requirements.REQ-APP-PREFERENCES]
 summary = "表示と生成の好みを保存して明示した範囲へ適用する"
 status = "implemented"
-acceptance = ["言語・文字の大きさ・表示密度・描写量を保存できる", "表示設定は再起動後も維持する", "生成設定の不正で言語や文字サイズの保存を妨げない", "生成条件は要求の受付時に固定する", "通常の会話は設定済み4Bを使い、固定応答は検証で明示指定する", "固定サンプルは対応入力だけを扱い実モデルへ自動切替しない", "接続先とモデルの識別を設定で扱い手元の4Bとの一致を検査する"]
+acceptance = ["言語・文字の大きさ・表示密度・描写量・描画の共通プロンプトを保存できる", "表示設定は再起動後も維持する", "生成設定の不正で言語や文字サイズの保存を妨げない", "生成条件は要求の受付時に固定する", "通常の会話は設定済み4Bを使い、固定応答は検証で明示指定する", "固定サンプルは対応入力だけを扱い実モデルへ自動切替しない", "接続先とモデルの識別を設定で扱い手元の4Bとの一致を検査する"]
 sources = ["src/backend/src/komaquill/domain/library/models.py", "src/backend/src/komaquill/application/library/service.py", "src/frontend/src/shared/preferences.tsx", "src/frontend/src/features/preferences/index.tsx"]
 tests = ["tests/backend/integration/library/test_library.py", "tests/system/e2e/web/workflow.spec.ts"]
 
@@ -63,7 +63,7 @@ tests = ["tests/bootstrap/integration/environment/node-environment.test.mjs", "t
 [requirements.REQ-IMAGE-TRANSLATION]
 summary = "日本語の画像説明を英語化し原文と実行条件を保持して生成へ渡す"
 status = "implemented"
-acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "表示用本文・場面説明と明示操作時の画像用英語を分ける", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
+acceptance = ["キャラクター代表画像・ストーリーバナー・会話画像・単発生成で英語の画像説明を使う", "日本語の原文と英訳・モデル・指示の識別を対応付ける", "表示用本文・場面説明と明示操作時の画像用英語を分ける", "モデルへ渡す画像説明に見える外見・動作・主要な物の状態を含める", "英語入力を不要に再翻訳せず品質条件を一度だけ適用する", "任意入力の翻訳は明示した実モデル利用に含め固定サンプルで理解したふりをしない", "英訳を原文と照合し、不一致を修正できなければ画像を送信しない", "翻訳の未許可・失敗では画像を送信しない", "再開時は保存済み英訳・適用済み入力・seed・実行グラフを使い翻訳し直さない"]
 sources = ["src/backend/src/komaquill/adapters/image_text.py", "src/backend/src/komaquill/adapters/llm/execution.py", "src/backend/src/komaquill/application/library/service.py"]
 tests = ["tests/backend/integration/library/test_creator_contracts.py", "tests/scripts/integration/acceptance/test_run.py"]
 implementation_note = "人物別の画像入力と保存済みグラフを照合した。2026年11月7日のT4では二人の描き分けが未達であり、入力の保持と実画像の品質を区別する。結果はdocs/verification/results/shared-location-t4-20261107.mdで管理する。"

@@ -69,9 +69,7 @@ def inspect(project: RuntimeWorkspace) -> SessionStatus:
     except Timeout:
         result.gpu = "busy"
     except (OSError, ValueError, KomaquillError):
-        result.gpu = (
-            "unconfirmed" if receipt is not None and receipt.endpoint_id is None else "unknown"
-        )
+        result.gpu = "unknown"
     lock = monitor_lock(project)
     try:
         with lock.acquire(timeout=0):
@@ -87,7 +85,9 @@ def inspect(project: RuntimeWorkspace) -> SessionStatus:
             result.connection = "unknown"
     if session is not None and receipt is None and session.backend == "colab":
         result.connection = "stopped"
-    elif receipt is not None and (active is False or result.gpu == "unconfirmed"):
+    elif receipt is not None and (
+        active is False or (receipt.endpoint_id is None and result.gpu == "unknown")
+    ):
         result.connection = "not_started" if receipt.endpoint_id is None else "stopped"
     elif receipt is not None and (session is None or session.runtime_id != receipt.runtime_id):
         result.connection = "preparing"

@@ -51,10 +51,8 @@ def finish_colab(
         return drain(project, client, session, force, echo)
 
     def recover_logs() -> tuple[str, ...]:
-        if receipt.endpoint_id is None:
-            with colab.lock:
-                if not colab.refresh(receipt):
-                    return ()
+        if receipt.endpoint_id is None and receipt.payload_sha256 is None:
+            return ()
         return colab.recover_diagnostics(receipt)
 
     def disconnect() -> None:

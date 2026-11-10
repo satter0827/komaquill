@@ -69,7 +69,9 @@ def inspect(project: RuntimeWorkspace) -> SessionStatus:
     except Timeout:
         result.gpu = "busy"
     except (OSError, ValueError, KomaquillError):
-        result.gpu = "unknown"
+        result.gpu = (
+            "unconfirmed" if receipt is not None and receipt.endpoint_id is None else "unknown"
+        )
     lock = monitor_lock(project)
     try:
         with lock.acquire(timeout=0):

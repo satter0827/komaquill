@@ -116,16 +116,17 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
 
     from komaquill.adapters.atomic import atomic_json
     from komaquill.adapters.colab import Colab, Receipt
+    from komaquill.domain.models import RuntimeObservation
 
     colab = Colab(project)
     receipt = Receipt(name="uncertain", runtime_id=uuid4(), source_revision="a" * 40)
     atomic_json(colab.receipt_file, receipt.model_dump(mode="json"))
-    monkeypatch.setattr(colab, "refresh", lambda receipt: False)
+    monkeypatch.setattr(colab, "provider_call", lambda _: RuntimeObservation())
     monkeypatch.setattr(inspection, "Colab", lambda project: colab)
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0
     assert "allocation unconfirmed" in result.output
-    assert "ComfyUI: not started" in result.output
+    assert "ComfyUI: preparing" in result.output
     assert "Colab: stopped" not in result.output
     assert colab.receipt_file.is_file()
 

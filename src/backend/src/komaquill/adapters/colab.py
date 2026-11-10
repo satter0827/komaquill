@@ -259,7 +259,10 @@ class Colab:
             raise KomaquillError(code="identity_mismatch", stage="colab_control")
         observation = self.provider_call("observe")
         if (
-            observation.state == "unknown"
+            (
+                not observation.stopped
+                and not (observation.state == "running" and receipt.endpoint_id)
+            )
             or not receipt.account_sha256
             or observation.endpoint_id != receipt.endpoint_id
             or observation.account_sha256 != receipt.account_sha256

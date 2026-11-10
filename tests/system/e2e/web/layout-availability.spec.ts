@@ -420,8 +420,25 @@ test('separates connection controls and distinguishes external from owned enviro
     disconnectBox.y - connectBox.y - connectBox.height,
   ).toBeGreaterThanOrEqual(8)
   await panel.getByText(ja.drawingSettings, { exact: true }).click()
-  await expect(panel.getByRole('link', { name: ja.openComfy })).toHaveCount(1)
-  await expect(panel.locator('a[download]')).toHaveCount(2)
+  const expectWorkflows = async () => {
+    const open = panel.getByRole('link', { name: ja.openComfy, exact: true })
+    await expect(open).toHaveAttribute('href', 'http://127.0.0.1:8188/')
+    for (const [view, mode] of [
+      ['app', ja.appMode],
+      ['graph', ja.nodeGraph],
+    ]) {
+      const download = panel.getByRole('link', {
+        name: ja.downloadWorkflow.replace('{mode}', mode),
+        exact: true,
+      })
+      await expect(download).toHaveAttribute('download', 'workflow.json')
+      await expect(download).toHaveAttribute(
+        'href',
+        `/api/v1/runtime/workflows/wai-illustrious/${view}`,
+      )
+    }
+  }
+  await expectWorkflows()
   const address = panel.getByLabel(ja.externalEndpoint)
   await address.fill('http://127.0.0.1:8189')
   await connect.click()
@@ -432,9 +449,7 @@ test('separates connection controls and distinguishes external from owned enviro
   const stop = panel.getByRole('button', { name: ja.stop, exact: true })
   await expect(stop).toBeEnabled()
   await expect(disconnect).toHaveCount(0)
-  await expect(
-    panel.getByRole('link', { name: ja.appMode, exact: true }),
-  ).toBeVisible()
+  await expectWorkflows()
   await evidence.capture('Connection controls on a narrow screen')
   environment = 'unconfirmed'
   await panel.getByRole('button', { name: ja.refresh, exact: true }).click()

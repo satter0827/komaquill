@@ -59,6 +59,9 @@ const server = setupServer(
     HttpResponse.json({ ready: true, connections: [] }),
   ),
   http.get(`${base}/api/v1/preferences`, () => HttpResponse.json(preferences)),
+  http.get(`${base}/api/v1/settings`, () =>
+    HttpResponse.json({ supports_negative_prompt: true }),
+  ),
   http.get(`${base}/api/v1/runtime`, () => HttpResponse.json({ pending: [] })),
   http.get(`${base}/api/v1/images`, () =>
     HttpResponse.json([...records.values()]),
@@ -201,6 +204,10 @@ it('does not collect an old unfinished run when its day is opened', async () => 
 it('tracks the accepted run, opens its day, and distinguishes new explicit requests', async () => {
   const cache = images()
   await userEvent.type(await compose(), 'A rainy bookshop')
+  await userEvent.type(
+    await screen.findByLabelText(m.imageNegativePrompt),
+    'lettering',
+  )
   await userEvent.click(
     screen.getByRole('button', { name: m.drawRequestedScene }),
   )
@@ -220,6 +227,7 @@ it('tracks the accepted run, opens its day, and distinguishes new explicit reque
   )
   await waitFor(() => expect(requests).toHaveLength(2))
   expect(requests[0].allow_real_llm).toBe(true)
+  expect(requests[0].negative).toBe('lettering')
   expect(requests[1].request_id).not.toBe(requests[0].request_id)
   cache.clear()
 })

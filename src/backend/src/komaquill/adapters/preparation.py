@@ -96,11 +96,15 @@ class Coordinator:
                 candidates = [
                     m
                     for m in registered
-                    if m.filename == hint["name"] and m.role == hint["directory"]
+                    if m.role == hint["directory"]
+                    and (
+                        m.reference == hint["name"]
+                        or (m.filename == hint["name"] and not hint.get("url"))
+                    )
                 ]
                 asset = (
                     candidates[0]
-                    if len(candidates) == 1 and not hint.get("url")
+                    if len(candidates) == 1
                     else resolve_model(
                         hint["name"],
                         hint["directory"],

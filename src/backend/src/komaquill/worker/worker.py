@@ -10,17 +10,20 @@ import tomllib
 from datetime import datetime, timedelta
 from importlib.resources import files
 from pathlib import Path
+from secrets import randbelow
 
 import httpx
 
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.downloads import fetch_model
+from komaquill.adapters.wai_guides import prepare_guides
 from komaquill.adapters.worker_workspace import WorkerWorkspace
 from komaquill.adapters.workflows import assets, prepare
 from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import KomaquillError, failure_info
+from komaquill.domain.images import MAX_BROWSER_SEED
 from komaquill.domain.models import JsonObject
-from komaquill.domain.presets import MODEL_ROLES
+from komaquill.domain.presets import MODEL_ROLES, WAI_PROFILE
 from komaquill.resources.messages import error_message, message
 from komaquill.worker.progress import progress
 
@@ -72,15 +75,22 @@ def prepare_server(
     os.environ["KOMAQUILL_REQUEST_TIMEOUT"] = str(project.settings().request_timeout)
     os.environ["KOMAQUILL_PREPARATION_TIMEOUT"] = str(project.settings().preparation_timeout)
     settings = project.settings()
+    if not isinstance(settings, RuntimeSettings):
+        raise KomaquillError(code="invalid_configuration", stage="preparation")
+    if any(settings.presets[name].model_id == WAI_PROFILE for name in settings.profiles):
+        prepare_guides(project.artifacts / "input")
     for name in settings.profiles:
         profile = settings.presets[name]
+        randomize_seed = profile.model_id == WAI_PROFILE and profile.operation == "generate"
+        seed = randbelow(MAX_BROWSER_SEED + 1) if randomize_seed else 1
         for view in ["graph", "app"]:
             _, workflow = prepare(
                 profile.sample_prompt,
-                1,
+                seed,
                 name,
                 settings=settings,
                 profile_name=name,
+                randomize_seed=randomize_seed,
             )
             workflow["extra"]["linearMode"] = view == "app"
             atomic_json(templates / f"{name}_{view}.json", workflow)

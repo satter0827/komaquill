@@ -14,6 +14,7 @@ from pydantic import Field
 
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.paths import artifact_path
+from komaquill.adapters.persistence.library import job_record
 from komaquill.adapters.persistence.migrate import database_in_use, inventory
 from komaquill.adapters.storage_errors import stored
 from komaquill.adapters.workspace import RuntimeWorkspace
@@ -246,6 +247,7 @@ def _repair(project: RuntimeWorkspace, identity: UUID) -> ImageLinkRepairResult:
             desired_job = job.model_copy(
                 update={"state": "complete", "image_id": job.id, "error": None}
             )
+            desired_record = job_record(desired_job)
             row = connection.execute(
                 "SELECT payload,deleted FROM presets WHERE id=?", (str(target.id),)
             ).fetchone()
@@ -257,7 +259,7 @@ def _repair(project: RuntimeWorkspace, identity: UUID) -> ImageLinkRepairResult:
                 and not row[1]
                 and json.loads(row[0]) == desired_target.model_dump(mode="json")
                 and raw_job
-                and json.loads(raw_job[0]) == desired_job.model_dump(mode="json")
+                and json.loads(raw_job[0]) == desired_record
             ):
                 already.append(target.id)
                 continue
@@ -275,7 +277,7 @@ def _repair(project: RuntimeWorkspace, identity: UUID) -> ImageLinkRepairResult:
                 continue
             connection.execute(
                 "UPDATE creation_jobs SET payload=? WHERE id=?",
-                (desired_job.model_dump_json(), str(job.id)),
+                (json.dumps(desired_record, ensure_ascii=False), str(job.id)),
             )
             connection.execute(
                 "UPDATE presets SET payload=? WHERE id=?",

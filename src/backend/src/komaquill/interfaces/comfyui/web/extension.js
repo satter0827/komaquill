@@ -2,6 +2,16 @@ import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 import { applyPreparedModels, prepareWorkflow } from "./preparation.js";
 
+app.registerExtension({
+  name: "komaquill.app-mode-layout",
+  setup() {
+    // App Mode's output gallery must not set the flex item's minimum width.
+    const style = document.createElement("style");
+    style.textContent = '[data-testid="linear-workspace-column"] > .p-splitter { min-inline-size: 0; }';
+    document.head.append(style);
+  }
+});
+
 let text = {};
 const POLL_INTERVAL_MS = 1000;
 let activeRequest = null;
@@ -13,26 +23,33 @@ async function request(path, data) {
   if (!response.ok) throw new Error(`http_${response.status}`);
   return response.json();
 }
-function notify(key, severity = "info") {
-  app.extensionManager.toast.add({severity, summary: text[key] || key, life: 5000});
+function notify(key, severity = "info", detail) {
+  app.extensionManager.toast.add({severity, summary: text[key] || key, detail, life: 5000});
 }
 async function prepare() {
   if (running) return;
   running = true;
   try {
+    const graph = app.rootGraph;
+    const nodes = [...graph.nodes];
+    const isCurrent = () => app.rootGraph === graph && nodes.length === graph.nodes.length &&
+      nodes.every((node) => graph.getNodeById(node.id) === node);
+    const workflow = graph.serialize();
     const capabilities = await request("/capabilities");
     text = capabilities.messages;
     if (!capabilities.workspace_id || !capabilities.accepting) return notify("ui.unavailable", "warn");
-    const job = await prepareWorkflow({request, workflow: app.graph.serialize(), text,
+    const job = await prepareWorkflow({request, workflow, text,
       confirm: async (message) => window.confirm(message),
       status: (phase, job) => { activeRequest = job?.request_id; if (phase === "preparing") notify("ui.preparing"); },
       sleep: () => new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))});
     if (job.phase === "ready") {
-      await applyPreparedModels(app, job);
-      notify("ui.saved");
-    } else notify("ui.retry", "warn");
-  } catch { notify("ui.retry", "error"); }
-  finally { running = false; }
+      const applied = await applyPreparedModels(app, job, isCurrent);
+      notify(applied ? "ui.models_ready" : "ui.models_ready_other_workflow");
+    } else if (job.unsupported.length) {
+      notify("ui.preparation_unsupported", "warn", job.unsupported.join(", "));
+    } else if (job.phase === "failed") notify("ui.preparation_failed", "warn");
+  } catch { notify("ui.preparation_failed", "error"); }
+  finally { activeRequest = null; running = false; }
 }
 api.addEventListener("execution_success", () => notify("ui.generated"));
 api.addEventListener("komaquill_saved", (event) => {

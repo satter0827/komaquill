@@ -1,8 +1,6 @@
 {
-  "last_node_id": 92,
-  "last_link_id": 16,
   "config": {},
-  "version": 0.4,
+  "version": 1,
   "nodes": [
     {
       "id": 4,
@@ -39,7 +37,8 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
-            13
+            13,
+            30
           ],
           "slot_index": 2
         }
@@ -114,7 +113,8 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            8
+            8,
+            29
           ]
         },
         {
@@ -122,7 +122,8 @@
           "type": "CLIP",
           "links": [
             6,
-            7
+            7,
+            21
           ]
         }
       ],
@@ -137,8 +138,8 @@
       "id": 10,
       "type": "StringConcatenate",
       "pos": [
-        760,
-        0
+        735,
+        355
       ],
       "size": [
         340,
@@ -155,7 +156,7 @@
           "widget": {
             "name": "string_b"
           },
-          "link": null
+          "link": 19
         },
         {
           "name": "string_a",
@@ -187,10 +188,10 @@
       "properties": {},
       "widgets_values": [
         "masterpiece, best quality, amazing quality, anime illustration, detailed",
-        "a small cabin in a sunny forest, manga illustration",
+        "",
         ", "
       ],
-      "title": "Image Description"
+      "title": "Positive quality prompt"
     },
     {
       "id": 6,
@@ -226,7 +227,8 @@
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
-            9
+            20,
+            31
           ],
           "slot_index": 0
         }
@@ -270,7 +272,8 @@
           "name": "CONDITIONING",
           "type": "CONDITIONING",
           "links": [
-            10
+            23,
+            32
           ],
           "slot_index": 0
         }
@@ -278,7 +281,8 @@
       "properties": {},
       "widgets_values": [
         "bad quality, worst quality, worst detail, sketch, censor"
-      ]
+      ],
+      "title": "Negative prompt"
     },
     {
       "id": 3,
@@ -303,12 +307,12 @@
         {
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 9
+          "link": 26
         },
         {
           "name": "negative",
           "type": "CONDITIONING",
-          "link": 10
+          "link": 27
         },
         {
           "name": "latent_image",
@@ -375,7 +379,8 @@
         "euler_ancestral",
         "normal",
         1.0
-      ]
+      ],
+      "title": "WAI sampling"
     },
     {
       "id": 8,
@@ -408,7 +413,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14
+            28
           ],
           "slot_index": 0
         }
@@ -433,7 +438,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 14
+          "link": 33
         },
         {
           "name": "filename_prefix",
@@ -447,7 +452,8 @@
       "properties": {},
       "widgets_values": [
         "komaquill/wai-illustrious"
-      ]
+      ],
+      "title": "Save candidates"
     },
     {
       "id": 68,
@@ -595,7 +601,7 @@
         180
       ],
       "flags": {},
-      "order": 8,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -623,32 +629,396 @@
       "widgets_values": [
         0.5
       ]
+    },
+    {
+      "id": 100,
+      "type": "PrimitiveStringMultiline",
+      "title": "Scene prompt",
+      "pos": [
+        0,
+        360
+      ],
+      "size": [
+        340,
+        185
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "value",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "value"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "a small cabin in a sunny forest, manga illustration"
+      ]
+    },
+    {
+      "id": 101,
+      "type": "StringConcatenate",
+      "title": "Recurring positive prompt",
+      "pos": [
+        380,
+        355
+      ],
+      "size": [
+        310,
+        185
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "string_a"
+          }
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "link": 18,
+          "widget": {
+            "name": "string_b"
+          }
+        },
+        {
+          "name": "delimiter",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "delimiter"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 110,
+      "type": "863fb644-afcf-56f9-b329-a042b926120a",
+      "title": "Rewrite in English",
+      "pos": [
+        0,
+        -245
+      ],
+      "size": [
+        230,
+        130
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "scene",
+          "type": "STRING",
+          "link": 17
+        },
+        {
+          "name": "rewrite_output_limit",
+          "type": "INT",
+          "link": null,
+          "label": "Rewrite output limit (tokens)"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "scene",
+          "type": "STRING",
+          "links": [
+            18
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        256
+      ]
+    },
+    {
+      "id": 111,
+      "type": "fbb7b3a4-e25c-51b5-83a6-76fcb850759b",
+      "title": "Assign character regions",
+      "pos": [
+        265,
+        -245
+      ],
+      "size": [
+        230,
+        130
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "scene",
+          "type": "CONDITIONING",
+          "link": 20
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 21
+        },
+        {
+          "name": "left_character_prompt",
+          "type": "STRING",
+          "link": null,
+          "label": "Left character prompt"
+        },
+        {
+          "name": "right_character_prompt",
+          "type": "STRING",
+          "link": null,
+          "label": "Right character prompt"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "scene",
+          "type": "CONDITIONING",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        "",
+        ""
+      ]
+    },
+    {
+      "id": 112,
+      "type": "ebf843b6-5c8f-580d-886e-6eb3dcebd1b5",
+      "title": "Guide the pose",
+      "pos": [
+        530,
+        -245
+      ],
+      "size": [
+        230,
+        130
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 22
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 23
+        },
+        {
+          "name": "pose_guide_strength",
+          "type": "FLOAT",
+          "link": null,
+          "label": "Pose guide strength"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            24
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            25
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        0.75
+      ]
+    },
+    {
+      "id": 113,
+      "type": "972e976c-226f-5101-bb4d-d5d43577c4c2",
+      "title": "Guide the depth",
+      "pos": [
+        795,
+        -245
+      ],
+      "size": [
+        230,
+        130
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 24
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 25
+        },
+        {
+          "name": "depth_guide_strength",
+          "type": "FLOAT",
+          "link": null,
+          "label": "Depth guide strength"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            26
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            27
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        0.75
+      ]
+    },
+    {
+      "id": 114,
+      "type": "ded726cd-e0c3-55ed-b3c9-8a9a05579eed",
+      "title": "Refine a saved candidate",
+      "pos": [
+        1060,
+        -245
+      ],
+      "size": [
+        230,
+        130
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "generated",
+          "type": "IMAGE",
+          "link": 28
+        },
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 29
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 30
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 31
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 32
+        },
+        {
+          "name": "mask_edit_denoise",
+          "type": "FLOAT",
+          "link": null,
+          "label": "Mask edit denoise"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            33
+          ]
+        }
+      ],
+      "properties": {},
+      "widgets_values": [
+        0.5
+      ]
     }
   ],
-  "groups": [],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Optional production stages",
+      "bounding": [
+        -25,
+        -315,
+        1370,
+        225
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
   "extra": {
     "linearMode": false,
     "linearData": {
       "inputs": [
         [
-          "10",
-          "string_b"
+          "100",
+          "value"
         ],
         [
           "7",
           "text"
-        ],
-        [
-          "68",
-          "value"
-        ],
-        [
-          "69",
-          "value"
-        ],
-        [
-          "3",
-          "seed"
         ],
         [
           "5",
@@ -656,23 +1026,31 @@
         ],
         [
           "3",
-          "steps"
+          "seed"
         ],
         [
-          "3",
-          "cfg"
+          "110",
+          "rewrite_output_limit"
         ],
         [
-          "3",
-          "sampler_name"
+          "111",
+          "left_character_prompt"
         ],
         [
-          "3",
-          "scheduler"
+          "111",
+          "right_character_prompt"
         ],
         [
-          "92",
-          "value"
+          "112",
+          "pose_guide_strength"
+        ],
+        [
+          "113",
+          "depth_guide_strength"
+        ],
+        [
+          "114",
+          "mask_edit_denoise"
         ]
       ],
       "outputs": [
@@ -681,133 +1059,2094 @@
     }
   },
   "links": [
-    [
-      1,
-      4,
-      0,
-      90,
-      0,
-      "MODEL"
-    ],
-    [
-      2,
-      4,
-      1,
-      90,
-      1,
-      "CLIP"
-    ],
-    [
-      3,
-      92,
-      0,
-      90,
-      3,
-      "FLOAT"
-    ],
-    [
-      4,
-      92,
-      0,
-      90,
-      4,
-      "FLOAT"
-    ],
-    [
-      5,
-      10,
-      0,
-      6,
-      0,
-      "STRING"
-    ],
-    [
-      6,
-      90,
-      1,
-      6,
-      1,
-      "CLIP"
-    ],
-    [
-      7,
-      90,
-      1,
-      7,
-      0,
-      "CLIP"
-    ],
-    [
-      8,
-      90,
-      0,
-      3,
-      0,
-      "MODEL"
-    ],
-    [
-      9,
-      6,
-      0,
-      3,
-      1,
-      "CONDITIONING"
-    ],
-    [
-      10,
-      7,
-      0,
-      3,
-      2,
-      "CONDITIONING"
-    ],
-    [
-      11,
-      5,
-      0,
-      3,
-      3,
-      "LATENT"
-    ],
-    [
-      12,
-      3,
-      0,
-      8,
-      0,
-      "LATENT"
-    ],
-    [
-      13,
-      4,
-      2,
-      8,
-      1,
-      "VAE"
-    ],
-    [
-      14,
-      8,
-      0,
-      9,
-      0,
-      "IMAGE"
-    ],
-    [
-      15,
-      68,
-      0,
-      5,
-      1,
-      "INT"
-    ],
-    [
-      16,
-      69,
-      0,
-      5,
-      2,
-      "INT"
+    {
+      "id": 1,
+      "origin_id": 4,
+      "origin_slot": 0,
+      "target_id": 90,
+      "target_slot": 0,
+      "type": "MODEL"
+    },
+    {
+      "id": 2,
+      "origin_id": 4,
+      "origin_slot": 1,
+      "target_id": 90,
+      "target_slot": 1,
+      "type": "CLIP"
+    },
+    {
+      "id": 3,
+      "origin_id": 92,
+      "origin_slot": 0,
+      "target_id": 90,
+      "target_slot": 3,
+      "type": "FLOAT"
+    },
+    {
+      "id": 4,
+      "origin_id": 92,
+      "origin_slot": 0,
+      "target_id": 90,
+      "target_slot": 4,
+      "type": "FLOAT"
+    },
+    {
+      "id": 5,
+      "origin_id": 10,
+      "origin_slot": 0,
+      "target_id": 6,
+      "target_slot": 0,
+      "type": "STRING"
+    },
+    {
+      "id": 6,
+      "origin_id": 90,
+      "origin_slot": 1,
+      "target_id": 6,
+      "target_slot": 1,
+      "type": "CLIP"
+    },
+    {
+      "id": 7,
+      "origin_id": 90,
+      "origin_slot": 1,
+      "target_id": 7,
+      "target_slot": 0,
+      "type": "CLIP"
+    },
+    {
+      "id": 8,
+      "origin_id": 90,
+      "origin_slot": 0,
+      "target_id": 3,
+      "target_slot": 0,
+      "type": "MODEL"
+    },
+    {
+      "id": 11,
+      "origin_id": 5,
+      "origin_slot": 0,
+      "target_id": 3,
+      "target_slot": 3,
+      "type": "LATENT"
+    },
+    {
+      "id": 12,
+      "origin_id": 3,
+      "origin_slot": 0,
+      "target_id": 8,
+      "target_slot": 0,
+      "type": "LATENT"
+    },
+    {
+      "id": 13,
+      "origin_id": 4,
+      "origin_slot": 2,
+      "target_id": 8,
+      "target_slot": 1,
+      "type": "VAE"
+    },
+    {
+      "id": 15,
+      "origin_id": 68,
+      "origin_slot": 0,
+      "target_id": 5,
+      "target_slot": 1,
+      "type": "INT"
+    },
+    {
+      "id": 16,
+      "origin_id": 69,
+      "origin_slot": 0,
+      "target_id": 5,
+      "target_slot": 2,
+      "type": "INT"
+    },
+    {
+      "id": 17,
+      "origin_id": 100,
+      "origin_slot": 0,
+      "target_id": 110,
+      "target_slot": 0,
+      "type": "STRING"
+    },
+    {
+      "id": 18,
+      "origin_id": 110,
+      "origin_slot": 0,
+      "target_id": 101,
+      "target_slot": 1,
+      "type": "STRING"
+    },
+    {
+      "id": 19,
+      "origin_id": 101,
+      "origin_slot": 0,
+      "target_id": 10,
+      "target_slot": 0,
+      "type": "STRING"
+    },
+    {
+      "id": 20,
+      "origin_id": 6,
+      "origin_slot": 0,
+      "target_id": 111,
+      "target_slot": 0,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 21,
+      "origin_id": 90,
+      "origin_slot": 1,
+      "target_id": 111,
+      "target_slot": 1,
+      "type": "CLIP"
+    },
+    {
+      "id": 22,
+      "origin_id": 111,
+      "origin_slot": 0,
+      "target_id": 112,
+      "target_slot": 0,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 23,
+      "origin_id": 7,
+      "origin_slot": 0,
+      "target_id": 112,
+      "target_slot": 1,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 24,
+      "origin_id": 112,
+      "origin_slot": 0,
+      "target_id": 113,
+      "target_slot": 0,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 25,
+      "origin_id": 112,
+      "origin_slot": 1,
+      "target_id": 113,
+      "target_slot": 1,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 26,
+      "origin_id": 113,
+      "origin_slot": 0,
+      "target_id": 3,
+      "target_slot": 1,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 27,
+      "origin_id": 113,
+      "origin_slot": 1,
+      "target_id": 3,
+      "target_slot": 2,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 28,
+      "origin_id": 8,
+      "origin_slot": 0,
+      "target_id": 114,
+      "target_slot": 0,
+      "type": "IMAGE"
+    },
+    {
+      "id": 29,
+      "origin_id": 90,
+      "origin_slot": 0,
+      "target_id": 114,
+      "target_slot": 1,
+      "type": "MODEL"
+    },
+    {
+      "id": 30,
+      "origin_id": 4,
+      "origin_slot": 2,
+      "target_id": 114,
+      "target_slot": 2,
+      "type": "VAE"
+    },
+    {
+      "id": 31,
+      "origin_id": 6,
+      "origin_slot": 0,
+      "target_id": 114,
+      "target_slot": 3,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 32,
+      "origin_id": 7,
+      "origin_slot": 0,
+      "target_id": 114,
+      "target_slot": 4,
+      "type": "CONDITIONING"
+    },
+    {
+      "id": 33,
+      "origin_id": 114,
+      "origin_slot": 0,
+      "target_id": 9,
+      "target_slot": 0,
+      "type": "IMAGE"
+    }
+  ],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "863fb644-afcf-56f9-b329-a042b926120a",
+        "version": 1,
+        "revision": 0,
+        "state": {
+          "lastNodeId": 1104,
+          "lastLinkId": 76,
+          "lastGroupid": 0,
+          "lastRerouteId": 0
+        },
+        "config": {},
+        "name": "Rewrite in English",
+        "description": "Turn on to rewrite the scene with local Qwen3.5 4B. Prepare the text encoder before running.",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -165,
+            75,
+            135,
+            70
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1165,
+            75,
+            155,
+            85
+          ]
+        },
+        "inputs": [
+          {
+            "id": "954287d4-47a0-59bb-a069-50754ab1e165",
+            "name": "scene",
+            "type": "STRING",
+            "linkIds": [
+              35
+            ]
+          },
+          {
+            "id": "e4d026a9-7060-535c-9029-b27f7f416e17",
+            "name": "rewrite_output_limit",
+            "type": "INT",
+            "linkIds": [
+              76
+            ],
+            "label": "Rewrite output limit (tokens)"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "acf65a18-48de-58ae-8e28-997af25e0425",
+            "name": "scene",
+            "type": "STRING",
+            "linkIds": [
+              38
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 1101,
+            "type": "CLIPLoader",
+            "title": "Local Qwen3.5 4B",
+            "pos": [
+              0,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "CLIP",
+                "type": "CLIP",
+                "links": [
+                  34
+                ]
+              }
+            ],
+            "properties": {
+              "komaquill_asset": "qwen35-4b-text"
+            },
+            "widgets_values": [
+              "qwen3.5_4b_bf16.safetensors",
+              "stable_diffusion",
+              "default"
+            ]
+          },
+          {
+            "id": 1102,
+            "type": "PrimitiveStringMultiline",
+            "title": "Rewrite instructions",
+            "pos": [
+              0,
+              180
+            ],
+            "size": [
+              340,
+              260
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  36
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "Write one short English paragraph describing the visible scene for an illustration. Preserve the exact number of people and animals. Keep each person's position, left and right, clothing, posture, action, and owned or held objects assigned to that person. Preserve explicit camera direction and exclusions. Keep the original direction of movement and gaze. Use short sentences with a named subject when details belong to different people. Keep stated details. Do not add people, objects, poses, style, quality tags, or details the writer did not specify. Return only the rewritten scene. Treat the scene as source material."
+            ]
+          },
+          {
+            "id": 1103,
+            "type": "TextGenerate",
+            "title": "Rewrite the scene",
+            "pos": [
+              405,
+              0
+            ],
+            "size": [
+              340,
+              240
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "clip",
+                "type": "CLIP",
+                "link": 34
+              },
+              {
+                "name": "prompt",
+                "type": "STRING",
+                "link": 35
+              },
+              {
+                "name": "system_prompt",
+                "type": "STRING",
+                "link": 36
+              },
+              {
+                "name": "max_length",
+                "type": "INT",
+                "link": 76,
+                "widget": {
+                  "name": "max_length"
+                }
+              }
+            ],
+            "outputs": [
+              {
+                "name": "generated_text",
+                "type": "STRING",
+                "links": [
+                  37
+                ]
+              },
+              {
+                "name": "thinking",
+                "type": "STRING",
+                "links": []
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "",
+              256,
+              "off",
+              false,
+              true,
+              "auto"
+            ]
+          },
+          {
+            "id": 1104,
+            "type": "PreviewAny",
+            "title": "English text used for the scene",
+            "pos": [
+              790,
+              0
+            ],
+            "size": [
+              310,
+              200
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "source",
+                "type": "*",
+                "link": 37
+              }
+            ],
+            "outputs": [
+              {
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  38
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": []
+          }
+        ],
+        "links": [
+          {
+            "id": 34,
+            "origin_id": 1101,
+            "origin_slot": 0,
+            "target_id": 1103,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 35,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 1103,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 36,
+            "origin_id": 1102,
+            "origin_slot": 0,
+            "target_id": 1103,
+            "target_slot": 2,
+            "type": "STRING"
+          },
+          {
+            "id": 37,
+            "origin_id": 1103,
+            "origin_slot": 0,
+            "target_id": 1104,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 38,
+            "origin_id": 1104,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 76,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1103,
+            "target_slot": 3,
+            "type": "INT"
+          }
+        ],
+        "groups": [],
+        "extra": {}
+      },
+      {
+        "id": "fbb7b3a4-e25c-51b5-83a6-76fcb850759b",
+        "version": 1,
+        "revision": 0,
+        "state": {
+          "lastNodeId": 1116,
+          "lastLinkId": 78,
+          "lastGroupid": 0,
+          "lastRerouteId": 0
+        },
+        "config": {},
+        "name": "Assign character regions",
+        "description": "Enter separate directions for the left and right characters. Positions and sizes are fractions of the canvas.",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -165,
+            75,
+            135,
+            70
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1365,
+            75,
+            155,
+            85
+          ]
+        },
+        "inputs": [
+          {
+            "id": "8bfad5ce-f527-5a32-b884-848d1232e2da",
+            "name": "scene",
+            "type": "CONDITIONING",
+            "linkIds": [
+              45
+            ]
+          },
+          {
+            "id": "337e03b8-e789-5f12-95fe-b5ea2f6671c2",
+            "name": "clip",
+            "type": "CLIP",
+            "linkIds": [
+              39,
+              40
+            ]
+          },
+          {
+            "id": "75d6f717-2702-5cce-bf26-bf2cc24e0dd5",
+            "name": "left_character_prompt",
+            "type": "STRING",
+            "linkIds": [
+              77
+            ],
+            "label": "Left character prompt"
+          },
+          {
+            "id": "bc821943-00fc-5003-bc4d-13eed8fcef0d",
+            "name": "right_character_prompt",
+            "type": "STRING",
+            "linkIds": [
+              78
+            ],
+            "label": "Right character prompt"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "dfbeab78-53ce-5d6c-83cd-7a016f95a453",
+            "name": "scene",
+            "type": "CONDITIONING",
+            "linkIds": [
+              47
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 1111,
+            "type": "CLIPTextEncode",
+            "title": "Left character",
+            "pos": [
+              0,
+              0
+            ],
+            "size": [
+              300,
+              160
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "clip",
+                "type": "CLIP",
+                "link": 39
+              },
+              {
+                "name": "text",
+                "type": "STRING",
+                "link": 77,
+                "widget": {
+                  "name": "text"
+                }
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  41
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              ""
+            ]
+          },
+          {
+            "id": 1112,
+            "type": "CLIPTextEncode",
+            "title": "Right character",
+            "pos": [
+              0,
+              250
+            ],
+            "size": [
+              300,
+              160
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "clip",
+                "type": "CLIP",
+                "link": 40
+              },
+              {
+                "name": "text",
+                "type": "STRING",
+                "link": 78,
+                "widget": {
+                  "name": "text"
+                }
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  42
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              ""
+            ]
+          },
+          {
+            "id": 1113,
+            "type": "ConditioningSetAreaPercentage",
+            "title": "Left region",
+            "pos": [
+              345,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "conditioning",
+                "type": "CONDITIONING",
+                "link": 41
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  43
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              0.5,
+              1,
+              0,
+              0,
+              1
+            ]
+          },
+          {
+            "id": 1114,
+            "type": "ConditioningSetAreaPercentage",
+            "title": "Right region",
+            "pos": [
+              345,
+              250
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "conditioning",
+                "type": "CONDITIONING",
+                "link": 42
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  44
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              0.5,
+              1,
+              0.5,
+              0,
+              1
+            ]
+          },
+          {
+            "id": 1115,
+            "type": "ConditioningCombine",
+            "title": "Combine character regions",
+            "pos": [
+              680,
+              80
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "conditioning_1",
+                "type": "CONDITIONING",
+                "link": 43
+              },
+              {
+                "name": "conditioning_2",
+                "type": "CONDITIONING",
+                "link": 44
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  46
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": []
+          },
+          {
+            "id": 1116,
+            "type": "ConditioningCombine",
+            "title": "Add scene directions",
+            "pos": [
+              1010,
+              80
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "conditioning_1",
+                "type": "CONDITIONING",
+                "link": 45
+              },
+              {
+                "name": "conditioning_2",
+                "type": "CONDITIONING",
+                "link": 46
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  47
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": []
+          }
+        ],
+        "links": [
+          {
+            "id": 39,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1111,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 40,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1112,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 41,
+            "origin_id": 1111,
+            "origin_slot": 0,
+            "target_id": 1113,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 42,
+            "origin_id": 1112,
+            "origin_slot": 0,
+            "target_id": 1114,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 43,
+            "origin_id": 1113,
+            "origin_slot": 0,
+            "target_id": 1115,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 44,
+            "origin_id": 1114,
+            "origin_slot": 0,
+            "target_id": 1115,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 45,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 1116,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 46,
+            "origin_id": 1115,
+            "origin_slot": 0,
+            "target_id": 1116,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 47,
+            "origin_id": 1116,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 77,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 1111,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 78,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 1112,
+            "target_slot": 1,
+            "type": "STRING"
+          }
+        ],
+        "groups": [],
+        "extra": {}
+      },
+      {
+        "id": "ebf843b6-5c8f-580d-886e-6eb3dcebd1b5",
+        "version": 1,
+        "revision": 0,
+        "state": {
+          "lastNodeId": 1124,
+          "lastLinkId": 79,
+          "lastGroupid": 0,
+          "lastRerouteId": 0
+        },
+        "config": {},
+        "name": "Guide the pose",
+        "description": "Choose a guide image. Strength controls how closely WAI follows the guide.",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -165,
+            75,
+            135,
+            70
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1095,
+            75,
+            155,
+            85
+          ]
+        },
+        "inputs": [
+          {
+            "id": "2e978ad9-5616-5aae-9a9d-b0e8ebb774d6",
+            "name": "positive",
+            "type": "CONDITIONING",
+            "linkIds": [
+              49
+            ]
+          },
+          {
+            "id": "a29d73f0-9533-5d97-882b-f80da58b5f4c",
+            "name": "negative",
+            "type": "CONDITIONING",
+            "linkIds": [
+              50
+            ]
+          },
+          {
+            "id": "49d68c66-3fc2-5b4c-a86e-02aab600a4ab",
+            "name": "pose_guide_strength",
+            "type": "FLOAT",
+            "linkIds": [
+              79
+            ],
+            "label": "Pose guide strength"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "1ab2fdb7-1591-5773-b70d-e8ebb2350f79",
+            "name": "positive",
+            "type": "CONDITIONING",
+            "linkIds": [
+              53
+            ]
+          },
+          {
+            "id": "962cc887-23a9-5b9e-be99-d9e95dcbdef2",
+            "name": "negative",
+            "type": "CONDITIONING",
+            "linkIds": [
+              54
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 1121,
+            "type": "LoadImage",
+            "title": "Guide image",
+            "pos": [
+              0,
+              210
+            ],
+            "size": [
+              300,
+              285
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  52
+                ]
+              },
+              {
+                "name": "MASK",
+                "type": "MASK",
+                "links": []
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "komaquill-guides/standing-pose.png",
+              "image"
+            ]
+          },
+          {
+            "id": 1122,
+            "type": "ControlNetLoader",
+            "title": "SDXL composition model",
+            "pos": [
+              0,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "CONTROL_NET",
+                "type": "CONTROL_NET",
+                "links": [
+                  48
+                ]
+              }
+            ],
+            "properties": {
+              "komaquill_asset": "sdxl-composition-guide"
+            },
+            "widgets_values": [
+              "diffusion_pytorch_model_promax.safetensors"
+            ]
+          },
+          {
+            "id": 1123,
+            "type": "SetUnionControlNetType",
+            "title": "Guide type",
+            "pos": [
+              350,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "control_net",
+                "type": "CONTROL_NET",
+                "link": 48
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONTROL_NET",
+                "type": "CONTROL_NET",
+                "links": [
+                  51
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "openpose"
+            ]
+          },
+          {
+            "id": 1124,
+            "type": "ControlNetApplyAdvanced",
+            "title": "Guide strength and sampling range",
+            "pos": [
+              700,
+              100
+            ],
+            "size": [
+              330,
+              170
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 49
+              },
+              {
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 50
+              },
+              {
+                "name": "control_net",
+                "type": "CONTROL_NET",
+                "link": 51
+              },
+              {
+                "name": "image",
+                "type": "IMAGE",
+                "link": 52
+              },
+              {
+                "name": "vae",
+                "type": "VAE",
+                "link": null
+              },
+              {
+                "name": "strength",
+                "type": "FLOAT",
+                "link": 79,
+                "widget": {
+                  "name": "strength"
+                }
+              }
+            ],
+            "outputs": [
+              {
+                "name": "positive",
+                "type": "CONDITIONING",
+                "links": [
+                  53
+                ]
+              },
+              {
+                "name": "negative",
+                "type": "CONDITIONING",
+                "links": [
+                  54
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              0.75,
+              0,
+              0.8
+            ]
+          }
+        ],
+        "links": [
+          {
+            "id": 48,
+            "origin_id": 1122,
+            "origin_slot": 0,
+            "target_id": 1123,
+            "target_slot": 0,
+            "type": "CONTROL_NET"
+          },
+          {
+            "id": 49,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 1124,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 50,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1124,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 51,
+            "origin_id": 1123,
+            "origin_slot": 0,
+            "target_id": 1124,
+            "target_slot": 2,
+            "type": "CONTROL_NET"
+          },
+          {
+            "id": 52,
+            "origin_id": 1121,
+            "origin_slot": 0,
+            "target_id": 1124,
+            "target_slot": 3,
+            "type": "IMAGE"
+          },
+          {
+            "id": 53,
+            "origin_id": 1124,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 54,
+            "origin_id": 1124,
+            "origin_slot": 1,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 79,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 1124,
+            "target_slot": 5,
+            "type": "FLOAT"
+          }
+        ],
+        "groups": [],
+        "extra": {}
+      },
+      {
+        "id": "972e976c-226f-5101-bb4d-d5d43577c4c2",
+        "version": 1,
+        "revision": 0,
+        "state": {
+          "lastNodeId": 1134,
+          "lastLinkId": 80,
+          "lastGroupid": 0,
+          "lastRerouteId": 0
+        },
+        "config": {},
+        "name": "Guide the depth",
+        "description": "Choose a guide image. Strength controls how closely WAI follows the guide.",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -165,
+            75,
+            135,
+            70
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1095,
+            75,
+            155,
+            85
+          ]
+        },
+        "inputs": [
+          {
+            "id": "a6b42245-6fd6-53b8-bd05-43bf88f0dc2b",
+            "name": "positive",
+            "type": "CONDITIONING",
+            "linkIds": [
+              56
+            ]
+          },
+          {
+            "id": "87c4d582-ca27-5b97-aede-987a3a01c4e3",
+            "name": "negative",
+            "type": "CONDITIONING",
+            "linkIds": [
+              57
+            ]
+          },
+          {
+            "id": "3929cc3b-ff71-5c0f-8c9f-a64d6cd2b12e",
+            "name": "depth_guide_strength",
+            "type": "FLOAT",
+            "linkIds": [
+              80
+            ],
+            "label": "Depth guide strength"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "94aabfe0-24a2-55f2-89ad-e8ba22c6022a",
+            "name": "positive",
+            "type": "CONDITIONING",
+            "linkIds": [
+              60
+            ]
+          },
+          {
+            "id": "cb99fcfd-5eb9-574a-ab52-106ff64e52f5",
+            "name": "negative",
+            "type": "CONDITIONING",
+            "linkIds": [
+              61
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 1131,
+            "type": "LoadImage",
+            "title": "Guide image",
+            "pos": [
+              0,
+              210
+            ],
+            "size": [
+              300,
+              285
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  59
+                ]
+              },
+              {
+                "name": "MASK",
+                "type": "MASK",
+                "links": []
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "komaquill-guides/center-depth.png",
+              "image"
+            ]
+          },
+          {
+            "id": 1132,
+            "type": "ControlNetLoader",
+            "title": "SDXL composition model",
+            "pos": [
+              0,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "CONTROL_NET",
+                "type": "CONTROL_NET",
+                "links": [
+                  55
+                ]
+              }
+            ],
+            "properties": {
+              "komaquill_asset": "sdxl-composition-guide"
+            },
+            "widgets_values": [
+              "diffusion_pytorch_model_promax.safetensors"
+            ]
+          },
+          {
+            "id": 1133,
+            "type": "SetUnionControlNetType",
+            "title": "Guide type",
+            "pos": [
+              350,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "control_net",
+                "type": "CONTROL_NET",
+                "link": 55
+              }
+            ],
+            "outputs": [
+              {
+                "name": "CONTROL_NET",
+                "type": "CONTROL_NET",
+                "links": [
+                  58
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "depth"
+            ]
+          },
+          {
+            "id": 1134,
+            "type": "ControlNetApplyAdvanced",
+            "title": "Guide strength and sampling range",
+            "pos": [
+              700,
+              100
+            ],
+            "size": [
+              330,
+              170
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 56
+              },
+              {
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 57
+              },
+              {
+                "name": "control_net",
+                "type": "CONTROL_NET",
+                "link": 58
+              },
+              {
+                "name": "image",
+                "type": "IMAGE",
+                "link": 59
+              },
+              {
+                "name": "vae",
+                "type": "VAE",
+                "link": null
+              },
+              {
+                "name": "strength",
+                "type": "FLOAT",
+                "link": 80,
+                "widget": {
+                  "name": "strength"
+                }
+              }
+            ],
+            "outputs": [
+              {
+                "name": "positive",
+                "type": "CONDITIONING",
+                "links": [
+                  60
+                ]
+              },
+              {
+                "name": "negative",
+                "type": "CONDITIONING",
+                "links": [
+                  61
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              0.75,
+              0,
+              0.8
+            ]
+          }
+        ],
+        "links": [
+          {
+            "id": 55,
+            "origin_id": 1132,
+            "origin_slot": 0,
+            "target_id": 1133,
+            "target_slot": 0,
+            "type": "CONTROL_NET"
+          },
+          {
+            "id": 56,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 1134,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 57,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1134,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 58,
+            "origin_id": 1133,
+            "origin_slot": 0,
+            "target_id": 1134,
+            "target_slot": 2,
+            "type": "CONTROL_NET"
+          },
+          {
+            "id": 59,
+            "origin_id": 1131,
+            "origin_slot": 0,
+            "target_id": 1134,
+            "target_slot": 3,
+            "type": "IMAGE"
+          },
+          {
+            "id": 60,
+            "origin_id": 1134,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 61,
+            "origin_id": 1134,
+            "origin_slot": 1,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 80,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 1134,
+            "target_slot": 5,
+            "type": "FLOAT"
+          }
+        ],
+        "groups": [],
+        "extra": {}
+      },
+      {
+        "id": "ded726cd-e0c3-55ed-b3c9-8a9a05579eed",
+        "version": 1,
+        "revision": 0,
+        "state": {
+          "lastNodeId": 1146,
+          "lastLinkId": 81,
+          "lastGroupid": 0,
+          "lastRerouteId": 0
+        },
+        "config": {},
+        "name": "Refine a saved candidate",
+        "description": "Select a saved image and paint its mask with the Mask Editor. Denoise controls how much the painted area changes.",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -165,
+            75,
+            135,
+            125
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1775,
+            75,
+            155,
+            85
+          ]
+        },
+        "inputs": [
+          {
+            "id": "f5a0464e-f609-559c-b9a8-e0c9223b5c12",
+            "name": "generated",
+            "type": "IMAGE",
+            "linkIds": []
+          },
+          {
+            "id": "9e251846-9a35-5be6-beba-4850ce9600f7",
+            "name": "model",
+            "type": "MODEL",
+            "linkIds": [
+              66
+            ]
+          },
+          {
+            "id": "cfaae9fb-1856-506c-94bb-414858bb098a",
+            "name": "vae",
+            "type": "VAE",
+            "linkIds": [
+              63,
+              71
+            ]
+          },
+          {
+            "id": "769a6360-e275-55e7-a61d-d436d1435890",
+            "name": "positive",
+            "type": "CONDITIONING",
+            "linkIds": [
+              67
+            ]
+          },
+          {
+            "id": "eca563e3-f9af-5d15-b149-76b43363af29",
+            "name": "negative",
+            "type": "CONDITIONING",
+            "linkIds": [
+              68
+            ]
+          },
+          {
+            "id": "24713ca0-3ca7-56e1-b59e-81c5ea6b462e",
+            "name": "mask_edit_denoise",
+            "type": "FLOAT",
+            "linkIds": [
+              81
+            ],
+            "label": "Mask edit denoise"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "2df9cd05-329b-5c6f-8d5e-cc51a61a561c",
+            "name": "image",
+            "type": "IMAGE",
+            "linkIds": [
+              75
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 1141,
+            "type": "LoadImage",
+            "title": "Saved candidate and edit mask",
+            "pos": [
+              0,
+              0
+            ],
+            "size": [
+              310,
+              295
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  62,
+                  72
+                ]
+              },
+              {
+                "name": "MASK",
+                "type": "MASK",
+                "links": [
+                  65,
+                  74
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              "",
+              "image"
+            ]
+          },
+          {
+            "id": 1142,
+            "type": "VAEEncode",
+            "title": "Encode candidate",
+            "pos": [
+              355,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "pixels",
+                "type": "IMAGE",
+                "link": 62
+              },
+              {
+                "name": "vae",
+                "type": "VAE",
+                "link": 63
+              }
+            ],
+            "outputs": [
+              {
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  64
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": []
+          },
+          {
+            "id": 1143,
+            "type": "SetLatentNoiseMask",
+            "title": "Restrict sampling to the mask",
+            "pos": [
+              355,
+              195
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "samples",
+                "type": "LATENT",
+                "link": 64
+              },
+              {
+                "name": "mask",
+                "type": "MASK",
+                "link": 65
+              }
+            ],
+            "outputs": [
+              {
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  69
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": []
+          },
+          {
+            "id": 1144,
+            "type": "KSampler",
+            "title": "Masked WAI sampling",
+            "pos": [
+              700,
+              0
+            ],
+            "size": [
+              300,
+              260
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": 66
+              },
+              {
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 67
+              },
+              {
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 68
+              },
+              {
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 69
+              },
+              {
+                "name": "denoise",
+                "type": "FLOAT",
+                "link": 81,
+                "widget": {
+                  "name": "denoise"
+                }
+              }
+            ],
+            "outputs": [
+              {
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  70
+                ]
+              }
+            ],
+            "properties": {
+              "komaquill_sampling_defaults": true
+            },
+            "widgets_values": [
+              1,
+              "randomize",
+              25,
+              6,
+              "euler_ancestral",
+              "normal",
+              0.5
+            ]
+          },
+          {
+            "id": 1145,
+            "type": "VAEDecode",
+            "title": "Decode the edit",
+            "pos": [
+              1045,
+              0
+            ],
+            "size": [
+              290,
+              135
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "samples",
+                "type": "LATENT",
+                "link": 70
+              },
+              {
+                "name": "vae",
+                "type": "VAE",
+                "link": 71
+              }
+            ],
+            "outputs": [
+              {
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  73
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": []
+          },
+          {
+            "id": 1146,
+            "type": "ImageCompositeMasked",
+            "title": "Preserve pixels outside the mask",
+            "pos": [
+              1390,
+              0
+            ],
+            "size": [
+              320,
+              180
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "destination",
+                "type": "IMAGE",
+                "link": 72
+              },
+              {
+                "name": "source",
+                "type": "IMAGE",
+                "link": 73
+              },
+              {
+                "name": "mask",
+                "type": "MASK",
+                "link": 74
+              }
+            ],
+            "outputs": [
+              {
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  75
+                ]
+              }
+            ],
+            "properties": {},
+            "widgets_values": [
+              0,
+              0,
+              false
+            ]
+          }
+        ],
+        "links": [
+          {
+            "id": 62,
+            "origin_id": 1141,
+            "origin_slot": 0,
+            "target_id": 1142,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 63,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 1142,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 64,
+            "origin_id": 1142,
+            "origin_slot": 0,
+            "target_id": 1143,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 65,
+            "origin_id": 1141,
+            "origin_slot": 1,
+            "target_id": 1143,
+            "target_slot": 1,
+            "type": "MASK"
+          },
+          {
+            "id": 66,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 1144,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 67,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 1144,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 68,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 1144,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 69,
+            "origin_id": 1143,
+            "origin_slot": 0,
+            "target_id": 1144,
+            "target_slot": 3,
+            "type": "LATENT"
+          },
+          {
+            "id": 70,
+            "origin_id": 1144,
+            "origin_slot": 0,
+            "target_id": 1145,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 71,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 1145,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 72,
+            "origin_id": 1141,
+            "origin_slot": 0,
+            "target_id": 1146,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 73,
+            "origin_id": 1145,
+            "origin_slot": 0,
+            "target_id": 1146,
+            "target_slot": 1,
+            "type": "IMAGE"
+          },
+          {
+            "id": 74,
+            "origin_id": 1141,
+            "origin_slot": 1,
+            "target_id": 1146,
+            "target_slot": 2,
+            "type": "MASK"
+          },
+          {
+            "id": 75,
+            "origin_id": 1146,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 81,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 1144,
+            "target_slot": 4,
+            "type": "FLOAT"
+          }
+        ],
+        "groups": [],
+        "extra": {}
+      }
     ]
-  ]
+  },
+  "state": {
+    "lastNodeId": 1146,
+    "lastLinkId": 81,
+    "lastGroupid": 1,
+    "lastRerouteId": 0
+  }
 }

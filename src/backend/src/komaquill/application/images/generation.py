@@ -1,5 +1,6 @@
 """Share generation, reconciliation and collection across CLI and browser requests."""
 
+import json
 import time
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass
@@ -25,8 +26,10 @@ from komaquill.domain.images import (
     compile_image_input,
     validate_inputs,
 )
+from komaquill.domain.library.models import WaiPreferences
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import ImageRef, JsonObject, OutputSpec, Run, Session
+from komaquill.domain.presets import WAI_PROFILE, GenerationPreset
 from komaquill.domain.workflow import digest
 
 _SEED_ADAPTER = TypeAdapter(ImageSeed)
@@ -46,6 +49,8 @@ def generation_settings(
     profile_name: str | None,
     candidates: int | None = None,
     parameters: dict[str, bool | int | float | str] | None = None,
+    *,
+    wai: WaiPreferences | None = None,
 ) -> RuntimeSettings:
     """Freeze a request override without mutating the active session defaults."""
     if not isinstance(settings, RuntimeSettings):
@@ -53,7 +58,45 @@ def generation_settings(
     name = profile_name or settings.profiles[0]
     if name not in settings.profiles:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
-    profile = settings.presets[name]
+    profile = configured_generation_preset(
+        settings.presets[name], settings.max_candidates, candidates, parameters, wai=wai
+    )
+    if profile is settings.presets[name]:
+        return settings
+    return settings.model_copy(update={"presets": {**settings.presets, name: profile}})
+
+
+def configured_generation_preset(
+    profile: GenerationPreset,
+    max_candidates: int,
+    candidates: int | None = None,
+    parameters: dict[str, bool | int | float | str] | None = None,
+    *,
+    wai: WaiPreferences | None = None,
+) -> GenerationPreset:
+    """Resolve per-request overrides on top of saved image generation defaults."""
+    if wai is not None and profile.model_id == WAI_PROFILE and profile.operation == "generate":
+        defaults = wai.model_dump(
+            exclude_none=True, include=set(profile.adjustable) | set(profile.parameters)
+        )
+        parameters = {**defaults, **(parameters or {})}
+        candidates = wai.candidates if candidates is None else candidates
+        quality = profile.quality_enabled if wai.quality_enabled is None else wai.quality_enabled
+        positive = (
+            profile.positive_prefix
+            if wai.quality_positive is None
+            else wai.quality_positive.strip()
+        )
+        negative = profile.negative_default
+        if negative is not None and wai.quality_negative is not None:
+            negative = wai.quality_negative.strip()
+        profile = profile.model_copy(
+            update={
+                "quality_enabled": quality,
+                "positive_prefix": positive if quality else "",
+                "negative_default": "" if negative is not None and not quality else negative,
+            }
+        )
     if parameters:
         try:
             profile = profile.configured_parameters(parameters)
@@ -64,30 +107,88 @@ def generation_settings(
     if candidates is not None and profile.primary_output_node is None:
         raise KomaquillError(code="unsupported_batch", stage="generation", retryable=False)
     count = profile.batch_size if candidates is None else candidates
-    if (
-        isinstance(count, bool)
-        or not isinstance(count, int)
-        or not 1 <= count <= settings.max_candidates
-    ):
+    if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= max_candidates:
         raise KomaquillError(code="invalid_request", stage="generation", retryable=False)
-    if count == profile.batch_size and not parameters:
-        return settings
-    return settings.model_copy(
-        update={
-            "presets": {**settings.presets, name: profile.model_copy(update={"batch_size": count})}
-        }
+    return (
+        profile if count == profile.batch_size else profile.model_copy(update={"batch_size": count})
     )
+
+
+def _wai_production_output(profile: GenerationPreset, graph: JsonObject) -> OutputSpec | None:
+    """Recognize the final image path when native WAI subgraphs are enabled."""
+    primary = profile.primary_output_node
+    if profile.model_id != WAI_PROFILE or primary is None:
+        return None
+    definitions = {row["id"]: row for row in profile.ui.get("definitions", {}).get("subgraphs", [])}
+    if not definitions:
+        return None
+    instances = {
+        row["id"]: definitions[row["type"]]
+        for row in profile.ui["nodes"]
+        if row["type"] in definitions
+    }
+    extra = set(graph) - set(profile.api)
+    expected = {key: node["class_type"] for key, node in profile.api.items()}
+    for identity, subgraph in instances.items():
+        stage = {f"{identity}:{row['id']}": row["type"] for row in subgraph["nodes"]}
+        if stage.keys() & extra:
+            expected.update(stage)
+    if (
+        not extra
+        or graph.keys() != expected.keys()
+        or any(
+            not isinstance(graph[key], dict)
+            or graph[key].get("class_type") != kind
+            or not isinstance(graph[key].get("inputs"), dict)
+            for key, kind in expected.items()
+        )
+    ):
+        return None
+    images = graph[primary]["inputs"].get("images")
+    standard = profile.api[primary]["inputs"]["images"]
+    if images == standard:
+        decoder = standard[0]
+        sampler = profile.api[decoder]["inputs"]["samples"][0]
+        batch = next(binding for binding in profile.bindings if binding.source == "batch_size")
+        if graph[decoder]["inputs"].get("samples") == [sampler, 0] and graph[sampler]["inputs"].get(
+            "latent_image"
+        ) == [batch.api_node, 0]:
+            count = graph[batch.api_node]["inputs"].get(batch.api_input)
+            if type(count) is int and count > 0:
+                return OutputSpec(primary_node=primary, candidates=count)
+        return None
+
+    for link in profile.ui["links"]:
+        if str(link["target_id"]) != primary or link["origin_id"] not in instances:
+            continue
+        identity = link["origin_id"]
+        subgraph = instances[identity]
+        for internal in subgraph["links"]:
+            if (
+                internal["target_id"] == subgraph["outputNode"]["id"]
+                and internal["target_slot"] == link["origin_slot"]
+                and images == [f"{identity}:{internal['origin_id']}", internal["origin_slot"]]
+            ):
+                # A loaded image can contain multiple frames. Its count is known at collection.
+                return OutputSpec(primary_node=primary, candidates=None)
+    return None
 
 
 def output_spec(settings: RecordedSettings | None, graph: JsonObject) -> OutputSpec | None:
     """Identify supported output roles only when the preset topology is known."""
-    found: set[tuple[str, int]] = set()
+    found: set[tuple[str, int | None]] = set()
     if settings is None:
         return None
     for name in settings.profiles:
         profile = settings.presets[name]
         node = profile.primary_output_node
-        if not node or set(graph) != set(profile.api):
+        if not node:
+            continue
+        if set(graph) != set(profile.api):
+            if isinstance(profile, GenerationPreset) and (
+                production := _wai_production_output(profile, graph)
+            ):
+                found.add((production.primary_node, production.candidates))
             continue
         matches = True
         for key, expected in profile.api.items():
@@ -260,6 +361,50 @@ def image_references(
     return result
 
 
+def retain_rewritten_scene(
+    project: Workspace, run_id: UUID, graph: JsonObject, outputs: JsonObject
+) -> None:
+    """Keep text used for conditioning with the graph and images of the same run."""
+    applied_nodes = set()
+    for node in graph.values():
+        if not isinstance(node, dict) or node.get("class_type") != "StringConcatenate":
+            continue
+        scene = node.get("inputs", {}).get("string_b")
+        if (
+            isinstance(scene, list)
+            and len(scene) == 2
+            and isinstance(scene[0], str)
+            and scene[1] == 0
+        ):
+            applied_nodes.add(scene[0])
+    for identity in applied_nodes:
+        node = graph.get(identity)
+        if not isinstance(node, dict) or node.get("class_type") != "PreviewAny":
+            continue
+        source = node.get("inputs", {}).get("source")
+        if (
+            not isinstance(source, list)
+            or len(source) != 2
+            or not isinstance(source[0], str)
+            or source[1] != 0
+            or graph.get(source[0], {}).get("class_type") != "TextGenerate"
+        ):
+            continue
+        output = outputs.get(identity, {})
+        text = output.get("text") if isinstance(output, dict) else None
+        if not isinstance(text, list) or len(text) != 1 or not isinstance(text[0], str):
+            continue
+        key = f"runs/{run_id}/rewritten-scenes/{digest({'node': identity})}.json"
+        content = json.dumps({"node": identity, "text": text[0]}, ensure_ascii=False).encode()
+        try:
+            previous = project.artifacts_store.read(key)
+        except FileNotFoundError:
+            project.artifacts_store.write(key, content)
+        else:
+            if previous != content:
+                raise KomaquillError(code="invalid_output", stage="history_validation")
+
+
 def collect_images(
     project: Workspace,
     client: GenerationBackend,
@@ -332,17 +477,15 @@ def collect_images(
             return False
         if not run.pending or not project.accepts_results(session):
             return False
-        if (
-            run.output_spec is not None
-            and sum(node == run.output_spec.primary_node for _, _, node, _ in references)
-            != run.output_spec.candidates
-        ):
-            raise KomaquillError(
-                code="invalid_output",
-                stage="image_collection",
-                retryable=True,
-                details={"run_id": str(run_id)},
-            )
+        if spec := run.output_spec:
+            count = sum(node == spec.primary_node for _, _, node, _ in references)
+            if count == 0 or (spec.candidates is not None and count != spec.candidates):
+                raise KomaquillError(
+                    code="invalid_output",
+                    stage="image_collection",
+                    retryable=True,
+                    details={"run_id": str(run_id)},
+                )
         run.state = "saved"
         run.error = None
         run.failure = None
@@ -402,7 +545,12 @@ def collect(
                     )
                     if run.runtime_id != session.runtime_id and not owns_request:
                         continue
-                    terminal_failure = run.state == "failed" and bool(record.get("outputs"))
+                    outputs = record.get("outputs", {})
+                    has_images = isinstance(outputs, dict) and any(
+                        isinstance(output, dict) and bool(output.get("images"))
+                        for output in outputs.values()
+                    )
+                    terminal_failure = run.state == "failed" and has_images
                     if terminal_failure and only is None and run.collection_failure is None:
                         references = image_references(record, run)
                         terminal_failure = any(
@@ -421,6 +569,8 @@ def collect(
                             code="invalid_response", stage="history_validation", retryable=False
                         )
                     project.repository.conditions(run, prompt)
+                    if isinstance(outputs, dict) and isinstance(prompt[2], dict):
+                        retain_rewritten_scene(project, identity, prompt[2], outputs)
                     status = record.get("status", {})
                     if not isinstance(status, dict):
                         raise KomaquillError(
@@ -435,7 +585,7 @@ def collect(
                         )
                     project.repository.save(run)
                     completed = status.get("completed") and run.pending
-                    failed_outputs = run.state == "failed" and bool(record.get("outputs"))
+                    failed_outputs = run.state == "failed" and has_images
                 if (completed or failed_outputs) and collect_images(
                     project, client, session, identity, record, finalize=bool(completed)
                 ):
@@ -588,6 +738,13 @@ def submit_generation(
     run.input_sources = input_sources
     run.state = "unknown"
     with collection_lock(project):
+        if not project.accepts_results(session):
+            raise KomaquillError(code="identity_mismatch", stage="submission", retryable=False)
+        remaining = remaining_seconds(
+            session.started_at, settings.submission_timeout, datetime.now(UTC)
+        )
+        if remaining is not None and remaining <= 0:
+            raise KomaquillError(code="stopping", stage="submission", retryable=False)
         if project.stop_requested(session) is not None:
             raise KomaquillError(code="stopping", retryable=False)
         try:

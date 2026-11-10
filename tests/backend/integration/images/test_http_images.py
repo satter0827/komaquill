@@ -7,7 +7,15 @@ import pytest
 from fastapi.testclient import TestClient
 from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.colab import Colab, Receipt
+from komaquill.adapters.configuration import Settings
 from komaquill.api import Client, KomaquillError, images, runtime
+from komaquill.domain.library.models import (
+    CharacterInput,
+    CreationRequest,
+    ImagePromptDefaults,
+    WaiPreferences,
+)
+from komaquill.domain.presets import WAI_PROFILE
 from komaquill.domain.status import SessionStatus
 from komaquill.interfaces.http.app import create_app
 
@@ -48,6 +56,146 @@ def test_http_images_and_standard_views_share_the_public_api(project, session, c
         assert {row["view"] for row in views} == {"app", "graph"}
         graph = http.get("/api/v1/runtime/workflows/klein-4b/graph")
         assert graph.status_code == 200 and graph.json()["extra"]["linearMode"] is False
+
+
+def test_wai_request_keeps_accepted_defaults_during_an_update(
+    project, session, client, stub, monkeypatch
+):
+    active = session.model_copy(update={"settings": Settings(models=[WAI_PROFILE])})
+    atomic_json(project.session_file, active.model_dump(mode="json"))
+
+    @contextmanager
+    def connected(_):
+        yield client, active
+
+    monkeypatch.setattr(images, "connected", connected)
+    api = Client(project.root)
+    preferences = api.library.preferences()
+    saved = api.library.save_preferences(
+        preferences.model_copy(
+            update={
+                "image_prompts": ImagePromptDefaults(
+                    positive="diffuse light",
+                    wai=WaiPreferences(seed=42, candidates=3, quality_enabled=False),
+                )
+            }
+        )
+    )
+
+    def update_while_preparing(*_):
+        api.library.save_preferences(
+            saved.model_copy(update={"image_prompts": ImagePromptDefaults()})
+        )
+
+    monkeypatch.setattr(api.images, "_preflight", update_while_preparing)
+    run_id = uuid4()
+    run = api.images.submit(
+        "Two people share an umbrella.",
+        run_id=run_id,
+        negative="crowd",
+        use_prompt_preferences=True,
+    )
+    restarted = Client(project.root)
+    repeated = restarted.images.submit(
+        "Two people share an umbrella.",
+        run_id=run_id,
+        negative="crowd",
+        use_prompt_preferences=True,
+    )
+    assert repeated == run
+    assert stub.submissions == 1
+    graph = next(iter(stub.history.values()))["prompt"][2]
+    assert graph["3"]["inputs"]["seed"] == 42
+    assert graph["5"]["inputs"]["batch_size"] == 3
+    assert graph["7"]["inputs"]["text"] == "crowd"
+    assert graph["10"]["inputs"]["string_a"] == ""
+    assert graph["101"]["inputs"]["string_a"] == "diffuse light"
+
+
+def test_image_rejects_runtime_settings_changed_during_preparation(
+    project, session, client, stub, monkeypatch
+):
+    active = session.model_copy(update={"settings": Settings(models=[WAI_PROFILE])})
+    atomic_json(project.session_file, active.model_dump(mode="json"))
+    replacement = active.model_copy(update={"settings": project.settings()})
+
+    @contextmanager
+    def connected(_):
+        yield client, replacement
+
+    api = Client(project.root)
+    monkeypatch.setattr(images, "connected", connected)
+    monkeypatch.setattr(
+        api.images,
+        "_preflight",
+        lambda *_: atomic_json(project.session_file, replacement.model_dump(mode="json")),
+    )
+    with pytest.raises(KomaquillError, match="operation_conflict"):
+        api.images.submit("A garden in the rain.")
+    assert stub.submissions == 0 and api.images.list() == []
+
+
+def test_portrait_uses_the_generation_snapshot_after_reconnecting(
+    project, session, client, stub, monkeypatch
+):
+    from types import SimpleNamespace
+
+    settings = Settings(models=[WAI_PROFILE])
+    active = session.model_copy(update={"settings": settings})
+    atomic_json(project.session_file, active.model_dump(mode="json"))
+    api = Client(project.root)
+    preferences = api.library.preferences()
+    api.library.save_preferences(
+        preferences.model_copy(
+            update={"image_prompts": ImagePromptDefaults(wai=WaiPreferences(seed=42))}
+        )
+    )
+    character = api.characters.create(CharacterInput(name="Fia", appearance="silver hair"))
+    monkeypatch.setattr(api.library, "preflight", lambda *_: None)
+    job, _ = api.library.accept(
+        CreationRequest(
+            operation_id=uuid4(),
+            kind="portrait",
+            target_id=character.id,
+            expected_revision=character.revision,
+            llm_profile="fake",
+        )
+    )
+    accepted = job.image_generation
+    assert accepted is not None
+    assert "image_generation" not in job.model_dump(mode="json")
+
+    replacement = Settings(models=["klein-4b", WAI_PROFILE])
+    replacement = replacement.model_copy(
+        update={
+            "presets": {
+                **replacement.presets,
+                WAI_PROFILE: replacement.presets[WAI_PROFILE].configured_parameters({"steps": 55}),
+            }
+        }
+    )
+    active = active.model_copy(update={"settings": replacement})
+    atomic_json(project.session_file, active.model_dump(mode="json"))
+
+    @contextmanager
+    def connected(_):
+        yield client, active
+
+    monkeypatch.setattr(images, "connected", connected)
+    reopened = Client(project.root)
+    monkeypatch.setattr(reopened.images, "_preflight", lambda *_: None)
+    monkeypatch.setattr(
+        reopened.library,
+        "image_describer",
+        SimpleNamespace(prepare_image=lambda *args, **kwargs: "A woman with silver hair."),
+    )
+    reopened.library.image_parameters["portrait"] = {"width": 1408, "height": 512}
+    assert reopened.library.execute(job.id).state == "submitted"
+    graph = next(iter(stub.history.values()))["prompt"][2]
+    assert graph["3"]["inputs"]["seed"] == 42
+    assert graph["3"]["inputs"]["steps"] == accepted.preset.steps
+    assert graph["68"]["inputs"]["value"] == accepted.preset.width
+    assert graph["69"]["inputs"]["value"] == accepted.preset.height
 
 
 def test_http_runtime_keeps_owned_shutdown_without_an_endpoint(project, monkeypatch):

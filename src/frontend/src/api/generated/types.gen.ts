@@ -969,11 +969,167 @@ export type FailureInfo = {
 };
 
 /**
+ * GenerationPreset
+ *
+ * Validate positive-only executable workflows and their model family.
+ */
+export type GenerationPreset = {
+    /**
+     * Api
+     */
+    api: {
+        [key: string]: unknown;
+    };
+    /**
+     * Ui
+     */
+    ui: {
+        [key: string]: unknown;
+    };
+    /**
+     * Bindings
+     */
+    bindings: Array<WorkflowBinding>;
+    /**
+     * Resources
+     */
+    resources?: {
+        [key: string]: string;
+    };
+    /**
+     * Image Inputs
+     */
+    image_inputs?: {
+        [key: string]: WorkflowImageSlot;
+    };
+    /**
+     * Parameters
+     */
+    parameters?: {
+        [key: string]: boolean | number | number | string;
+    };
+    /**
+     * Parameter Bounds
+     */
+    parameter_bounds?: {
+        [key: string]: [
+            number,
+            number
+        ];
+    };
+    /**
+     * Width
+     */
+    width: number;
+    /**
+     * Height
+     */
+    height: number;
+    /**
+     * Steps
+     */
+    steps: number;
+    /**
+     * Sampler
+     */
+    sampler: string;
+    /**
+     * Scheduler
+     */
+    scheduler: string;
+    /**
+     * Quality Enabled
+     */
+    quality_enabled?: boolean;
+    /**
+     * Positive Prefix
+     */
+    positive_prefix?: string;
+    /**
+     * Batch Size
+     */
+    batch_size?: number;
+    /**
+     * Primary Output Node
+     */
+    primary_output_node?: string | null;
+    /**
+     * Sample Prompt
+     */
+    sample_prompt: string;
+    /**
+     * Format Version
+     */
+    format_version?: 3;
+    /**
+     * Model Id
+     */
+    model_id: string;
+    /**
+     * Operation
+     */
+    operation: 'generate' | 'edit';
+    /**
+     * Model Family
+     */
+    model_family: 'klein-4b' | 'klein-9b' | 'illustrious';
+    /**
+     * Negative Default
+     */
+    negative_default?: string | null;
+    /**
+     * Purpose Prefixes
+     */
+    purpose_prefixes?: {
+        [key: string]: string;
+    };
+    /**
+     * Purpose Negatives
+     */
+    purpose_negatives?: {
+        [key: string]: string;
+    };
+    /**
+     * Adjustable
+     */
+    adjustable?: Array<string>;
+    /**
+     * Parameter Choices
+     */
+    parameter_choices?: {
+        [key: string]: Array<string>;
+    };
+};
+
+/**
  * ImageDetach
  */
 export type ImageDetach = {
     image: WorkRef;
     use: ImageUse;
+};
+
+/**
+ * ImageGenerationConditions
+ *
+ * Keep an accepted image plan independent of subsequent session defaults.
+ */
+export type ImageGenerationConditions = {
+    /**
+     * Profile
+     */
+    profile: string;
+    preset: GenerationPreset;
+    /**
+     * Assets
+     */
+    assets: {
+        [key: string]: string;
+    };
+    /**
+     * Seed
+     */
+    seed: number;
 };
 
 /**
@@ -992,6 +1148,10 @@ export type ImageInput = {
      * Seed
      */
     seed?: number | null;
+    /**
+     * Negative
+     */
+    negative?: string | null;
     /**
      * Model
      */
@@ -1063,6 +1223,7 @@ export type ImagePromptDefaults = {
      * Negative
      */
     negative?: string;
+    wai?: WaiPreferences;
 };
 
 /**
@@ -1361,7 +1522,7 @@ export type OutputSpec = {
     /**
      * Candidates
      */
-    candidates: number;
+    candidates: number | null;
     /**
      * Stages
      */
@@ -2248,6 +2409,7 @@ export type SettingsView = {
      * Supports Negative Prompt
      */
     supports_negative_prompt?: boolean | null;
+    wai?: WaiSettingsView | null;
 };
 
 /**
@@ -2553,6 +2715,77 @@ export type VisualReviewRecord = {
 };
 
 /**
+ * WaiPreferences
+ */
+export type WaiPreferences = {
+    /**
+     * Quality Enabled
+     */
+    quality_enabled?: boolean | null;
+    /**
+     * Quality Positive
+     */
+    quality_positive?: string | null;
+    /**
+     * Quality Negative
+     */
+    quality_negative?: string | null;
+    /**
+     * Candidates
+     */
+    candidates?: number | null;
+    /**
+     * Seed
+     */
+    seed?: number | null;
+    /**
+     * Width
+     */
+    width?: number | null;
+    /**
+     * Height
+     */
+    height?: number | null;
+    /**
+     * Steps
+     */
+    steps?: number | null;
+    /**
+     * Cfg
+     */
+    cfg?: number | null;
+    /**
+     * Sampler
+     */
+    sampler?: string | null;
+    /**
+     * Scheduler
+     */
+    scheduler?: string | null;
+    /**
+     * Detail Strength
+     */
+    detail_strength?: number | null;
+};
+
+/**
+ * WaiSettingsView
+ */
+export type WaiSettingsView = {
+    defaults: WaiPreferences;
+    /**
+     * Max Candidates
+     */
+    max_candidates: number;
+    /**
+     * Choices
+     */
+    choices: {
+        [key: string]: Array<string>;
+    };
+};
+
+/**
  * WaitAction
  */
 export type WaitAction = {
@@ -2643,6 +2876,54 @@ export type WorkRef = {
      * Index
      */
     index?: number;
+};
+
+/**
+ * WorkflowBinding
+ *
+ * Bind one named scalar to matching standard API and UI inputs.
+ */
+export type WorkflowBinding = {
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Api Node
+     */
+    api_node: string;
+    /**
+     * Api Input
+     */
+    api_input: string;
+    /**
+     * Ui Node
+     */
+    ui_node: number;
+    /**
+     * Ui Widget
+     */
+    ui_widget: number;
+};
+
+/**
+ * WorkflowImageSlot
+ *
+ * Declare one image or white-edit mask required by a fixed workflow.
+ */
+export type WorkflowImageSlot = {
+    /**
+     * Kind
+     */
+    kind?: 'image' | 'mask';
+    /**
+     * Sample
+     */
+    sample?: string;
+    /**
+     * Match Base
+     */
+    match_base?: boolean;
 };
 
 export type ListTrashData = {

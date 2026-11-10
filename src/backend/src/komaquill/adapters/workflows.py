@@ -10,11 +10,14 @@ from komaquill.domain.errors import KomaquillError
 from komaquill.domain.images import CompiledImageInput, compile_image_input
 from komaquill.domain.models import JsonObject, ModelPreset
 from komaquill.domain.presets import GenerationPreset
+from komaquill.domain.prompts import joined
 from komaquill.resources.messages import message
 
 _INPUT_LABELS = {
     "prompt": "workflow.prompt",
     "negative": "workflow.negative",
+    "positive_prefix": "workflow.quality_positive",
+    "common_prompt": "workflow.common_positive",
     "width": "workflow.width",
     "height": "workflow.height",
     "seed": "workflow.seed",
@@ -76,6 +79,7 @@ def prepare(
     profile_name: str | None = None,
     compiled_input: CompiledImageInput | None = None,
     subject_prompts: tuple[str, ...] = (),
+    randomize_seed: bool = False,
 ) -> tuple[JsonObject, JsonObject]:
     """Apply identical conditions to API and native editable browser workflows."""
     if settings is None:
@@ -94,10 +98,15 @@ def prepare(
     if not isinstance(applied, CompiledImageInput) or not applied.matches(profile):
         raise KomaquillError(code="invalid_configuration", stage="generation")
     values = profile.model_dump()
+    separate_common = any(binding.source == "common_prompt" for binding in profile.bindings)
     values.update(
-        prompt=applied.body,
+        prompt=joined(applied.prompt, *applied.subject_prompts)
+        if separate_common
+        else applied.body,
         negative=applied.negative,
         positive_prefix=applied.positive_prefix,
+        common_prompt=applied.common_prompt,
+        common_delimiter=", " if applied.common_prompt else "",
         prompt_delimiter=", " if applied.positive_prefix and applied.body else "",
         seed=seed,
         output_prefix=f"komaquill/{run_id}",
@@ -113,6 +122,11 @@ def prepare(
         value = values[binding.source]
         api[binding.api_node]["inputs"][binding.api_input] = value
         nodes[binding.ui_node]["widgets_values"][binding.ui_widget] = value
+        if randomize_seed and binding.source == "seed":
+            widgets = nodes[binding.ui_node]["widgets_values"]
+            control = binding.ui_widget + 1
+            if control < len(widgets) and widgets[control] == "fixed":
+                widgets[control] = "randomize"
         if binding.source in _INPUT_LABELS:
             for slot in nodes[binding.ui_node].get("inputs", []):
                 if slot.get("name") == binding.api_input:
@@ -123,4 +137,26 @@ def prepare(
                         and profile.model_family.startswith("klein-")
                         else _INPUT_LABELS[binding.source]
                     )
+    for subgraph in ui.get("definitions", {}).get("subgraphs", []):
+        for node in subgraph.get("nodes", []):
+            properties = node.get("properties", {})
+            if asset_id := properties.pop("komaquill_asset", None):
+                asset = settings.assets[asset_id]
+                node["widgets_values"][0] = asset.reference
+                url = (
+                    asset.url
+                    or f"https://huggingface.co/{asset.repo_id}/resolve/{asset.revision}/{asset.filename}"
+                )
+                properties["models"] = [
+                    {"name": asset.reference, "directory": asset.role, "url": url}
+                ]
+            if properties.pop("komaquill_sampling_defaults", False):
+                node["widgets_values"][:6] = [
+                    seed,
+                    "randomize" if randomize_seed else "fixed",
+                    profile.steps,
+                    profile.parameters["cfg"],
+                    profile.sampler,
+                    profile.scheduler,
+                ]
     return api, ui

@@ -115,7 +115,8 @@ def test_drawing_freezes_current_state_and_never_resubmits_after_reopening(tmp_p
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
+    def submit(prompt, *, run_id, conditions, **_options):
+        assert conditions == accepted.image_generation
         runs[run_id] = SimpleNamespace(state="queued", images=[], run_id=run_id)
 
     api.library.images = SimpleNamespace(submit=submit, get=get)
@@ -144,6 +145,7 @@ def test_explicit_environment_choice_uses_environment_conditions_before_submissi
     )
     submitted = []
     api.library.images = SimpleNamespace(
+        freeze=api.library.images.freeze,
         submit=lambda prompt, **options: submitted.append((prompt, options)),
         get=lambda identity: (_ for _ in ()).throw(KomaquillError(code="request_not_found")),
     )
@@ -159,6 +161,7 @@ def test_explicit_environment_choice_uses_environment_conditions_before_submissi
     assert api.library.execute(job.id).state == "submitted"
     prompt, options = submitted[0]
     assert options["purpose"] == "banner"
+    assert options["conditions"] == job.image_generation
     assert prompt.startswith("Unoccupied setting, environment only.")
     assert "Bookshop" not in prompt and "Beach" in prompt
 

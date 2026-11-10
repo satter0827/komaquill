@@ -22,6 +22,23 @@ komaquill open --model wai-illustrious --operation generate --view app
 
 標準画面で追加ワークフローを開いた場合はPrepare Workflowを使います。モデル名、サイズ、取得先を確認して確定します。CLIの`prepare`も同じ確認と取得を使い、GPUを新規確保しません。所有を照合できない外部接続へ認証付き準備を自動適用しません。
 
+## WAIの制作工程
+
+WAIのワークフローは通常生成で開きます。工程を追加するときはNode Graph上段の「Optional production stages」から使うノードを選び、右クリックメニューのBypassを解除します。App Modeに戻ると、有効にした工程の主な設定が表示されます。再びBypassにすると通常の経路へ戻ります。ワークフローは標準の保存操作で再利用できます。
+
+| 工程 | 操作 |
+| --- | --- |
+| Rewrite in English | 描きたい場面をScene promptに入力します。内部のRewrite instructionsで英文整形の指示を編集できます。ComfyUIが稼働する場所に[Qwen3.5 4Bテキストエンコーダー](../../src/backend/src/komaquill/resources/models/qwen35-4b-text.toml)を準備します。 |
+| Assign character regions | 左右それぞれの人物の外見・服装・動作を記述します。領域の位置と大きさは画面に対する0〜1の割合で指定します。 |
+| Guide the pose / Guide the depth | 骨格または深度の画像を選び、ガイド強度とサンプリング中の適用範囲を調整します。[SDXL構図モデル](../../src/backend/src/komaquill/resources/models/sdxl-composition-guide.toml)を準備します。管理下のComfyUIでは既製の1人用と2人用のガイドを選択できます。持ち込みのガイドは画像の選択欄からアップロードできます。 |
+| Refine a saved candidate | 保存済みの候補を選び、Load ImageのMask Editorで変更箇所を塗ります。Scene promptに仕上げの指示を入力し、Masked WAI samplingのDenoiseで変更量を調整します。 |
+
+管理下のComfyUIで追加モデルを使うときは、工程を有効にした状態でPrepare Workflowを開き、取得内容を確認します。外部のComfyUIではモデル定義に記載された固定版を取得し、`models/<role>/<sha256>/<filename>`に配置します。外部で既製のガイドを使う場合は、次のコマンドでファイルを作り、ComfyUIの入力フォルダーへ`komaquill-guides`を配置します。
+
+```powershell
+python -c "from pathlib import Path; from komaquill.adapters.wai_guides import prepare_guides; prepare_guides(Path('.artifacts/outputs'))"
+```
+
 ブラウザーは確認済みジョブを作り、接続中の監視が同じジョブIDを実行します。GPU側で資源単位の排他、部分取得、取消、SHA256検査を行います。取得待機で画像回収、CU照会、停止を妨げません。準備プロトコルが異なる旧サーバーは再起動してください。
 
 ## 中断と容量

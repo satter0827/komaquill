@@ -44,7 +44,7 @@ def test_former_settings_remain_readable_without_becoming_executable():
     for key in ("high_ram", "compute_unit_limit", "compute_unit_reserve"):
         value.pop(key)
     for asset in value["assets"].values():
-        asset.pop("model_family")
+        asset.pop("model_family", None)
     for profile in value["presets"].values():
         profile.pop("format_version")
         profile.pop("model_family")

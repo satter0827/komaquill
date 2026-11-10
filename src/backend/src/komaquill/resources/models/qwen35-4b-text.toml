@@ -1,0 +1,8 @@
+name = "qwen35-4b-text"
+role = "text_encoders"
+url = "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/caecf90d532547fa84b2ef7710240d8c2fe5a4dc/text_encoders/qwen3.5_4b_bf16.safetensors"
+filename = "qwen3.5_4b_bf16.safetensors"
+sha256 = "9fb3ae42003750fe2d16350259a3ec07761d6d13a8e2b244a6e22fa9d8050841" # pragma: allowlist secret Public model SHA256.
+size_bytes = 9319828320
+license = "Apache-2.0"
+license_url = "https://huggingface.co/Comfy-Org/Qwen3.5"

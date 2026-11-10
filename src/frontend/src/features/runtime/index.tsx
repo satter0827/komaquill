@@ -47,11 +47,7 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
   const target = status?.shutdown_target
   const owned = target === 'owned'
   const external = target === 'external'
-  const externalUrls = new Set(
-    entries
-      .filter((view) => view.backend === 'external')
-      .map((view) => view.url),
-  )
+  const comfyUrls = new Set(entries.map((view) => new URL('.', view.url).href))
   const profiles = new Map<string, typeof entries>()
   for (const view of entries) {
     const group = profiles.get(view.profile) ?? []
@@ -163,7 +159,7 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
           {views.isSuccess && entries.length === 0 && (
             <p className="subtle">{m.runtimeNoViews}</p>
           )}
-          {[...externalUrls].map((url) => (
+          {[...comfyUrls].map((url) => (
             <a
               key={url}
               className="text-button"
@@ -180,7 +176,7 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
               <div className="actions">
                 {group.map((view) => {
                   const mode = view.view === 'app' ? m.appMode : m.nodeGraph
-                  return view.backend === 'external' ? (
+                  return (
                     <a
                       className="text-button"
                       key={view.view}
@@ -188,16 +184,6 @@ export function RuntimePage({ embedded = false }: { embedded?: boolean }) {
                       download="workflow.json"
                     >
                       {format('downloadWorkflow', { mode })}
-                    </a>
-                  ) : (
-                    <a
-                      className="text-button"
-                      key={view.view}
-                      href={view.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {mode}
                     </a>
                   )
                 })}

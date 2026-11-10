@@ -173,9 +173,22 @@ def test_saved_workflow_captures_the_input_revision_and_corrupt_records_are_repo
         json.dumps(
             {
                 "nodes": [
-                    {"type": "LoadImage", "widgets_values": ["input.png"]},
-                    {"type": "KSampler"},
-                ]
+                    {"id": 1, "type": "stage"},
+                    {"id": 2, "type": "disabled-stage", "mode": 4},
+                    {"id": 3, "type": "KSampler"},
+                ],
+                "definitions": {
+                    "subgraphs": [
+                        {
+                            "id": "stage",
+                            "nodes": [{"type": "LoadImage", "widgets_values": ["input.png"]}],
+                        },
+                        {
+                            "id": "disabled-stage",
+                            "nodes": [{"type": "LoadImage", "widgets_values": ["missing.png"]}],
+                        },
+                    ]
+                },
             }
         )
     )
@@ -186,6 +199,45 @@ def test_saved_workflow_captures_the_input_revision_and_corrupt_records_are_repo
     (files.folder / f"{broken_id}.json").write_text("{broken")
     assert len(files.rows()) == 2
     assert files.errors == [str(broken_id)]
+
+
+@pytest.mark.parametrize("route", ["/prompt", "/api/prompt"])
+def test_native_prompt_rechecks_admission_after_waiting_for_a_write(project, route):
+    async def scenario():
+        control, files, server, _ = harness(project)
+        queued = []
+
+        async def queue(request):
+            queued.append(await request.json())
+            return web.json_response({"queued": True})
+
+        server.routes.post(route)(queue)
+        files.install()
+        server.app.add_routes(server.routes)
+        async with TestClient(TestServer(server.app)) as client:
+            control.workspace_id = None
+            control.submit_until = 0
+            response = await client.post(route, json={"prompt": {}})
+            assert response.status == 409 and (await response.json())["error"]["type"] == "stopping"
+            control.workspace_id = uuid4()
+            control.submit_until = None
+            assert (await client.post(route, json={"prompt": {}})).status == 200
+            waiting = asyncio.Event()
+            authorized = control.authorized
+
+            def enter_lock(request):
+                waiting.set()
+                return authorized(request)
+
+            control.authorized = enter_lock
+            async with files.lock:
+                task = asyncio.create_task(client.post(route, json={"prompt": {"late": True}}))
+                await asyncio.wait_for(waiting.wait(), timeout=2)
+                control.submit_until = 0
+            assert (await task).status == 409
+            assert queued == [{"prompt": {}}]
+
+    asyncio.run(scenario())
 
 
 def test_notifications_are_opt_in_and_do_not_target_loading_or_disconnected_clients(project):

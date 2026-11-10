@@ -17,12 +17,23 @@ from komaquill.domain.workflow import digest
 ImagePurpose = Literal["portrait", "banner", "conversation_image"]
 
 MAX_SEED = 2**64 - 1
+MAX_BROWSER_SEED = 2**53 - 1
 ImageSeed = Annotated[int, Field(strict=True, ge=0, le=MAX_SEED)]
 
 
 def preset_fingerprint(profile: GenerationPreset) -> str:
     """Hash expanded settings for current executable presets."""
     return digest(profile.model_dump(mode="json"))
+
+
+class ImageGenerationConditions(BaseModel):
+    """Keep an accepted image plan independent of subsequent session defaults."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    profile: str
+    preset: GenerationPreset
+    assets: dict[str, str]
+    seed: ImageSeed
 
 
 class CompiledImageInput(BaseModel):

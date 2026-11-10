@@ -12,8 +12,10 @@ from uuid import UUID, uuid4
 from aiohttp import web
 
 from komaquill.adapters.atomic import atomic_json, replace_file
+from komaquill.domain.assets import workflow_image_slots
 from komaquill.domain.errors import failure_info
 from komaquill.domain.materials import Material
+from komaquill.resources.messages import message
 
 CHUNK_BYTES = 1024 * 1024
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"})
@@ -68,13 +70,7 @@ class Preservation:
             bindings = {}
             if kind == "workflows":
                 graph = json.loads(target.read_bytes())
-                for node in graph.get("nodes", []):
-                    if node.get("type") not in {"LoadImage", "LoadImageMask"}:
-                        continue
-                    values = node.get("widgets_values", [])
-                    if not values or not isinstance(values[0], str):
-                        continue
-                    relative = values[0].removesuffix(" [input]")
+                for _, relative in workflow_image_slots(graph):
                     source_input = (self.input_root / relative).resolve()
                     if not source_input.is_relative_to(self.input_root.resolve()):
                         raise ValueError
@@ -138,6 +134,21 @@ class Preservation:
         return data
 
     def middleware(self) -> Any:
+        async def submit(request: web.Request, handler: Any) -> web.StreamResponse:
+            if self.control.accepting:
+                # Read the cached body before checking the deadline at admission.
+                await request.read()
+                if self.control.accepting:
+                    return cast(web.StreamResponse, await handler(request))
+            return web.json_response(
+                {
+                    "code": "stopping",
+                    "error": {"type": "stopping", "message": message("ui.submission_closed")},
+                    "node_errors": {},
+                },
+                status=409,
+            )
+
         @web.middleware
         async def observe(request: web.Request, handler: Any) -> web.StreamResponse:
             path = request.path.removeprefix("/api")
@@ -145,21 +156,18 @@ class Preservation:
                 path in {"/upload/image", "/upload/mask"} or path.startswith("/userdata/")
             )
             prompt = path == "/prompt" and request.method == "POST"
-            if (
-                (tracked or prompt)
-                and self.control.workspace_id is not None
-                and not self.control.accepting
-            ):
+            if prompt:
+                if self.control.workspace_id is None or self.control.authorized(request):
+                    return await submit(request, handler)
+                async with self.lock:
+                    return await submit(request, handler)
+            if tracked and self.control.workspace_id is not None and not self.control.accepting:
                 return web.json_response({"code": "stopping"}, status=409)
-            if (
-                not (tracked or prompt)
-                or self.control.workspace_id is None
-                or self.control.authorized(request)
-            ):
+            if not tracked or self.control.workspace_id is None or self.control.authorized(request):
                 return cast(web.StreamResponse, await handler(request))
             async with self.lock:
                 response: web.StreamResponse = await handler(request)
-                if response.status >= 300 or prompt:
+                if response.status >= 300:
                     return response
                 try:
                     if path in {"/upload/image", "/upload/mask"}:

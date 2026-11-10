@@ -83,7 +83,7 @@ class OutputSpec(BaseModel):
     """Identify final candidates and their requested batch size."""
 
     primary_node: str
-    candidates: int = Field(ge=1, strict=True)
+    candidates: int | None = Field(ge=1, strict=True)
     stages: dict[str, str] = Field(default_factory=dict)
 
 

@@ -317,8 +317,8 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     calls = []
     runs = {}
 
-    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
-        calls.append((prompt, parameters))
+    def submit(prompt, *, run_id, conditions, purpose=None, **_options):
+        calls.append((prompt, conditions.preset))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]
 
@@ -327,7 +327,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    library.images = SimpleNamespace(submit=submit, get=get)
+    library.images = SimpleNamespace(submit=submit, get=get, freeze=library.images.freeze)
     library.image_lookup = library.images.get
     library.image_describer = SimpleNamespace(
         prepare_image=lambda *args, **kwargs: (
@@ -340,7 +340,7 @@ def test_images_attach_only_to_the_accepted_version(tmp_path, kind, change):
     job, _ = library.accept(request)
     assert library.execute(job.id).state == "submitted"
     assert library.execute(job.id).state == "submitted" and len(calls) == 1
-    assert calls[0][1]["width"] != calls[0][1]["height"]
+    assert calls[0][1].width != calls[0][1].height
     if change == "edit":
         service.update(value.id, 0, model(name="Edited"))
     elif change == "delete":

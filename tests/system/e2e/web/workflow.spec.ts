@@ -349,6 +349,7 @@ test('saves and applies both common prompts in the next album drawing', async ({
   page,
   request,
 }) => {
+  const initial = await (await request.get('/api/v1/preferences')).json()
   await page.goto('/settings')
   const positive = page.getByRole('textbox', { name: ja.commonPositivePrompt })
   const negative = page.getByRole('textbox', { name: ja.commonNegativePrompt })
@@ -360,7 +361,11 @@ test('saves and applies both common prompts in the next album drawing', async ({
       const saved = await (await request.get('/api/v1/preferences')).json()
       return saved.image_prompts
     })
-    .toEqual({ positive: 'soft afternoon light', negative: 'lettering' })
+    .toEqual({
+      positive: 'soft afternoon light',
+      negative: 'lettering',
+      wai: initial.image_prompts.wai,
+    })
   await page.goto('/images')
   await page.getByRole('button', { name: ja.openDrawingForm }).click()
   await page

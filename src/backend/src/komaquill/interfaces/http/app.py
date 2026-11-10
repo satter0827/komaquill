@@ -33,6 +33,8 @@ from komaquill.domain.conversations.models import (
     Turn,
 )
 from komaquill.domain.errors import OperationStage, failure_info
+from komaquill.domain.images import ImageSeed
+from komaquill.domain.library.models import MAX_IMAGE_PROMPT_LENGTH, WaiPreferences
 from komaquill.domain.library.works import WorkRef
 from komaquill.domain.materials import InputArtifact
 from komaquill.interfaces.http.background import execute_retained
@@ -52,7 +54,8 @@ class ImageInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID
     prompt: str = Field(min_length=1, max_length=20000)
-    seed: int | None = Field(default=None, ge=0)
+    seed: ImageSeed | None = None
+    negative: str | None = Field(default=None, max_length=MAX_IMAGE_PROMPT_LENGTH)
     model: str | None = None
     llm_profile: str = "fake"
     allow_real_llm: bool = False
@@ -70,10 +73,17 @@ class ProfileView(BaseModel):
     model: str
 
 
+class WaiSettingsView(BaseModel):
+    defaults: WaiPreferences
+    max_candidates: int
+    choices: dict[str, tuple[str, ...]]
+
+
 class SettingsView(BaseModel):
     profiles: list[ProfileView]
     sample_input: str
     supports_negative_prompt: bool | None = None
+    wai: WaiSettingsView | None = None
 
 
 class OperationView(Operation):
@@ -274,13 +284,20 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
 
     @app.get("/api/v1/settings", response_model=SettingsView, operation_id="get_settings")
     def settings() -> dict[str, Any]:
+        client = selected()
         try:
-            supports_negative = selected().images.supports_negative()
+            supports_negative = client.images.supports_negative()
         except KomaquillError:
             supports_negative = None
+        try:
+            values, maximum, choices = client.runtime.wai_defaults()
+            wai = WaiSettingsView(defaults=values, max_candidates=maximum, choices=choices)
+        except KomaquillError:
+            wai = None
         return {
             "supports_negative_prompt": supports_negative,
-            "profiles": [profile.model_dump() for profile in selected().conversations.profiles()],
+            "wai": wai,
+            "profiles": [profile.model_dump() for profile in client.conversations.profiles()],
             "sample_input": "Hello",
         }
 
@@ -482,6 +499,7 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
             body.prompt,
             run_id=body.request_id,
             seed=body.seed,
+            negative=body.negative,
             model=body.model,
             llm_profile=body.llm_profile,
             allow_real_llm=body.allow_real_llm,
@@ -533,7 +551,11 @@ def create_app(client: Client | None = None, *, ui_directory: Path | None = None
     def runtime_workflow(profile: str, view: Literal["app", "graph"]) -> JSONResponse:
         graph = selected().runtime.workflow(profile, view)
         return JSONResponse(
-            graph, headers={"Content-Disposition": 'attachment; filename="workflow.json"'}
+            graph,
+            headers={
+                "Content-Disposition": 'attachment; filename="workflow.json"',
+                "Cache-Control": "no-store",
+            },
         )
 
     @app.post("/api/v1/runtime/start", response_model=SessionStatus, operation_id="start_runtime")

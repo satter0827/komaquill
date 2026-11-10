@@ -45,6 +45,9 @@ const server = setupServer(
   http.get(`${base}/api/v1/conversations/:id/images`, () =>
     HttpResponse.json([]),
   ),
+  http.get(`${base}/api/v1/works/conversation/:id/detached-images`, () =>
+    HttpResponse.json({}),
+  ),
   ...(['players', 'characters', 'stories'] as const).map((collection) =>
     http.get(`${base}/api/v1/${collection}`, () =>
       HttpResponse.json([

@@ -102,10 +102,5 @@ app.registerExtension({
     {icon: "icon-[lucide--package-check]", label: text["ui.prepare"], onClick: prepare},
     {icon: "icon-[lucide--circle-stop]", tooltip: text["ui.cancel"], onClick: cancel}
   ],
-  menuCommands: [{path: ["Workflow"], commands: ["komaquill.prepare", "komaquill.cancel"]}],
-  async afterConfigureGraph() {
-    if (!app.refreshMissingModels) return;
-    const missing = await app.refreshMissingModels({silent: true});
-    if (missing?.missingModels?.length) await prepare();
-  }
+  menuCommands: [{path: ["Workflow"], commands: ["komaquill.prepare", "komaquill.cancel"]}]
 });

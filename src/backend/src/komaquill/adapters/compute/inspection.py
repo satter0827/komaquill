@@ -87,7 +87,7 @@ def inspect(project: RuntimeWorkspace) -> SessionStatus:
             result.connection = "unknown"
     if session is not None and receipt is None and session.backend == "colab":
         result.connection = "stopped"
-    elif receipt is not None and active is False:
+    elif receipt is not None and (active is False or result.gpu == "unconfirmed"):
         result.connection = "not_started" if receipt.endpoint_id is None else "stopped"
     elif receipt is not None and (session is None or session.runtime_id != receipt.runtime_id):
         result.connection = "preparing"

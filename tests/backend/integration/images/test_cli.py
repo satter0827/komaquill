@@ -126,7 +126,7 @@ def test_status_does_not_call_uncertain_allocation_terminated(project, monkeypat
     result = CliRunner().invoke(cli.app, ["--project", str(project.root), "status"])
     assert result.exit_code == 0
     assert "allocation unconfirmed" in result.output
-    assert "ComfyUI: preparing" in result.output
+    assert "ComfyUI: not started" in result.output
     assert "Colab: stopped" not in result.output
     assert colab.receipt_file.is_file()
 

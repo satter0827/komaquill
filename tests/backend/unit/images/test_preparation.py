@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from komaquill.adapters import preparation as module
+from komaquill.domain.assets import PROTOCOL_VERSION
 from komaquill.domain.errors import KomaquillError
 
 
@@ -12,7 +13,7 @@ def test_capability_detection_does_not_change_standard_external_access(case):
     def query(path):
         if case != "supported":
             raise KomaquillError(code="http_failed", http_status=404 if case == "bare" else 500)
-        return {"protocol_version": 2}
+        return {"protocol_version": PROTOCOL_VERSION}
 
     if case == "failed":
         with pytest.raises(KomaquillError):

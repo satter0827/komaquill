@@ -20,6 +20,23 @@ for (const mode of ["confirm", "cancel", "unsupported", "missing"]) {
   });
 }
 
+test("lost confirmation is reconciled through the same request", async () => {
+  const calls = [];
+  let polls = 0;
+  let confirmations = 0;
+  const request = async (path, data) => {
+    calls.push([path, data?.action]);
+    if (data?.workflow) return {request_id: "id", phase: "confirmation", assets: [], reused: [], unsupported: []};
+    if (data?.action === "confirm" || polls++ === 0) throw new TypeError("Network error");
+    return {requests: [{request_id: "another", phase: "failed"}, {request_id: "id", phase: "ready"}]};
+  };
+  const job = await prepareWorkflow({request, workflow: {}, confirm: async () => ++confirmations === 1,
+    status: () => {}, text, sleep: async () => {}});
+  assert.equal(job.phase, "ready");
+  assert.equal(confirmations, 1);
+  assert.deepEqual(calls.map(([path, action]) => action || path), ["/requests", "confirm", "/requests", "/requests"]);
+});
+
 test("model capacity has units and grouping", () => {
   assert.equal(assetRows({assets: [{filename: "model.sft", sha256: "a", size_bytes: 1048576, url: "https://source"}], reused: []}, "unknown")[0], "model.sft | 1,048,576 bytes | https://source | false");
 });

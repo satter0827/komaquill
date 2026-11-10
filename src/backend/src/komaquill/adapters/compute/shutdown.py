@@ -50,6 +50,11 @@ def finish_colab(
         request_stop(project, session, force)
         return drain(project, client, session, force, echo)
 
+    def recover_logs() -> tuple[str, ...]:
+        if receipt.endpoint_id is None and receipt.payload_sha256 is None:
+            return ()
+        return colab.recover_diagnostics(receipt)
+
     def disconnect() -> None:
         errors = []
         for process in processes:
@@ -93,7 +98,7 @@ def finish_colab(
     folder = project.logs / str(receipt.runtime_id)
     actions = ShutdownActions(
         collect=collect_available,
-        logs=lambda: colab.recover_diagnostics(receipt),
+        logs=recover_logs,
         stop=colab.stop,
         disconnect=disconnect,
         finalize=lambda: mark_lost(project, receipt.runtime_id),

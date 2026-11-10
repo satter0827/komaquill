@@ -6,5 +6,6 @@ revision = "4d2716561322b77314e3bae98788af0a566ea766" # pragma: allowlist secret
 filename = "diffusion_pytorch_model_promax.safetensors"
 sha256 = "9fae2e50cb431bfcbe05822b59ec2228df545ef27f711dea8949e9f4ed9f7cdc" # pragma: allowlist secret Public model SHA256.
 size_bytes = 2513342408
+public_download = true
 license = "Apache-2.0"
 license_url = "https://huggingface.co/xinsir/controlnet-union-sdxl-1.0"

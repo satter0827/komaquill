@@ -444,7 +444,12 @@ def status(ctx: typer.Context) -> None:
             "disconnected": "text.comfyui_disconnected_check_the_start_process",
             "unknown": "status.connection_unknown",
         }
-        typer.echo(message(gpu_keys[state.gpu]))
+        gpu = (
+            "unconfirmed"
+            if state.gpu == "unknown" and state.connection == "not_started"
+            else state.gpu
+        )
+        typer.echo(message(gpu_keys[gpu]))
         typer.echo(
             message(
                 "text.collector_running" if state.collector_running else "text.collector_stopped"

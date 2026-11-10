@@ -7,7 +7,8 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from komaquill.adapters import preparation as module
-from komaquill.domain.assets import Preparation
+from komaquill.adapters.atomic import atomic_json
+from komaquill.domain.assets import PROTOCOL_VERSION, Preparation
 from komaquill.domain.errors import KomaquillError
 
 from tests.backend.support.assets import fake_asset as asset
@@ -21,7 +22,7 @@ class Client:
 
     def json(self, path):
         if path.endswith("capabilities"):
-            return {"protocol_version": 2}
+            return {"protocol_version": PROTOCOL_VERSION}
         if path == "/object_info":
             return {}
         return {"requests": [self.job.model_dump(mode="json")]}
@@ -103,8 +104,6 @@ def test_preparation_jobs_preserve_local_bytes_and_report_safe_errors(
         if case in {"failed", "cancel", "report_failed"}:
             raise OSError("private-exception")
 
-    from komaquill.adapters.atomic import atomic_json
-
     atomic_json(control.project.session_file, session.model_dump(mode="json"))
 
     class Remote:
@@ -146,6 +145,47 @@ def test_tick_schedules_only_this_workspace_pending_jobs(coordinator):
     assert len(control.futures) == 1
 
 
+@pytest.mark.parametrize("phase", ["confirmed", "preparing"])
+@pytest.mark.parametrize("retryable", [False, True])
+def test_dispatch_reconciles_transient_failures_and_stops_permanent_failures(
+    coordinator, monkeypatch, session, phase, retryable
+):
+    control, client = coordinator
+    client.job.phase = phase
+    client.job.assets = [asset().model_copy(update={"public_download": True})]
+    atomic_json(control.project.session_file, session.model_dump(mode="json"))
+    launches = []
+
+    class Owned:
+        def __init__(self, _):
+            pass
+
+        def receipt(self):
+            return SimpleNamespace(runtime_id=session.runtime_id, started_at=None)
+
+        def remote_models(self, *args, **kwargs):
+            pytest.fail("Public preparation must not use SSH")
+
+    request = client.request
+
+    def launch(method, path, **kwargs):
+        action = kwargs["json"]["action"] if path.endswith(str(client.job.request_id)) else None
+        if action == "start":
+            launches.append(path)
+            if len(launches) == 1:
+                raise KomaquillError(code="connection_failed", retryable=retryable)
+        return request(method, path, **kwargs)
+
+    monkeypatch.setattr(module, "Colab", Owned)
+    monkeypatch.setattr(client, "request", launch)
+    for _ in range(3):
+        control.tick()
+        control.futures[client.job.request_id].result(timeout=2)
+    assert len(launches) == (2 if retryable else 1)
+    assert client.job.phase == (phase if retryable else "failed")
+    assert all(path.endswith(str(client.job.request_id)) for path in launches)
+
+
 @pytest.mark.parametrize(
     "case", ["ready", "cancelled", "unsupported", "timeout", "interrupt", "failed", "no_extension"]
 )
@@ -161,7 +201,7 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
 
     def request(method, path, **kwargs):
         action = kwargs.get("json", {}).get("action")
-        if action == "confirm":
+        if action == "confirm" and case != "interrupt":
             job.phase = "ready"
         if action == "cancel":
             job.phase = "cancelled"
@@ -189,6 +229,29 @@ def test_prepare_command_confirms_and_retries_only_existing_session(project, mon
             )
         if case == "timeout":
             assert caught.value.code == "preparation_timeout" and not caught.value.retryable
+
+
+def test_prepare_command_recovers_a_lost_confirmation_response(project, monkeypatch):
+    workflow = project.root / "workflow.json"
+    workflow.write_text('{"nodes":[]}')
+    client = Client()
+    client.job.phase = "confirmation"
+    request = client.request
+    confirmations = []
+
+    def lost_response(method, path, **kwargs):
+        if kwargs.get("json", {}).get("action") == "confirm":
+            assert path.endswith(str(client.job.request_id))
+            confirmations.append(path)
+            client.job.phase = "ready"
+            raise KomaquillError(code="connection_failed")
+        return request(method, path, **kwargs)
+
+    monkeypatch.setattr(client, "request", lost_response)
+    patch_clock(monkeypatch, module, sleep=lambda _: None)
+    module.prepare_workflow(project, client, workflow, lambda _: None, lambda _: True)
+    assert len(confirmations) == 1
+    assert len(client.calls) == 1  # Only the original create request.
 
 
 def test_bindings_are_scoped_to_the_verified_runtime(coordinator, session):

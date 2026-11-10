@@ -23,9 +23,9 @@ from komaquill.adapters.model_sources import resolve_model
 from komaquill.adapters.storage import load_session
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.application.preparation.service import requirements
-from komaquill.domain.assets import PREPARATION_TERMINAL, Preparation
+from komaquill.domain.assets import PREPARATION_TERMINAL, PROTOCOL_VERSION, Preparation
 from komaquill.domain.configuration import remaining_seconds
-from komaquill.domain.errors import KomaquillError, failure_info
+from komaquill.domain.errors import FailureInfo, KomaquillError, failure_info
 from komaquill.resources.messages import message
 
 PREFIX = "/komaquill/v1"
@@ -34,7 +34,7 @@ PREFIX = "/komaquill/v1"
 def capabilities(client: ComfyClient) -> bool:
     """Leave bare ComfyUI endpoints on the standard generation API."""
     try:
-        return client.json(PREFIX + "/capabilities").get("protocol_version") == 2
+        return client.json(PREFIX + "/capabilities").get("protocol_version") == PROTOCOL_VERSION
     except KomaquillError as error:
         if error.http_status == 404:
             return False
@@ -47,6 +47,11 @@ def verify_extension(client: ComfyClient) -> None:
         raise KomaquillError(code="extension_unavailable", stage="preparation", retryable=False)
 
 
+def retryable_dispatch(failure: FailureInfo) -> bool:
+    """Retry only temporary failures to communicate with the same runtime."""
+    return failure.retryable and failure.code in {"connection_failed", "http_failed"}
+
+
 class Coordinator:
     """Run bounded preparation jobs separately from result collection."""
 
@@ -54,7 +59,8 @@ class Coordinator:
         self.project, self.client = project, client
         self.cancelled = threading.Event()
         self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="preparation")
-        self.futures: dict[UUID, Future[None]] = {}
+        self.futures: dict[UUID, Future[FailureInfo | None]] = {}
+        self.dispatched_phases: dict[UUID, str] = {}
         self.cancel_events: dict[UUID, threading.Event] = {}
         self.bound: set[UUID] = set()
         self.workspace_id = workspace_identity(project)
@@ -130,12 +136,12 @@ class Coordinator:
             reused=[],
         )
 
-    def run(self, job: Preparation) -> None:
+    def run(self, job: Preparation) -> FailureInfo | None:
         """Execute the confirmed job on its existing owned runtime."""
         try:
             if job.phase == "requested":
                 self.plan(job)
-                return
+                return None
             colab = Colab(self.project)
             receipt = colab.receipt()
             session = load_session(self.project)
@@ -162,24 +168,21 @@ class Coordinator:
                 or self.cancel_events.setdefault(job.request_id, threading.Event()).is_set()
             ):
                 raise KomaquillError(code="stopping", stage="preparation", retryable=False)
-            colab.remote_models(receipt, job.request_id, timeout=allowed)
+            if all(asset.public_download for asset in job.assets):
+                self.update(job, "start")
+            else:
+                colab.remote_models(receipt, job.request_id, timeout=allowed)
         except Exception as error:
+            failure = failure_info(error, "preparation")
             record_event(
                 self.project,
                 "preparation",
-                "failed",
+                "retrying" if retryable_dispatch(failure) else "failed",
                 operation_id=job.request_id,
-                failure=failure_info(error, "preparation"),
+                failure=failure,
             )
-            if not self.cancelled.is_set() and not (
-                isinstance(error, KomaquillError) and error.code == "connection_failed"
-            ):
-                with contextlib.suppress(KomaquillError):
-                    self.update(
-                        job,
-                        "failure",
-                        failure=failure_info(error, "preparation").model_dump(mode="json"),
-                    )
+            return failure
+        return None
 
     def tick(self) -> None:
         """Schedule jobs without making large transfers on the collection loop."""
@@ -211,10 +214,28 @@ class Coordinator:
             if job.phase == "ready" and job.request_id not in self.bound:
                 self.bind(job)
             future = self.futures.get(job.request_id)
-            if (job.phase in {"requested", "confirmed"} and (future is None or future.done())) or (
-                job.phase == "preparing" and future is None
-            ):
-                self.futures[job.request_id] = self.executor.submit(self.run, job)
+            if job.phase not in {"requested", "confirmed", "preparing"}:
+                continue
+            if future is not None:
+                dispatched_phase = self.dispatched_phases[job.request_id]
+                if not future.done() or (
+                    job.phase == "preparing" and dispatched_phase != job.phase
+                ):
+                    continue
+                if dispatched_phase == job.phase:
+                    failure = future.result()
+                    if failure is None:
+                        continue
+                    if not retryable_dispatch(failure):
+                        self.update(
+                            job,
+                            "failure",
+                            expected_phase=job.phase,
+                            failure=failure.model_dump(mode="json"),
+                        )
+                        continue
+            self.dispatched_phases[job.request_id] = job.phase
+            self.futures[job.request_id] = self.executor.submit(self.run, job)
 
     def bind(self, job: Preparation) -> None:
         """Associate remote-verified weights with future generation records."""
@@ -269,6 +290,7 @@ def prepare_workflow(
     job = Preparation.model_validate(response.json())
     deadline = time.monotonic() + project.settings().preparation_timeout
     previous = None
+    confirmed = False
     try:
         while job.phase not in PREPARATION_TERMINAL:
             if time.monotonic() >= deadline:
@@ -282,31 +304,45 @@ def prepare_workflow(
                 if job.unsupported:
                     echo(message("assets.unsupported", items=", ".join(job.unsupported)))
                     raise KomaquillError(code="unsupported_asset", retryable=False)
-                for asset in job.assets:
-                    echo(
-                        message(
-                            "assets.row",
-                            name=asset.filename,
-                            size=message("assets.capacity", size_bytes=asset.size_bytes)
-                            if asset.size_bytes is not None
-                            else message("ui.unknown_size"),
-                            source=asset.url or asset.repo_id,
-                            reused=str(asset.reference in job.reused),
+                if not confirmed:
+                    for asset in job.assets:
+                        echo(
+                            message(
+                                "assets.row",
+                                name=asset.filename,
+                                size=message("assets.capacity", size_bytes=asset.size_bytes)
+                                if asset.size_bytes is not None
+                                else message("ui.unknown_size"),
+                                source=asset.url or asset.repo_id,
+                                reused=str(asset.reference in job.reused),
+                            )
                         )
+                    confirmed = confirm(message("assets.confirm"))
+                try:
+                    job = Preparation.model_validate(
+                        client.request(
+                            "POST",
+                            PREFIX + f"/requests/{job.request_id}",
+                            json={"action": "confirm" if confirmed else "cancel"},
+                        ).json()
                     )
-                action = "confirm" if confirm(message("assets.confirm")) else "cancel"
-                job = Preparation.model_validate(
-                    client.request(
-                        "POST", PREFIX + f"/requests/{job.request_id}", json={"action": action}
-                    ).json()
+                except KomaquillError as error:
+                    if not confirmed or not retryable_dispatch(failure_info(error, "preparation")):
+                        raise
+            while job.phase not in PREPARATION_TERMINAL and time.monotonic() < deadline:
+                time.sleep(project.settings().poll_interval)
+                try:
+                    rows = client.json(PREFIX + "/requests")["requests"]
+                except KomaquillError as error:
+                    if not retryable_dispatch(failure_info(error, "preparation")):
+                        raise
+                    continue
+                job = next(
+                    Preparation.model_validate(r)
+                    for r in rows
+                    if r["request_id"] == str(job.request_id)
                 )
-            time.sleep(project.settings().poll_interval)
-            rows = client.json(PREFIX + "/requests")["requests"]
-            job = next(
-                Preparation.model_validate(r)
-                for r in rows
-                if r["request_id"] == str(job.request_id)
-            )
+                break
     except (Exception, KeyboardInterrupt):
         with contextlib.suppress(KomaquillError):
             client.request(

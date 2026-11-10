@@ -2,14 +2,14 @@
 
 import asyncio
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from komaquill.adapters.asset_store import model_path, register
 from komaquill.adapters.atomic import atomic_json
-from komaquill.domain.assets import Preparation
+from komaquill.domain.assets import PROTOCOL_VERSION, Preparation
 from komaquill.domain.errors import KomaquillError
 from komaquill.interfaces.comfyui import api as module
 
@@ -35,7 +35,7 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
         async with TestClient(TestServer(app)) as client:
             assert (await (await client.get("/komaquill/v1/capabilities")).json())[
                 "protocol_version"
-            ] == 2
+            ] == PROTOCOL_VERSION
             assert (
                 await client.post("/komaquill/v1/requests", json={"workflow": {}})
             ).status == 409
@@ -60,19 +60,32 @@ def test_native_routes_require_confirmation_and_separate_local_preservation(proj
                 await client.post("/komaquill/v1/requests", json={"workflow": {"nodes": []}})
             ).json()
             route = f"/komaquill/v1/requests/{job['request_id']}"
+            public = asset().model_copy(update={"public_download": True})
             plan = {
                 "action": "plan",
-                "assets": [asset().model_dump(mode="json")],
+                "assets": [public.model_dump(mode="json")],
                 "unsupported": [],
                 "reused": [],
             }
             assert (await client.post(route, json=plan)).status == 403
             assert (await client.post(route, headers=token, json=plan)).status == 200
+            start = {"action": "start"}
+            assert (await client.post(route, json=start)).status == 403
+            assert (await client.post(route, headers=token, json=start)).status == 409
             assert not calls
             assert (await client.post(route, json={"action": "invalid"})).status == 409
             assert (await client.post(route, json={"action": "confirm"})).status == 200
+            extension.public_assets[public.name] = public.model_copy(
+                update={"url": "https://other.invalid"}
+            )
+            assert (await client.post(route, headers=token, json=start)).status == 409
             assert not calls
-            await extension.prepare(job["request_id"], {})
+            extension.public_assets[public.name] = public
+            for _ in range(2):
+                assert (await client.post(route, headers=token, json=start)).status == 200
+            if task := extension.tasks.get(UUID(job["request_id"])):
+                await asyncio.wait_for(task, 5)
+            assert (await client.post(route, headers=token, json=start)).status == 200
             state = extension.read(job["request_id"])
             assert state.remote_ready and state.phase == "ready"
             assert (
@@ -135,12 +148,17 @@ def test_preparation_terminal_states_are_monotonic(project, monkeypatch, case):
 
 
 def test_register_uses_existing_promptserver_routes(project, monkeypatch):
+    original_import = module.importlib.import_module
     monkeypatch.setattr(
         module.importlib,
         "import_module",
-        lambda _: SimpleNamespace(
-            add_model_folder_path=lambda *a: None,
-            get_input_directory=lambda: str(project.artifacts / "input"),
+        lambda name: (
+            SimpleNamespace(
+                add_model_folder_path=lambda *a: None,
+                get_input_directory=lambda: str(project.artifacts / "input"),
+            )
+            if name == "folder_paths"
+            else original_import(name)
         ),
     )
     server = SimpleNamespace(
@@ -148,7 +166,12 @@ def test_register_uses_existing_promptserver_routes(project, monkeypatch):
         app=web.Application(),
         add_on_prompt_handler=lambda handler: None,
     )
-    module.register(server, project.artifacts, 1, 60)
+    atomic_json(
+        project.artifacts.parent / "manifest.json",
+        {"settings": project.settings().model_dump(mode="json")},
+    )
+    extension = module.register(server, project.artifacts, 1, 60)
+    assert set(extension.public_assets) == {"qwen35-4b-text", "sdxl-composition-guide"}
     assert len(server.routes) == 9
 
 

@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 from komaquill.adapters.atomic import atomic_bytes
 
-GUIDE_DIRECTORY = "komaquill-guides"
+GUIDE_PREFIX = "komaquill-guide-"
 GUIDE_SIZE = 512
 STANDING = (
     (0, 85),
@@ -44,14 +44,13 @@ POSE_SEGMENTS = (
 
 def prepare_guides(input_directory: Path) -> None:
     """Place starter pose and depth images without replacing user inputs."""
-    folder = input_directory / GUIDE_DIRECTORY
     for name, centers in (
         ("standing-pose.png", (256,)),
         ("pair-pose.png", (144, 368)),
         ("center-depth.png", (256,)),
         ("pair-depth.png", (144, 368)),
     ):
-        target = folder / name
+        target = input_directory / f"{GUIDE_PREFIX}{name}"
         if target.exists():
             continue
         image = Image.new("RGB", (GUIDE_SIZE, GUIDE_SIZE), "black")

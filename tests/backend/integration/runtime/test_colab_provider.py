@@ -113,6 +113,46 @@ def test_uncertain_observation_never_stops_or_releases(provider, project, monkey
     assert control.receipt_file.exists() and not calls
 
 
+@pytest.mark.parametrize("allocation_running", [True, False])
+def test_unassigned_receipt_requires_provider_and_process_evidence(
+    provider, project, monkeypatch, allocation_running
+):
+    _, state, calls, data = provider
+    state.clear()
+    data["endpoint_id"] = None
+    control = Colab(project)
+    control.config = project.state / "missing.json"
+    atomic_json(control.receipt_file, data)
+    monkeypatch.setattr(control, "provider_call", lambda action: bridge.execute(action, data))
+    receipt = Receipt.model_validate(data)
+    argv = [
+        "python",
+        "-m",
+        "komaquill.adapters.colab_entry",
+        "--config",
+        str(control.config),
+        "new",
+        "-s",
+        receipt.name,
+        "--gpu",
+        "T4",
+    ]
+    monkeypatch.setattr(
+        "komaquill.adapters.colab.psutil.process_iter",
+        lambda _: [SimpleNamespace(info={"cmdline": argv if allocation_running else []})],
+    )
+    if allocation_running:
+        with pytest.raises(KomaquillError):
+            control.refresh(receipt)
+        with pytest.raises(KomaquillError):
+            control.stop()
+    else:
+        assert not control.refresh(receipt)
+        observation = control.stop()
+        assert observation.state == "unassigned" and observation.stopped
+    assert control.receipt_file.exists() and calls == []
+
+
 def test_shutdown_rejects_missing_or_unknown_confirmation():
     for observation in [None, RuntimeObservation(), RuntimeObservation(state="stopped")]:
         calls = []

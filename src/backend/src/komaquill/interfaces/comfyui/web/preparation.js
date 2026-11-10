@@ -7,9 +7,14 @@ export function assetRows(job, unknown) {
   return job.assets.map((asset) => [asset.filename, asset.size_bytes == null ? unknown : capacity.format(asset.size_bytes),
     asset.url || asset.repo_id, job.reused.includes(`${asset.sha256}/${asset.filename}`)].join(" | "));
 }
-export async function prepareWorkflow({request, workflow, confirm, status, text, sleep}) {
+function isTemporary(error) {
+  return error instanceof TypeError || error.retryable === true;
+}
+
+export async function prepareWorkflow({request, workflow, confirm, status, text, sleep, signal}) {
   let job = await request("/requests", {workflow});
   let previous = null;
+  let confirmed = false;
   for (;;) {
     const current = `${job.phase}:${job.current_asset || ""}`;
     if (current !== previous) status(job.phase, job);
@@ -17,16 +22,33 @@ export async function prepareWorkflow({request, workflow, confirm, status, text,
     if (terminal.has(job.phase)) return job;
     if (job.phase === "confirmation") {
       const description = job.unsupported.length ? job.unsupported.join("\n") : assetRows(job, text["ui.unknown_size"]).join("\n");
-      if (job.unsupported.length || !(await confirm(`${text["ui.confirm"]}\n${description}`))) {
-        return request(`/requests/${job.request_id}`, {action: "cancel"});
+      if (!confirmed) {
+        if (job.unsupported.length || !(await confirm(`${text["ui.confirm"]}\n${description}`))) {
+          return request(`/requests/${job.request_id}`, {action: "cancel"});
+        }
+        confirmed = true;
       }
-      await request(`/requests/${job.request_id}`, {action: "confirm"});
+      try {
+        await request(`/requests/${job.request_id}`, {action: "confirm"});
+      } catch (error) {
+        if (!isTemporary(error)) throw error;
+      }
     }
-    await sleep();
-    const data = await request("/requests");
-    const next = data.requests.find((item) => item.request_id === job.request_id);
-    if (!next) throw new Error("request_not_found");
-    job = next;
+    for (;;) {
+      await sleep();
+      signal?.throwIfAborted();
+      let data;
+      try {
+        data = await request("/requests");
+      } catch (error) {
+        if (!isTemporary(error)) throw error;
+        continue;
+      }
+      const next = data.requests.find((item) => item.request_id === job.request_id);
+      if (!next) throw new Error("request_not_found");
+      job = next;
+      break;
+    }
   }
 }
 

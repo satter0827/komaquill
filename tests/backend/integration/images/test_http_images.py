@@ -209,13 +209,13 @@ def test_http_runtime_keeps_owned_shutdown_without_an_endpoint(project, monkeypa
     monkeypatch.setattr(Colab, "refresh", unavailable)
     with TestClient(create_app(Client(project.root)), base_url="http://localhost") as http:
         assert http.get("/api/v1/runtime/views").json() == []
-        for result in (
-            http.get("/api/v1/runtime"),
-            http.post("/api/v1/runtime/refresh"),
-        ):
+        cached = http.get("/api/v1/runtime")
+        refreshed = http.post("/api/v1/runtime/refresh")
+        for result in (cached, refreshed):
             assert result.status_code == 200
             assert result.json()["gpu"] == "unknown"
             assert result.json()["shutdown_target"] == "owned"
+        assert refreshed.json()["connection"] == "not_started"
 
         cache = project.state / "runtime-observation.json"
         cache.write_text("{", encoding="utf-8")

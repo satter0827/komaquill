@@ -161,15 +161,18 @@ class RuntimeObservation(BaseModel):
     """Report provider evidence separately from local process and CLI cache state."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    state: Literal["running", "stopped", "unknown"] = "unknown"
+    state: Literal["running", "stopped", "unassigned", "unknown"] = "unknown"
     observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     endpoint_id: str | None = None
     account_sha256: str | None = None
 
     @property
     def stopped(self) -> bool:
-        """Require endpoint and account evidence before accepting termination."""
-        return self.state == "stopped" and bool(self.endpoint_id and self.account_sha256)
+        """Require provider evidence that the recorded account has no matching runtime."""
+        return bool(self.account_sha256) and (
+            (self.state == "stopped" and bool(self.endpoint_id))
+            or (self.state == "unassigned" and self.endpoint_id is None)
+        )
 
 
 class ShutdownResult(BaseModel):

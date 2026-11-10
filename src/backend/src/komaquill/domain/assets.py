@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from komaquill.domain.errors import FailureInfo
 from komaquill.domain.presets import ModelPreset
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 PREPARATION_TERMINAL = frozenset({"ready", "failed", "cancelled"})
 
 

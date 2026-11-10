@@ -2110,7 +2110,7 @@
             ],
             "properties": {},
             "widgets_values": [
-              "komaquill-guides/standing-pose.png",
+              "komaquill-guide-standing-pose.png",
               "image"
             ]
           },
@@ -2435,7 +2435,7 @@
             ],
             "properties": {},
             "widgets_values": [
-              "komaquill-guides/center-depth.png",
+              "komaquill-guide-center-depth.png",
               "image"
             ]
           },

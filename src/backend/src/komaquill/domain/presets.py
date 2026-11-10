@@ -41,6 +41,7 @@ class ModelPreset(BaseModel):
     license_url: str = ""
     local_only: bool = False
     transfer: bool = False
+    public_download: bool = Field(default=False, exclude_if=lambda value: not value)
     size_bytes: int | None = Field(default=None, ge=0)
 
     @property

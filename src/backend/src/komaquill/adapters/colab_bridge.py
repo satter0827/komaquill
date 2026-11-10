@@ -50,9 +50,13 @@ def observe(client: Any, receipt: dict[str, Any], timeout: float) -> tuple[Runti
     """Confirm endpoint presence only under the account recorded at allocation."""
     subject = account(client, timeout)
     endpoint = receipt.get("endpoint_id")
-    if not endpoint or subject != receipt.get("account_sha256"):
+    if subject != receipt.get("account_sha256"):
         return RuntimeObservation(account_sha256=subject, endpoint_id=endpoint), None
     assignments = client.list_assignments()
+    if endpoint is None:
+        return RuntimeObservation(
+            state="unknown" if assignments else "unassigned", account_sha256=subject
+        ), None
     selected = next((item for item in assignments if item.endpoint == endpoint), None)
     return RuntimeObservation(
         state="running" if selected is not None else "stopped",

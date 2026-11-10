@@ -65,11 +65,7 @@ def inspect(project: RuntimeWorkspace) -> SessionStatus:
         if receipt is not None:
             with colab.lock.acquire(timeout=0):
                 active = colab.refresh(receipt)
-            result.gpu = (
-                "active"
-                if active
-                else ("unconfirmed" if receipt.endpoint_id is None else "stopped")
-            )
+            result.gpu = "active" if active else "stopped"
     except Timeout:
         result.gpu = "busy"
     except (OSError, ValueError, KomaquillError):

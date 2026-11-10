@@ -16,11 +16,15 @@ let text = {};
 const POLL_INTERVAL_MS = 1000;
 let activeRequest = null;
 let running = false;
-async function request(path, data) {
-  const response = await api.fetchApi(`/komaquill/v1${path}`, data === undefined ? {} : {
+async function request(path, data, signal) {
+  const response = await api.fetchApi(`/komaquill/v1${path}`, {signal, ...(data === undefined ? {} : {
     method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)
-  });
-  if (!response.ok) throw new Error(`http_${response.status}`);
+  })});
+  if (!response.ok) {
+    const error = new Error(`http_${response.status}`);
+    error.retryable = response.status === 429 || response.status >= 500;
+    throw error;
+  }
   return response.json();
 }
 function notify(key, severity = "info", detail) {
@@ -38,17 +42,35 @@ async function prepare() {
     const capabilities = await request("/capabilities");
     text = capabilities.messages;
     if (!capabilities.workspace_id || !capabilities.accepting) return notify("ui.unavailable", "warn");
-    const job = await prepareWorkflow({request, workflow, text,
+    const signal = AbortSignal.timeout(Math.ceil(capabilities.preparation_timeout * 1000));
+    const job = await prepareWorkflow({request: (path, data) => request(path, data, signal),
+      workflow, text, signal,
       confirm: async (message) => window.confirm(message),
-      status: (phase, job) => { activeRequest = job?.request_id; if (phase === "preparing") notify("ui.preparing"); },
+      status: (phase, job) => {
+        activeRequest = job.request_id;
+        if (phase === "requested") notify("ui.preparation_waiting");
+        if (phase === "preparing") notify("ui.preparing", "info", job.current_asset?.split("/").at(-1));
+      },
       sleep: () => new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))});
     if (job.phase === "ready") {
       const applied = await applyPreparedModels(app, job, isCurrent);
       notify(applied ? "ui.models_ready" : "ui.models_ready_other_workflow");
     } else if (job.unsupported.length) {
       notify("ui.preparation_unsupported", "warn", job.unsupported.join(", "));
-    } else if (job.phase === "failed") notify("ui.preparation_failed", "warn");
-  } catch { notify("ui.preparation_failed", "error"); }
+    } else if (job.phase === "failed") {
+      const details = {
+        preparation_timeout: text["ui.preparation_timeout"],
+        connection_failed: text["ui.preparation_connection"],
+        authentication_failed: text["ui.preparation_authentication"],
+        invalid_output: text["ui.preparation_integrity"],
+        storage_failed: text["ui.preparation_storage"],
+      };
+      notify("ui.preparation_failed", "warn", details[job.failure?.code]);
+    }
+  } catch (error) {
+    notify("ui.preparation_failed", "error",
+      error.name === "TimeoutError" ? text["ui.preparation_timeout"] : undefined);
+  }
   finally { activeRequest = null; running = false; }
 }
 api.addEventListener("execution_success", () => notify("ui.generated"));

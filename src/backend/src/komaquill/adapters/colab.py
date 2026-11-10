@@ -234,12 +234,32 @@ class Colab:
         """Read account consumption without allocating or connecting to a runtime."""
         return self._provider_call(AccountUsage, "usage", timeout=self.settings.request_timeout)
 
+    def allocation_running(self, receipt: Receipt) -> bool:
+        """Detect an official allocation child left behind by its monitor."""
+        command = [
+            "-m",
+            "komaquill.adapters.colab_entry",
+            "--config",
+            str(self.config),
+            "new",
+            "-s",
+            receipt.name,
+        ]
+        for process in psutil.process_iter(["cmdline"]):
+            arguments = process.info["cmdline"] or []
+            if "-m" in arguments and arguments[arguments.index("-m") :][: len(command)] == command:
+                return True
+        return False
+
     def refresh(self, receipt: Receipt) -> bool:
         """Observe provider allocation; missing CLI cache is never shutdown evidence."""
+        if receipt.endpoint_id is None and (
+            self.allocation_running(receipt) or self.entry(receipt) is not None
+        ):
+            raise KomaquillError(code="identity_mismatch", stage="colab_control")
         observation = self.provider_call("observe")
         if (
             observation.state == "unknown"
-            or not receipt.endpoint_id
             or not receipt.account_sha256
             or observation.endpoint_id != receipt.endpoint_id
             or observation.account_sha256 != receipt.account_sha256
@@ -318,6 +338,8 @@ class Colab:
             if receipt is None:
                 raise KomaquillError(code="identity_mismatch")
             if receipt.endpoint_id is None:
+                if self.allocation_running(receipt):
+                    raise KomaquillError(code="identity_mismatch", stage="gpu_stop")
                 entry = self.entry(receipt)
                 if entry is not None:
                     receipt.endpoint_id = str(entry["endpoint"])

@@ -3,6 +3,7 @@
 import asyncio
 import hmac
 import importlib
+import json
 import os
 import time
 from datetime import UTC, datetime
@@ -19,8 +20,9 @@ from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.diagnostics import record_event
 from komaquill.adapters.paths import GpuPaths
 from komaquill.domain.assets import PREPARATION_TERMINAL, PROTOCOL_VERSION, Preparation
+from komaquill.domain.configuration import RuntimeSettings
 from komaquill.domain.errors import FailureInfo, KomaquillError, failure_info
-from komaquill.domain.presets import MODEL_ROLES
+from komaquill.domain.presets import MODEL_ROLES, ModelPreset
 from komaquill.interfaces.comfyui.preservation import Preservation
 from komaquill.resources.messages import catalog
 
@@ -35,6 +37,7 @@ class Extension:
         self.preparation_timeout = preparation_timeout
         self.folder = root / "state/preparation"
         self.tasks: dict[UUID, asyncio.Task[None]] = {}
+        self.public_assets: dict[str, ModelPreset] = {}
         self.accepting = True
         self.workspace_id: UUID | None = None
         self.control_token: str | None = None
@@ -59,12 +62,16 @@ class Extension:
     def read(self, identity: str | UUID) -> Preparation:
         return Preparation.model_validate_json(self.path(identity).read_bytes())
 
-    def update(self, identity: str | UUID, **values: Any) -> Preparation:
+    def update(
+        self, identity: str | UUID, *, expected_phase: str | None = None, **values: Any
+    ) -> Preparation:
         """Publish monotonic cancellation and verified completion under one lock."""
         path = self.path(identity)
         with FileLock(str(path) + ".lock"):
             current = self.read(identity)
-            if current.phase in PREPARATION_TERMINAL:
+            if current.phase in PREPARATION_TERMINAL or (
+                expected_phase is not None and current.phase != expected_phase
+            ):
                 return current
             if values.get("phase", current.phase) != current.phase:
                 values["phase_started_at"] = datetime.now(UTC)
@@ -90,9 +97,11 @@ class Extension:
                     code="preparation_timeout", stage="preparation", retryable=False
                 )
             async with asyncio.timeout(remaining):
-                self.update(identity, phase="preparing")
+                if self.update(identity, phase="preparing").phase != "preparing":
+                    return
                 for model in job.assets:
-                    self.update(identity, current_asset=model.reference)
+                    if self.update(identity, current_asset=model.reference).phase != "preparing":
+                        return
 
                     def report_retry(failure: FailureInfo, name: str = model.name) -> None:
                         record_event(
@@ -119,12 +128,11 @@ class Extension:
                 all_ready = await asyncio.to_thread(
                     lambda: all(verified_cache(self.models, model) for model in current.assets)
                 )
-                self.update(
-                    identity,
-                    remote_ready=all_ready,
-                    current_asset=None,
-                    phase="ready" if all_ready else "failed",
-                )
+                if not all_ready:
+                    raise KomaquillError(
+                        code="invalid_output", stage="preparation", retryable=False
+                    )
+                self.update(identity, remote_ready=True, current_asset=None, phase="ready")
         except Exception as error:
             if isinstance(error, TimeoutError):
                 error = KomaquillError(
@@ -141,6 +149,7 @@ class Extension:
                 "protocol_version": PROTOCOL_VERSION,
                 "workspace_id": str(self.workspace_id) if self.workspace_id else None,
                 "accepting": self.accepting,
+                "preparation_timeout": self.preparation_timeout,
                 "messages": {k: v for k, v in catalog().items() if k.startswith("ui.")},
             }
         )
@@ -166,29 +175,50 @@ class Extension:
         identity = UUID(request.match_info["identity"])
         data = await request.json()
         action = data.get("action")
-        if action in {"plan", "failure"} and not self.authorized(request):
+        if action in {"plan", "start", "failure"} and not self.authorized(request):
             return web.json_response({"code": "authentication_failed"}, status=403)
         current = self.read(identity)
-        if action == "cancel":
+        if action == "start":
+            if current.workspace_id != self.workspace_id:
+                return web.json_response({"code": "identity_mismatch"}, status=409)
+            if current.phase in PREPARATION_TERMINAL:
+                return web.json_response(current.model_dump(mode="json"))
+            if (
+                not self.accepting
+                or current.unsupported
+                or current.phase not in {"confirmed", "preparing"}
+            ):
+                return web.json_response({"code": "invalid_request"}, status=409)
+            if any(self.public_assets.get(asset.name) != asset for asset in current.assets):
+                return web.json_response({"code": "unsupported_asset"}, status=409)
+            if identity not in self.tasks:
+                task = asyncio.create_task(self.prepare(identity))
+                self.tasks[identity] = task
+                task.add_done_callback(lambda _: self.tasks.pop(identity, None))
+        elif action == "cancel":
             current = self.update(identity, phase="cancelled")
-        elif (
-            action == "confirm"
-            and current.phase == "confirmation"
-            and not current.unsupported
-            and self.accepting
-        ):
-            current = self.update(identity, phase="confirmed")
+        elif action == "confirm":
+            if current.phase in {"requested", "confirmation"}:
+                if current.phase != "confirmation" or current.unsupported or not self.accepting:
+                    return web.json_response({"code": "invalid_request"}, status=409)
+                current = self.update(identity, expected_phase="confirmation", phase="confirmed")
         elif action == "plan" and current.phase == "requested":
             current = self.update(
                 identity,
+                expected_phase="requested",
                 phase="confirmation",
                 assets=data["assets"],
                 node_models=data.get("node_models", {}),
                 reused=data["reused"],
                 unsupported=data["unsupported"],
             )
-        elif action == "failure" and current.phase not in PREPARATION_TERMINAL:
-            current = self.update(identity, phase="failed", failure=data["failure"])
+        elif action == "failure":
+            current = self.update(
+                identity,
+                expected_phase=data.get("expected_phase"),
+                phase="failed",
+                failure=data["failure"],
+            )
         else:
             return web.json_response({"code": "invalid_request"}, status=409)
         return web.json_response(current.model_dump(mode="json"))
@@ -250,6 +280,13 @@ class Extension:
 def register(server: Any, root: Path, timeout: float, preparation_timeout: float) -> Extension:
     """Install on PromptServer before it freezes its routes."""
     extension = Extension(root, root / "models", timeout, preparation_timeout)
+    manifest = json.loads((root.parent / "manifest.json").read_bytes())
+    settings = RuntimeSettings.model_validate(manifest["settings"])
+    extension.public_assets = {
+        asset.name: asset
+        for asset in settings.assets.values()
+        if asset.public_download and not (asset.local_only or asset.transfer)
+    }
     folders = importlib.import_module("folder_paths")
     for role in MODEL_ROLES:
         destination = root / "models" / role

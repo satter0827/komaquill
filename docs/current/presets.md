@@ -30,7 +30,7 @@ CLI、Python API、App Mode、Node Graphは同じ設定と標準JSONを使用し
 
 ## 準備と読み取り契約
 
-PCでは取得元、固定版、サイズ、SHA256、利用条件、アクセス権を確認します。重みはColabへ直接取得し、照合後にComfyUIを起動します。認証はPCの標準ストアから読み、所有IDとGPUコードを確認したSSH接続の標準入力だけで渡します。モデル用のPC保存、SCP転送、アップロード、ローカル保存待ちは行いません。[準備手順](../guides/preparation.md)を参照してください。
+PCでは取得元、固定版、サイズ、SHA256、利用条件、アクセス権を確認します。重みはColabへ直接取得し、照合後にComfyUIを起動します。台帳で公開取得と定めた追加モデルは、利用者の確認後に接続中のComfyUIで準備します。ComfyUIは起動時の台帳と照合し、同じ要求IDで準備状況を返します。配布元の認証情報はPCの標準ストアから読み、所有IDとGPUコードを確認したSSH接続の標準入力だけで渡します。モデル用のPC保存、SCP転送、アップロード、ローカル保存待ちは行いません。[準備手順](../guides/preparation.md)を参照してください。
 
 起動時に確定した設定を生成・回収・終了で共有します。保存済みの旧設定と入力は専用の読み取り型で扱い、元の値、実行グラフ、ハッシュを変更しません。旧契約の新規生成と自動再送は行いません。版の正本は[設定型](../../src/backend/src/komaquill/domain/configuration.py)、[画像入力型](../../src/backend/src/komaquill/domain/images.py)、[場面設定型](https://github.com/satter0827/komaquill/blob/91b503b1ee40a71506cc6c26fbf42e64a227651c/src/komaquill/domain/rendering.py)です。
 

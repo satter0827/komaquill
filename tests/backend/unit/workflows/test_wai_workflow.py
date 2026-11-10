@@ -153,8 +153,17 @@ def test_production_stages_preserve_the_candidate_role():
 
 def test_preset_guides_can_be_selected_without_overwriting_inputs(tmp_path: Path):
     prepare_guides(tmp_path)
-    files = list((tmp_path / "komaquill-guides").glob("*.png"))
+    files = list(tmp_path.glob("*.png"))
     assert len(files) == 4
+    graph = Settings(models=[WAI_PROFILE]).presets[WAI_PROFILE].ui
+    defaults = {
+        node["widgets_values"][0]
+        for stage in graph["definitions"]["subgraphs"]
+        for node in stage["nodes"]
+        if node["type"] == "LoadImage" and node["title"] == "Guide image"
+    }
+    assert defaults == {"komaquill-guide-standing-pose.png", "komaquill-guide-center-depth.png"}
+    assert defaults <= {file.name for file in files}
     for file in files:
         with Image.open(file) as image:
             assert image.size == (512, 512)

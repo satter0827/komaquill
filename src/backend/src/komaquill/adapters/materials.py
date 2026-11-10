@@ -15,8 +15,10 @@ from komaquill.adapters.comfyui import ComfyClient
 from komaquill.adapters.diagnostics import record_event
 from komaquill.adapters.storage import load_session
 from komaquill.adapters.workspace import RuntimeWorkspace
+from komaquill.domain.assets import workflow_image_slots
 from komaquill.domain.errors import KomaquillError, failure_info
 from komaquill.domain.materials import Material
+from komaquill.domain.workflow import digest
 
 PREFIX = "/komaquill/v1"
 
@@ -194,13 +196,7 @@ class MaterialCollector:
         inputs = {(row.name, row.sha256): row for row in records(self.project, "inputs")}
         for row in latest.values():
             graph = json.loads(blob(self.project, row).read_bytes())
-            for node in graph.get("nodes", []):
-                if node.get("type") not in {"LoadImage", "LoadImageMask"}:
-                    continue
-                values = node.get("widgets_values", [])
-                if not values or not isinstance(values[0], str):
-                    continue
-                relative = values[0].removesuffix(" [input]")
+            for values, relative in workflow_image_slots(graph):
                 source = inputs.get((relative, row.input_sha256.get(relative, "")))
                 if source is None:
                     raise KomaquillError(code="request_not_found", stage="storage")
@@ -218,7 +214,10 @@ class MaterialCollector:
                         files={"image": (name, handle)},
                     ).json()
                 values[0] = (response.get("subfolder", "") + "/" + response["name"]).lstrip("/")
-            remote = "workflows/komaquill/" + row.sha256 + ".json"
+            revision = digest(
+                {"name": row.name, "workflow": row.sha256, "inputs": row.input_sha256}
+            )
+            remote = f"workflows/komaquill/{revision}.json"
             self.client.request(
                 "POST",
                 "/userdata/" + quote(remote, safe=""),

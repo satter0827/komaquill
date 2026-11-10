@@ -7,6 +7,7 @@ from pydantic import ConfigDict, Field
 
 from komaquill.domain.conversations.models import now
 from komaquill.domain.errors import OperationStage
+from komaquill.domain.images import MAX_BROWSER_SEED, ImageGenerationConditions, ImageSeed
 from komaquill.domain.roleplay import CharacterDefinition, PersonDefinition, Record, StoryDefinition
 
 Locale = Literal["ja", "en"]
@@ -61,9 +62,25 @@ PresetInput = PlayerInput | CharacterInput | StoryInput
 MAX_IMAGE_PROMPT_LENGTH = 12000
 
 
+class WaiPreferences(Record):
+    quality_enabled: bool | None = None
+    quality_positive: str | None = Field(default=None, max_length=MAX_IMAGE_PROMPT_LENGTH)
+    quality_negative: str | None = Field(default=None, max_length=MAX_IMAGE_PROMPT_LENGTH)
+    candidates: int | None = Field(default=None, ge=1, strict=True)
+    seed: ImageSeed | None = Field(default=None, le=MAX_BROWSER_SEED)
+    width: int | None = Field(default=None, strict=True)
+    height: int | None = Field(default=None, strict=True)
+    steps: int | None = Field(default=None, strict=True)
+    cfg: float | None = Field(default=None, strict=True, allow_inf_nan=False)
+    sampler: str | None = Field(default=None, min_length=1)
+    scheduler: str | None = Field(default=None, min_length=1)
+    detail_strength: float | None = Field(default=None, strict=True, allow_inf_nan=False)
+
+
 class ImagePromptDefaults(Record):
     positive: str = Field(default="", max_length=MAX_IMAGE_PROMPT_LENGTH)
     negative: str = Field(default="", max_length=MAX_IMAGE_PROMPT_LENGTH)
+    wai: WaiPreferences = Field(default_factory=WaiPreferences)
 
 
 class Preferences(Record):
@@ -111,6 +128,7 @@ class CreationJob(Record):
     original: str = ""
     image_prompts: ImagePromptDefaults = Field(default_factory=ImagePromptDefaults)
     prompt_en: str | None = None
+    image_generation: ImageGenerationConditions | None = Field(default=None, exclude=True)
     result: CharacterInput | StoryInput | None = None
     image_id: UUID | None = None
     turn_id: UUID | None = None

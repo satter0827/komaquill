@@ -1,10 +1,11 @@
 """Compose image, session and evaluation use cases for Python and terminal callers."""
 
-import secrets
 from collections.abc import Callable
 from contextlib import suppress
 from functools import cached_property
+from hashlib import sha256
 from pathlib import Path
+from secrets import randbits
 from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
@@ -20,16 +21,25 @@ from komaquill.api._errors import api_operation
 from komaquill.application.images.generation import (
     Collection,
     collect,
+    configured_generation_preset,
+    generation_settings,
     submit_generation,
     wait_generation,
 )
 from komaquill.application.library.service import ImageDescriber
 from komaquill.domain.configuration import RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
-from komaquill.domain.images import ImagePurpose, PromptSource
-from komaquill.domain.library.models import ImagePromptDefaults
+from komaquill.domain.images import (
+    MAX_BROWSER_SEED,
+    ImageGenerationConditions,
+    ImagePurpose,
+    PromptSource,
+    preset_fingerprint,
+)
+from komaquill.domain.library.models import ImagePromptDefaults, WaiPreferences
 from komaquill.domain.materials import InputArtifact
 from komaquill.domain.models import Run
+from komaquill.domain.presets import WAI_PROFILE
 from komaquill.domain.prompts import joined
 
 
@@ -73,10 +83,54 @@ class ImageService:
 
     def supports_pair(self) -> bool:
         with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
-            settings = self._generation_workspace.settings()
+            settings = session_project(self._generation_workspace).settings()
             if not isinstance(settings, RuntimeSettings):
                 return False
-            return settings.presets[settings.profile_for(None)].model_id == "wai-illustrious"
+            return settings.presets[settings.profile_for(None)].model_id == WAI_PROFILE
+
+    def validate_preferences(self, wai: WaiPreferences) -> None:
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            settings = session_project(self._generation_workspace).settings()
+            if not isinstance(settings, RuntimeSettings):
+                raise KomaquillError(code="invalid_configuration", stage="check")
+            configured_generation_preset(
+                settings.presets[WAI_PROFILE], settings.max_candidates, wai=wai
+            )
+
+    def freeze(
+        self, identity: UUID, parameters: dict[str, bool | int | float | str] | None
+    ) -> Callable[[ImagePromptDefaults], ImageGenerationConditions]:
+        """Capture the session defaults and resolve them with the atomically read preferences."""
+        with api_operation(OperationStage.PREPARATION, invalid=ErrorCode.INVALID_CONFIGURATION):
+            settings = session_project(self._generation_workspace).settings()
+            if not isinstance(settings, RuntimeSettings):
+                raise KomaquillError(code="invalid_configuration", stage="preparation")
+            profile = settings.profile_for(None)
+            preset = settings.presets[profile]
+            assets = {name: settings.assets[name].reference for name in preset.asset_ids}
+
+        def with_preferences(defaults: ImagePromptDefaults) -> ImageGenerationConditions:
+            selected = configured_generation_preset(
+                preset, settings.max_candidates, parameters=parameters, wai=defaults.wai
+            )
+            return ImageGenerationConditions(
+                profile=profile,
+                preset=selected,
+                assets=assets,
+                seed=self._seed(identity, selected.model_id == WAI_PROFILE, defaults.wai.seed),
+            )
+
+        return with_preferences
+
+    @staticmethod
+    def _seed(identity: UUID, wai_generate: bool, fixed: int | None) -> int:
+        if wai_generate:
+            return (
+                fixed
+                if fixed is not None
+                else int.from_bytes(sha256(identity.bytes).digest()) & MAX_BROWSER_SEED
+            )
+        return randbits(63)
 
     def list(self) -> list[Run]:
 
@@ -110,6 +164,7 @@ class ImageService:
         purpose: ImagePurpose | None = None,
         image_prompts: ImagePromptDefaults | None = None,
         use_prompt_preferences: bool = False,
+        conditions: ImageGenerationConditions | None = None,
     ) -> Run:
         from uuid import uuid4
 
@@ -137,6 +192,18 @@ class ImageService:
                 "parameters": parameters,
                 "llm_profile": llm_profile,
                 **({"purpose": purpose} if purpose else {}),
+                **(
+                    {
+                        "accepted_conditions": {
+                            "profile": conditions.profile,
+                            "preset": preset_fingerprint(conditions.preset),
+                            "assets": conditions.assets,
+                            "seed": conditions.seed,
+                        }
+                    }
+                    if conditions is not None
+                    else {}
+                ),
             }
         )
         with FileLock(str(self._generation_workspace.state / f".image-submit-{identity}.lock")):
@@ -157,53 +224,72 @@ class ImageService:
                         ) from None
                     raise
             try:
-                common_positive = defaults.positive.strip()
-                negative_preference = defaults.negative.strip()
-                common_negative = (
-                    negative_preference
-                    if negative_preference and self.supports_negative(model, operation)
-                    else ""
-                )
-                requested_negative = (
-                    joined(negative or "", common_negative) if common_negative else negative
-                )
-                all_subjects = (*subjects, common_positive) if common_positive else subjects
-                self._preflight(prompt, all_subjects, requested_negative, llm_profile)
-                descriptions = self._text_preparation.prepare(
-                    identity,
-                    prompt,
-                    all_subjects,
-                    requested_negative,
-                    llm_profile,
-                    allow_real_llm,
-                )
-                prepared_prompt = descriptions.prompt
-                common_prompt = descriptions.subjects[-1] if common_positive else ""
-                prepared_subjects = (
-                    descriptions.subjects[:-1] if common_positive else descriptions.subjects
-                )
-                prepared_negative = descriptions.negative
-                with (
-                    api_operation(OperationStage.GENERATION),
-                    connected(self._generation_workspace) as (backend, session),
-                ):
-                    settings = session.settings or self._generation_workspace.settings()
-                    if not isinstance(settings, RuntimeSettings):
+                with api_operation(OperationStage.GENERATION):
+                    active_settings = session_project(self._generation_workspace).settings()
+                    if not isinstance(active_settings, RuntimeSettings):
                         raise KomaquillError(code="invalid_configuration", stage="generation")
-                    profile = settings.profile_for(model, operation)
+                    settings = active_settings
+                    if conditions is None:
+                        profile = settings.profile_for(model, operation)
+                        settings = generation_settings(
+                            settings, profile, candidates, parameters, wai=defaults.wai
+                        )
+                    else:
+                        profile = conditions.profile
+                        available = (
+                            settings.presets.get(profile) if profile in settings.profiles else None
+                        )
+                        if (
+                            available is None
+                            or available.model_id != conditions.preset.model_id
+                            or available.operation != conditions.preset.operation
+                            or set(conditions.assets) != set(conditions.preset.asset_ids)
+                            or any(
+                                name not in settings.assets
+                                or settings.assets[name].reference != reference
+                                for name, reference in conditions.assets.items()
+                            )
+                        ):
+                            raise KomaquillError(
+                                code="operation_conflict", stage="preparation", retryable=False
+                            )
+                        settings = settings.model_copy(
+                            update={"presets": {**settings.presets, profile: conditions.preset}}
+                        )
                     selected = settings.presets[profile]
-                    if negative_preference and (
-                        bool(common_negative) != (selected.negative_default is not None)
-                    ):
-                        raise KomaquillError(code="operation_conflict", stage="preparation")
+                    wai_generate = selected.model_id == WAI_PROFILE and operation == "generate"
+                    selected_seed = conditions.seed if conditions is not None else seed
+                    if selected_seed is None:
+                        selected_seed = self._seed(identity, wai_generate, defaults.wai.seed)
+                    common_positive = defaults.positive.strip()
+                    common_negative = (
+                        defaults.negative.strip() if selected.negative_default is not None else ""
+                    )
+                    requested_negative = (
+                        joined(negative or "", common_negative) if common_negative else negative
+                    )
+                    all_subjects = (*subjects, common_positive) if common_positive else subjects
+                    self._preflight(prompt, all_subjects, requested_negative, llm_profile)
+                    descriptions = self._text_preparation.prepare(
+                        identity,
+                        prompt,
+                        all_subjects,
+                        requested_negative,
+                        llm_profile,
+                        allow_real_llm,
+                    )
+                    prepared_prompt = descriptions.prompt
+                    common_prompt = descriptions.subjects[-1] if common_positive else ""
+                    prepared_subjects = (
+                        descriptions.subjects[:-1] if common_positive else descriptions.subjects
+                    )
+                    prepared_negative = descriptions.negative
                     if common_negative and negative is None and selected.negative_default:
                         prepared_negative = joined(
                             selected.negative_default, prepared_negative or ""
                         )
                     purpose_sources = []
                     if purpose:
-                        import hashlib
-
                         positive = selected.purpose_prefixes.get(purpose, "")
                         negative_constraint = (
                             selected.purpose_negatives.get(purpose, "")
@@ -228,26 +314,32 @@ class ImageService:
                                         name=f"purpose-{purpose}-{role}.txt",
                                         content=content,
                                         role=cast(Literal["positive", "negative"], role),
-                                        sha256=hashlib.sha256(content.encode()).hexdigest(),
+                                        sha256=sha256(content.encode()).hexdigest(),
                                     )
                                 )
-                    # Persist the deduplication key before any external submission.
-                    return submit_generation(
-                        self._generation_workspace,
-                        backend,
-                        session,
-                        prepared_prompt,
-                        seed if seed is not None else secrets.randbits(63),
-                        profile,
-                        run_id=identity,
-                        negative=prepared_negative,
-                        subjects=prepared_subjects,
-                        common_prompt=common_prompt,
-                        candidates=candidates,
-                        input_sources=(*input_sources, *descriptions.sources, *purpose_sources),
-                        inputs=inputs,
-                        parameters=parameters,
-                    )
+                    with connected(self._generation_workspace) as (backend, session):
+                        if session.settings is not None and session.settings.model_dump(
+                            mode="json"
+                        ) != active_settings.model_dump(mode="json"):
+                            raise KomaquillError(code="operation_conflict", stage="preparation")
+                        return submit_generation(
+                            self._generation_workspace,
+                            backend,
+                            session.model_copy(update={"settings": settings}),
+                            prepared_prompt,
+                            selected_seed,
+                            profile,
+                            run_id=identity,
+                            negative=prepared_negative,
+                            subjects=prepared_subjects,
+                            common_prompt=common_prompt,
+                            input_sources=(
+                                *input_sources,
+                                *descriptions.sources,
+                                *purpose_sources,
+                            ),
+                            inputs=inputs,
+                        )
             except Exception:
                 from komaquill.adapters.persistence.images import cancel_unsubmitted
 

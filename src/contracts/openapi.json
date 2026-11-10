@@ -7469,6 +7469,243 @@
         "title": "FailureInfo",
         "description": "Describe a failure without copying exception messages or response bodies."
       },
+      "GenerationPreset": {
+        "properties": {
+          "api": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Api"
+          },
+          "ui": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Ui"
+          },
+          "bindings": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowBinding"
+            },
+            "type": "array",
+            "title": "Bindings"
+          },
+          "resources": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Resources"
+          },
+          "image_inputs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/WorkflowImageSlot"
+            },
+            "type": "object",
+            "title": "Image Inputs"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Parameters"
+          },
+          "parameter_bounds": {
+            "additionalProperties": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "object",
+            "title": "Parameter Bounds"
+          },
+          "width": {
+            "type": "integer",
+            "multipleOf": 16.0,
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "multipleOf": 16.0,
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "title": "Height"
+          },
+          "steps": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Steps"
+          },
+          "sampler": {
+            "type": "string",
+            "title": "Sampler"
+          },
+          "scheduler": {
+            "type": "string",
+            "title": "Scheduler"
+          },
+          "quality_enabled": {
+            "type": "boolean",
+            "title": "Quality Enabled",
+            "default": true
+          },
+          "positive_prefix": {
+            "type": "string",
+            "title": "Positive Prefix",
+            "default": ""
+          },
+          "batch_size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "default": 1
+          },
+          "primary_output_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Output Node"
+          },
+          "sample_prompt": {
+            "type": "string",
+            "title": "Sample Prompt"
+          },
+          "format_version": {
+            "type": "integer",
+            "const": 3,
+            "title": "Format Version",
+            "default": 3
+          },
+          "model_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Model Id"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "generate",
+              "edit"
+            ],
+            "title": "Operation"
+          },
+          "model_family": {
+            "type": "string",
+            "enum": [
+              "klein-4b",
+              "klein-9b",
+              "illustrious"
+            ],
+            "title": "Model Family"
+          },
+          "negative_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Default"
+          },
+          "purpose_prefixes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "portrait",
+                "banner",
+                "conversation_image"
+              ]
+            },
+            "type": "object",
+            "title": "Purpose Prefixes"
+          },
+          "purpose_negatives": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "portrait",
+                "banner",
+                "conversation_image"
+              ]
+            },
+            "type": "object",
+            "title": "Purpose Negatives"
+          },
+          "adjustable": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Adjustable",
+            "default": [
+              "width",
+              "height"
+            ]
+          },
+          "parameter_choices": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Parameter Choices"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "api",
+          "ui",
+          "bindings",
+          "width",
+          "height",
+          "steps",
+          "sampler",
+          "scheduler",
+          "sample_prompt",
+          "model_id",
+          "operation",
+          "model_family"
+        ],
+        "title": "GenerationPreset",
+        "description": "Validate positive-only executable workflows and their model family."
+      },
       "ImageDetach": {
         "properties": {
           "image": {
@@ -7485,6 +7722,40 @@
           "use"
         ],
         "title": "ImageDetach"
+      },
+      "ImageGenerationConditions": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "title": "Profile"
+          },
+          "preset": {
+            "$ref": "#/components/schemas/GenerationPreset"
+          },
+          "assets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Assets"
+          },
+          "seed": {
+            "type": "integer",
+            "maximum": 1.8446744073709552e+19,
+            "minimum": 0.0,
+            "title": "Seed"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profile",
+          "preset",
+          "assets",
+          "seed"
+        ],
+        "title": "ImageGenerationConditions",
+        "description": "Keep an accepted image plan independent of subsequent session defaults."
       },
       "ImageInput": {
         "properties": {
@@ -7503,6 +7774,7 @@
             "anyOf": [
               {
                 "type": "integer",
+                "maximum": 1.8446744073709552e+19,
                 "minimum": 0.0
               },
               {
@@ -7510,6 +7782,18 @@
               }
             ],
             "title": "Seed"
+          },
+          "negative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative"
           },
           "model": {
             "anyOf": [
@@ -7643,6 +7927,9 @@
             "maxLength": 12000,
             "title": "Negative",
             "default": ""
+          },
+          "wai": {
+            "$ref": "#/components/schemas/WaiPreferences"
           }
         },
         "additionalProperties": false,
@@ -8267,8 +8554,15 @@
             "title": "Primary Node"
           },
           "candidates": {
-            "type": "integer",
-            "minimum": 1.0,
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Candidates"
           },
           "stages": {
@@ -9964,6 +10258,16 @@
               }
             ],
             "title": "Supports Negative Prompt"
+          },
+          "wai": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WaiSettingsView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10561,6 +10865,180 @@
         ],
         "title": "VisualReviewRecord"
       },
+      "WaiPreferences": {
+        "properties": {
+          "quality_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Enabled"
+          },
+          "quality_positive": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Positive"
+          },
+          "quality_negative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 12000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Negative"
+          },
+          "candidates": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidates"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9007199254740991.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "cfg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cfg"
+          },
+          "sampler": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampler"
+          },
+          "scheduler": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduler"
+          },
+          "detail_strength": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Strength"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WaiPreferences"
+      },
+      "WaiSettingsView": {
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/WaiPreferences"
+          },
+          "max_candidates": {
+            "type": "integer",
+            "title": "Max Candidates"
+          },
+          "choices": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Choices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "defaults",
+          "max_candidates",
+          "choices"
+        ],
+        "title": "WaiSettingsView"
+      },
       "WaitAction": {
         "properties": {
           "kind": {
@@ -10739,6 +11217,69 @@
           "id"
         ],
         "title": "WorkRef"
+      },
+      "WorkflowBinding": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "api_node": {
+            "type": "string",
+            "title": "Api Node"
+          },
+          "api_input": {
+            "type": "string",
+            "title": "Api Input"
+          },
+          "ui_node": {
+            "type": "integer",
+            "title": "Ui Node"
+          },
+          "ui_widget": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ui Widget"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "api_node",
+          "api_input",
+          "ui_node",
+          "ui_widget"
+        ],
+        "title": "WorkflowBinding",
+        "description": "Bind one named scalar to matching standard API and UI inputs."
+      },
+      "WorkflowImageSlot": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image",
+              "mask"
+            ],
+            "title": "Kind",
+            "default": "image"
+          },
+          "sample": {
+            "type": "string",
+            "title": "Sample",
+            "default": ""
+          },
+          "match_base": {
+            "type": "boolean",
+            "title": "Match Base",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WorkflowImageSlot",
+        "description": "Declare one image or white-edit mask required by a fixed workflow."
       }
     }
   }

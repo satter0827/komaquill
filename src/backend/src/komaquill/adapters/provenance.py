@@ -94,6 +94,7 @@ GPU_MODULES = frozenset(
         "adapters/paths.py",
         "adapters/preset_catalog.py",
         "adapters/provenance.py",
+        "adapters/wai_guides.py",
         "adapters/worker_workspace.py",
         "adapters/workflows.py",
         "domain/__init__.py",

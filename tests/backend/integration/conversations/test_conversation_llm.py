@@ -528,8 +528,9 @@ def test_structured_model_call_records_input_and_bounds_repair(tmp_path, monkeyp
     assert options[0]["max_retries"] == 0 and options[0]["cache"] is False
     records = call_files(tmp_path, request.operation_id)
     assert len(records) == len(calls)
-    assert "A private prompt" in records[0].read_text()
-    record = json.loads(records[0].read_bytes())
+    payload = records[0].read_text(encoding="utf-8")
+    assert "A private prompt" in payload
+    record = json.loads(payload)
     assert len(record["instructions_sha256"]) == 64
     assert record["workflow"] == {"engine": "langgraph", "version": 2}
     assert record["model"] == "qwen3.5-4b-uncensored-hauhaucs-aggressive" and "usage" in record

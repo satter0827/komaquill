@@ -108,7 +108,21 @@ def test_restore_uses_saved_workflow_inputs_instead_of_latest_overwritten_names(
     store(project, first, b"image")
     store(project, second, b"new input")
     content = json.dumps(
-        {"nodes": [{"type": "LoadImage", "widgets_values": ["source.png"]}, {"type": "KSampler"}]}
+        {
+            "nodes": [{"id": 1, "type": "active"}, {"id": 2, "type": "inactive", "mode": 4}],
+            "definitions": {
+                "subgraphs": [
+                    {
+                        "id": "active",
+                        "nodes": [{"type": "LoadImage", "widgets_values": ["source.png"]}],
+                    },
+                    {
+                        "id": "inactive",
+                        "nodes": [{"type": "LoadImage", "widgets_values": ["missing.png"]}],
+                    },
+                ]
+            },
+        }
     ).encode()
     workflow = material(
         content,
@@ -125,7 +139,9 @@ def test_restore_uses_saved_workflow_inputs_instead_of_latest_overwritten_names(
         if path == "/upload/image":
             assert kwargs["files"]["image"][1].read() == b"image"
             return httpx.Response(200, json={"name": "source.png", "subfolder": "restored"})
-        assert kwargs["json"]["nodes"][0]["widgets_values"][0] == "restored/source.png"
+        definitions = kwargs["json"]["definitions"]["subgraphs"]
+        assert definitions[0]["nodes"][0]["widgets_values"][0] == "restored/source.png"
+        assert definitions[1]["nodes"][0]["widgets_values"][0] == "missing.png"
         return httpx.Response(200)
 
     module.MaterialCollector(project, SimpleNamespace(request=request), {}).restore()
@@ -140,6 +156,34 @@ def test_missing_required_input_is_reported_without_uploading_workflow(project):
     store(project, row, content)
     with pytest.raises(KomaquillError):
         module.MaterialCollector(project, None, {}).restore()
+
+
+def test_identical_workflows_with_different_input_revisions_restore_separately(project):
+    content = b'{"nodes":[{"type":"LoadImage","widgets_values":["source.png"]}]}'
+    for version in ("first", "second"):
+        data = version.encode()
+        original = material(data)
+        store(project, original, data)
+        workflow = material(
+            content,
+            kind="workflows",
+            name=f"workflows/{version}.json",
+            input_sha256={"source.png": original.sha256},
+        )
+        store(project, workflow, content)
+    restored = {}
+
+    def request(_, route, **kwargs):
+        if route == "/upload/image":
+            return httpx.Response(
+                200, json={"name": "source.png", "subfolder": kwargs["data"]["subfolder"]}
+            )
+        restored[route] = kwargs["json"]["nodes"][0]["widgets_values"][0]
+        return httpx.Response(200)
+
+    module.MaterialCollector(project, SimpleNamespace(request=request), {}).restore()
+    assert len(restored) == 2
+    assert len(set(restored.values())) == 2
 
 
 def test_only_confirmed_owned_runtime_marks_unpreserved_files_lost(project, session):

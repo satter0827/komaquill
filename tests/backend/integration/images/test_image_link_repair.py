@@ -6,9 +6,10 @@ from uuid import uuid4
 
 import pytest
 from komaquill.adapters import image_link_repair as repair
+from komaquill.adapters.persistence.library import job_record
 from komaquill.adapters.persistence.schema import creation_jobs, images, presets
 from komaquill.api import CharacterInput, Client, CreationRequest, KomaquillError, StoryInput
-from komaquill.domain.library.models import CreationJob
+from komaquill.domain.library.models import CreationJob, ImagePromptDefaults
 from komaquill.domain.library.rendering import preset_image_input
 from komaquill.domain.library.works import WorkChange, WorkRef
 from komaquill.domain.models import ImageMetadata, ImageRef, Run
@@ -23,7 +24,7 @@ def stopped_workspace(monkeypatch):
     monkeypatch.setattr(repair, "database_in_use", lambda project: False)
 
 
-def retained(tmp_path, kind="story"):
+def retained(tmp_path, kind="story", *, frozen=False):
     api = Client.initialize(tmp_path)
     target = (
         api.stories.create(StoryInput(name="Room", world="A quiet house"))
@@ -39,7 +40,14 @@ def retained(tmp_path, kind="story"):
         target_id=target.id,
         expected_revision=target.revision,
     )
-    good = CreationJob(id=good_id, request=request, state="submitted", original=original)
+    conditions = api.images.freeze(good_id, None)(ImagePromptDefaults()) if frozen else None
+    good = CreationJob(
+        id=good_id,
+        request=request,
+        state="submitted",
+        original=original,
+        image_generation=conditions,
+    )
     failed = CreationJob(
         id=failed_id,
         request=request.model_copy(update={"operation_id": failed_id}),
@@ -85,7 +93,10 @@ def retained(tmp_path, kind="story"):
         for job in (good, failed):
             connection.execute(
                 creation_jobs.insert().values(
-                    id=str(job.id), payload=job.model_dump_json(), owner_pid=0, owner_started="0"
+                    id=str(job.id),
+                    payload=json.dumps(job_record(job)),
+                    owner_pid=0,
+                    owner_started="0",
                 )
             )
         connection.execute(images.insert().values(id=str(good_id), payload=run.model_dump_json()))
@@ -99,7 +110,7 @@ def table(api, entity):
 
 @pytest.mark.parametrize("kind", ["character", "story"])
 def test_inspect_is_read_only_and_apply_is_atomic_preserving_originals(tmp_path, kind):
-    api, target, good, failed, _, path = retained(tmp_path, kind)
+    api, target, good, failed, _, path = retained(tmp_path, kind, frozen=True)
     before = {entity.name: table(api, entity) for entity in (images, creation_jobs, presets)}
     original = path.read_bytes()
     inspection = api.inspect_image_links()
@@ -114,7 +125,9 @@ def test_inspect_is_read_only_and_apply_is_atomic_preserving_originals(tmp_path,
     updated = service.get(target.id)
     assert updated.image_id == updated.image_job_id == good.id
     assert updated.revision == target.revision
-    assert api.library.store.job(good.id)[0].state == "complete"
+    completed = api.library.store.job(good.id)[0]
+    assert completed.state == "complete"
+    assert completed.image_generation == good.image_generation
     assert api.library.store.job(failed.id)[0] == failed
     assert table(api, images) == before["images"] and path.read_bytes() == original
     backup = (

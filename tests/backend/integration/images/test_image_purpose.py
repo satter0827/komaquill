@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 
 import pytest
+from komaquill.adapters.atomic import atomic_json
 from komaquill.adapters.configuration import Settings
 from komaquill.api import Client
 from komaquill.domain.errors import KomaquillError
@@ -19,6 +20,7 @@ def test_banner_conditions_are_recorded_and_reconfirmation_never_resubmits(
 ):
     settings = Settings(models=["wai-illustrious"])
     active = session.model_copy(update={"settings": settings, "backend": "external"})
+    atomic_json(project.session_file, active.model_dump(mode="json"))
 
     @contextmanager
     def connected(_):
@@ -67,6 +69,7 @@ def test_positive_only_model_does_not_receive_negative_purpose_constraints(
     )
     settings.presets["klein-4b"] = profile
     active = session.model_copy(update={"settings": settings, "backend": "external"})
+    atomic_json(project.session_file, active.model_dump(mode="json"))
 
     @contextmanager
     def connected(_):

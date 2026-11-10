@@ -285,7 +285,7 @@ class Client:
 
     @cached_property
     def runtime(self) -> RuntimeService:
-        return RuntimeService(self._project)
+        return RuntimeService(self._project, lambda: self.library.preferences().image_prompts)
 
     @cached_property
     def archive(self) -> "ArchiveService":

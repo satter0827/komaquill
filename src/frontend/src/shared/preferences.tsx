@@ -20,9 +20,13 @@ export const defaultPreferences: EffectivePreferences = {
   image_prompts: {},
 }
 
+type PreferenceUpdate =
+  | Partial<Preferences>
+  | ((current: EffectivePreferences) => Partial<Preferences>)
+
 type PreferenceContext = {
   value: EffectivePreferences
-  update: (changes: Partial<Preferences>) => Promise<void>
+  update: (changes: PreferenceUpdate) => Promise<void>
   pending: boolean
   ready: boolean
   error: unknown
@@ -43,10 +47,13 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const value = { ...defaultPreferences, ...query.data }
   const save = useMutation({
     scope: { id: 'preferences' },
-    mutationFn: async (changes: Partial<Preferences>) => {
-      const current =
-        cache.getQueryData<Preferences>(q.getPreferencesQueryKey()) ?? value
-      return (await savePreferences({ body: { ...current, ...changes } })).data!
+    mutationFn: async (changes: PreferenceUpdate) => {
+      const current = {
+        ...value,
+        ...cache.getQueryData<Preferences>(q.getPreferencesQueryKey()),
+      }
+      const patch = typeof changes === 'function' ? changes(current) : changes
+      return (await savePreferences({ body: { ...current, ...patch } })).data!
     },
     onSuccess: async (data) => {
       cache.setQueryData(q.getPreferencesQueryKey(), data)

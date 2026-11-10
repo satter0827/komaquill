@@ -28,16 +28,28 @@ for (const refreshSupported of [true, false]) {
   test(`prepared node references remain distinct and refresh missing-model state (${refreshSupported})`, async () => {
     const nodes = [{id: 1, widgets: [{value: "same.sft"}, {value: "keep"}]}, {id: 2, widgets: [{value: "same.sft"}]}, {id: 3}];
     let refreshed = false;
-    const app = {graph: {_nodes: nodes}, refreshComboInNodes: async () => {}};
+    const app = {rootGraph: {nodes}, refreshComboInNodes: async () => {}};
     if (refreshSupported) app.refreshMissingModels = async (options) => {
       assert.deepEqual(options, {silent: true, reloadDefs: false});
       assert.equal(nodes[1].widgets[0].value, "b/same.sft");
       refreshed = true;
     };
-    await applyPreparedModels(app, {node_models: {1: {"same.sft": "a/same.sft"}, 2: {"same.sft": "b/same.sft"}}});
+    await applyPreparedModels(app, {node_models: {1: {"same.sft": "a/same.sft"}, 2: {"same.sft": "b/same.sft"}}}, () => true);
     assert.equal(nodes[0].widgets[0].value, "a/same.sft");
     assert.equal(nodes[1].widgets[0].value, "b/same.sft");
     assert.equal(nodes[0].widgets[1].value, "keep");
     assert.equal(refreshed, refreshSupported);
   });
 }
+
+test("prepared models do not change a different workflow after refresh", async () => {
+  const node = {id: 1, widgets: [{value: "same.sft"}]};
+  let current = true;
+  const app = {
+    rootGraph: {nodes: [node]},
+    refreshComboInNodes: async () => { current = false; },
+  };
+  const job = {node_models: {1: {"same.sft": "a/same.sft"}}};
+  assert.equal(await applyPreparedModels(app, job, () => current), false);
+  assert.equal(node.widgets[0].value, "same.sft");
+});

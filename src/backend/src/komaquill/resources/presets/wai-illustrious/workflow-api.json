@@ -31,7 +31,10 @@
     "class_type": "StringConcatenate",
     "inputs": {
       "string_a": "masterpiece, best quality, amazing quality, anime illustration, detailed",
-      "string_b": "a small cabin in a sunny forest, manga illustration",
+      "string_b": [
+        "101",
+        0
+      ],
       "delimiter": ", "
     }
   },
@@ -138,6 +141,23 @@
     "class_type": "PrimitiveFloat",
     "inputs": {
       "value": 0.5
+    }
+  },
+  "100": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "a small cabin in a sunny forest, manga illustration"
+    }
+  },
+  "101": {
+    "class_type": "StringConcatenate",
+    "inputs": {
+      "string_a": "",
+      "string_b": [
+        "100",
+        0
+      ],
+      "delimiter": ""
     }
   }
 }

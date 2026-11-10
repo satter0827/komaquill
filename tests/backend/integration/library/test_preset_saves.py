@@ -20,8 +20,8 @@ def prepared(tmp_path):
             raise KomaquillError(code="request_not_found")
         return runs[identity]
 
-    def submit(prompt, *, run_id, parameters, purpose=None, **_options):
-        calls.append((prompt, run_id, parameters))
+    def submit(prompt, *, run_id, conditions, **_options):
+        calls.append((prompt, run_id, conditions))
         runs[run_id] = SimpleNamespace(run_id=run_id, state="queued", images=[])
         return runs[run_id]
 
@@ -31,7 +31,7 @@ def prepared(tmp_path):
         sources.append(json.loads(source))
         return "A sixty-year-old man with short silver hair, wearing a black apron."
 
-    api.library.images = SimpleNamespace(get=get, submit=submit)
+    api.library.images = SimpleNamespace(get=get, submit=submit, freeze=api.library.images.freeze)
     api.library.image_lookup = api.library.images.get
     api.library.image_describer = SimpleNamespace(prepare_image=translate)
     api.library.preflight = lambda *_: None

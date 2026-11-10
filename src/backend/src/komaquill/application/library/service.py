@@ -16,7 +16,7 @@ from komaquill.application.library.operations import CreationStore, reconcile_jo
 from komaquill.domain.conversations.context import drawing_context
 from komaquill.domain.conversations.models import Conversation, ConversationInput, PresetSnapshot
 from komaquill.domain.errors import KomaquillError
-from komaquill.domain.images import ImagePurpose
+from komaquill.domain.images import ImageGenerationConditions, ImagePurpose
 from komaquill.domain.library.models import (
     CharacterInput,
     CharacterPreset,
@@ -34,6 +34,7 @@ from komaquill.domain.library.models import (
     PresetSaveResult,
     StoryInput,
     StoryPreset,
+    WaiPreferences,
 )
 from komaquill.domain.library.rendering import preset_image_input
 from komaquill.domain.models import Run
@@ -66,7 +67,12 @@ class Store(CreationStore, Protocol):
     def save_preferences(self, value: Preferences) -> Preferences: ...
     def retain_job(self, value: CreationJob) -> None: ...
     def accept(
-        self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
+        self,
+        request: CreationRequest,
+        original: str,
+        *,
+        turn_id: UUID | None = None,
+        freeze: Callable[[ImagePromptDefaults], ImageGenerationConditions] | None = None,
     ) -> tuple[CreationJob, bool]: ...
     def save_preset(
         self,
@@ -100,16 +106,20 @@ class ImageDescriber(Protocol):
 
 
 class Images(Protocol):
+    def validate_preferences(self, wai: WaiPreferences) -> None: ...
     def supports_pair(self) -> bool: ...
+    def freeze(
+        self, identity: UUID, parameters: dict[str, bool | int | float | str] | None
+    ) -> Callable[[ImagePromptDefaults], ImageGenerationConditions]: ...
     def read(self, run_id: UUID) -> Run: ...
     def submit(
         self,
         prompt: str,
         *,
         run_id: UUID | None = None,
-        parameters: dict[str, bool | int | float | str] | None = None,
         purpose: ImagePurpose | None = None,
         image_prompts: ImagePromptDefaults | None = None,
+        conditions: ImageGenerationConditions | None = None,
         llm_profile: str = "fake",
         allow_real_llm: bool = False,
     ) -> Run: ...
@@ -226,10 +236,13 @@ class LibraryService:
         return [self.job(job.id) for job in self.store.conversation_images(identity)]
 
     def save_preferences(self, value: Preferences) -> Preferences:
-        if value.llm_profile != self.preferences().llm_profile and value.llm_profile not in {
+        previous = self.preferences()
+        if value.llm_profile != previous.llm_profile and value.llm_profile not in {
             p.id for p in self.conversations.profiles()
         }:
             raise KomaquillError(code="invalid_configuration", retryable=False)
+        if value.image_prompts.wai != previous.image_prompts.wai:
+            self.images.validate_preferences(value.image_prompts.wai)
         return self.store.save_preferences(value)
 
     def start(self, request: ConversationStart) -> Conversation:
@@ -310,8 +323,20 @@ class LibraryService:
             return self.job(previous.id), False
         original, turn_id = self.source(request)
         self.preflight(request, original)
-        job, created = self.store.accept(request, original, turn_id=turn_id)
+        freeze = None
+        if request.kind in IMAGE_COMPOSITION:
+            purpose = self.image_purpose(request, original)
+            freeze = self.images.freeze(request.operation_id, self.image_parameters.get(purpose))
+        job, created = self.store.accept(request, original, turn_id=turn_id, freeze=freeze)
         return job, created
+
+    @staticmethod
+    def image_purpose(request: CreationRequest, original: str) -> ImagePurpose:
+        if request.kind == "conversation_image" and not json.loads(original).get(
+            "character_visible", True
+        ):
+            return "banner"
+        return cast(ImagePurpose, request.kind)
 
     def source(self, request: CreationRequest) -> tuple[str, UUID | None]:
         original = request.prompt
@@ -373,12 +398,12 @@ class LibraryService:
                     if not any(scenery.get(key) for key in ("world", "place", "description")):
                         scenery["opening"] = captured.get("opening", "")
                     source = json.dumps(scenery, ensure_ascii=False)
-                environment_only = job.request.kind == "conversation_image" and not json.loads(
-                    source
-                ).get("character_visible", True)
-                image_purpose = (
-                    "banner" if environment_only else cast(ImagePurpose, job.request.kind)
+                image_purpose = self.image_purpose(job.request, job.original)
+                environment_only = (
+                    job.request.kind == "conversation_image" and image_purpose == "banner"
                 )
+                if job.image_generation is None:
+                    raise KomaquillError(code="invalid_configuration", stage="preparation")
                 prompt = job.prompt_en
                 if prompt is None:
                     composition = (
@@ -414,9 +439,9 @@ class LibraryService:
                 self.images.submit(
                     prompt,
                     run_id=job.id,
-                    parameters=self.image_parameters.get(image_purpose),
                     purpose=image_purpose,
                     image_prompts=job.image_prompts,
+                    conditions=job.image_generation,
                     llm_profile=job.request.llm_profile,
                     allow_real_llm=job.request.allow_real_llm,
                 )

@@ -2,22 +2,54 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from secrets import randbelow
 from typing import Literal
 
 from komaquill.adapters.compute import inspection, shutdown, supervisor
 from komaquill.adapters.diagnostics import operation_scope
 from komaquill.adapters.workspace import RuntimeWorkspace
 from komaquill.api._errors import api_operation
-from komaquill.domain.configuration import GpuType, RecordedSettings
+from komaquill.domain.configuration import GpuType, RecordedSettings, RuntimeSettings
 from komaquill.domain.errors import ErrorCode, KomaquillError, OperationStage
+from komaquill.domain.images import MAX_BROWSER_SEED
+from komaquill.domain.library.models import ImagePromptDefaults, WaiPreferences
 from komaquill.domain.models import JsonObject
+from komaquill.domain.presets import WAI_PROFILE
 from komaquill.domain.status import SessionStatus
 from komaquill.domain.usage import AccountUsage
 
 
 class RuntimeService:
-    def __init__(self, project: RuntimeWorkspace) -> None:
+    def __init__(
+        self,
+        project: RuntimeWorkspace,
+        image_preferences: Callable[[], ImagePromptDefaults] = ImagePromptDefaults,
+    ) -> None:
         self._project = project
+        self._image_preferences = image_preferences
+
+    def wai_defaults(self) -> tuple[WaiPreferences, int, dict[str, tuple[str, ...]]]:
+        from komaquill.adapters.compute.connection import session_project
+
+        with api_operation(OperationStage.CHECK, invalid=ErrorCode.INVALID_CONFIGURATION):
+            settings = session_project(self._project).settings()
+            if not isinstance(settings, RuntimeSettings):
+                raise KomaquillError(code="invalid_configuration", stage="check")
+            preset = settings.presets[WAI_PROFILE]
+            defaults = WaiPreferences(
+                quality_enabled=preset.quality_enabled,
+                quality_positive=preset.positive_prefix,
+                quality_negative=preset.negative_default,
+                candidates=preset.batch_size,
+                width=preset.width,
+                height=preset.height,
+                steps=preset.steps,
+                cfg=float(preset.parameters["cfg"]),
+                sampler=preset.sampler,
+                scheduler=preset.scheduler,
+                detail_strength=float(preset.parameters["detail_strength"]),
+            )
+            return defaults, settings.max_candidates, preset.parameter_choices
 
     def configure(self, settings: RecordedSettings) -> None:
         self._project = self._project.configured(settings)
@@ -78,12 +110,36 @@ class RuntimeService:
     def workflow(self, profile: str, view: Literal["app", "graph"]) -> JsonObject:
         from komaquill.adapters.compute.connection import session_project
         from komaquill.adapters.workflows import prepare, select
+        from komaquill.application.images.generation import generation_settings
+        from komaquill.domain.images import compile_image_input
+        from komaquill.domain.prompts import joined
 
         with api_operation(OperationStage.PREPARATION, invalid=ErrorCode.INVALID_CONFIGURATION):
             settings = session_project(self._project).settings()
             _, selected = select(settings, profile)
+            wai_generate = selected.model_id == WAI_PROFILE and selected.operation == "generate"
+            defaults = self._image_preferences() if wai_generate else ImagePromptDefaults()
+            settings = generation_settings(settings, profile, wai=defaults.wai)
+            selected = settings.presets[profile]
+            negative = selected.negative_default
+            applied = compile_image_input(
+                selected,
+                selected.sample_prompt,
+                common_prompt=defaults.positive.strip(),
+                negative=joined(negative, defaults.negative.strip())
+                if negative is not None and defaults.negative.strip()
+                else None,
+            )
+            randomize = wai_generate and defaults.wai.seed is None
+            seed = randbelow(MAX_BROWSER_SEED + 1) if randomize else defaults.wai.seed
             _, graph = prepare(
-                selected.sample_prompt, 1, "preview", settings=settings, profile_name=profile
+                selected.sample_prompt,
+                1 if seed is None else seed,
+                "preview",
+                settings=settings,
+                profile_name=profile,
+                compiled_input=applied,
+                randomize_seed=randomize,
             )
             graph["extra"]["linearMode"] = view == "app"
             return graph

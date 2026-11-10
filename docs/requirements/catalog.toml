@@ -181,7 +181,15 @@ summary = "CLIと標準画面から画像を生成し、実行条件と画像を
 status = "implemented"
 acceptance = ["CLI・App Mode・Node Graphから生成できる", "保存失敗を成功として扱わず再回収できる"]
 sources = ["src/backend/src/komaquill/application/images/generation.py", "src/backend/src/komaquill/adapters/storage.py"]
-tests = ["tests/backend/integration/images/test_generation.py", "tests/backend/integration/platform/test_storage.py"]
+tests = ["tests/backend/integration/images/test_generation.py", "tests/backend/integration/platform/test_storage.py", "tests/backend/unit/workflows/test_wai_workflow.py"]
+
+[requirements.REQ-WAI-PRODUCTION]
+summary = "アプリとComfyUIでWAIの生成条件を共有し、制作工程を選択する"
+status = "in_progress"
+implementation_note = "保存済みのWAI設定から生成要求と標準JSONを組み立てる。制作ジョブには受付時の実効条件を保存する。追加工程はBypassで保存し、有効な工程の画像素材を版付きで保全する。実画像による工程別の受入は継続する。"
+acceptance = ["品質文の継承、空欄、無効化を区別する", "同じ実効入力からアプリとComfyUIで同じ通常生成条件を使う", "無効な工程を送信JSONと準備対象から外す", "英文と画像を同じ生成IDで確認できる", "マスク外の画素を保持する", "出力が増えてもApp Modeで入力と候補を操作できる", "固定したWAIとseedで実画像の対象数・服装・姿勢・小物の所有者を判定する"]
+sources = ["src/backend/src/komaquill/resources/presets/wai-illustrious/workflow.json", "src/backend/src/komaquill/application/images/generation.py", "src/frontend/src/features/preferences/index.tsx"]
+tests = ["tests/backend/unit/workflows/test_wai_workflow.py", "tests/backend/integration/images/test_http_images.py", "tests/frontend/integration/preferences/wai.test.tsx", "tests/system/e2e/web/workflow.spec.ts"]
 
 [requirements.REQ-OWNERSHIP]
 summary = "所有するGPUだけを操作し、確認・回収・停止で追加確保しない"

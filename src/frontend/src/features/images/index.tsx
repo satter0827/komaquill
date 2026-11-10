@@ -66,6 +66,7 @@ export function ImagesPage() {
   const [open, setOpen] = useState(false)
   const formId = useId()
   const [prompt, setPrompt] = useState('')
+  const [negative, setNegative] = useState('')
   const [prepared, setPrepared] = useState<ImageInput | null>(null)
   const [latestId, setLatestId] = useState<string | null>(null)
   const [dayOverrides, setDayOverrides] = useState<Record<string, boolean>>({})
@@ -77,6 +78,10 @@ export function ImagesPage() {
   const cache = useQueryClient()
   const track = useTrackImage()
   const trackReceipt = useTrackImageReceipt()
+  const settings = useQuery({ ...q.getSettingsOptions(), enabled: open })
+  const supportsNegative = settings.data?.supports_negative_prompt === true
+  const negativePrompt =
+    supportsNegative && negative.trim() ? negative : undefined
   const images = useQuery({
     ...q.listImagesOptions(),
     structuralSharing: (previous, next) =>
@@ -102,6 +107,7 @@ export function ImagesPage() {
       ? {
           kind: 'image',
           prompt,
+          negative: negativePrompt,
           llm_profile: preferences.value.llm_profile,
           use_prompt_preferences: true,
         }
@@ -220,6 +226,7 @@ export function ImagesPage() {
                 prompt,
                 llm_profile: preferences.value.llm_profile,
                 allow_real_llm: true,
+                negative: negativePrompt,
               }
               setPrepared(body)
               setLatestId(null)
@@ -236,6 +243,17 @@ export function ImagesPage() {
                 onChange={(event) => setPrompt(event.target.value)}
               />
             </label>
+            {supportsNegative && (
+              <label>
+                {m.imageNegativePrompt}
+                <textarea
+                  rows={2}
+                  value={negative}
+                  disabled={waiting}
+                  onChange={(event) => setNegative(event.target.value)}
+                />
+              </label>
+            )}
             <Button
               variant="primary"
               type="submit"

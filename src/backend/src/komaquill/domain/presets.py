@@ -20,6 +20,7 @@ ModelRole = Literal[
     "ipadapter",
 ]
 MODEL_ROLES: tuple[str, ...] = get_args(ModelRole)
+WAI_PROFILE = "wai-illustrious"
 
 
 class ModelPreset(BaseModel):
@@ -117,6 +118,7 @@ MODEL_INPUT_ROLES: dict[str, tuple[str, str]] = {
     "LoraLoader": ("lora_name", "loras"),
     "UNETLoader": ("unet_name", "diffusion_models"),
     "CLIPLoader": ("clip_name", "text_encoders"),
+    "ControlNetLoader": ("control_net_name", "controlnet"),
     "VAELoader": ("vae_name", "vae"),
     "LoraLoaderModelOnly": ("lora_name", "loras"),
 }
@@ -187,6 +189,9 @@ class GenerationPreset(PresetSnapshot):
         default_factory=dict, exclude_if=lambda value: not value
     )
     adjustable: tuple[str, ...] = ("width", "height")
+    parameter_choices: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
 
     @model_validator(mode="after")
     def validate_bindings(self) -> Self:
@@ -205,6 +210,8 @@ class GenerationPreset(PresetSnapshot):
             "seed",
             "output_prefix",
             "prompt_delimiter",
+            "common_prompt",
+            "common_delimiter",
         }
         declared = set(self.parameters) | {f"input_{name}" for name in self.image_inputs}
         if declared & allowed or set(self.resources) & (declared | allowed):
@@ -215,6 +222,9 @@ class GenerationPreset(PresetSnapshot):
             raise ValueError("Use portable names for workflow inputs.")
         if set(self.adjustable) - {"width", "height", "steps", "sampler", "scheduler"}:
             raise ValueError("The adjustable standard parameter is unknown.")
+        for name, choices in self.parameter_choices.items():
+            if name not in {"sampler", "scheduler"} or getattr(self, name) not in choices:
+                raise ValueError("A workflow parameter is outside its declared choices.")
         if set(self.parameter_bounds) - (set(self.parameters) | set(self.adjustable)):
             raise ValueError("Bounds must refer to declared parameters.")
         for name, (lower, upper) in self.parameter_bounds.items():

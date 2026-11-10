@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from komaquill.domain.assets import workflow_models
+from komaquill.domain.assets import active_workflow_nodes, workflow_models
 
 
 def requirements(
@@ -12,9 +12,7 @@ def requirements(
     unsupported: list[str] = []
     hints = workflow_models(workflow)
     names = {item.get("name") for item in hints}
-    for node in workflow.get("nodes", []):
-        if not isinstance(node, dict) or node.get("mode", 0) in {2, 4}:
-            continue
+    for _, node in active_workflow_nodes(workflow):
         kind = node.get("type", "")
         definition = definitions.get(kind)
         module = definition.get("python_module", "nodes") if isinstance(definition, dict) else ""

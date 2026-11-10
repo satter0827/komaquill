@@ -30,13 +30,22 @@ export async function prepareWorkflow({request, workflow, confirm, status, text,
   }
 }
 
-export async function applyPreparedModels(app, job) {
+export async function applyPreparedModels(app, job, isCurrent) {
+  if (!isCurrent()) return false;
   await app.refreshComboInNodes();
-  for (const node of app.graph._nodes) {
-    const references = job.node_models?.[String(node.id)] || {};
-    for (const widget of node.widgets || []) {
-      if (Object.hasOwn(references, widget.value)) widget.value = references[widget.value];
+  if (!isCurrent()) return false;
+  function apply(graph, prefix = "") {
+    for (const node of graph.nodes) {
+      if (node.mode === 2 || node.mode === 4) continue;
+      const identity = prefix + node.id;
+      const references = job.node_models?.[identity] || {};
+      for (const widget of node.widgets || []) {
+        if (Object.hasOwn(references, widget.value)) widget.value = references[widget.value];
+      }
+      if (node.subgraph) apply(node.subgraph, identity + ":");
     }
   }
+  apply(app.rootGraph);
   if (app.refreshMissingModels) await app.refreshMissingModels({silent: true, reloadDefs: false});
+  return true;
 }

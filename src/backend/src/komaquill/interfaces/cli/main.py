@@ -330,7 +330,7 @@ def generate_command(
             llm_profile=llm_profile,
             allow_real_llm=allow_real_llm,
         )
-        if run.output_spec is None:
+        if run.output_spec is None or run.output_spec.candidates is None:
             typer.echo(message("images.saved_outputs", count=len(run.images)))
         else:
             typer.echo(message("images.saved_candidates", count=run.output_spec.candidates))

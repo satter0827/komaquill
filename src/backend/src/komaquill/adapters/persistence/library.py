@@ -4,7 +4,7 @@ import builtins
 import hashlib
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import cast
 from uuid import UUID, uuid4
@@ -26,10 +26,12 @@ from komaquill.adapters.persistence.works import WorkRepository, image_visible, 
 from komaquill.adapters.storage_errors import stored
 from komaquill.domain.conversations.models import Conversation
 from komaquill.domain.errors import KomaquillError
+from komaquill.domain.images import ImageGenerationConditions
 from komaquill.domain.library.models import (
     CharacterPreset,
     CreationJob,
     CreationRequest,
+    ImagePromptDefaults,
     PlayerProfile,
     Preferences,
     Preset,
@@ -52,6 +54,14 @@ MODELS: dict[PresetKind, type[PlayerProfile] | type[CharacterPreset] | type[Stor
     "character": CharacterPreset,
     "story": StoryPreset,
 }
+
+
+def job_record(job: CreationJob) -> dict[str, object]:
+    """Persist the execution snapshot that is excluded from HTTP job responses."""
+    data = job.model_dump(mode="json")
+    if job.image_generation is not None:
+        data["image_generation"] = job.image_generation.model_dump(mode="json")
+    return data
 
 
 class LibraryRepository:
@@ -326,6 +336,7 @@ class LibraryRepository:
         request: CreationRequest,
         original: str,
         turn_id: UUID | None = None,
+        freeze: Callable[[ImagePromptDefaults], ImageGenerationConditions] | None = None,
     ) -> tuple[CreationJob, bool]:
         row = connection.execute(
             select(creation_jobs.c.payload).where(creation_jobs.c.id == str(request.operation_id))
@@ -413,6 +424,7 @@ class LibraryRepository:
         )
         job = CreationJob(
             image_prompts=settings.image_prompts,
+            image_generation=freeze(settings.image_prompts) if freeze is not None else None,
             id=request.operation_id,
             request=request,
             original=original,
@@ -424,7 +436,7 @@ class LibraryRepository:
         connection.execute(
             creation_jobs.insert().values(
                 id=str(job.id),
-                payload=job.model_dump_json(),
+                payload=json.dumps(job_record(job), ensure_ascii=False),
                 owner_pid=os.getpid(),
                 owner_started=str(psutil.Process().create_time()),
             )
@@ -440,10 +452,15 @@ class LibraryRepository:
 
     @stored
     def accept(
-        self, request: CreationRequest, original: str, *, turn_id: UUID | None = None
+        self,
+        request: CreationRequest,
+        original: str,
+        *,
+        turn_id: UUID | None = None,
+        freeze: Callable[[ImagePromptDefaults], ImageGenerationConditions] | None = None,
     ) -> tuple[CreationJob, bool]:
         with self.database.transaction() as connection:
-            result = self._accept(connection, request, original, turn_id)
+            result = self._accept(connection, request, original, turn_id, freeze)
             connection.commit()
             return result
 
@@ -597,7 +614,7 @@ class LibraryRepository:
             connection.execute(
                 creation_jobs.update()
                 .where(creation_jobs.c.id == str(identity))
-                .values(payload=value.model_dump_json())
+                .values(payload=json.dumps(job_record(value), ensure_ascii=False))
             )
             connection.commit()
             return value
@@ -609,10 +626,17 @@ class LibraryRepository:
                 select(creation_jobs.c.payload).where(creation_jobs.c.id == str(value.id))
             ).scalar_one()
             previous = self._decode_job(str(value.id), payload)
-            self._decode_job(str(value.id), value.model_dump_json())
+            self._decode_job(str(value.id), json.dumps(job_record(value), ensure_ascii=False))
             if any(
                 getattr(previous, key) != getattr(value, key)
-                for key in ("request", "original", "turn_id", "created_at", "image_prompts")
+                for key in (
+                    "request",
+                    "original",
+                    "turn_id",
+                    "created_at",
+                    "image_prompts",
+                    "image_generation",
+                )
             ) or (
                 previous.prompt_en is not None
                 and value.prompt_en is not None
@@ -668,15 +692,16 @@ class LibraryRepository:
             connection.execute(
                 creation_jobs.update()
                 .where(creation_jobs.c.id == str(value.id))
-                .values(payload=value.model_dump_json())
+                .values(payload=json.dumps(job_record(value), ensure_ascii=False))
             )
             connection.commit()
             return value
 
     @stored
     def retain_job(self, value: CreationJob) -> None:
-        self._decode_job(str(value.id), value.model_dump_json())
-        self.database.checkpoints.save(f"creation:{value.id}", value.model_dump(mode="json"))
+        record = job_record(value)
+        self._decode_job(str(value.id), json.dumps(record, ensure_ascii=False))
+        self.database.checkpoints.save(f"creation:{value.id}", record)
 
     def _decode_job(self, identity: str, payload: str) -> CreationJob:
         value = CreationJob.model_validate_json(payload)
